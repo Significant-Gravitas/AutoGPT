@@ -185,7 +185,7 @@ describe("Publishing an expert to the marketplace", () => {
     expect(await screen.findByText("Live on marketplace")).toBeDefined();
     expect(screen.getByTestId("expert-publish-button")).toHaveProperty(
       "textContent",
-      "Publish again",
+      "Update listing",
     );
   });
 

@@ -201,6 +201,28 @@ describe("ExpertReviewDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  test("a nameless expert is refused with the remedy publish mode actually has", async () => {
+    const nameless = {
+      ...preview,
+      manifest: {
+        ...preview.manifest,
+        identity: { ...preview.manifest.identity, name: "  " },
+      },
+    };
+    renderDialog({ mode: "publish", preview: nameless });
+
+    expect(
+      await screen.findByText(
+        "Give this expert a name on its page before publishing it.",
+      ),
+    ).toBeDefined();
+    // The dialog is read-only here, so it must not ask for a name it cannot take.
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   // The publish route builds the package from the stored expert and takes no
   // edits, so a control here could only lie about what reaches the marketplace.
   test("publish mode confirms and never edits", async () => {

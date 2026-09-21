@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { getWorkflowSourceLabel } from "../helpers";
+import type { ExpertReviewMode } from "../helpers";
 
 interface Props {
   workflow: WorkflowResolution;
@@ -13,7 +14,7 @@ interface Props {
   isScheduled: boolean;
   onToggle: () => void;
   onToggleSchedule: () => void;
-  mode: "import" | "publish";
+  mode: ExpertReviewMode;
 }
 
 export function WorkflowRow({

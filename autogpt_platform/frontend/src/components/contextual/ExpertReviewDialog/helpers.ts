@@ -70,10 +70,14 @@ export function serializeExpertEdits(edits: ExpertImportEdits): string {
  *  is not. Whether every agent is on the marketplace is not decided here:
  *  only the publish route can see a listing the admin made after attaching
  *  the agent, and it names the ones it cannot find. */
+/** Which side of the dialog is being shown. Import edits a parsed file;
+ *  publish confirms the stored expert and takes no edits. */
+export type ExpertReviewMode = "import" | "publish";
+
 export function getBlockingReason(
   draft: ExpertReviewDraft,
   preview: ExpertPackagePreview | null,
-  mode: "import" | "publish" = "import",
+  mode: ExpertReviewMode = "import",
 ): string | null {
   // Publish mode has no name field to point at — the name belongs to the
   // stored expert — so it names where the fix actually is rather than asking
@@ -91,7 +95,7 @@ export function getBlockingReason(
 
 export function getWorkflowSourceLabel(
   source: WorkflowResolution["source"],
-  mode: "import" | "publish",
+  mode: ExpertReviewMode,
 ) {
   if (source === "store")
     return { label: "Marketplace", variant: "info" } as const;

@@ -7,11 +7,12 @@ import {
   toggleMember,
   type ExpertReviewDraft,
 } from "./helpers";
+import type { ExpertReviewMode } from "./helpers";
 
 interface Args {
   open: boolean;
   preview: ExpertPackagePreview | null;
-  mode: "import" | "publish";
+  mode: ExpertReviewMode;
 }
 
 export function useExpertReviewDialog({ open, preview, mode }: Args) {

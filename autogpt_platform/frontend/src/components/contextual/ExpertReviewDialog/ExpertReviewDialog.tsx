@@ -11,11 +11,11 @@ import { cn } from "@/lib/utils";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { SkillRow } from "./components/SkillRow";
 import { WorkflowRow } from "./components/WorkflowRow";
-import type { ExpertImportEdits } from "./helpers";
+import type { ExpertImportEdits, ExpertReviewMode } from "./helpers";
 import { useExpertReviewDialog } from "./useExpertReviewDialog";
 
 interface Props {
-  mode: "import" | "publish";
+  mode: ExpertReviewMode;
   open: boolean;
   preview: ExpertPackagePreview | null;
   isSubmitting: boolean;

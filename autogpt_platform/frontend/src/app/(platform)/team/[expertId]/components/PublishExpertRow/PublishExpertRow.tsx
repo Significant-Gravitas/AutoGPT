@@ -46,7 +46,10 @@ export function PublishExpertRow({ expert, enabled }: Props) {
         onClick={openDialog}
         data-testid="expert-publish-button"
       >
-        {isLive ? "Publish again" : "Publish"}
+        {/* Republishing refreshes the one listing in place — same template,
+            same marketplace entry — so the label says update rather than
+            suggesting a second copy goes up. */}
+        {isLive ? "Update listing" : "Publish"}
       </Button>
 
       <ExpertReviewDialog

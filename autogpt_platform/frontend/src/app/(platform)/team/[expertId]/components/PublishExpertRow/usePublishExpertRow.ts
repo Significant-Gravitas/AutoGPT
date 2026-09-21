@@ -7,9 +7,14 @@ import {
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackExpertPublished } from "@/services/experts/experts-analytics";
+import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { buildPreviewFromExpert, getPublishErrorMessage } from "./helpers";
+import {
+  buildPreviewFromExpert,
+  getPublishErrorMessage,
+  isExpectedPublishRefusal,
+} from "./helpers";
 
 interface Args {
   expert: Expert;
@@ -53,6 +58,15 @@ export function usePublishExpertRow({ expert, enabled }: Args) {
         }),
       ]);
     } catch (error) {
+      // A private agent or a non-admin is the route answering correctly, and
+      // the toast already says so — capturing those would bury the failures
+      // that actually need looking at.
+      if (!isExpectedPublishRefusal(error)) {
+        Sentry.captureException(error, {
+          tags: { feature: "expert-publish" },
+          extra: { expertId: expert.id },
+        });
+      }
       toast({
         title: `Couldn't publish ${expert.name}`,
         description: getPublishErrorMessage(error, expert.name),

@@ -73,3 +73,12 @@ function readUnpublishedWorkflows(response: unknown): string[] | null {
   );
   return named.length > 0 ? named : null;
 }
+
+/** A refusal the route is supposed to produce: the expert has a private agent,
+ *  or the caller is not an admin. The toast explains both, so neither is worth
+ *  a Sentry event. */
+export function isExpectedPublishRefusal(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 403) return true;
+  return readUnpublishedWorkflows(error.response) !== null;
+}
