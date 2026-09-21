@@ -19,6 +19,13 @@ const nextConfig = {
         source: "/api/store/media/:path*",
         destination: "/api/proxy/api/store/media/:path*",
       },
+      // LaunchDarkly's analytics events are first-party through this path, so a
+      // tracker blocker no longer rejects every flush and fills the user's
+      // console. `eventsUrl` in the LD provider points the SDK here.
+      {
+        source: "/api/ld-events/:path*",
+        destination: "https://events.launchdarkly.com/:path*",
+      },
     ];
   },
   productionBrowserSourceMaps: enableSourceMaps,
