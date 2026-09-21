@@ -48,4 +48,21 @@ describe("legacy DialogContent", () => {
     expect(description?.textContent).toBe("This action cannot be undone.");
     expect(screen.queryByText("Dialog", { selector: "p.sr-only" })).toBeNull();
   });
+
+  test("respects a caller-provided aria-describedby without injecting a fallback", () => {
+    render(
+      <Dialog open>
+        <DialogContent aria-describedby="custom-description">
+          <DialogHeader>
+            <DialogTitle>Export</DialogTitle>
+          </DialogHeader>
+          <p id="custom-description">Downloads a JSON file.</p>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-describedby")).toBe("custom-description");
+    expect(screen.queryByText("Dialog", { selector: "p.sr-only" })).toBeNull();
+  });
 });

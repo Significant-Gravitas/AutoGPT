@@ -138,5 +138,4 @@ describe("Dialog", () => {
     expect(description?.textContent).toBe("Dialog");
     expect(description?.classList.contains("sr-only")).toBe(true);
   });
-
 });

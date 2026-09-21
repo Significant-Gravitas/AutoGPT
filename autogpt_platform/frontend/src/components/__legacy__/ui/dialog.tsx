@@ -102,8 +102,7 @@ const DialogContent = React.forwardRef<
         {...props}
       >
         {children}
-        {!hasDialogDescription(children) &&
-        !("aria-describedby" in props) ? (
+        {!hasDialogDescription(children) && !("aria-describedby" in props) ? (
           <DialogPrimitive.Description className="sr-only">
             Dialog
           </DialogPrimitive.Description>

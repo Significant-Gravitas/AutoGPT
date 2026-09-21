@@ -31,7 +31,9 @@ describe("Dialog as Drawer (small screen)", () => {
     renderDrawerDialog({ title: "Drawer Title" });
 
     const dialog = screen.getByRole("dialog");
-    const heading = within(dialog).getByRole("heading", { name: "Drawer Title" });
+    const heading = within(dialog).getByRole("heading", {
+      name: "Drawer Title",
+    });
     expect(heading).toBeDefined();
     expect(heading.classList.contains("sr-only")).toBe(false);
   });

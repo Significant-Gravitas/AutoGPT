@@ -150,9 +150,7 @@ export function DialogWrap({
             </Button>
           )}
         </div>
-        <RXDialog.Description className="sr-only">
-          Dialog
-        </RXDialog.Description>
+        <RXDialog.Description className="sr-only">Dialog</RXDialog.Description>
         <div className="flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}

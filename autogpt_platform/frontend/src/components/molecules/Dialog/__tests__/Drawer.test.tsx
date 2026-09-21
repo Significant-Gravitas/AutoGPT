@@ -74,5 +74,4 @@ describe("Dialog rendered as a drawer", () => {
     expect(description?.textContent).toBe("Dialog");
     expect(description?.classList.contains("sr-only")).toBe(true);
   });
-
 });
