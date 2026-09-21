@@ -379,7 +379,7 @@ class CodexAnthropicGateway:
 
         streamed = payload.get("stream") is True
         if isinstance(continuation, _DuplicateSubmission):
-            return await self._replay_response(request, continuation, streamed)
+            return await self._duplicate_response(request, continuation, streamed)
         if continuation is None:
             conversation, replay_key = self._start_conversation(payload), None
         else:
@@ -400,7 +400,7 @@ class CodexAnthropicGateway:
             replay_key,
         )
 
-    async def _replay_response(
+    async def _duplicate_response(
         self,
         request: web.Request,
         duplicate: _DuplicateSubmission,
