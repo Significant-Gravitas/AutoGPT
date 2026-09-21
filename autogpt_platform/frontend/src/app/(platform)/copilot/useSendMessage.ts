@@ -9,12 +9,14 @@ import {
   type PendingUploadAttachment,
   type PendingUploadSend,
 } from "./copilotStreamStore";
+import { describeSendFailure } from "./components/ChatInput/helpers";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildWorkspaceFilePart,
   workspaceFileDownloadUrl,
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
+import { useCopilotUIStore } from "./store";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -177,13 +179,15 @@ export function useSendMessage({
       .getState()
       .takePendingFirstSend(sessionId);
     if (!send) return;
-    void dispatchRef.current(
-      sessionId,
-      send.text,
-      send.files,
-      parts,
-      send.metadata,
-    );
+    // `onSend` resolved the moment the session was created, so the composer's
+    // own catch (restore draft + chips, toast) can no longer observe this
+    // dispatch failing. Recover here instead, or an all-uploads-failed first
+    // send rejects with nobody listening and the user loses their message.
+    void dispatchRef
+      .current(sessionId, send.text, send.files, parts, send.metadata)
+      .catch((error: unknown) => {
+        recoverFailedFirstSend(send.text, parts, error);
+      });
   }, [sessionId]);
 
   async function onSend(
@@ -289,6 +293,36 @@ export function useSendMessage({
   const isUploadingFiles = pendingSend !== null;
 
   return { onSend, isUploadingFiles, pendingSend, setPendingFileParts };
+}
+
+/**
+ * Failure recovery for the first send of a new chat, which is dispatched from
+ * an effect long after `onSend` returned.
+ *
+ * Everything goes through the stores because the `"new"`-keyed host that
+ * started the send is already unmounted — its draft state and chips are gone.
+ * The text comes back as the composer's initial prompt and the workspace
+ * references as pending file parts; local `File` chips cannot be restored,
+ * they only ever existed in that unmounted host.
+ */
+function recoverFailedFirstSend(
+  text: string,
+  parts: FileUIPart[],
+  error: unknown,
+) {
+  if (text) useCopilotUIStore.getState().setInitialPrompt(text);
+  if (parts.length > 0)
+    useCopilotStreamStore.getState().setPendingFileParts(parts);
+  toast({
+    title: "Couldn't send message",
+    description: describeSendFailure(
+      error,
+      text
+        ? "your message is back in the composer"
+        : "your files were not sent",
+    ),
+    variant: "destructive",
+  });
 }
 
 function describePendingUpload(

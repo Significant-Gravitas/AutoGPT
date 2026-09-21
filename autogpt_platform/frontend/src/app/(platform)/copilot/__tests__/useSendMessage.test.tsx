@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
+import { useCopilotUIStore } from "../store";
 import { useSendMessage } from "../useSendMessage";
 
 const { uploadFileDirectMock, toastMock } = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ beforeEach(() => {
   uploadFileDirectMock.mockReset();
   toastMock.mockReset();
   useCopilotStreamStore.getState().resetAll();
+  useCopilotUIStore.getState().setInitialPrompt(null);
 });
 
 describe("useSendMessage with local attachments", () => {
@@ -351,5 +353,77 @@ describe("useSendMessage placeholders across sessions", () => {
     await waitFor(() => expect(created.result.current.pendingSend).toBeNull());
     expect(created.result.current.isUploadingFiles).toBe(false);
     expect(other.result.current.pendingSend).toBeNull();
+  });
+});
+
+describe("useSendMessage first send failing after the session exists", () => {
+  // Creating a session remounts the chat host, so the queued first send is
+  // dispatched by a fresh hook long after `onSend` resolved. Nothing is left
+  // to catch its rejection except the hook itself.
+  async function startFirstSend(
+    text: string,
+    files: File[],
+    workspaceFiles?: { fileId: string; name: string; mimeType: string }[],
+  ) {
+    const newChat = renderSendMessage(null);
+    newChat.createSession.mockImplementation(async () => {
+      useCopilotStreamStore
+        .getState()
+        .bindPendingFirstSendToSession(SESSION_ID);
+      return SESSION_ID;
+    });
+
+    await act(async () => {
+      await newChat.result.current.onSend(text, files, workspaceFiles);
+    });
+    newChat.unmount();
+
+    return renderSendMessage(SESSION_ID);
+  }
+
+  it("restores the draft when every upload for the first send fails", async () => {
+    uploadFileDirectMock.mockRejectedValue(new Error("network down"));
+
+    const created = await startFirstSend("first", [makeFile("talk.pdf")]);
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().initialPrompt).toBe("first"),
+    );
+    expect(created.sendMessage).not.toHaveBeenCalled();
+    expect(created.result.current.pendingSend).toBeNull();
+    expect(created.result.current.isUploadingFiles).toBe(false);
+    expect(toastMock).toHaveBeenLastCalledWith({
+      title: "Couldn't send message",
+      description:
+        "All file uploads failed — your message is back in the composer.",
+      variant: "destructive",
+    });
+  });
+
+  it("puts the workspace references back when the first send's message fails", async () => {
+    const created = await startFirstSend(
+      "compare",
+      [],
+      [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+    );
+
+    await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
+    expect(useCopilotStreamStore.getState().pendingFileParts).toEqual([]);
+
+    await act(async () => {
+      created.stream.reject(new Error("stream died"));
+    });
+
+    await waitFor(() =>
+      expect(useCopilotStreamStore.getState().pendingFileParts).toEqual([
+        {
+          type: "file",
+          mediaType: "text/plain",
+          filename: "notes.txt",
+          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+        },
+      ]),
+    );
+    expect(useCopilotUIStore.getState().initialPrompt).toBe("compare");
   });
 });
