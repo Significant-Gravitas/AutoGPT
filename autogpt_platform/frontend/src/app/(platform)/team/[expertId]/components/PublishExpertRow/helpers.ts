@@ -54,7 +54,11 @@ export function getPublishErrorMessage(error: unknown, name: string): string {
 }
 
 /** The 400 body, checked at runtime rather than trusted from a type: it is JSON
- *  off the wire, and `ApiError.response` is deliberately unshaped. */
+ *  off the wire, and `ApiError.response` is deliberately unshaped.
+ *
+ *  `null` covers "nothing nameable here", which includes a body that carries
+ *  the code but no usable list — naming no agents at all reads worse than the
+ *  generic failure it would otherwise fall through to. */
 function readUnpublishedWorkflows(response: unknown): string[] | null {
   if (typeof response !== "object" || response === null) return null;
   const detail = (response as { detail?: unknown }).detail;
@@ -62,9 +66,10 @@ function readUnpublishedWorkflows(response: unknown): string[] | null {
 
   const { code, workflows } = detail as { code?: unknown; workflows?: unknown };
   if (code !== "unpublished_workflows") return null;
-  return Array.isArray(workflows)
-    ? workflows.filter(
-        (workflow): workflow is string => typeof workflow === "string",
-      )
-    : [];
+  if (!Array.isArray(workflows)) return null;
+
+  const named = workflows.filter(
+    (workflow): workflow is string => typeof workflow === "string",
+  );
+  return named.length > 0 ? named : null;
 }
