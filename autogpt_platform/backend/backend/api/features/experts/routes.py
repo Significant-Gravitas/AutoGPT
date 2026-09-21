@@ -348,7 +348,7 @@ async def download_expert_package(
     row = await experts_db.get_owned_expert_row(user_id, expert_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
-    return await _package_response(row)
+    return await _package_response(row, user_id)
 
 
 @router.get(
@@ -375,18 +375,19 @@ async def download_expert_template_package(
     row = await experts_db.get_template_row(template_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
-    return await _package_response(row)
+    return await _package_response(row, user_id)
 
 
-async def _package_response(row: prisma.models.Expert) -> Response:
+async def _package_response(row: prisma.models.Expert, user_id: str) -> Response:
     try:
-        package = await build_expert_package(row)
+        package = await build_expert_package(row, user_id=user_id)
+        content = await run_in_threadpool(zip_from_package, package)
     except ExpertPackageError as exc:
         raise fastapi.HTTPException(
             status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
     return Response(
-        content=await run_in_threadpool(zip_from_package, package),
+        content=content,
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{package_filename(row.name)}"'

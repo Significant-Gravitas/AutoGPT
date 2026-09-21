@@ -1896,16 +1896,17 @@ def _mock_package(mocker: pytest_mock.MockerFixture) -> AsyncMock:
 
 
 def test_download_expert_package_returns_a_named_zip(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, test_user_id: str
 ) -> None:
     mocker.patch.object(
         experts_db, "get_owned_expert_row", new_callable=AsyncMock
     ).return_value = _package_row()
-    _mock_package(mocker)
+    build = _mock_package(mocker)
 
     response = client.get("/experts/expert-1/package")
 
     assert response.status_code == 200
+    build.assert_awaited_once_with(_package_row(), user_id=test_user_id)
     assert response.headers["content-type"] == "application/zip"
     assert (
         response.headers["content-disposition"]
@@ -1944,20 +1945,43 @@ def test_download_expert_package_413s_when_the_expert_is_over_a_cap(
     assert "too big" in response.json()["detail"]
 
 
-def test_download_expert_template_package_serves_the_marketplace_copy(
+def test_download_expert_package_413s_when_the_archive_would_be_over_the_cap(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    """The writer's refusal is a cap too — it is the last thing that can
+    reject an export, and it must not surface as a 500."""
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = _package_row()
+    _mock_package(mocker)
+    mocker.patch(
+        "backend.api.features.experts.routes.zip_from_package",
+        side_effect=ExpertPackageError("archive would be huge", over_limit=True),
+    )
+
+    response = client.get("/experts/expert-1/package")
+
+    assert response.status_code == 413
+    assert "archive would be huge" in response.json()["detail"]
+
+
+def test_download_expert_template_package_serves_the_marketplace_copy(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """Built for the downloader: their Skills Hub access decides which
+    bundled skills the template's package carries."""
     mock_row = mocker.patch.object(
         experts_db, "get_template_row", new_callable=AsyncMock
     )
     mock_row.return_value = _package_row()
-    _mock_package(mocker)
+    build = _mock_package(mocker)
 
     response = client.get("/experts/templates/template-1/package")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     mock_row.assert_awaited_once_with("template-1")
+    build.assert_awaited_once_with(_package_row(), user_id=test_user_id)
 
 
 def test_download_expert_template_package_404s_for_an_unknown_template(

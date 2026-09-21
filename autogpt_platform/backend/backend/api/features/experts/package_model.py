@@ -29,7 +29,12 @@ from backend.api.features.experts.models import (
     VoiceSample,
     validate_avatar_url,
 )
-from backend.copilot.tools.skills import SkillPackage
+from backend.copilot.tools.skills import (
+    MAX_PACKAGE_BYTES,
+    SkillPackage,
+    SkillPackageError,
+    validate_package,
+)
 from backend.data.graph import Graph
 
 # An expert's roster is bounded by these long before a package is; they exist so
@@ -222,6 +227,50 @@ class ExpertPackage(BaseModel):
             len(manifest_json(self.manifest))
             + sum(skill.size_bytes for skill in self.skills.values())
             + len(self.avatar_bytes or b"")
+        )
+
+
+def validate_expert_package(package: ExpertPackage) -> None:
+    """Refuse a package that the ``.expert.zip`` reader would refuse.
+
+    The exporter runs it before a file is written and the zip writer runs it
+    again, so a download is never an archive that fails on re-import: the
+    manifest cap, each skill's own caps, the avatar cap, and the combined
+    uncompressed size the reader bounds the whole tree by.
+    """
+    size = len(manifest_json(package.manifest))
+    if size > MAX_MANIFEST_BYTES:
+        raise ExpertPackageError(
+            f"expert.json would be {size} bytes; the limit is {MAX_MANIFEST_BYTES}",
+            over_limit=True,
+        )
+    if len(package.skills) > MAX_PACKAGE_SKILLS:
+        raise ExpertPackageError(
+            f"package carries {len(package.skills)} skills; the limit is "
+            f"{MAX_PACKAGE_SKILLS}",
+            over_limit=True,
+        )
+    for slug, skill in sorted(package.skills.items()):
+        try:
+            validate_package(skill)
+        except SkillPackageError as exc:
+            raise ExpertPackageError(
+                f"skill '{slug[:120]}': {exc}", over_limit=exc.over_limit
+            )
+    if (
+        package.avatar_bytes is not None
+        and len(package.avatar_bytes) > MAX_AVATAR_BYTES
+    ):
+        raise ExpertPackageError(
+            f"avatar is {len(package.avatar_bytes)} bytes; the limit is "
+            f"{MAX_AVATAR_BYTES}",
+            over_limit=True,
+        )
+    if package.size_bytes > MAX_PACKAGE_BYTES:
+        raise ExpertPackageError(
+            f"package unpacks to {package.size_bytes} bytes; the limit is "
+            f"{MAX_PACKAGE_BYTES}",
+            over_limit=True,
         )
 
 
