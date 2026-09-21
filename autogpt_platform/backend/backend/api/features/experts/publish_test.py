@@ -140,6 +140,30 @@ async def test_publishing_again_refreshes_the_same_template(server: SpinTestServ
     )
 
 
+async def test_republishing_restores_the_rows_defining_columns(
+    server: SpinTestServer,
+):
+    """The update has to state what a template is, not assume the row still
+    says so — the roster only lists `isTemplate` rows that are not archived."""
+    admin = await _create_seed_user()
+    version = await _seed_store_listing(server)
+    expert = await _expert_with(admin.id, storeListingVersionId=version)
+
+    first = await publish_expert(expert, user_id=admin.id)
+    await prisma.models.Expert.prisma().update(
+        where={"id": first.id}, data={"isTemplate": False, "isArchived": True}
+    )
+
+    refreshed = await experts_db.get_owned_expert_row(admin.id, expert.id)
+    assert refreshed is not None
+    second = await publish_expert(refreshed, user_id=admin.id)
+
+    assert second.id == first.id
+    template = await _published(second.id)
+    assert template.isTemplate is True
+    assert template.isArchived is False
+
+
 async def test_an_agent_that_was_never_published_blocks_the_whole_publish(
     server: SpinTestServer,
 ):
