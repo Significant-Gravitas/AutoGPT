@@ -24,7 +24,7 @@ class WorkspaceSettings(BaseModel):
                 "read_file({workspace}/**)",
                 "write_file({workspace}/**)",
                 "list_folder({workspace}/**)",
-                "finish(*)",
+                "finish(**)",
             ],
             deny=[
                 "read_file(**.env)",

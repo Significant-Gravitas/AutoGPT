@@ -83,9 +83,9 @@ class TestFormatArgs:
         self, permission_manager: CommandPermissionManager
     ):
         """list_folder should format like read_file."""
-        args = {"path": "/tmp"}
+        args = {"folder": "sub"}
         result = permission_manager._format_args("list_folder", args)
-        assert result == str(Path("/tmp").resolve())
+        assert result == str((permission_manager.workspace / "sub").resolve())
 
     def test_format_args_shell_command_with_args(
         self, permission_manager: CommandPermissionManager
@@ -322,6 +322,33 @@ class TestGeneralizePattern:
 
 class TestCheckCommand:
     """Tests for check_command() method."""
+
+    def test_default_policy_allows_list_folder_in_workspace(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow folders inside the workspace."""
+        result = permission_manager.check_command(
+            "list_folder", {"folder": "sub"}
+        )
+        assert result.allowed
+
+    def test_list_folder_uses_executed_folder_when_path_conflicts(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """A legacy path field must not override the executed folder."""
+        result = permission_manager.check_command(
+            "list_folder", {"folder": "/etc", "path": "sub"}
+        )
+        assert not result.allowed
+
+    def test_default_policy_allows_finish_reason_with_path(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default finish rule should allow reasons that contain paths."""
+        result = permission_manager.check_command(
+            "finish", {"reason": "Saved /workspace/report.txt"}
+        )
+        assert result.allowed
 
     def test_check_command_allowed_by_workspace(
         self, permission_manager: CommandPermissionManager
