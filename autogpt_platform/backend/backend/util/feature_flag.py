@@ -470,9 +470,12 @@ def _force_all_flags_enabled() -> bool:
     Defaults off. Intended for local dev, where LaunchDarkly is unconfigured
     and every flag is otherwise off.
 
-    Ignored (with an error log) when ``app_env`` is production: one env var
-    must not open every fail-closed gate for every user at once. Per-flag
-    ``FORCE_FLAG_<NAME>`` overrides are unaffected by this guard.
+    Ignored (with an error log) unless ``app_env`` is local: one env var must
+    not open every fail-closed gate for every user at once, and ``dev`` is a
+    real, publicly reachable deployment rather than a developer's machine.
+    That also rules out the single-container image, whose entrypoint exports
+    ``APP_ENV=dev``; per-flag ``FORCE_FLAG_<NAME>`` remains the escape hatch
+    there, since those overrides are unaffected by this guard.
     """
     global _force_all_logged
     switched_on = False
@@ -483,10 +486,11 @@ def _force_all_flags_enabled() -> bool:
             break
     if not switched_on:
         return False
-    if settings.config.app_env == AppEnvironment.PRODUCTION:
+    if settings.config.app_env != AppEnvironment.LOCAL:
         if not _force_all_logged:
             logger.error(
-                "FORCE_ALL_FLAGS is set but app_env is production; ignoring it. "
+                "FORCE_ALL_FLAGS is set but app_env is "
+                f"{settings.config.app_env.value}, not local; ignoring it. "
                 "The master switch is for local dev only."
             )
             _force_all_logged = True
@@ -726,6 +730,10 @@ def create_feature_flag_dependency(
 
             if not is_enabled:
                 raise HTTPException(status_code=404, detail="Feature not available")
+        except HTTPException:
+            # A disabled flag is an answer, not a failure: the 404s raised
+            # above must not be rewritten as a 500 by the handler below.
+            raise
         except Exception as e:
             logger.warning(
                 f"LaunchDarkly error for flag {flag_key.value}: {e}, using default={default}"

@@ -1,6 +1,8 @@
+import ast
 import datetime
 import logging
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -182,6 +184,43 @@ class TestEnvFlagOverride:
         assert _env_flag_override(Flag.CHAT) is True
 
 
+def _flags_read_via_get_feature_flag_value() -> set[str]:
+    """Flag values passed to ``get_feature_flag_value`` across the backend.
+
+    Walks the AST of every module that mentions the function and collects
+    the ``Flag.X`` / ``Flag.X.value`` first arguments. Call sites that pass
+    a non-literal (``feature_flag``'s own raw-string key) are skipped —
+    there is no flag identity to check there.
+    """
+    backend_root = Path(feature_flag_module.__file__).parent.parent
+    found: set[str] = set()
+    for path in backend_root.rglob("*.py"):
+        if path.name.endswith("_test.py"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "get_feature_flag_value" not in source:
+            continue
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", None)
+            )
+            if name != "get_feature_flag_value":
+                continue
+            arg = node.args[0]
+            if isinstance(arg, ast.Attribute) and arg.attr == "value":
+                arg = arg.value
+            if not isinstance(arg, ast.Attribute):
+                continue
+            if isinstance(arg.value, ast.Name) and arg.value.id == "Flag":
+                found.add(Flag[arg.attr].value)
+    return found
+
+
 class TestForceAllFlags:
     def _clear(self, monkeypatch: pytest.MonkeyPatch):
         for name in (
@@ -217,16 +256,23 @@ class TestForceAllFlags:
             assert _env_flag_override(value) is None, value
 
     def test_non_boolean_set_covers_every_json_valued_flag(self):
-        """Every flag read through ``get_feature_flag_value`` as a payload."""
-        assert _NON_BOOLEAN_FLAG_VALUES >= {
-            Flag.STRIPE_PRODUCT_ID_TOPUP.value,
-            Flag.COPILOT_MODEL_ROUTING.value,
-            Flag.COPILOT_TIER_MULTIPLIERS.value,
-            Flag.COPILOT_COST_LIMITS.value,
-            Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
-            Flag.COPILOT_TIER_STRIPE_PRICES.value,
-            Flag.CARD_REQUIRED_TRIAL_OFFER.value,
-        }
+        """Every flag read through ``get_feature_flag_value`` as a payload.
+
+        Cross-checked against the real call sites rather than against the
+        set's own literals: a newly-added JSON-valued flag that someone
+        reads via ``get_feature_flag_value`` but forgets to list in
+        ``_NON_BOOLEAN_FLAG_VALUES`` would be force-all'd to ``True`` and
+        handed to a caller expecting a payload, so this test must fail on
+        that omission rather than restate the set.
+        """
+        read_as_payload = _flags_read_via_get_feature_flag_value()
+        assert read_as_payload, "no call sites found - the scanner is broken"
+        missing = read_as_payload - _NON_BOOLEAN_FLAG_VALUES
+        assert not missing, (
+            f"{sorted(missing)} are read through get_feature_flag_value as a "
+            "payload but are missing from _NON_BOOLEAN_FLAG_VALUES, so "
+            "FORCE_ALL_FLAGS would force them to True"
+        )
 
     def test_per_flag_false_wins_over_force_all(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
@@ -257,7 +303,38 @@ class TestForceAllFlags:
         with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
             assert _force_all_flags_enabled() is False
             assert _env_flag_override(Flag.CHAT) is None
-        assert "FORCE_ALL_FLAGS is set but app_env is production" in caplog.text
+        assert "FORCE_ALL_FLAGS is set but app_env is prod, not local" in caplog.text
+
+    def test_ignored_in_shared_development(
+        self, monkeypatch: pytest.MonkeyPatch, mocker, caplog: pytest.LogCaptureFixture
+    ):
+        """``dev`` is a shared deployment, not a developer's machine.
+
+        The single-container entrypoint exports ``APP_ENV=dev``, so a
+        production-only guard would leave every fail-closed gate open for
+        every user of a publicly reachable dev instance.
+        """
+        self._clear(monkeypatch)
+        monkeypatch.setattr(feature_flag_module, "_force_all_logged", False)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.DEVELOPMENT
+        )
+        monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
+        with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
+            assert _force_all_flags_enabled() is False
+            assert _env_flag_override(Flag.CHAT) is None
+        assert "FORCE_ALL_FLAGS is set but app_env is dev, not local" in caplog.text
+
+    def test_per_flag_override_still_works_in_development(
+        self, monkeypatch: pytest.MonkeyPatch, mocker
+    ):
+        """The per-flag escape hatch is what single-container users keep."""
+        self._clear(monkeypatch)
+        mocker.patch.object(
+            feature_flag_module.settings.config, "app_env", AppEnvironment.DEVELOPMENT
+        )
+        monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
+        assert _env_flag_override(Flag.CHAT) is True
 
     def test_per_flag_override_still_works_in_production(
         self, monkeypatch: pytest.MonkeyPatch, mocker
@@ -367,6 +444,56 @@ class TestEnvOverrideWiring:
         with pytest.raises(HTTPException) as exc_info:
             await check_feature_flag(user_id=None)
         assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_dependency_disabled_flag_returns_404_not_500(
+        self, ld_client, mocker
+    ):
+        """A disabled flag is an answer, not a LaunchDarkly failure.
+
+        The 404 is raised inside the try block that catches LaunchDarkly
+        errors, so without an explicit re-raise the generic handler turns
+        every gated-off route into a 500.
+        """
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=True)
+        ld_client.is_initialized.return_value = True
+        ld_client.variation.return_value = False
+
+        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        with pytest.raises(HTTPException) as exc_info:
+            await check_feature_flag(user_id="test-user")
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Feature not available"
+
+    @pytest.mark.asyncio
+    async def test_dependency_uninitialised_client_returns_404_not_500(
+        self, ld_client, mocker
+    ):
+        """Same for the 404 raised on the uninitialised-client branch."""
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=True)
+        ld_client.is_initialized.return_value = False
+
+        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        with pytest.raises(HTTPException) as exc_info:
+            await check_feature_flag(user_id="test-user")
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_dependency_launchdarkly_error_still_returns_500(
+        self, ld_client, mocker
+    ):
+        """The re-raise must not swallow genuine LaunchDarkly failures."""
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=True)
+        ld_client.is_initialized.return_value = True
+        mocker.patch(
+            "backend.util.feature_flag.is_feature_enabled",
+            new=mocker.AsyncMock(side_effect=RuntimeError("LD exploded")),
+        )
+
+        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        with pytest.raises(HTTPException) as exc_info:
+            await check_feature_flag(user_id="test-user")
+        assert exc_info.value.status_code == 500
 
 
 class TestUserContext:
