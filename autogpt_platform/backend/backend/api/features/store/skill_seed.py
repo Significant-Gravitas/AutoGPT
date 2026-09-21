@@ -30,6 +30,7 @@ import os
 import tarfile
 import tempfile
 from pathlib import Path
+from typing import TypedDict
 
 import httpx
 import prisma
@@ -51,7 +52,6 @@ from backend.data import db as database
 
 from .categories import validate_canonical_categories
 from .skill_submission_db import snapshot_version_files
-from .starter_skill_catalog_wave_three import WAVE_THREE_STARTER_SKILLS, StarterSkill
 
 logger = logging.getLogger(__name__)
 
@@ -59,376 +59,33 @@ DEFAULT_CATALOG_REPO = "Significant-Gravitas/skills-catalog"
 DEFAULT_CATALOG_REF = "main"
 CATALOG_FILE = "catalog.yml"
 SKILLS_DIR = "skills"
-_CONTENT_DIR = Path(__file__).parent / "starter_skills"
 
 
-CatalogEntry = StarterSkill
-
-STARTER_SKILLS: list[CatalogEntry] = [
-    {
-        "slug": "brand-voice-guide",
-        "categories": ["content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "outreach-playbook",
-        "categories": ["sales"],
-        "required_providers": ["google"],
-    },
-    {
-        "slug": "seo-content-brief",
-        "categories": ["marketing", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "on-page-seo-audit",
-        "categories": ["marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "content-repurposing",
-        "categories": ["marketing", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "competitor-teardown",
-        "categories": ["research", "marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "icp-and-positioning",
-        "categories": ["marketing", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "lifecycle-email-map",
-        "categories": ["marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "email-deliverability-guardrails",
-        "categories": ["marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "bookkeeping-getting-started",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "expense-categorization",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "invoice-drafting-and-issue",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "accounts-receivable-follow-up",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "statement-reconciliation",
-        "categories": ["finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "month-end-close-checklist",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "monthly-profit-and-loss-summary",
-        "categories": ["finance", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "bookkeeping-exception-escalation",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "investor-relations-getting-started",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "pitch-deck-review",
-        "categories": ["finance", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "fundraising-data-room-checklist",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "investor-targeting-and-research",
-        "categories": ["finance", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "fundraising-pipeline-review",
-        "categories": ["finance", "sales"],
-        "required_providers": [],
-    },
-    {
-        "slug": "cap-table-hygiene",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "monthly-investor-update",
-        "categories": ["finance", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "board-and-investor-metrics-brief",
-        "categories": ["finance", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "kpi-analysis-getting-started",
-        "categories": ["research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "metric-definition-and-data-quality",
-        "categories": ["research", "development"],
-        "required_providers": [],
-    },
-    {
-        "slug": "weekly-kpi-digest",
-        "categories": ["research", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "metric-anomaly-detection",
-        "categories": ["research", "development"],
-        "required_providers": [],
-    },
-    {
-        "slug": "metric-movement-analysis",
-        "categories": ["research", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "cohort-and-retention-analysis",
-        "categories": ["research", "marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "funnel-conversion-analysis",
-        "categories": ["research", "marketing"],
-        "required_providers": [],
-    },
-    {
-        "slug": "experiment-readout",
-        "categories": ["research", "development"],
-        "required_providers": [],
-    },
-    {
-        "slug": "recruiting-getting-started",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "role-intake-and-job-description",
-        "categories": ["operations", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "hiring-rubric-design",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "resume-screening",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "interview-plan-and-scorecard",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "candidate-interview-debrief",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "candidate-rejection-email",
-        "categories": ["operations", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "candidate-offer-draft",
-        "categories": ["operations", "content"],
-        "required_providers": [],
-    },
-    {
-        "slug": "procurement-getting-started",
-        "categories": ["operations", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "vendor-requirements-brief",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "vendor-quote-comparison",
-        "categories": ["operations", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "vendor-due-diligence",
-        "categories": ["operations", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "procurement-decision-memo",
-        "categories": ["operations", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-renewal-tracker",
-        "categories": ["operations", "finance"],
-        "required_providers": [],
-    },
-    {
-        "slug": "vendor-performance-review",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "spend-anomaly-review",
-        "categories": ["finance", "operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-ops-getting-started",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "nda-playbook-review",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "msa-playbook-review",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-clause-comparison",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-key-term-extraction",
-        "categories": ["operations", "research"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-deviation-triage",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "contract-obligation-tracker",
-        "categories": ["operations"],
-        "required_providers": [],
-    },
-    {
-        "slug": "counsel-escalation-brief",
-        "categories": ["operations", "content"],
-        "required_providers": [],
-    },
-    *[
-        {"slug": slug, "categories": ["development"], "required_providers": []}
-        for slug in (
-            "dependency-security-getting-started",
-            "dependency-inventory",
-            "outdated-dependency-review",
-            "vulnerability-triage",
-            "cve-stack-relevance",
-            "dependency-upgrade-plan",
-            "dependency-upgrade-pr",
-            "dependency-change-risk-review",
-        )
-    ],
-    *[
-        {"slug": slug, "categories": ["support"], "required_providers": []}
-        for slug in (
-            "customer-success-getting-started",
-            "customer-onboarding-plan",
-            "customer-health-score",
-            "churn-risk-review",
-            "renewal-readiness-review",
-            "renewal-touchpoint-draft",
-            "expansion-opportunity-brief",
-            "customer-success-plan",
-        )
-    ],
-    *[
-        {"slug": slug, "categories": ["sales"], "required_providers": []}
-        for slug in (
-            "deal-desk-getting-started",
-            "proposal-draft",
-            "statement-of-work-draft",
-            "pipeline-stage-aging-review",
-            "deal-risk-review",
-            "renewal-negotiation-brief",
-            "pricing-and-terms-approval-brief",
-            "proposal-quality-check",
-        )
-    ],
-    *WAVE_THREE_STARTER_SKILLS,
-]
+class CatalogEntry(TypedDict):
+    slug: str
+    categories: list[str]
+    required_providers: list[str]
 
 
 async def seed_catalog_skills(catalog_dir: Path | None = None) -> list[str]:
     """Upsert every catalog listing. Returns the listing ids.
 
-    An explicit *catalog_dir* seeds only that tree. A normal run downloads the
-    catalog, or reads ``SKILLS_CATALOG_PATH``, and also keeps checked-in skills
-    that the expert roster needs until the catalog holds the same slug.
+    An explicit *catalog_dir* seeds that tree. A normal run reads
+    ``SKILLS_CATALOG_PATH``, or downloads the catalog.
     """
     if catalog_dir is not None:
-        return await _seed_catalog(catalog_dir, include_starters=False)
+        return await _seed_catalog(catalog_dir)
 
     local = os.environ.get("SKILLS_CATALOG_PATH")
     if local:
-        return await _seed_catalog(Path(local), include_starters=True)
+        return await _seed_catalog(Path(local))
     with tempfile.TemporaryDirectory() as tmp:
-        return await _seed_catalog(_download_catalog(Path(tmp)), include_starters=True)
+        return await _seed_catalog(_download_catalog(Path(tmp)))
 
 
-async def _seed_catalog(root: Path, *, include_starters: bool) -> list[str]:
+async def _seed_catalog(root: Path) -> list[str]:
     entries = load_catalog(root)
-    loaded = [(entry, *_load(root, entry)) for entry in entries]
-    if not include_starters:
-        return await _seed_loaded(loaded)
-
-    catalog_slugs = {entry["slug"] for entry in entries}
-    loaded += [
-        (entry, *_load_starter(entry))
-        for entry in STARTER_SKILLS
-        if entry["slug"] not in catalog_slugs
-    ]
-    return await _seed_loaded(loaded)
-
-
-async def seed_starter_skills() -> list[str]:
-    """Upsert the checked-in skills needed by the expert roster."""
-    loaded = [(entry, *_load_starter(entry)) for entry in STARTER_SKILLS]
-    return await _seed_loaded(loaded)
+    return await _seed_loaded([(entry, *_load(root, entry)) for entry in entries])
 
 
 async def _seed_loaded(
@@ -616,27 +273,6 @@ def _load(root: Path, entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]
         )
     validate_skill_content(parsed.description, parsed.body, parsed.triggers)
     files = _package_files(directory)
-    validate_package(SkillPackage(skill_md=text, files=files))
-    return parsed, files
-
-
-def _load_starter(entry: CatalogEntry) -> tuple[ParsedSkill, list[SkillFile]]:
-    slug = entry["slug"]
-    directory = _CONTENT_DIR / slug
-    is_package = directory.is_dir()
-    root = directory / "SKILL.md" if is_package else _CONTENT_DIR / f"{slug}.md"
-    named = f"starter_skills/{root.relative_to(_CONTENT_DIR)}"
-    text = root.read_text(encoding="utf-8")
-    parsed = parse_skill_markdown(text)
-    if parsed is None:
-        raise ValueError(f"{named} is not a valid SKILL.md")
-    if parsed.name != slug:
-        raise ValueError(
-            f"{named} declares name '{parsed.name}'; the frontmatter name is "
-            "the installed skill's name and must match the listing slug"
-        )
-    validate_skill_content(parsed.description, parsed.body, parsed.triggers)
-    files = _package_files(directory) if is_package else []
     validate_package(SkillPackage(skill_md=text, files=files))
     return parsed, files
 

@@ -6,14 +6,11 @@ import tarfile
 
 import pytest
 
-from backend.api.features.store.skill_model import skill_title
 from backend.api.features.store.skill_seed import (
-    STARTER_SKILLS,
     CatalogEntry,
     _attribution_value,
     _extract_catalog_archive,
     _load,
-    _load_starter,
     load_catalog,
 )
 from backend.copilot.tools.skills import (
@@ -137,26 +134,6 @@ def test_attribution_accepts_top_level_fields_but_prefers_metadata():
     assert _attribution_value(parsed, {}, "source_url") == "https://example.com/top"
 
 
-@pytest.mark.parametrize("entry", STARTER_SKILLS, ids=lambda entry: entry["slug"])
-def test_every_checked_in_starter_skill_loads(entry):
-    parsed, files = _load_starter(entry)
-
-    assert parsed.name == entry["slug"]
-    assert files == []
-
-
-def test_a_starter_that_cannot_be_installed_is_refused(monkeypatch, tmp_path):
-    monkeypatch.setattr("backend.api.features.store.skill_seed._CONTENT_DIR", tmp_path)
-    _write(
-        tmp_path,
-        "demo.md",
-        SKILL_MD.replace("A demo skill.", "x" * (MAX_DESCRIPTION_CHARS + 1)),
-    )
-
-    with pytest.raises(ValueError, match="description is"):
-        _load_starter(ENTRY)
-
-
 def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):
     _write(
         tmp_path,
@@ -252,20 +229,3 @@ def test_archive_fallback_rejects_paths_outside_the_target(
         _extract_catalog_archive(archive, tmp_path)
 
     archive.extractall.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("slug", "title"),
-    [
-        ("seo-content-brief", "SEO content brief"),
-        ("on-page-seo-audit", "On-page SEO audit"),
-        ("icp-and-positioning", "ICP and positioning"),
-        ("brand-voice-guide", "Brand voice guide"),
-    ],
-)
-def test_a_shipped_starter_keeps_the_casing_its_author_wrote(slug, title):
-    """A starter's frontmatter name is its slug, so a title derived from it
-    reads back as "Seo content brief"."""
-    entry = next(entry for entry in STARTER_SKILLS if entry["slug"] == slug)
-    parsed, _ = _load_starter(entry)
-    assert skill_title(parsed.name, parsed.body) == title

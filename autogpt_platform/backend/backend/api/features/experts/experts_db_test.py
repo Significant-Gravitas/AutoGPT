@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import re
+import tempfile
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -335,16 +336,16 @@ async def delete_rows_this_test_seeded():
     await _delete_seeded_rows(template_ids, user_ids)
     _seeded_template_ids.clear()
     _seeded_user_ids.clear()
-    # _load_roster_store_assets seeds the real starter-skill catalog so
+    # _load_roster_store_assets seeds a stub listing per bundled skill so
     # bundled-skill resolution has something to find; skill_db_test.py's
     # fixture requires that table empty, so undo the seed here. Re-seeding
     # next call is an upsert, so this is cheap.
-    starter_slugs = [entry["slug"] for entry in skill_seed.STARTER_SKILLS]
+    bundled_slugs = _roster_bundled_slugs()
     await prisma.models.SkillListingVersion.prisma().delete_many(
-        where={"SkillListing": {"is": {"slug": {"in": starter_slugs}}}}
+        where={"SkillListing": {"is": {"slug": {"in": bundled_slugs}}}}
     )
     await prisma.models.SkillListing.prisma().delete_many(
-        where={"slug": {"in": starter_slugs}}
+        where={"slug": {"in": bundled_slugs}}
     )
 
 
@@ -583,21 +584,47 @@ async def _seed_own_library_agent(
     return library_agent.id, name
 
 
+def _roster_bundled_slugs() -> list[str]:
+    return sorted({slug for entry in seed.ROSTER for slug in entry["bundled_skills"]})
+
+
+async def _seed_stub_bundled_skills() -> None:
+    """Seed a one-line skill per bundled slug through the catalog loader."""
+    slugs = _roster_bundled_slugs()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        catalog = "skills:\n" + "".join(
+            f"  - slug: {slug}\n    categories: [operations]\n"
+            "    required_providers: []\n    source: platform\n"
+            for slug in slugs
+        )
+        (root / "catalog.yml").write_text(catalog, encoding="utf-8")
+        for slug in slugs:
+            folder = root / "skills" / slug
+            folder.mkdir(parents=True)
+            (folder / "SKILL.md").write_text(
+                f"---\nname: {slug}\ndescription: Stub of {slug}.\n---\n\n# {slug}\n",
+                encoding="utf-8",
+            )
+        await skill_seed.seed_catalog_skills(root)
+
+
 async def _load_roster_store_assets() -> dict[str, str]:
     """Load the checked-in production store assets (StoreAgent_rows.csv plus
     the matching graph JSONs) for every ROSTER preload slug into the test DB,
     published under the official creator — the exact data ``load-store-agents``
     deploys. Idempotent: the loaders skip rows that already exist.
 
-    Also seeds the starter skills, because the roster bundles them and
+    Also seeds a stub listing for every skill the roster bundles, because
     ``_resolve_roster_skills`` fails the whole seed when a bundled slug has no
-    Skills Hub listing — the same ordering a deploy has to follow.
+    Skills Hub listing — the same ordering a deploy has to follow. The real
+    skills live in the skills catalog repo, which tests cannot reach.
 
     Returns slug -> the CSV's StoreListingVersion id, the version a hire is
     expected to install. A ROSTER slug with no checked-in asset fails here
     instead of being silently substituted by a synthetic listing.
     """
-    await skill_seed.seed_starter_skills()
+    await _seed_stub_bundled_skills()
     await store_assets.create_user_and_profile(db_client)
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
@@ -3484,15 +3511,6 @@ def test_roster_preload_counts_and_scheduled_cadences():
     assert scheduled == EXPECTED_ROSTER_SCHEDULES
 
 
-def test_roster_bundled_skills_are_seeded_starter_skills():
-    """Every bundled slug must exist in skill_seed.STARTER_SKILLS, or
-    seed_roster raises at _resolve_roster_skills against a real database."""
-    available = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
-    for entry in seed.ROSTER:
-        for slug in entry["bundled_skills"]:
-            assert slug in available, (entry["name"], slug)
-
-
 def test_roster_bundled_skills_are_hub_slugs():
     for entry in seed.ROSTER:
         for slug in entry["bundled_skills"]:
@@ -3552,10 +3570,7 @@ def test_wave_three_covers_exactly_the_nine_new_experts():
     assert len(names) == len(set(names))
 
 
-def test_every_wave_three_skill_is_a_registered_starter():
-    registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
-    for expected in EXPECTED_WAVE_THREE.values():
-        assert set(expected["skills"]) <= registered
+def test_wave_three_skills_are_unique_across_experts():
     slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
     assert len(slugs) == len(set(slugs)) == 72
 
