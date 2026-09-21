@@ -247,8 +247,21 @@ class AgentProtocolServer:
             )
 
             if last_proposal.use_tool.name == ASK_COMMAND:
-                tool_result = ActionSuccessResult(outputs=user_input)
-                agent.event_history.register_result(tool_result)
+                assert agent.permission_manager is not None
+                perm_result = agent.permission_manager.check_command(
+                    last_proposal.use_tool.name,
+                    last_proposal.use_tool.arguments,
+                )
+                if not perm_result.allowed:
+                    feedback = (
+                        perm_result.feedback
+                        or f"Permission denied for command '{ASK_COMMAND}'. "
+                        "Try a different approach."
+                    )
+                    tool_result = await agent.do_not_execute(last_proposal, feedback)
+                else:
+                    tool_result = ActionSuccessResult(outputs=user_input)
+                    agent.event_history.register_result(tool_result)
             elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,

@@ -1,7 +1,12 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from autogpt.agent_factory.default_factory import DefaultAgentFactory
 from autogpt.agents.agent import Agent
+from autogpt.agents.prompt_strategies.base import BaseMultiStepPromptStrategy
+
+from forge.agent.execution_context import SubAgentHandle
+from forge.utils.exceptions import AgentFinished
 
 
 def test_root_execution_context_passes_permission_manager_to_factory():
@@ -48,3 +53,45 @@ def test_default_factory_passes_permission_manager_to_child_agent():
         factory.create_agent("child-id", "child task", context)
 
     assert agent_class.call_args.kwargs["permission_manager"] is permission_manager
+
+
+@pytest.mark.asyncio
+async def test_sub_agent_finish_runs_permission_check():
+    strategy = MagicMock()
+    strategy._execution_context = None
+    strategy.logger = MagicMock()
+    proposal = MagicMock()
+    proposal.use_tool.name = "finish"
+    proposal.use_tool.arguments = {"reason": "Done"}
+    agent = MagicMock()
+    agent.propose_action = AsyncMock(return_value=proposal)
+    agent.execute = AsyncMock(side_effect=AgentFinished("Done"))
+    handle = SubAgentHandle(agent_id="child", task="child task")
+
+    result = await BaseMultiStepPromptStrategy._run_agent_loop(
+        strategy, agent, max_cycles=1, handle=handle
+    )
+
+    assert result == "Done"
+    agent.execute.assert_awaited_once_with(proposal)
+
+
+@pytest.mark.asyncio
+async def test_denied_sub_agent_finish_does_not_complete():
+    strategy = MagicMock()
+    strategy._execution_context = None
+    strategy.logger = MagicMock()
+    proposal = MagicMock()
+    proposal.use_tool.name = "finish"
+    proposal.use_tool.arguments = {"reason": "Done"}
+    agent = MagicMock()
+    agent.propose_action = AsyncMock(return_value=proposal)
+    agent.execute = AsyncMock(return_value=MagicMock())
+    handle = SubAgentHandle(agent_id="child", task="child task")
+
+    result = await BaseMultiStepPromptStrategy._run_agent_loop(
+        strategy, agent, max_cycles=1, handle=handle
+    )
+
+    assert result is None
+    agent.execute.assert_awaited_once_with(proposal)

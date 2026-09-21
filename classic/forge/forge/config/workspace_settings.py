@@ -23,7 +23,9 @@ class WorkspaceSettings(BaseModel):
             allow=[
                 "read_file({workspace}/**)",
                 "write_file({workspace}/**)",
+                "list_folder({workspace})",
                 "list_folder({workspace}/**)",
+                "ask_user(**)",
                 "finish(**)",
             ],
             deny=[

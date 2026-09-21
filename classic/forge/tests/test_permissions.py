@@ -330,6 +330,13 @@ class TestCheckCommand:
         result = permission_manager.check_command("list_folder", {"folder": "sub"})
         assert result.allowed
 
+    def test_default_policy_allows_list_folder_at_workspace_root(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow the workspace root."""
+        result = permission_manager.check_command("list_folder", {"folder": "."})
+        assert result.allowed
+
     def test_list_folder_uses_executed_folder_when_path_conflicts(
         self, permission_manager: CommandPermissionManager
     ):
@@ -345,6 +352,15 @@ class TestCheckCommand:
         """The default finish rule should allow reasons that contain paths."""
         result = permission_manager.check_command(
             "finish", {"reason": "Saved /workspace/report.txt"}
+        )
+        assert result.allowed
+
+    def test_default_policy_allows_ask_user(
+        self, permission_manager: CommandPermissionManager
+    ):
+        """The default policy should allow Agent Protocol user questions."""
+        result = permission_manager.check_command(
+            "ask_user", {"question": "Which folder should I inspect?"}
         )
         assert result.allowed
 
