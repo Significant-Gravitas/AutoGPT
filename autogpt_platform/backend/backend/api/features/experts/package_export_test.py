@@ -3,6 +3,7 @@ what it leaves behind."""
 
 import json
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import prisma.enums
 import prisma.models
@@ -120,13 +121,13 @@ def _library_agent(**overrides) -> prisma.models.LibraryAgent:
 def no_skills(mocker: pytest_mock.MockFixture):
     """Most tests are not about skills, and none of them should reach a real
     workspace or the Skills Hub."""
-    mocker.patch.object(package_export, "list_user_skills", return_value=[])
+    mocker.patch.object(package_export, "list_user_skill_folders", return_value=[])
     mocker.patch.object(
         package_export.experts_db, "bundled_skill_listings", return_value=[]
     )
-    # No stored folder resolves by default, so a skill is read from the slug
-    # derived from its name — the case every skill stored through the API is in.
-    mocker.patch.object(package_export, "find_user_skill_slugs", return_value={})
+    # A bundled listing's published siblings come out of the database; these
+    # tests are about what the exporter does with them, not about reading them.
+    mocker.patch.object(package_export.skill_db, "_read_version_files", return_value=[])
     return mocker.patch.object(package_export, "read_user_skill_package")
 
 
@@ -138,6 +139,7 @@ def _hub_listing(slug: str, **version: object) -> prisma.models.SkillListing:
         slug=slug,
         ActiveVersion=prisma.models.SkillListingVersion.model_construct(
             **{
+                "id": f"version-{slug}",
                 "version": 3,
                 "name": slug.title(),
                 "description": f"{slug} description",
@@ -356,8 +358,10 @@ async def test_workflow_reading_stops_at_the_first_excess_exportable_workflow(
 async def test_skills_travel_as_whole_packages(mocker: pytest_mock.MockFixture):
     mocker.patch.object(
         package_export,
-        "list_user_skills",
-        return_value=[ParsedSkill(name="Research", description="Digs.", body="")],
+        "list_user_skill_folders",
+        return_value=[
+            ("research", ParsedSkill(name="Research", description="Digs.", body=""))
+        ],
     )
     mocker.patch.object(
         package_export,
@@ -382,9 +386,9 @@ async def test_more_skills_than_the_cap_is_refused_not_truncated(
     """The folder listing is not held to the package cap, so it can run over."""
     mocker.patch.object(
         package_export,
-        "list_user_skills",
+        "list_user_skill_folders",
         return_value=[
-            ParsedSkill(name=f"skill-{i}", description="d", body="")
+            (f"skill-{i}", ParsedSkill(name=f"skill-{i}", description="d", body=""))
             for i in range(MAX_PACKAGE_SKILLS + 1)
         ],
     )
@@ -406,8 +410,10 @@ async def test_a_stored_skill_the_skill_download_refuses_is_refused_here_too(
     on this route as well, not a 500."""
     mocker.patch.object(
         package_export,
-        "list_user_skills",
-        return_value=[ParsedSkill(name="Research", description="Digs.", body="")],
+        "list_user_skill_folders",
+        return_value=[
+            ("research", ParsedSkill(name="Research", description="Digs.", body=""))
+        ],
     )
     mocker.patch.object(
         package_export,
@@ -427,8 +433,10 @@ async def test_a_skill_with_no_stored_package_is_left_out_of_both(
     manifest-versus-tree check."""
     mocker.patch.object(
         package_export,
-        "list_user_skills",
-        return_value=[ParsedSkill(name="Research", description="Digs.", body="")],
+        "list_user_skill_folders",
+        return_value=[
+            ("research", ParsedSkill(name="Research", description="Digs.", body=""))
+        ],
     )
     mocker.patch.object(package_export, "read_user_skill_package", return_value=None)
 
@@ -459,7 +467,7 @@ async def test_a_template_carries_the_hub_skills_it_bundles_as_a_hire_installs_t
         "bundled_skill_listings",
         return_value=[_hub_listing("brand-voice-guide"), _hub_listing("outreach")],
     )
-    listed = mocker.patch.object(package_export, "list_user_skills")
+    listed = mocker.patch.object(package_export, "list_user_skill_folders")
     template = _expert(id="template-1", ownerUserId=None, isTemplate=True)
 
     package = await _build(template, user_id=DOWNLOADER)
@@ -547,9 +555,9 @@ def _skill_of(*sizes: int) -> SkillPackage:
 def _stored_skills(mocker: pytest_mock.MockFixture, skills: dict[str, SkillPackage]):
     mocker.patch.object(
         package_export,
-        "list_user_skills",
+        "list_user_skill_folders",
         return_value=[
-            ParsedSkill(name=slug, description="d", body="") for slug in skills
+            (slug, ParsedSkill(name=slug, description="d", body="")) for slug in skills
         ],
     )
     mocker.patch.object(
@@ -634,6 +642,7 @@ async def test_a_template_whose_bundled_skills_alone_overflow_is_refused(
     installable = mocker.patch.object(
         package_export.skill_db,
         "installable_skill",
+        new_callable=AsyncMock,
         side_effect=lambda listing: (
             ParsedSkill(name=listing.slug, description="d", body=""),
             _skill_of(*half),
@@ -703,8 +712,10 @@ async def test_an_export_reads_back_as_the_same_expert(
 ):
     mocker.patch.object(
         package_export,
-        "list_user_skills",
-        return_value=[ParsedSkill(name="Research", description="Digs.", body="")],
+        "list_user_skill_folders",
+        return_value=[
+            ("research", ParsedSkill(name="Research", description="Digs.", body=""))
+        ],
     )
     mocker.patch.object(
         package_export,
@@ -732,13 +743,13 @@ async def test_a_skill_is_read_from_the_folder_it_is_stored_under(
     without an error."""
     mocker.patch.object(
         package_export,
-        "list_user_skills",
-        return_value=[ParsedSkill(name="Deep Research", description="d", body="")],
-    )
-    mocker.patch.object(
-        package_export,
-        "find_user_skill_slugs",
-        return_value={"deep research": "deep-research"},
+        "list_user_skill_folders",
+        return_value=[
+            (
+                "deep-research",
+                ParsedSkill(name="Deep Research", description="d", body=""),
+            )
+        ],
     )
     no_skills.return_value = SkillPackage(skill_md="---\nname: x\n---\nbody")
 
@@ -746,3 +757,27 @@ async def test_a_skill_is_read_from_the_folder_it_is_stored_under(
 
     no_skills.assert_awaited_once_with(OWNER, "deep-research", expert_id="expert-1")
     assert [card.slug for card in package.manifest.skills] == ["deep-research"]
+
+
+async def test_two_skills_whose_names_collide_are_each_read_from_their_own_folder(
+    mocker: pytest_mock.MockFixture, no_skills
+):
+    """One skill's frontmatter name can be another skill's folder. Resolving
+    the folder from the name afterwards would package `alpha` twice and drop
+    `beta`; carrying the slug from the scan keeps them apart."""
+    mocker.patch.object(
+        package_export,
+        "list_user_skill_folders",
+        return_value=[
+            ("alpha", ParsedSkill(name="alpha", description="d", body="")),
+            ("beta", ParsedSkill(name="Alpha", description="d", body="")),
+        ],
+    )
+    no_skills.side_effect = lambda user_id, slug, expert_id=None: SkillPackage(
+        skill_md=f"---\nname: {slug}\n---\nbody"
+    )
+
+    package = await _build(_expert())
+
+    assert [card.slug for card in package.manifest.skills] == ["alpha", "beta"]
+    assert package.skills["alpha"].skill_md != package.skills["beta"].skill_md
