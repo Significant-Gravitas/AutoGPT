@@ -641,6 +641,88 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     expect(badge.getAttribute("data-session-id")).toBe("sess-123");
   });
 
+  it("renders a Sent from badge linking to the session a delegated message came from", () => {
+    const messages = [
+      {
+        id: "user-d1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+      />,
+    );
+    const card = screen.getByTestId("sent-from-badge");
+    expect(card.textContent).toContain("Sent from Ari");
+    expect(card.getAttribute("href")).toBe(
+      "/copilot?sessionId=3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    );
+  });
+
+  it("falls back to the session's delegation provenance on the opening message only", () => {
+    const messages = [
+      {
+        id: "user-first",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "first task" }],
+      },
+      {
+        id: "assistant-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      {
+        id: "user-second",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "typed by the user" }],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={messages as any}
+        hasMoreMessages={false}
+        sessionSentFrom={{
+          sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          expertId: null,
+          expertName: null,
+        }}
+      />,
+    );
+    const cards = screen.getAllByTestId("sent-from-badge");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("Sent from Otto");
+  });
+
+  it("does NOT render a Sent from badge for an ordinary user message", () => {
+    const messages = [
+      {
+        id: "user-plain",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hello" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
   it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
     const userId = "user-n1";
     const turnStats = new Map([

@@ -57,6 +57,8 @@ import {
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
+import { SentFromBadge } from "./components/SentFromBadge";
+import { getSentFromMetadata, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -114,6 +116,10 @@ interface Props {
   /** The roster is still loading for an expert-scoped session, so the
    *  header must not yet claim the thread is Otto's. */
   isResolvingExpertIdentity?: boolean;
+  /** Where this thread's opening task came from (session-level delegation
+   *  metadata). Shown on the first user message when that message carries
+   *  no provenance of its own. */
+  sessionSentFrom?: SentFrom | null;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
@@ -331,6 +337,7 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
   isResolvingExpertIdentity = false,
+  sessionSentFrom = null,
   hasFloatingControls = false,
   canOpenActivity = false,
   areFilesOpen = false,
@@ -371,6 +378,9 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
+  const firstUserMessageID = hasMoreMessages
+    ? null
+    : (messages.find((message) => message.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -655,6 +665,11 @@ export function ChatMessagesContainer({
               (p): p is FileUIPart => p.type === "file",
             );
 
+            const sentFrom = readOnly
+              ? null
+              : (getSentFromMetadata(message.metadata) ??
+                (message.id === firstUserMessageID ? sessionSentFrom : null));
+
             return (
               <Message
                 from={message.role}
@@ -688,7 +703,11 @@ export function ChatMessagesContainer({
                       liveCompactionStats={liveCompactionStats}
                     />
                   ) : (
-                    <UserMessageClamp>
+                    <UserMessageClamp
+                      trailing={
+                        sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null
+                      }
+                    >
                       {renderableParts.map((part, i) => (
                         <MessagePartRenderer
                           key={`${message.id}-${i}`}
