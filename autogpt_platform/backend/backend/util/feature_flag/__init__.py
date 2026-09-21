@@ -16,9 +16,10 @@ from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
 
-from backend.util import feature_flag_posthog
 from backend.util.cache import cached
 from backend.util.settings import AppEnvironment, FeatureFlagBackend, Settings
+
+from . import posthog
 
 logger = logging.getLogger(__name__)
 # Own logger so a dual-run diff week can be queried without trawling the rest.
@@ -256,7 +257,7 @@ def initialize_feature_flags() -> None:
                 "POSTHOG_PERSONAL_API_KEY: every flag read becomes a remote "
                 "/flags call instead of an in-process evaluation"
             )
-        feature_flag_posthog.initialize_posthog_flags()
+        posthog.initialize_posthog_flags()
 
 
 def shutdown_feature_flags() -> None:
@@ -266,7 +267,7 @@ def shutdown_feature_flags() -> None:
     if backend is not FeatureFlagBackend.POSTHOG:
         shutdown_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        feature_flag_posthog.shutdown_posthog_flags()
+        posthog.shutdown_posthog_flags()
 
 
 def _stop_shadow_evaluations() -> None:
@@ -596,7 +597,7 @@ async def _evaluate_posthog(
     user_context, context_resolved = context or await _fetch_user_context_status(
         user_id
     )
-    value, evaluated = await feature_flag_posthog.evaluate_flag(
+    value, evaluated = await posthog.evaluate_flag(
         flag_key,
         user_id,
         _person_properties(user_context),
@@ -991,14 +992,14 @@ def _flag_backend_configured() -> bool:
     # Dual serves LaunchDarkly's answer, so LaunchDarkly is what gates a route.
     if serves_launchdarkly():
         return is_configured()
-    return feature_flag_posthog.is_configured()
+    return posthog.is_configured()
 
 
 def _flag_backend_initialized() -> bool:
     """Whether the configured backend can answer right now."""
     if serves_launchdarkly():
         return get_client().is_initialized()
-    return feature_flag_posthog.get_flag_client() is not None
+    return posthog.get_flag_client() is not None
 
 
 @contextlib.contextmanager

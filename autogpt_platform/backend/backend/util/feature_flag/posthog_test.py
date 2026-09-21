@@ -2,7 +2,7 @@
 
 import pytest
 
-import backend.util.feature_flag_posthog as ph
+import backend.util.feature_flag.posthog as ph
 
 
 @pytest.fixture(autouse=True)

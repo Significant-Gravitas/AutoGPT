@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from ldclient import Context, LDClient
 
 import backend.util.feature_flag as ff
-import backend.util.feature_flag_posthog as ph
+import backend.util.feature_flag.posthog as ph
 from backend.util.feature_flag import (
     Flag,
     evaluate_feature_flag,
