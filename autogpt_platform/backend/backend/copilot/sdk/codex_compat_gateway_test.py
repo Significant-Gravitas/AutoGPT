@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
-from aiohttp import ClientSession
+from aiohttp import ClientSession, web
 
 from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
@@ -984,6 +984,112 @@ async def test_replay_entries_are_per_conversation_and_expire() -> None:
     gateway._record_replay(mine, "fingerprint", expired)
     assert gateway._take_replay(mine, "fingerprint", streamed=False) is None
     assert "fingerprint" not in mine.replays
+
+
+@pytest.mark.asyncio
+async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
+    # The continuation applies neither `system` nor `tools`, so a recomposed
+    # system prompt is the same tool-result submission and must still replay.
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={**continuation, "system": "recomposed for the retry"},
+            )
+            retried_body = await retried.read()
+
+    assert accepted.status == 200
+    assert retried.status == 200
+    assert retried_body == accepted_body
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_recording_sink_drops_the_buffer_past_the_replay_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_BYTES", 8)
+    forwarded: list[bytes] = []
+
+    class _Response:
+        async def write(self, data: bytes) -> None:
+            forwarded.append(data)
+
+    sink = codex_compat_gateway._RecordingSink(cast(web.StreamResponse, _Response()))
+    await sink.write(b"12345")
+
+    assert sink.body == b"12345"
+
+    await sink.write(b"67890")
+
+    assert sink.body is None
+    assert sink._chunks == []
+    assert forwarded == [b"12345", b"67890"]
+
+
+@pytest.mark.asyncio
+async def test_a_stream_past_the_replay_cap_is_forwarded_whole_and_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_BYTES", 8)
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_events = _events(await accepted.text())
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_payload = await retried.json()
+
+    assert accepted.status == 200
+    assert [event["type"] for event in accepted_events][-1] == "message_stop"
+    assert retried.status == 409
+    assert retried_payload["error"]["message"] == (
+        "This tool-result request was already accepted"
+    )
 
 
 def test_replay_cache_evicts_the_oldest_entry_first() -> None:
