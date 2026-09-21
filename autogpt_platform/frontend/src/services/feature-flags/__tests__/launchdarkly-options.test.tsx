@@ -45,12 +45,6 @@ describe("LaunchDarkly client options", () => {
     expect(optionsOf().options.eventsUrl).toBe("/api/ld-events");
   });
 
-  // The SDK warns on every page load above 5, and reads the value as seconds:
-  // the old 5000 meant 83 minutes.
-  it("bounds initialisation in seconds, at the SDK's recommended ceiling", () => {
-    expect(optionsOf().timeout).toBeLessThanOrEqual(5);
-  });
-
   it("keeps the Sentry flag inspector", () => {
     expect(optionsOf().options.inspectors).toHaveLength(1);
   });

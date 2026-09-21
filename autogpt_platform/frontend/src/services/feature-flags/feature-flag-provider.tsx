@@ -10,10 +10,7 @@ import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
 import { buildLDContext } from "./helpers";
 
-// `LDProvider`'s timeout is in SECONDS, and the SDK warns on every page load
-// above 5 — the previous 5000 read as 83 minutes, so initialisation was
-// effectively unbounded.
-const LAUNCHDARKLY_INIT_TIMEOUT_SECONDS = 5;
+const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 // Proxied to https://events.launchdarkly.com by src/app/api/ld-events.
 const LAUNCHDARKLY_EVENTS_PATH = "/api/ld-events";
@@ -44,7 +41,7 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
     <LDProvider
       clientSideID={clientId ?? ""}
       context={context}
-      timeout={LAUNCHDARKLY_INIT_TIMEOUT_SECONDS}
+      timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
