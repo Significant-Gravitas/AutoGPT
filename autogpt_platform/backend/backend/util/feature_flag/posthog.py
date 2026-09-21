@@ -18,6 +18,7 @@ settings = Settings()
 
 _client: Posthog | None = None
 _init_attempted = False
+_shut_down = False
 
 
 def is_configured() -> bool:
@@ -78,20 +79,25 @@ async def evaluate_flag(
 
 def initialize_posthog_flags() -> None:
     """Build the flag client eagerly so its definition poller is warm."""
+    global _shut_down
+    _shut_down = False
     get_flag_client()
 
 
 def shutdown_posthog_flags() -> None:
-    global _client, _init_attempted
-    if _client is None:
+    global _client, _init_attempted, _shut_down
+    client = _client
+    _client = None
+    # Clear the "did we try" gate even when no client was built, or an
+    # unconfigured first attempt latches it shut for the life of the process.
+    _init_attempted = False
+    # A shadow read runs in a worker thread that outlives the cancelled task,
+    # so refuse to rebuild here: that client's poller would have no closer.
+    _shut_down = True
+    if client is None:
         return
 
-    _client.shutdown()
-    _client = None
-    # Clear the "did we try" gate too, or a re-init in the same process — an
-    # in-process app restart, as SpinTestServer does — silently never rebuilds
-    # and every flag read answers with its default forever.
-    _init_attempted = False
+    client.shutdown()
     logger.info("PostHog feature flag client closed successfully")
 
 
@@ -103,7 +109,7 @@ def get_flag_client() -> Posthog | None:
     shutting one down must not silence the other.
     """
     global _client, _init_attempted
-    if _client is not None or _init_attempted:
+    if _client is not None or _init_attempted or _shut_down:
         return _client
 
     _init_attempted = True

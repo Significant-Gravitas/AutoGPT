@@ -236,7 +236,7 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
     return defaultFlags[flag];
   }
 
-  return (value ?? defaultFlags[flag]) as FlagValues[T];
+  return resolveFlagValue(flag, value);
 }
 
 const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
@@ -273,9 +273,32 @@ export function useFlagStatus<T extends Flag>(
   }
 
   return {
-    enabled: (value ?? defaultFlags[flag]) as FlagValues[T],
+    enabled: resolveFlagValue(flag, value),
     ready: resolved || timedOut,
   };
+}
+
+// PostHog answers a flag with no payload as a bare boolean, so a JSON-valued
+// flag can arrive as `true` and reach a consumer that calls `.map` on it.
+// `typeof` alone can't separate an array from an object; both are "object".
+export function resolveFlagValue<T extends Flag>(
+  flag: T,
+  value: unknown,
+): FlagValues[T] {
+  const fallback = defaultFlags[flag];
+
+  if (value === undefined || value === null) return fallback;
+
+  if (Array.isArray(fallback)) {
+    return (Array.isArray(value) ? value : fallback) as FlagValues[T];
+  }
+
+  if (fallback !== null && typeof fallback === "object") {
+    const isPlainObject = typeof value === "object" && !Array.isArray(value);
+    return (isPlainObject ? value : fallback) as FlagValues[T];
+  }
+
+  return (typeof value === typeof fallback ? value : fallback) as FlagValues[T];
 }
 
 // ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and

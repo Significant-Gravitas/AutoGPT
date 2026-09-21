@@ -10,6 +10,7 @@ def fresh_client(mocker):
     """The singleton is module state; each test starts without one."""
     mocker.patch.object(ph, "_client", None)
     mocker.patch.object(ph, "_init_attempted", False)
+    mocker.patch.object(ph, "_shut_down", False)
 
 
 def configure(mocker, *, api_key="phc_test", personal_api_key=""):
@@ -93,9 +94,35 @@ class TestClientConstruction:
 
         ph.get_flag_client()
         ph.shutdown_posthog_flags()
+        ph.initialize_posthog_flags()
 
         assert ph.get_flag_client() is not None
         assert posthog.call_count == 2
+
+    def test_a_late_read_after_shutdown_does_not_rebuild(self, mocker):
+        """A shadow read runs in a worker thread that outlives the cancelled
+        task; a client built there would start a poller nothing closes."""
+        configure(mocker)
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+        ph.shutdown_posthog_flags()
+
+        assert ph.get_flag_client() is None
+        assert posthog.call_count == 1
+
+    def test_an_unconfigured_first_attempt_does_not_latch_the_gate(self, mocker):
+        """Shutdown clears "did we try" even though it built no client, or
+        credentials arriving later in the process can never be picked up."""
+        configure(mocker, api_key="")
+        mocker.patch.object(ph, "Posthog")
+        assert ph.get_flag_client() is None
+
+        ph.shutdown_posthog_flags()
+        configure(mocker)
+        ph.initialize_posthog_flags()
+
+        assert ph.get_flag_client() is not None
 
 
 class TestRawRead:
