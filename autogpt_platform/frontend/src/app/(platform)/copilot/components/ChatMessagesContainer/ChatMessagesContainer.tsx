@@ -58,6 +58,7 @@ import {
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import { SentFromBadge } from "./components/SentFromBadge";
+import { getVisibleUserMessageParts } from "./userMessageParts";
 import {
   getSentFromMetadata,
   isSessionOpeningMessage,
@@ -622,9 +623,11 @@ export function ChatMessagesContainer({
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
             // ThinkingIndicator; data-compaction via CompactionCard.
-            const renderableParts = withToolDisplayNames(message.parts).filter(
-              (p) => !isBookkeepingPart(p),
-            );
+            const renderableParts = withToolDisplayNames(
+              message.role === "user"
+                ? getVisibleUserMessageParts(message.parts)
+                : message.parts,
+            ).filter((p) => !isBookkeepingPart(p));
             // Only a message that is actively streaming can have a live
             // compaction phase — a stopped or failed turn must not leave an
             // eternal progress bar. Replayed/settled messages never carry

@@ -97,12 +97,17 @@ vi.mock("../components/QueueBadge", () => ({
   ),
 }));
 
-vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
+vi.mock("../components/CopyButton", () => ({
+  CopyButton: ({ text }: { text: string }) => (
+    <span data-testid="copy-message" data-text={text} />
+  ),
+}));
 vi.mock("../components/MessageAttachments", () => ({
   MessageAttachments: () => null,
 }));
 vi.mock("../components/MessagePartRenderer", () => ({
-  MessagePartRenderer: () => null,
+  MessagePartRenderer: ({ part }: { part: { type: string; text?: string } }) =>
+    part.type === "text" ? <span>{part.text}</span> : null,
 }));
 vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
@@ -640,6 +645,47 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     const badge = screen.getByTestId("queue-badge");
     expect(badge.getAttribute("data-session-id")).toBe("sess-123");
   });
+
+  it.each([false, true])(
+    "shows and copies only the delegated task (readOnly=%s)",
+    (readOnly) => {
+      const preamble =
+        "[Delegated task from Ari, a teammate on this user's team — not " +
+        "the user. They cannot see your thread, so report the outcome in your " +
+        "final message. If the task needs something only the user can " +
+        "provide, say what is missing instead of guessing.]";
+      const message = {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: `${preamble}\n\nDraft the update.` },
+        ],
+        metadata: readOnly
+          ? undefined
+          : {
+              from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+              from_expert_name: "Ari",
+            },
+      };
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[message]}
+          readOnly={readOnly}
+        />,
+      );
+
+      expect(screen.getByText("Draft the update.")).toBeDefined();
+      expect(screen.queryByText(/They cannot see your thread/)).toBeNull();
+      expect(screen.getByTestId("copy-message").dataset.text).toBe(
+        "Draft the update.",
+      );
+      expect(screen.queryAllByTestId("sent-from-badge")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(message.parts[0].text).toBe(`${preamble}\n\nDraft the update.`);
+    },
+  );
 
   it("renders a Sent from badge linking to the session a delegated message came from", () => {
     const messages = [
