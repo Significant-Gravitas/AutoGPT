@@ -653,6 +653,11 @@ def feature_flag(
                     raise HTTPException(status_code=404, detail="Feature not available")
 
                 return await func(*args, **kwargs)
+            except HTTPException:
+                # A disabled flag is an expected outcome, not an evaluation
+                # error: logging it here would file an ERROR for every request
+                # to a gated-off route. The status is already correct.
+                raise
             except Exception as e:
                 logger.error(f"Error evaluating feature flag {flag_key}: {e}")
                 raise

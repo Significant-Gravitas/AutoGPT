@@ -446,6 +446,44 @@ class TestEnvOverrideWiring:
         assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_decorator_disabled_flag_is_not_logged_as_an_error(
+        self, ld_client, caplog: pytest.LogCaptureFixture
+    ):
+        """A gated-off route is an expected outcome, not an evaluation error.
+
+        The 404 is raised inside the decorator's try block, so without an
+        explicit passthrough every request to a disabled route files an
+        ERROR and buries real flag-evaluation failures.
+        """
+        ld_client.variation.return_value = False
+
+        @feature_flag("test-flag")
+        async def test_function(user_id: str):
+            return "success"
+
+        with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
+            with pytest.raises(HTTPException) as exc_info:
+                await test_function(user_id="test-user")
+        assert exc_info.value.status_code == 404
+        assert "Error evaluating feature flag" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_decorator_still_logs_real_evaluation_errors(
+        self, ld_client, caplog: pytest.LogCaptureFixture
+    ):
+        """The passthrough must not silence genuine failures."""
+        ld_client.is_initialized.side_effect = RuntimeError("LD exploded")
+
+        @feature_flag("test-flag")
+        async def test_function(user_id: str):
+            return "success"
+
+        with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
+            with pytest.raises(RuntimeError):
+                await test_function(user_id="test-user")
+        assert "Error evaluating feature flag" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_dependency_disabled_flag_returns_404_not_500(
         self, ld_client, mocker
     ):
