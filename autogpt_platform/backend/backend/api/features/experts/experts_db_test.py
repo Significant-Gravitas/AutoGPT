@@ -5086,7 +5086,9 @@ async def _published_template_with_skills(owner_id: str) -> prisma.models.Expert
             "identity": "Careful and brief.",
             "isTemplate": True,
             "skills": ["research"],
-            "publishedPackage": Base64.encode(zip_from_package(package)),
+            "PublishedPackage": {
+                "create": {"package": Base64.encode(zip_from_package(package))}
+            },
         }
     )
     _seeded_template_ids.append(template.id)
@@ -5111,9 +5113,9 @@ async def test_a_published_templates_unreadable_package_does_not_fail_the_hire(
     server: SpinTestServer, test_user
 ):
     template = await _published_template_with_skills(test_user.id)
-    await prisma.models.Expert.prisma().update(
-        where={"id": template.id},
-        data={"publishedPackage": Base64.encode(b"not a zip")},
+    await prisma.models.ExpertPublishedPackage.prisma().update(
+        where={"expertId": template.id},
+        data={"package": Base64.encode(b"not a zip")},
     )
 
     hired = (await experts_db.hire_expert(test_user.id, template.id, None)).expert

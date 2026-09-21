@@ -1503,6 +1503,20 @@ async def get_template_row(template_id: str) -> prisma.models.Expert | None:
     )
 
 
+async def get_published_package(template_id: str) -> bytes | None:
+    """The ``.expert.zip`` a template was published from, or ``None`` for a
+    roster template, which is built live.
+
+    The only read of the blob: it lives in its own table precisely so that a
+    roster listing, a hire's template lookup or an export row never fetches
+    up to 20 MiB per template it did not ask for.
+    """
+    row = await prisma.models.ExpertPublishedPackage.prisma().find_unique(
+        where={"expertId": template_id}
+    )
+    return row.package.decode() if row else None
+
+
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
     updated = await prisma.models.Expert.prisma().update_many(
         where={
@@ -1802,12 +1816,11 @@ async def _install_published_skills(
     effort, like every other install here: a hire missing one skill is better
     than no hire.
     """
-    if not template.publishedPackage:
+    published = await get_published_package(template.id)
+    if published is None:
         return
     try:
-        package = await run_in_threadpool(
-            package_from_zip, template.publishedPackage.decode()
-        )
+        package = await run_in_threadpool(package_from_zip, published)
     except Exception:
         logger.exception(f"Published package of template #{template.id} is unreadable")
         return

@@ -76,7 +76,7 @@ async def test_publishing_creates_an_ownerless_marketplace_template(
         admin.id, storeListingVersionId=version_id, scheduleCron="40 7 * * *"
     )
 
-    template = await _published((await publish_expert(expert)).id)
+    template = await _published((await publish_expert(expert, user_id=admin.id)).id)
 
     assert template.isTemplate is True
     assert template.ownerUserId is None
@@ -96,10 +96,11 @@ async def test_a_published_template_carries_the_package_it_was_published_from(
     admin = await _create_seed_user()
     expert = await _expert_with(admin.id)
 
-    template = await _published((await publish_expert(expert)).id)
+    template = await _published((await publish_expert(expert, user_id=admin.id)).id)
 
-    assert template.publishedPackage is not None
-    package = package_from_zip(template.publishedPackage.decode())
+    stored = await experts_db.get_published_package(template.id)
+    assert stored is not None
+    package = package_from_zip(stored)
     assert package.manifest.identity.name == "Maria Ops"
 
 
@@ -110,7 +111,7 @@ async def test_publishing_again_refreshes_the_same_template(server: SpinTestServ
     first_version = await _seed_store_listing(server)
     expert = await _expert_with(admin.id, storeListingVersionId=first_version)
 
-    first = await publish_expert(expert)
+    first = await publish_expert(expert, user_id=admin.id)
     await prisma.models.Expert.prisma().update(
         where={"id": expert.id}, data={"name": "Maria Ops II"}
     )
@@ -123,7 +124,7 @@ async def test_publishing_again_refreshes_the_same_template(server: SpinTestServ
     )
     refreshed = await experts_db.get_owned_expert_row(admin.id, expert.id)
     assert refreshed is not None
-    second = await publish_expert(refreshed)
+    second = await publish_expert(refreshed, user_id=admin.id)
 
     assert second.id == first.id
     template = await _published(second.id)
@@ -149,7 +150,7 @@ async def test_an_agent_that_was_never_published_blocks_the_whole_publish(
     expert = await _expert_with(admin.id, libraryAgentId=library_agent_id)
 
     with pytest.raises(UnpublishedWorkflowsError) as exc:
-        await publish_expert(expert)
+        await publish_expert(expert, user_id=admin.id)
 
     assert exc.value.workflows == [name]
     assert await published_template(expert.id) is None
@@ -171,7 +172,7 @@ async def test_an_agent_published_after_it_was_installed_resolves(
     assert agent is not None
     expert = await _expert_with(admin.id, libraryAgentId=agent.id)
 
-    template = await _published((await publish_expert(expert)).id)
+    template = await _published((await publish_expert(expert, user_id=admin.id)).id)
 
     assert [w.storeListingVersionId for w in template.Workflows or []] == [version_id]
 
@@ -180,7 +181,7 @@ async def test_a_published_template_is_offered_on_the_roster(server: SpinTestSer
     admin = await _create_seed_user()
     expert = await _expert_with(admin.id)
 
-    template = await publish_expert(expert)
+    template = await publish_expert(expert, user_id=admin.id)
 
     assert template.id in {t.id for t in await experts_db.list_templates()}
     found = await published_template(expert.id)
@@ -194,10 +195,10 @@ async def test_the_seeder_leaves_a_published_template_alone_without_its_source(
     """``publishedFromExpertId`` is SetNull, so deleting the source expert — or
     cascading from its owner — clears it and would hand the orphan straight back
     to the seeder, which would overwrite a published soul with roster copy. The
-    guard keys on ``publishedPackage``, which nothing clears."""
+    guard keys on the published package row, which nothing clears."""
     admin = await _create_seed_user()
     expert = await _expert_with(admin.id)
-    template = await _published((await publish_expert(expert)).id)
+    template = await _published((await publish_expert(expert, user_id=admin.id)).id)
     # A name of its own, so the seeder resolves to this row and not to a
     # same-named template another test left in the shared session database.
     roster_name = f"Maria Ops {uuid.uuid4().hex[:8]}"
@@ -210,7 +211,7 @@ async def test_the_seeder_leaves_a_published_template_alone_without_its_source(
         where={"id": template.id}
     )
     assert orphan.publishedFromExpertId is None
-    assert orphan.publishedPackage is not None
+    assert await experts_db.get_published_package(template.id) is not None
 
     entry: seed.RosterEntry = {
         "name": roster_name,
