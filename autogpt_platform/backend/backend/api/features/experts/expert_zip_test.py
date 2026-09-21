@@ -3,6 +3,7 @@ team, and what an exported expert looks like on the way back out."""
 
 import io
 import json
+import os
 import zipfile
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from backend.api.features.experts.expert_zip import (
 )
 from backend.api.features.experts.package_model import (
     MAX_AVATAR_BYTES,
+    MAX_MANIFEST_BYTES,
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
@@ -150,6 +152,101 @@ def test_a_wrapping_directory_is_unwrapped():
 
 def test_the_body_cap_is_the_unpacked_cap_too():
     assert MAX_ZIP_BYTES == MAX_PACKAGE_BYTES
+
+
+def test_a_manifest_larger_than_a_skill_file_may_be_still_round_trips():
+    """The manifest has its own cap, twice a skill file's: an export between
+    the two must read back, not fail on re-import."""
+    package = _package(tool_profile={"pad": "x" * (3 * 1024 * 1024)})
+    assert MAX_PACKAGE_FILE_BYTES < 3 * 1024 * 1024 < MAX_MANIFEST_BYTES
+
+    restored = package_from_zip(zip_from_package(package))
+
+    assert restored.manifest == package.manifest
+
+
+def test_a_manifest_over_its_own_cap_is_refused():
+    with pytest.raises(ExpertPackageError, match="expert.json") as exc:
+        package_from_zip(
+            _zip(
+                {
+                    "expert.json": _manifest(
+                        tool_profile={"pad": "x" * MAX_MANIFEST_BYTES}
+                    ),
+                    "skills/research/SKILL.md": SKILL_MD,
+                }
+            )
+        )
+    assert exc.value.over_limit
+
+
+@pytest.mark.parametrize("root", ["", "maria-export/"], ids=["bare", "wrapped"])
+def test_a_skill_file_over_its_cap_is_refused_before_it_is_decompressed(
+    monkeypatch, root: str
+):
+    """The archive-wide member cap has to admit a 4 MiB manifest, so a skill
+    file is held to its own 2 MiB once it is known to be one — still from the
+    central directory, so it never lands in memory."""
+    data = _zip(
+        {
+            f"{root}expert.json": _manifest(),
+            f"{root}skills/research/SKILL.md": SKILL_MD,
+            f"{root}skills/research/assets/font.bin": b"\0"
+            * (MAX_PACKAGE_FILE_BYTES + 1),
+        }
+    )
+    opened = MagicMock(side_effect=AssertionError("a member was read"))
+    monkeypatch.setattr(zipfile.ZipFile, "open", opened)
+
+    with pytest.raises(ExpertPackageError, match="font.bin") as exc:
+        package_from_zip(data)
+    assert exc.value.over_limit
+    opened.assert_not_called()
+
+
+def test_the_writer_refuses_what_the_reader_would():
+    """Two skills that each fit but together do not: better refused here than
+    handed out as a download that fails on re-import."""
+    twelve = [
+        SkillFile(relative_path=f"a/{i}.bin", content=b"\0" * MAX_PACKAGE_FILE_BYTES)
+        for i in range(6)
+    ]
+    package = ExpertPackage(
+        manifest=ExpertManifest(
+            identity=PackagedIdentity(name="Maria"),
+            skills=[
+                PackagedSkill(slug="first", name="first"),
+                PackagedSkill(slug="second", name="second"),
+            ],
+        ),
+        skills={
+            "first": SkillPackage(skill_md=SKILL_MD, files=twelve),
+            "second": SkillPackage(skill_md=SKILL_MD, files=twelve),
+        },
+    )
+
+    with pytest.raises(ExpertPackageError, match="unpacks to") as exc:
+        zip_from_package(package)
+    assert exc.value.over_limit
+
+
+def test_an_archive_over_the_upload_cap_is_refused_even_when_the_tree_fits():
+    """Incompressible content deflates to slightly more than itself, so a tree
+    exactly at the cap would be an archive an upload refuses by body size."""
+    package = _package()
+    package.skills["research"].files = []
+    room = MAX_PACKAGE_BYTES - package.size_bytes
+    sizes = [MAX_PACKAGE_FILE_BYTES] * (room // MAX_PACKAGE_FILE_BYTES)
+    sizes.append(room - sum(sizes))
+    package.skills["research"].files = [
+        SkillFile(relative_path=f"a/{i}.bin", content=os.urandom(size))
+        for i, size in enumerate(sizes)
+    ]
+    assert package.size_bytes == MAX_PACKAGE_BYTES
+
+    with pytest.raises(ExpertPackageError, match="archive would be") as exc:
+        zip_from_package(package)
+    assert exc.value.over_limit
 
 
 # ---------------------------------------------------------------------------

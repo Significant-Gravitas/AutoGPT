@@ -15,11 +15,11 @@ import logging
 
 import prisma.models
 
+from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import decode_day_one, decode_voice_preferences
 from backend.api.features.experts.package_avatar import packaged_avatar
 from backend.api.features.experts.package_model import (
     AVATAR_EXTENSIONS,
-    MAX_MANIFEST_BYTES,
     MAX_PACKAGE_SKILLS,
     MAX_PACKAGE_WORKFLOWS,
     ExpertManifest,
@@ -30,10 +30,14 @@ from backend.api.features.experts.package_model import (
     PackagedSoul,
     PackagedWorkflow,
     expert_slug,
-    manifest_json,
+    validate_expert_package,
+    validate_packaged_skill,
 )
+from backend.api.features.store import skill_db
 from backend.copilot.tools.skills import (
+    MAX_PACKAGE_BYTES,
     SkillPackage,
+    SkillPackageError,
     list_user_skills,
     read_user_skill_package,
     skill_slug,
@@ -47,17 +51,67 @@ logger = logging.getLogger(__name__)
 # exporter's still on it would claim the wrong owner on the way in.
 _GRAPH_LOCAL_FIELDS = {"user_id", "organization_id", "team_id", "created_at"}
 
+_Skills = tuple[dict[str, SkillPackage], list[PackagedSkill]]
+
+
+class _Roster:
+    """The skills admitted to a package so far.
+
+    Each is held to its own caps and to the running count and size as it
+    arrives, so an expert whose skills alone cannot fit is refused before the
+    next package — or the avatar, or a graph — is read. Fifty stored skills
+    that each fit could otherwise be read whole just to answer 413.
+    """
+
+    def __init__(self) -> None:
+        self.packages: dict[str, SkillPackage] = {}
+        self.cards: list[PackagedSkill] = []
+        self.size_bytes = 0
+
+    def admit(
+        self, slug: str, name: str, description: str, package: SkillPackage
+    ) -> None:
+        validate_packaged_skill(slug, package)
+        if len(self.packages) >= MAX_PACKAGE_SKILLS:
+            # The folder is capped separately from the package, and a listing
+            # can run over it; a package quietly missing skills is not a backup.
+            raise ExpertPackageError(
+                f"expert has more than {MAX_PACKAGE_SKILLS} skills; the limit is "
+                f"{MAX_PACKAGE_SKILLS}",
+                over_limit=True,
+            )
+        self.size_bytes += package.size_bytes
+        if self.size_bytes > MAX_PACKAGE_BYTES:
+            raise ExpertPackageError(
+                f"package unpacks to at least {self.size_bytes} bytes in skills "
+                f"alone; the limit is {MAX_PACKAGE_BYTES}",
+                over_limit=True,
+            )
+        self.packages[slug] = package
+        self.cards.append(PackagedSkill(slug=slug, name=name, description=description))
+
 
 def package_filename(name: str) -> str:
     """The name a download is offered under."""
     return f"{expert_slug(name)}.expert.zip"
 
 
-async def build_expert_package(row: prisma.models.Expert) -> ExpertPackage:
+async def build_expert_package(
+    row: prisma.models.Expert, *, user_id: str
+) -> ExpertPackage:
     """The whole expert as a package, from a row loaded with
-    :data:`EXPORT_INCLUDE`."""
+    :data:`EXPORT_INCLUDE`.
+
+    *user_id* is the caller downloading it. For a roster template that decides
+    which bundled Skills Hub listings travel, exactly as it decides which ones a
+    hire installs.
+
+    Refuses, with ``over_limit`` set, an expert that would not fit the package
+    format's caps — the route owes a 413, not a download that fails on
+    re-import.
+    """
     description, samples = decode_voice_preferences(row.voicePreferences)
-    packages, cards = await _skills(row)
+    packages, cards = await _skills(row, user_id)
     avatar, avatar_bytes = await packaged_avatar(row.avatarUrl)
     manifest = ExpertManifest(
         identity=PackagedIdentity(
@@ -80,8 +134,7 @@ async def build_expert_package(row: prisma.models.Expert) -> ExpertPackage:
         avatar=avatar,
         tool_profile=row.toolProfile,
     )
-    _within_the_manifest_cap(manifest)
-    return ExpertPackage(
+    package = ExpertPackage(
         manifest=manifest,
         skills=packages,
         avatar_bytes=avatar_bytes,
@@ -91,49 +144,72 @@ async def build_expert_package(row: prisma.models.Expert) -> ExpertPackage:
             else None
         ),
     )
+    validate_expert_package(package)
+    return package
 
 
-def _within_the_manifest_cap(manifest: ExpertManifest) -> None:
-    """Refuse here rather than hand out a file our own reader would reject —
-    the route owes a 413, not a download that fails on re-import."""
-    size = len(manifest_json(manifest))
-    if size > MAX_MANIFEST_BYTES:
-        raise ExpertPackageError(
-            f"expert.json would be {size} bytes; the limit is {MAX_MANIFEST_BYTES}",
-            over_limit=True,
-        )
+async def _skills(row: prisma.models.Expert, user_id: str) -> _Skills:
+    """The expert's skills as whole packages, with a card for each.
+
+    A hired expert's live in its own skill folder; a roster template's are the
+    Skills Hub listings it bundles. Either way a card is only written for a
+    skill whose package was actually produced, because the reader refuses a
+    manifest and a tree that disagree.
+    """
+    roster = _Roster()
+    if row.isTemplate:
+        await _bundled_skills(row, user_id, roster)
+    elif row.ownerUserId:
+        await _owned_skills(row, row.ownerUserId, roster)
+    return roster.packages, roster.cards
 
 
-async def _skills(
-    row: prisma.models.Expert,
-) -> tuple[dict[str, SkillPackage], list[PackagedSkill]]:
-    """The expert's own skill folders. A card is only written for a skill whose
-    files were actually read, because the reader refuses a manifest and a tree
-    that disagree."""
-    if not row.ownerUserId:
-        # A roster template's skills live in a Skills Hub listing, not in any
-        # user's workspace; serving those from the listing snapshot is B3.
-        return {}, []
-    packages: dict[str, SkillPackage] = {}
-    cards: list[PackagedSkill] = []
-    for skill in (await list_user_skills(row.ownerUserId, expert_id=row.id))[
-        :MAX_PACKAGE_SKILLS
-    ]:
+async def _owned_skills(
+    row: prisma.models.Expert, owner_user_id: str, roster: _Roster
+) -> None:
+    for skill in await list_user_skills(owner_user_id, expert_id=row.id):
         slug = skill_slug(skill.name)
-        package = await read_user_skill_package(row.ownerUserId, slug, expert_id=row.id)
+        try:
+            package = await read_user_skill_package(
+                owner_user_id, slug, expert_id=row.id
+            )
+        except SkillPackageError as exc:
+            # A stored tree the skill download would refuse to serve whole.
+            raise ExpertPackageError(
+                f"skill '{slug[:120]}': {exc}", over_limit=exc.over_limit
+            )
         if package is None:
             logger.info("Expert %s skill '%s' has no package to export", row.id, slug)
             continue
-        packages[slug] = package
-        cards.append(
-            PackagedSkill(slug=slug, name=skill.name, description=skill.description)
-        )
-    return packages, cards
+        roster.admit(slug, skill.name, skill.description, package)
+
+
+async def _bundled_skills(
+    row: prisma.models.Expert, user_id: str, roster: _Roster
+) -> None:
+    """A roster template's skills, read the way a hire installs them: only the
+    live listings, only behind the Skills Hub flag for *user_id*, and rendered
+    as the install would store them — so a listing a hire would skip is left
+    out of the package too."""
+    for listing in await experts_db.bundled_skill_listings(user_id, row.id):
+        try:
+            skill, package = skill_db.installable_skill(listing)
+        except ValueError as exc:
+            logger.info(
+                "Template %s bundled skill '%s' cannot be packaged: %s",
+                row.id,
+                listing.slug[:120],
+                exc,
+            )
+            continue
+        if skill.name in roster.packages:
+            continue
+        roster.admit(skill.name, skill.name, skill.description, package)
 
 
 async def _workflows(row: prisma.models.Expert) -> list[PackagedWorkflow]:
     workflows = []
-    for workflow in (row.Workflows or [])[:MAX_PACKAGE_WORKFLOWS]:
+    for workflow in row.Workflows or []:
         packaged = await _workflow(workflow, row.ownerUserId)
         if packaged is None:
             logger.info(
@@ -141,6 +217,15 @@ async def _workflows(row: prisma.models.Expert) -> list[PackagedWorkflow]:
             )
             continue
         workflows.append(packaged)
+        if len(workflows) > MAX_PACKAGE_WORKFLOWS:
+            # Installing has no such cap, so a valid expert can be over it; a
+            # package quietly missing runnable workflows is not a backup, and
+            # the graphs of the rest are not worth reading to say so.
+            raise ExpertPackageError(
+                f"expert has more than {MAX_PACKAGE_WORKFLOWS} exportable "
+                f"workflows; the limit is {MAX_PACKAGE_WORKFLOWS}",
+                over_limit=True,
+            )
     return workflows
 
 

@@ -633,8 +633,7 @@ async def delete_user_skill(
     return slug
 
 
-async def store_user_skill(
-    user_id: str,
+def prepare_user_skill(
     *,
     name: str,
     description: str,
@@ -642,25 +641,15 @@ async def store_user_skill(
     triggers: list[str] | None = None,
     version: str | None = None,
     extra: Mapping[str, Any] | None = None,
-    files: list[SkillFile] | None = None,
-    expert_id: str | None = None,
-    scope: WorkspaceScope | None = None,
 ) -> ParsedSkill:
-    """Validate + persist a user-distilled skill, returning the stored skill.
+    """Normalise and validate a skill's fields into exactly the
+    :class:`ParsedSkill` that :func:`store_user_skill` persists, without
+    writing anything.
 
-    The skill lands in *expert_id*'s folder (personal Otto's when
-    ``None``) and becomes that owner's skill. Shared by the ``store_skill``
-    copilot tool and the REST ``POST /skills`` upload endpoint so both honour
-    the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
-    failure, :class:`SkillLimitError` when the per-user cap is reached, and
-    propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
-    workspace write error) to the caller.
-
-    *files* is the whole package: it replaces the folder's contents, so a
-    file the caller leaves out is deleted.  ``None`` — every single-file
-    caller — leaves the existing siblings alone, which is what keeps the
-    model's own ``store_skill`` from wiping a package it only rewrote the
-    body of.
+    Rendered with :func:`render_skill_markdown`, the result is the ``SKILL.md``
+    an install would store — what an export of a skill that is not yet
+    installed anywhere carries.  Raises :class:`ValueError` for any
+    validation failure, exactly as the write would.
     """
     name = skill_slug(name)
     # Strip any server-injected XML tags (``<available_skills>``,
@@ -702,7 +691,7 @@ async def store_user_skill(
             f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
         )
 
-    parsed = ParsedSkill(
+    return ParsedSkill(
         name=name,
         description=description,
         body=body,
@@ -710,6 +699,47 @@ async def store_user_skill(
         version=version,
         extra=dict(extra or {}),
     )
+
+
+async def store_user_skill(
+    user_id: str,
+    *,
+    name: str,
+    description: str,
+    body: str,
+    triggers: list[str] | None = None,
+    version: str | None = None,
+    extra: Mapping[str, Any] | None = None,
+    files: list[SkillFile] | None = None,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> ParsedSkill:
+    """Validate + persist a user-distilled skill, returning the stored skill.
+
+    The skill lands in *expert_id*'s folder (personal Otto's when
+    ``None``) and becomes that owner's skill. Shared by the ``store_skill``
+    copilot tool and the REST ``POST /skills`` upload endpoint so both honour
+    the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
+    failure, :class:`SkillLimitError` when the per-user cap is reached, and
+    propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
+    workspace write error) to the caller.
+
+    *files* is the whole package: it replaces the folder's contents, so a
+    file the caller leaves out is deleted.  ``None`` — every single-file
+    caller — leaves the existing siblings alone, which is what keeps the
+    model's own ``store_skill`` from wiping a package it only rewrote the
+    body of.
+    """
+    parsed = prepare_user_skill(
+        name=name,
+        description=description,
+        body=body,
+        triggers=triggers,
+        version=version,
+        extra=extra,
+    )
+    name, description = parsed.name, parsed.description
+    triggers = list(parsed.triggers)
     rendered = render_skill_markdown(parsed)
     if files is not None:
         # Whole-package validation before the first write, so a package that

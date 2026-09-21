@@ -6,6 +6,7 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.copilot.tools.skills import read_user_skill_package
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
@@ -182,6 +183,46 @@ async def test_live_skills_holds_only_listings_on_the_shelf():
 
     assert list(live) == [live_one.id]
     assert live[live_one.id].name == "Live One"
+
+
+async def test_live_listings_are_the_same_rows_with_their_active_version():
+    live_one = await _make_listing("live-one")
+    never = await _make_listing("never-approved", approved=False)
+
+    listings = await skill_db.get_live_listings([live_one.id, never.id])
+
+    assert list(listings) == [live_one.id]
+    assert listings[live_one.id].ActiveVersion is not None
+    assert listings[live_one.id].ActiveVersion.body == "# body\n"
+
+
+async def test_an_installable_skill_is_exactly_what_an_install_stores():
+    """An export of a template carries the listing without installing it, so
+    what it renders has to be byte-for-byte what a hire would have written."""
+    listing = await _make_listing("brand-voice-guide", body="# Voice\n\nBe kind.\n")
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        await skill_db.install_marketplace_skill(
+            "user-1", listing.slug, expert_id="expert-a"
+        )
+        stored = await read_user_skill_package(
+            "user-1", listing.slug, expert_id="expert-a"
+        )
+    parsed, package = skill_db.installable_skill(listing)
+
+    assert stored is not None
+    assert package.skill_md == stored.skill_md
+    assert package.files == stored.files == []
+    assert parsed.name == "brand-voice-guide"
+    assert parsed.description == "brand-voice-guide description"
+    assert parsed.version == "1"
+
+
+async def test_an_installable_skill_fails_where_the_install_would():
+    listing = await _make_listing("no-body", body="   ")
+
+    with pytest.raises(ValueError, match="body is required"):
+        skill_db.installable_skill(listing)
 
 
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
