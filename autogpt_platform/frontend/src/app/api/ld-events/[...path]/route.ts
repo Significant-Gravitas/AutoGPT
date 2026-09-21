@@ -4,21 +4,16 @@ export const dynamic = "force-dynamic";
 
 const LAUNCHDARKLY_EVENTS_ORIGIN = "https://events.launchdarkly.com";
 
-/**
- * Forward a LaunchDarkly analytics flush.
- *
- * The SDK posts to `events.launchdarkly.com`, which every tracker blocklist
- * carries, so each flush is rejected in the browser and printed twice to the
- * console. Routing it through our own origin keeps the events and drops the
- * noise; `eventsUrl` in the LaunchDarkly provider points here.
- */
+// `events.launchdarkly.com` is on every tracker blocklist, so a flush straight
+// to it is rejected in the browser and printed twice to the console. The LD
+// provider's `eventsUrl` points here instead.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const path = (await params).path.join("/");
   if (!isEventsPath(path)) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new NextResponse(null, { status: 404 });
   }
 
   try {

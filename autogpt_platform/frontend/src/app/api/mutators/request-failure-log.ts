@@ -1,4 +1,4 @@
-export interface RequestFailure {
+interface RequestFailure {
   status: number;
   method: string;
   url: string;
