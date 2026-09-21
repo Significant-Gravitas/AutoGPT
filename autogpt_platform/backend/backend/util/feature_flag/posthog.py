@@ -13,11 +13,9 @@ from typing import Any
 
 from posthog import Posthog
 
-from backend.util.feature_flag_definition_cache import (
-    get_flag_definition_cache,
-    refresh_interval_seconds,
-)
 from backend.util.settings import Settings
+
+from .definition_cache import get_flag_definition_cache, refresh_interval_seconds
 
 logger = logging.getLogger(__name__)
 
