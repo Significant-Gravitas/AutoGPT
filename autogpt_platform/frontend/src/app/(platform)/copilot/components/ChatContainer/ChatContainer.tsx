@@ -408,6 +408,9 @@ export const ChatContainer = ({
                                 <VoiceModeBar
                                   state={voice.state}
                                   statusLabel={voice.statusLabel}
+                                  failure={voice.failure}
+                                  onRetry={voice.retryFailedUtterance}
+                                  onDownload={voice.downloadFailedUtterance}
                                   leaveButton={
                                     <VoiceModeButton
                                       isActive

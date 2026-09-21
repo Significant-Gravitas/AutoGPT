@@ -2,10 +2,10 @@
 
 Run with: poetry run python -m backend.api.features.experts.seed
 
-Upserts the fifteen roster templates (Maria, Jules, Nadia, Remy, Mina, Theo,
-Quinn, Max, Frankie, Harper, Vera, Ellis, Devon, Riley, Jordan)
-by template name, so repeated runs keep the same template ids. Preload
-workflows and bundled Skills Hub skills are resolved from listing slugs and
+Upserts the twenty-four roster templates (Maria, Jules, Nadia, Remy, Mina,
+Theo, Quinn, Max, Frankie, Harper, Vera, Ellis, Devon, Riley, Jordan, Sasha,
+Priya, Marco, Noor, Casey, Ines, Omar, Lena, Kai) by template name, so repeated
+runs keep the same template ids. Preload workflows and bundled Skills Hub skills are resolved from listing slugs and
 all are validated before any template is mutated, so
 ``backend.api.features.store.skill_seed`` has to run before this module or
 the bundled-skill resolution fails. Each upsert also refreshes the
@@ -29,6 +29,8 @@ from backend.api.features.experts.models import (
     encode_day_one,
     encode_voice_preferences,
 )
+from backend.api.features.experts.roster_types import RosterEntry, RoutineSeed
+from backend.api.features.experts.roster_wave_three import WAVE_THREE_ROSTER
 from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
@@ -42,86 +44,6 @@ logger = logging.getLogger(__name__)
 # checked-in marketplace assets (backend/agents) publish under and the live
 # marketplace creator of the roster listings.
 OFFICIAL_CREATOR_USERNAME = "autogpt"
-
-
-class PreloadSeed(TypedDict):
-    slug: str
-    # Unix cron cadence for install-time scheduling (issue #13714); None
-    # means the workflow installs without a schedule. Applied to template
-    # rows on every seed run, but only copied to hires made afterwards —
-    # existing hires keep the schedule they were created with.
-    #
-    # A cadence fires unattended from the day of hire, so it may only go on a
-    # workflow that acts on nothing outside the platform — typically research.
-    # The marketplace reviewer is that gate; nothing here enforces it.
-    cron: str | None
-
-
-class RoutineSeed(TypedDict):
-    # Stable slug; the key `_sync_routines` matches a template row on, and the
-    # name a hire's row keeps for the life of the expert. Renaming one orphans
-    # the old row on every existing hire, so treat it as permanent.
-    key: str
-    title: str
-    # The proposal, in the expert's own voice: what this routine would do each
-    # time it runs. Not what runs — switching the routine on rewrites this with
-    # the owner's answers before anything is scheduled.
-    prompt: str
-    # Suggested fire times, 5-field and resolved in the owner's timezone.
-    # Several because one routine can legitimately have more than one (a
-    # callback sweep at 08:30 and again at 13:00 is one thing the owner turned
-    # on).
-    #
-    # A minute of `H` means "some minute inside this hour" — plain cron has no
-    # way to say that, so this borrows Jenkins's spelling, and `spread_cron`
-    # picks the real minute per owner and routine at install. Use it whenever
-    # the hour is what matters, which for a standing job it almost always is:
-    # five personas that all literally say `0 9` arrive on one account as a
-    # 09:00 pile-up against the cap on concurrent turns, and the runs that lose
-    # are dropped rather than retried. Write a real minute only when that exact
-    # minute is the point.
-    crons: list[str]
-    # What the expert must ask before this can run — which repo, which inbox,
-    # what hour. Straight from the source package's installer block. A routine
-    # with unanswered asks cannot be switched on, which is what stops a seeded
-    # proposal from firing against guesses.
-    asks: list[str]
-    # Where each turn lands. THREAD (the default) gives the routine one durable
-    # thread of its own, which is also its memory when `graphiti-memory` is
-    # off; FRESH starts a new chat every time and suits work that re-reads its
-    # own source anyway.
-    session_mode: str
-
-
-class RosterEntry(TypedDict):
-    name: str
-    role: str
-    job_title: str
-    tagline: str
-    avatar_url: str | None
-    bio: str
-    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
-    # environment, so the seed resolves these to ids and the relation stores those.
-    bundled_skills: list[str]
-    # Canonical marketplace categories, so the category chip narrows the roster.
-    # Declared here rather than derived from `role`: "Ops" folds onto no
-    # canonical value, and a raised expert's role is free text.
-    categories: list[str]
-    identity: str
-    voice_preferences: str
-    # Two writing samples in the persona's voice; the hire flow shows these as
-    # the "how should {name} write?" pick right after hire.
-    voice_samples: list[VoiceSample]
-    boundaries: str
-    # Up to three rows for the profile's "sets up on day one"; empty hides it.
-    day_one: list[ExpertDayOneItem]
-    preloads: list[PreloadSeed]
-    # Standing work this persona offers. Every one arrives switched OFF and
-    # unable to reach a single connected service (see
-    # ``ExpertRoutine.grantsCredentials``) — a roster entry is read by whoever
-    # reviews the PR, not by the owner whose account it will run on, so the
-    # proposal is all a template is allowed to ship.
-    routines: list[RoutineSeed]
 
 
 ROSTER: list[RosterEntry] = [
@@ -1020,6 +942,7 @@ You do not give legal advice. You do not say language is legal, enforceable, mar
         # required key is what makes somebody make it.
         "routines": [],
     },
+    *WAVE_THREE_ROSTER,
 ]
 
 

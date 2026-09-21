@@ -1,4 +1,5 @@
 import { act } from "@testing-library/react";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
@@ -43,11 +44,17 @@ vi.mock("@/components/ai-elements/message", () => ({
   Message: ({
     children,
     from,
+    "data-message-id": messageId,
   }: {
     children: React.ReactNode;
     from?: string;
+    "data-message-id"?: string;
   }) => (
-    <div data-testid={`message-${from ?? "unknown"}`} data-from={from}>
+    <div
+      data-testid={`message-${from ?? "unknown"}`}
+      data-from={from}
+      data-message-id={messageId}
+    >
       {children}
     </div>
   ),
@@ -67,8 +74,18 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: ({ parts }: { parts: unknown[] }) => (
-    <div data-testid="chain-message-parts" data-parts={JSON.stringify(parts)} />
+  ChainMessageParts: ({
+    parts,
+    isCurrentlyStreaming,
+  }: {
+    parts: unknown[];
+    isCurrentlyStreaming?: boolean;
+  }) => (
+    <div
+      data-testid="chain-message-parts"
+      data-parts={JSON.stringify(parts)}
+      data-streaming={String(!!isCurrentlyStreaming)}
+    />
   ),
 }));
 
@@ -954,5 +971,250 @@ describe("ChatMessagesContainer — pendingSend", () => {
 
     expect(screen.queryByText("tell me about this")).toBeNull();
     expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+});
+
+// ── mid-turn drain split ──────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — mid-turn follow-up", () => {
+  afterEach(cleanup);
+
+  const toolPart = {
+    type: "tool-read_file",
+    toolCallId: "call-1",
+    state: "output-available",
+    input: {},
+    output: "ok",
+  };
+
+  const drainedTurn = [
+    {
+      id: "user-1",
+      role: "user" as const,
+      parts: [{ type: "text" as const, text: "plan my week" }],
+    },
+    {
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [
+        toolPart,
+        {
+          type: "data-pending-drained",
+          id: "hint-0",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pm-1", content: "also check Friday" }],
+          },
+        },
+        { ...toolPart, toolCallId: "call-2" },
+      ],
+    },
+  ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+  function renderedRowIds() {
+    return Array.from(document.querySelectorAll("[data-message-id]")).map(
+      (el) => el.getAttribute("data-message-id"),
+    );
+  }
+
+  it("renders the drained message between the work before and after it", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(
+      Array.from(document.querySelectorAll('[data-testid="message-user"]')),
+    ).toHaveLength(2);
+  });
+
+  it("settles the chain above the follow-up and streams only the last one", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={drainedTurn}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByTestId("chain-message-parts")
+        .map((el) => el.getAttribute("data-streaming")),
+    ).toEqual(["false", "true"]);
+  });
+
+  it("draws a promoted fallback bubble once its hint carries the text", () => {
+    // The backstop GET promoted the chip above the assistant before the SSE
+    // hint arrived; the hint then draws the same follow-up at the drain
+    // point. Exactly one bubble, between the two assistant segments.
+    const withFallback = [
+      drainedTurn[0],
+      {
+        id: "promoted-midturn-pending-chip-local-1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "also check Friday" }],
+      },
+      drainedTurn[1],
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withFallback}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    // The prompt and one follow-up: the fallback row is not drawn as well.
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
+  it("keeps a text-less hint out of the tool chain it lands in", () => {
+    // The hint is stream bookkeeping: left in the parts, it would split the
+    // chain around it into two.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                drainedTurn[1].parts[0],
+                {
+                  type: "data-pending-drained",
+                  id: "hint-0",
+                  data: { drainedCount: 1 },
+                },
+                drainedTurn[1].parts[2],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    const renderedParts = JSON.parse(
+      screen.getByTestId("chain-message-parts").dataset.parts ?? "[]",
+    ) as { type: string }[];
+    expect(renderedParts.map((p) => p.type)).toEqual([
+      "tool-read_file",
+      "tool-read_file",
+    ]);
+  });
+
+  it("shows the thinking indicator while the follow-up is the newest thing in the turn", () => {
+    // Answer text is normally inflight, but a drain hint landing after it
+    // means the assistant has not produced anything for the follow-up yet.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              ...drainedTurn[1],
+              parts: [
+                { type: "text", text: "Here is your week.", state: "done" },
+                drainedTurn[1].parts[1],
+              ],
+            },
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("draws one follow-up when the promoted bubble sits behind the stream's placeholder row", () => {
+    // The live shape: the prompt, the status-only placeholder `useChat`
+    // leaves before the server's message id arrives, the bubble the
+    // auto-continue effect promoted, then the assistant whose hint carries
+    // the same text.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={
+          [
+            drainedTurn[0],
+            {
+              id: "placeholder-1",
+              role: "assistant",
+              parts: [{ type: "data-status", data: { message: "Preparing…" } }],
+            },
+            {
+              id: "promoted-auto-continue-pending-chip-local-1",
+              role: "user",
+              parts: [{ type: "text", text: "also check Friday" }],
+            },
+            drainedTurn[1],
+          ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[]
+        }
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual([
+      "user-1",
+      "placeholder-1",
+      "assistant-1#seg0",
+      "midturn-pm-1",
+      "assistant-1",
+    ]);
+    expect(screen.getAllByTestId("message-user")).toHaveLength(2);
+  });
+
+  it("leaves the turn whole when the hint carries no text", () => {
+    const withoutText = [
+      drainedTurn[0],
+      {
+        ...drainedTurn[1],
+        parts: [
+          drainedTurn[1].parts[0],
+          {
+            type: "data-pending-drained",
+            id: "hint-0",
+            data: { drainedCount: 1 },
+          },
+          drainedTurn[1].parts[2],
+        ],
+      },
+    ] as unknown as UIMessage<unknown, UIDataTypes, UITools>[];
+
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        messages={withoutText}
+      />,
+    );
+
+    expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
   });
 });
