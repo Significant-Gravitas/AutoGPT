@@ -59,7 +59,7 @@ class MessageSessionTool(BaseTool):
     def description(self) -> str:
         return (
             "Send something to another of your live sessions — find it with "
-            "find_session. It arrives on that session's next turn; you get no "
+            "tool:find_session. It arrives on that session's next turn; you get no "
             "reply here, so say what you need and who you are. Use "
             "delegate_to_expert when nobody is working on it yet."
         )
@@ -113,7 +113,7 @@ class MessageSessionTool(BaseTool):
         target = await get_chat_session_metadata(target_id)
         if target is None or target.user_id != user_id:
             return self._error(
-                f"No session {target_id} of yours. Use find_session.", session
+                f"No session {target_id} of yours. Use tool:find_session.", session
             )
 
         refusal = take_session_message_slot()
@@ -218,6 +218,6 @@ def _render(sender: ChatSession, body: str) -> str:
         f'<session_message from_session_id="{sender.session_id}">\n'
         f"{escape_prompt_xml_tags(body)}\n"
         f"</session_message>\n"
-        f'Reply with message_session(session_id="{sender.session_id}", ...) '
+        f'Reply with tool:message_session (session_id="{sender.session_id}") '
         f"if an answer is needed.{taint}"
     )

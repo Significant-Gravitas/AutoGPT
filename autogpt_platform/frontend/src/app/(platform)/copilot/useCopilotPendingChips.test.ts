@@ -68,6 +68,26 @@ describe("useCopilotPendingChips", () => {
   });
   afterEach(cleanup);
 
+  it("queues a message on a plain-HTTP LAN origin, where crypto.randomUUID is missing", () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    try {
+      const { view } = setupHook([assistantMessage(0)]);
+
+      act(() => {
+        view.result.current.queueMessage("sent while a turn was streaming");
+      });
+
+      expect(view.result.current.queuedMessages).toEqual([
+        "sent while a turn was streaming",
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("promotes a queued chip to a bubble the instant a data-pending-drained hint arrives", async () => {
     const { view, getMessages } = setupHook([assistantMessage(0)]);
 

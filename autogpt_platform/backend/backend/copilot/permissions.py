@@ -130,6 +130,7 @@ ToolName = Literal[
     "list_expert_workflows",
     "list_folders",
     "list_presets",
+    "list_routines",
     "list_schedules",
     "list_skills",
     "list_team",
@@ -156,6 +157,7 @@ ToolName = Literal[
     "run_capability",
     "run_sub_session",
     "schedule_followup",
+    "schedule_routine",
     "search_docs",
     "search_feature_requests",
     "setup_agent_webhook_trigger",
@@ -203,6 +205,82 @@ LEGACY_TOOL_ALIASES: dict[str, str] = {
 }
 
 DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset(LEGACY_TOOL_ALIASES)
+
+
+# What a routine reaches when nobody has bound it to anything.  A roster
+# template is read by whoever reviews the PR, not by the owner whose account it
+# will run on, so a seeded routine ships able to research, think, read its own
+# workspace and write to its own thread — and nothing else.  Denying the names
+# that carry a credential outward is what makes "a cadence may only carry work
+# that acts on nothing outside the platform" (``PreloadSeed.cron``) a boundary
+# rather than a comment.  An owner who wants their queue swept says so when they
+# switch the routine on, and that answer is what lifts this.
+#
+# The grant is the whole rule at fire time.  Where the prompt came from decides
+# what that grant STARTS as — a template arrives ungranted, and a routine the
+# owner dictated in their own chat arrives granted, because the same words typed
+# into the same chat already run with every tool here and taking ``run_agent``
+# off somebody's own morning briefing protects nobody.  Both remain the owner's
+# to change, and neither reads as permission on its own.
+UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        # The two capability gates, so denying them withholds every block and
+        # every MCP server rather than one tool's worth of them.
+        BLOCK_GATE,
+        MCP_GATE,
+        "run_agent",
+        "post_to_chat_platform",
+        # ``bash_exec`` is the one that looks harmless and is not. On E2B the
+        # sandbox is handed ``get_integration_env_vars(user_id)`` — the
+        # owner's live GH_TOKEN and friends — keyed on the user alone, with no
+        # reference to this filter or to the grant. A shell plus internet
+        # access plus the owner's tokens in ``env`` is the whole mute undone by
+        # one ``echo $GH_TOKEN``, so an ungranted routine does not get a shell.
+        "bash_exec",
+    }
+)
+
+
+# Refused on EVERY routine turn, however the routine was written and whatever
+# its owner granted it.  An unattended turn reads things nobody is watching it
+# read — an issue tracker, an inbox, a web page — and text in any of them can
+# ask it to schedule more work.  Without this, one injected page buys standing
+# access to the account forever: a routine that can write a routine can grant
+# itself the credentials its own prompt was denied, and the owner sees a
+# schedule they never agreed to.  Standing work is created where somebody is
+# present to refuse it.
+ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
+    {
+        "schedule_routine",
+        "schedule_followup",
+        "setup_agent_webhook_trigger",
+    }
+)
+
+
+def routine_disabled_tools(*, granted: bool) -> frozenset[str]:
+    """Tools to refuse on a routine's unattended turn.
+
+    *granted* is the owner's answer to "may this routine use my connected
+    services", which they give per routine when they switch it on.  It only ever
+    removes the outward-reaching denials; nothing makes a routine able to
+    schedule more of itself.
+
+    Deliberately a denylist of what reaches *outward*, not a narrow allowlist:
+    reading, searching, and drafting into the thread are the whole point of an
+    unattended routine, and a routine that can do none of those is not worth
+    shipping off.
+
+    Kept here rather than beside the other tool gates in ``tools/__init__``:
+    the scheduler needs it at import time, and ``executor.scheduler`` importing
+    ``copilot.tools`` closes a cycle (tools -> helpers -> executor -> scheduler).
+    ``routines_test`` asserts every name here is a live tool or gate.
+    """
+    if granted:
+        return ROUTINE_SELF_ESCALATION_TOOLS
+    return UNGRANTED_ROUTINE_DENIED_TOOLS | ROUTINE_SELF_ESCALATION_TOOLS
+
+
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -270,10 +348,24 @@ _IMPLIED_GRANTS: dict[str, tuple[str, ...]] = {
 
 
 def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
-    """Expand an allow set with the tools its entries imply."""
-    return allowed.union(
+    """Expand an allow set with the tools its entries imply.
+
+    A deferred tool is no longer handed to the model, so allowing it without
+    ``run_capability`` allows nothing: the dispatcher is the only way in.
+    """
+    grants = allowed.union(
         implied for name in allowed for implied in _IMPLIED_GRANTS.get(name, ())
     )
+    if grants & _deferred_tool_names():
+        grants = grants | {"run_capability"}
+    return grants
+
+
+def _deferred_tool_names() -> frozenset[str]:
+    """The registry's deferred set, imported late (heavy tool imports)."""
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES  # noqa: PLC0415
+
+    return DEFERRED_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
