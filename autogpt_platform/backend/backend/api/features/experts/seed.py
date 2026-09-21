@@ -13,9 +13,10 @@ template, so roster changes reach existing users and not just new hires.
 import asyncio
 import logging
 from collections.abc import Mapping
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import prisma.models
+import prisma.types
 
 from backend.api.features.experts.models import (
     ExpertDayOneItem,
@@ -320,17 +321,21 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     # Never adopt a template an admin published: it shares the roster's shape
     # but its content belongs to the expert it came from, not to ROSTER.
     #
-    # Keyed on publishedPackage rather than publishedFromExpertId, which is
-    # SetNull: deleting the source expert (or its owner) clears that column and
-    # would hand the orphaned template straight back to the seeder. The package
-    # is written once at publish and nothing clears it, and a roster template
-    # never has one because it is built live.
+    # Keyed on the published package rather than publishedFromExpertId, which
+    # is SetNull: deleting the source expert (or its owner) clears that column
+    # and would hand the orphaned template straight back to the seeder. The
+    # package row is written once at publish and nothing clears it, and a
+    # roster template never has one because it is built live. Filtering on the
+    # relation reads nothing of the blob itself.
     template = await prisma.models.Expert.prisma().find_first(
-        where={
-            "isTemplate": True,
-            "name": entry["name"],
-            "publishedPackage": None,
-        },
+        where=cast(
+            prisma.types.ExpertWhereInput,
+            {
+                "isTemplate": True,
+                "name": entry["name"],
+                "PublishedPackage": {"is": None},
+            },
+        ),
         order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
     if template is None:

@@ -244,16 +244,12 @@ def _to_model(
     """Translate the overloaded ``voicePreferences`` column safely.
 
     Template rows store an internal ``{description, samples}`` JSON envelope
-    so the hire flow can present choices. Hired rows must store only the final
-    plain-text preference that is safe to render in prompts. Keep this branch
-    on ``isTemplate`` until those representations have separate columns.
+    so the hire flow can present choices, and so does an expert imported from
+    a package whose soul carried samples. Every row is decoded the same way:
+    a plain-text preference passes through untouched, and an envelope is
+    never rendered raw into a prompt whichever kind of row it sits on.
     """
-    if row.isTemplate:
-        voice_preferences, voice_samples = decode_voice_preferences(
-            row.voicePreferences
-        )
-    else:
-        voice_preferences, voice_samples = row.voicePreferences, []
+    voice_preferences, voice_samples = decode_voice_preferences(row.voicePreferences)
     return Expert(
         id=row.id,
         name=row.name,
@@ -349,16 +345,36 @@ async def with_bundled_skills(
     ]
 
 
+async def _bundled_rows(
+    user_id: str | None, template_ids: list[str]
+) -> list[prisma.models.ExpertSkillListing]:
+    """The roster's skill links for *template_ids*, in roster order — or none
+    while the Skills Hub is off for *user_id*, so nothing is linked, installed
+    or packaged that the Hub routes would 404."""
+    # The Hub routes' key, so nothing is linked or installed that would 404.
+    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
+        return []
+    return await prisma.models.ExpertSkillListing.prisma().find_many(
+        where={"expertId": {"in": template_ids}}, order={"position": "asc"}
+    )
+
+
+async def bundled_skill_listings(
+    user_id: str | None, template_id: str
+) -> list[prisma.models.SkillListing]:
+    """The live Hub listings *template_id* bundles, whole and in roster order:
+    the rows ``hire_expert`` installs from, behind the same flag and the same
+    liveness checks, for an export to carry without installing."""
+    rows = await _bundled_rows(user_id, [template_id])
+    live = await skill_db.get_live_listings(sorted({r.skillListingId for r in rows}))
+    return [listing for row in rows if (listing := live.get(row.skillListingId))]
+
+
 async def _live_bundled_skills(
     user_id: str | None, template_ids: list[str]
 ) -> dict[str, list[ExpertBundledSkill]]:
     """Per template id, the live Hub listings it bundles, in roster order."""
-    # The Hub routes' key, so nothing is linked or installed that would 404.
-    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or "anonymous"):
-        return {}
-    rows = await prisma.models.ExpertSkillListing.prisma().find_many(
-        where={"expertId": {"in": template_ids}}, order={"position": "asc"}
-    )
+    rows = await _bundled_rows(user_id, template_ids)
     live = await skill_db.get_live_skills(sorted({r.skillListingId for r in rows}))
     return {
         template_id: [
@@ -1483,6 +1499,20 @@ async def get_template_row(template_id: str) -> prisma.models.Expert | None:
     )
 
 
+async def get_published_package(template_id: str) -> bytes | None:
+    """The ``.expert.zip`` a template was published from, or ``None`` for a
+    roster template, which is built live.
+
+    The only read of the blob: it lives in its own table precisely so that a
+    roster listing, a hire's template lookup or an export row never fetches
+    up to 20 MiB per template it did not ask for.
+    """
+    row = await prisma.models.ExpertPublishedPackage.prisma().find_unique(
+        where={"expertId": template_id}
+    )
+    return row.package.decode() if row else None
+
+
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
     updated = await prisma.models.Expert.prisma().update_many(
         where={
@@ -1782,12 +1812,11 @@ async def _install_published_skills(
     effort, like every other install here: a hire missing one skill is better
     than no hire.
     """
-    if not template.publishedPackage:
+    published = await get_published_package(template.id)
+    if published is None:
         return
     try:
-        package = await run_in_threadpool(
-            package_from_zip, template.publishedPackage.decode()
-        )
+        package = await run_in_threadpool(package_from_zip, published)
     except Exception:
         logger.exception(f"Published package of template #{template.id} is unreadable")
         return

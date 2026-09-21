@@ -418,8 +418,14 @@ async def import_expert_package(
         Depends(require_expert_portability_flag),
     ],
     responses={
-        400: {"description": "One of the expert's agents is not published"},
+        400: {
+            "description": (
+                "One of the expert's agents is not published, or the expert "
+                "cannot be packaged"
+            )
+        },
         404: {"description": "Expert not found"},
+        413: {"description": "Expert is too large to package"},
     },
 )
 async def publish_expert_as_template(
@@ -436,7 +442,7 @@ async def publish_expert_as_template(
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     try:
-        template = await publish_expert(row)
+        template = await publish_expert(row, user_id=user_id)
     except UnpublishedWorkflowsError as exc:
         raise fastapi.HTTPException(
             status_code=400,
@@ -445,6 +451,12 @@ async def publish_expert_as_template(
                 "workflows": exc.workflows,
                 "message": "Publish this agent first",
             },
+        )
+    except ExpertPackageError as exc:
+        # The same package is built as for a download, so it can be refused
+        # for the same reasons and owes the same answer, not a 500.
+        raise fastapi.HTTPException(
+            status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
     published = await experts_db.get_template(template.id)
     if published is None:
@@ -496,7 +508,7 @@ async def download_expert_package(
     row = await experts_db.get_owned_expert_row(user_id, expert_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
-    return await _package_response(row)
+    return await _package_response(row, user_id)
 
 
 @router.get(
@@ -523,21 +535,22 @@ async def download_expert_template_package(
     row = await experts_db.get_template_row(template_id)
     if row is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
-    if row.publishedPackage:
+    if (published := await experts_db.get_published_package(row.id)) is not None:
         # Exactly what was published, rather than a rebuild from an expert
         # that has since moved on.
-        return _zip_response(row.publishedPackage.decode(), row.name)
-    return await _package_response(row)
+        return _zip_response(published, row.name)
+    return await _package_response(row, user_id)
 
 
-async def _package_response(row: prisma.models.Expert) -> Response:
+async def _package_response(row: prisma.models.Expert, user_id: str) -> Response:
     try:
-        package = await build_expert_package(row)
+        package = await build_expert_package(row, user_id=user_id)
+        content = await run_in_threadpool(zip_from_package, package)
     except ExpertPackageError as exc:
         raise fastapi.HTTPException(
             status_code=413 if exc.over_limit else 400, detail=str(exc)
         )
-    return _zip_response(await run_in_threadpool(zip_from_package, package), row.name)
+    return _zip_response(content, row.name)
 
 
 def _zip_response(content: bytes, name: str) -> Response:

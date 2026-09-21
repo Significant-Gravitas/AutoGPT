@@ -19,7 +19,6 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.dependencies import get_optional_user_id, get_request_context
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma import Base64
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
@@ -1907,16 +1906,17 @@ def _mock_package(mocker: pytest_mock.MockerFixture) -> AsyncMock:
 
 
 def test_download_expert_package_returns_a_named_zip(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, test_user_id: str
 ) -> None:
     mocker.patch.object(
         experts_db, "get_owned_expert_row", new_callable=AsyncMock
     ).return_value = _package_row()
-    _mock_package(mocker)
+    build = _mock_package(mocker)
 
     response = client.get("/experts/expert-1/package")
 
     assert response.status_code == 200
+    build.assert_awaited_once_with(_package_row(), user_id=test_user_id)
     assert response.headers["content-type"] == "application/zip"
     assert (
         response.headers["content-disposition"]
@@ -1955,20 +1955,46 @@ def test_download_expert_package_413s_when_the_expert_is_over_a_cap(
     assert "too big" in response.json()["detail"]
 
 
-def test_download_expert_template_package_serves_the_marketplace_copy(
+def test_download_expert_package_413s_when_the_archive_would_be_over_the_cap(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    """The writer's refusal is a cap too — it is the last thing that can
+    reject an export, and it must not surface as a 500."""
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = _package_row()
+    _mock_package(mocker)
+    mocker.patch(
+        "backend.api.features.experts.routes.zip_from_package",
+        side_effect=ExpertPackageError("archive would be huge", over_limit=True),
+    )
+
+    response = client.get("/experts/expert-1/package")
+
+    assert response.status_code == 413
+    assert "archive would be huge" in response.json()["detail"]
+
+
+def test_download_expert_template_package_serves_the_marketplace_copy(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """Built for the downloader: their Skills Hub access decides which
+    bundled skills the template's package carries."""
     mock_row = mocker.patch.object(
         experts_db, "get_template_row", new_callable=AsyncMock
     )
     mock_row.return_value = _package_row()
-    _mock_package(mocker)
+    mocker.patch.object(
+        experts_db, "get_published_package", new_callable=AsyncMock
+    ).return_value = None
+    build = _mock_package(mocker)
 
     response = client.get("/experts/templates/template-1/package")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     mock_row.assert_awaited_once_with("template-1")
+    build.assert_awaited_once_with(_package_row(), user_id=test_user_id)
 
 
 def test_download_expert_template_package_404s_for_an_unknown_template(
@@ -1987,12 +2013,13 @@ def test_download_expert_template_package_serves_what_was_published(
     """A published template hands back the stored zip rather than rebuilding
     from an expert that has since moved on."""
     published = _expert_zip()
-    row = prisma.models.Expert.model_construct(
-        id="template-1", name="Maria Ops", publishedPackage=Base64.encode(published)
-    )
     mocker.patch.object(
         experts_db, "get_template_row", new_callable=AsyncMock
-    ).return_value = row
+    ).return_value = _package_row()
+    stored = mocker.patch.object(
+        experts_db, "get_published_package", new_callable=AsyncMock
+    )
+    stored.return_value = published
     build = mocker.patch(
         "backend.api.features.experts.routes.build_expert_package",
         new_callable=AsyncMock,
@@ -2002,6 +2029,7 @@ def test_download_expert_template_package_serves_what_was_published(
 
     assert response.status_code == 200
     assert response.content == published
+    stored.assert_awaited_once_with("expert-1")
     build.assert_not_awaited()
 
 
@@ -2210,12 +2238,13 @@ def as_admin(mock_jwt_admin):
 
 
 def test_publish_expert_returns_the_marketplace_template(
-    mocker: pytest_mock.MockerFixture, as_admin
+    mocker: pytest_mock.MockerFixture, as_admin, admin_user_id: str
 ) -> None:
+    row = prisma.models.Expert.model_construct(id="expert-1")
     mocker.patch.object(
         experts_db, "get_owned_expert_row", new_callable=AsyncMock
-    ).return_value = prisma.models.Expert.model_construct(id="expert-1")
-    mocker.patch(
+    ).return_value = row
+    publish = mocker.patch(
         "backend.api.features.experts.routes.publish_expert",
         new_callable=AsyncMock,
         return_value=prisma.models.Expert.model_construct(id="template-1"),
@@ -2228,6 +2257,38 @@ def test_publish_expert_returns_the_marketplace_template(
 
     assert response.status_code == 201
     assert response.json()["id"] == "template-1"
+    # Packaged for the admin publishing it, as a download of it would be.
+    publish.assert_awaited_once_with(row, user_id=admin_user_id)
+
+
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (ExpertPackageError("too big", over_limit=True), 413),
+        (ExpertPackageError("malformed"), 400),
+    ],
+    ids=["over-a-cap", "malformed"],
+)
+def test_publish_expert_maps_a_package_refusal_like_a_download_does(
+    mocker: pytest_mock.MockerFixture, as_admin, error: ExpertPackageError, status: int
+) -> None:
+    """Publishing builds the same package as a download, so the exporter's
+    and the writer's refusals owe the same 413/400 — never a 500."""
+    mocker.patch.object(
+        experts_db, "get_owned_expert_row", new_callable=AsyncMock
+    ).return_value = prisma.models.Expert.model_construct(id="expert-1")
+    mocker.patch(
+        "backend.api.features.experts.routes.publish_expert",
+        new_callable=AsyncMock,
+        side_effect=error,
+    )
+    template = mocker.patch.object(experts_db, "get_template", new_callable=AsyncMock)
+
+    response = client.post("/experts/expert-1/publish")
+
+    assert response.status_code == status
+    assert str(error) in response.json()["detail"]
+    template.assert_not_awaited()
 
 
 def test_publish_expert_is_refused_to_a_non_admin(

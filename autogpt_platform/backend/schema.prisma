@@ -1102,8 +1102,10 @@ model Expert {
   PublishedTemplate     Expert? @relation("ExpertPublishedFrom")
 
   // The .expert.zip a published template serves on download and installs its
-  // skills from on hire. Null on roster templates, which are built live.
-  publishedPackage Bytes?
+  // skills from on hire. Its own row (see ExpertPublishedPackage) so the blob
+  // is never read by a roster listing. Absent on roster templates, which are
+  // built live.
+  PublishedPackage ExpertPublishedPackage?
 
   // Set when this expert arrived from an .expert.zip. An import moves an expert
   // the user already had, so it never consumes a lifetime raise slot; without
@@ -1182,6 +1184,21 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId, createdAt, id])
+}
+
+// The .expert.zip an admin-published template was published from, kept apart
+// from Expert so the up-to-20 MiB blob is fetched only by the download and
+// hire paths that read it, never by a roster listing. Written at publish and
+// never cleared: the seeder keys on its presence to leave a published template
+// alone even after its source expert (and so publishedFromExpertId) is gone.
+model ExpertPublishedPackage {
+  expertId String @id
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  package Bytes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its

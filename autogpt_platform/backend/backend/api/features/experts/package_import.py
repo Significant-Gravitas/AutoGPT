@@ -17,7 +17,6 @@ import io
 import logging
 from typing import Literal
 
-import prisma.enums
 import prisma.models
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,9 +25,14 @@ from starlette.datastructures import Headers
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.errors import ACTIVE_EXPERT_LIMIT
 from backend.api.features.experts.experts_db import count_active_experts
+from backend.api.features.experts.listing_versions import (
+    installable_active_version,
+    installable_version,
+)
 from backend.api.features.experts.models import (
     EXPERT_NAME_MAX_LENGTH,
     Expert,
+    encode_voice_preferences,
     validate_avatar_url,
 )
 from backend.api.features.experts.package_model import (
@@ -37,6 +41,7 @@ from backend.api.features.experts.package_model import (
     ExpertManifest,
     ExpertPackage,
     ExpertPackageError,
+    PackagedSoul,
     PackagedWorkflow,
 )
 from backend.api.features.experts.package_skills import install_package_skills
@@ -191,17 +196,16 @@ async def resolve_workflow(
 
 
 async def _listing_version_id(workflow: PackagedWorkflow) -> str | None:
-    """The version the reference points at, if it is on this marketplace and
-    still published."""
+    """The version the reference points at, if a hire could install it from
+    this marketplace.
+
+    Held to the library's own installability test on both paths — the version
+    id and the creator-scoped slug — so a reference to a deleted listing, or
+    a listing whose active version is pending or hidden, falls back to the
+    embedded graph instead of resolving to an install that would fail.
+    """
     if workflow.store_listing_version_id:
-        version = await prisma.models.StoreListingVersion.prisma().find_first(
-            where={
-                "id": workflow.store_listing_version_id,
-                "isDeleted": False,
-                "isAvailable": True,
-                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-            }
-        )
+        version = await installable_version(workflow.store_listing_version_id)
         if version:
             return version.id
     if not (workflow.store_listing_slug and workflow.creator_username):
@@ -214,11 +218,11 @@ async def _listing_version_id(workflow: PackagedWorkflow) -> str | None:
         where={
             "slug": workflow.store_listing_slug,
             "isDeleted": False,
-            "hasApprovedVersion": True,
             "CreatorProfile": {"is": {"username": workflow.creator_username}},
         }
     )
-    return listing.activeVersionId if listing else None
+    version = await installable_active_version(listing)
+    return version.id if version else None
 
 
 def _files(package: ExpertPackage, slug: str) -> list[PackagedFileInfo]:
@@ -318,7 +322,7 @@ async def import_package(
         color=manifest.identity.color,
         categories=manifest.identity.categories,
         identity=manifest.soul.identity,
-        voice_preferences=manifest.soul.voice_preferences,
+        voice_preferences=_voice_preferences(manifest.soul),
         boundaries=manifest.soul.boundaries,
         avatar_url=avatar_url,
         day_one=manifest.day_one,
@@ -337,6 +341,19 @@ async def import_package(
     )
 
 
+def _voice_preferences(soul: PackagedSoul) -> str:
+    """What the soul's voice becomes on the row.
+
+    A voice with samples is stored in the same ``{description, samples}``
+    envelope a roster template uses, which every reader of the column decodes;
+    plain text otherwise, as a raised expert stores it. Storing only the
+    description would throw the samples away on every import.
+    """
+    if not soul.voice_samples:
+        return soul.voice_preferences
+    return encode_voice_preferences(soul.voice_preferences, soul.voice_samples)
+
+
 async def _install_workflows(
     user_id: str,
     expert_id: str,
@@ -351,6 +368,11 @@ async def _install_workflows(
     failed: list[str] = []
     installed: list[tuple[str, PackagedWorkflow, library_model.LibraryAgent]] = []
     for index, workflow in workflows:
+        # A cron with no schedule id reads as "needs setup" everywhere else —
+        # the next credential grant retries it through
+        # ``create_pending_workflow_schedules`` — so a cadence the user turned
+        # off is not written at all, or opting out would only delay the start.
+        cron = workflow.schedule_cron if index in enabled else None
         try:
             # Resolved once and reused: asking twice let an unpublish between
             # the two answers install the agent from the marketplace and then
@@ -363,7 +385,7 @@ async def _install_workflows(
                     "expertId": expert_id,
                     "storeListingVersionId": version_id,
                     "libraryAgentId": agent.id,
-                    "scheduleCron": workflow.schedule_cron,
+                    "scheduleCron": cron,
                 }
             )
         except Exception:
@@ -372,7 +394,7 @@ async def _install_workflows(
             )
             failed.append(workflow.name or f"Workflow {index + 1}")
             continue
-        if index in enabled and workflow.schedule_cron:
+        if cron:
             installed.append((row.id, workflow, agent))
     if not installed:
         return failed
