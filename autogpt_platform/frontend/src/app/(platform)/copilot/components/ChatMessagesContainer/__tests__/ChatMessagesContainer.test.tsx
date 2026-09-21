@@ -909,7 +909,6 @@ describe("ChatMessagesContainer — pendingSend", () => {
   });
 
   afterEach(() => {
-    cleanup();
     vi.unstubAllGlobals();
   });
 
