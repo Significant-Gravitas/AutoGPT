@@ -73,8 +73,15 @@ export function serializeExpertEdits(edits: ExpertImportEdits): string {
 export function getBlockingReason(
   draft: ExpertReviewDraft,
   preview: ExpertPackagePreview | null,
+  mode: "import" | "publish" = "import",
 ): string | null {
-  if (!draft.name.trim()) return "Give this expert a name.";
+  // Publish mode has no name field to point at — the name belongs to the
+  // stored expert — so it names where the fix actually is rather than asking
+  // for something this dialog cannot accept.
+  if (!draft.name.trim())
+    return mode === "publish"
+      ? "Give this expert a name on its page before publishing it."
+      : "Give this expert a name.";
 
   const errors = preview?.errors ?? [];
   if (errors.length > 0) return "Fix the problems above to continue.";

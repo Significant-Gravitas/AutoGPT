@@ -11,9 +11,10 @@ import {
 interface Args {
   open: boolean;
   preview: ExpertPackagePreview | null;
+  mode: "import" | "publish";
 }
 
-export function useExpertReviewDialog({ open, preview }: Args) {
+export function useExpertReviewDialog({ open, preview, mode }: Args) {
   const [draft, setDraft] = useState<ExpertReviewDraft>(() =>
     buildDraftFromPreview(preview),
   );
@@ -59,6 +60,6 @@ export function useExpertReviewDialog({ open, preview }: Args) {
     toggleWorkflow,
     toggleSchedule,
     edits: buildEditsFromDraft(draft, preview),
-    blockingReason: getBlockingReason(draft, preview),
+    blockingReason: getBlockingReason(draft, preview, mode),
   };
 }

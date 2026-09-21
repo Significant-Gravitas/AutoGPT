@@ -46,7 +46,7 @@ export function ExpertReviewDialog({
     toggleSchedule,
     edits,
     blockingReason,
-  } = useExpertReviewDialog({ open, preview });
+  } = useExpertReviewDialog({ open, preview, mode });
 
   const identity = preview?.manifest.identity;
   const isImport = mode === "import";

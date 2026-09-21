@@ -66,6 +66,14 @@ describe("getBlockingReason", () => {
   test.each(cases)("case %#", (draft, current, expected) => {
     expect(getBlockingReason(draft, current)).toBe(expected);
   });
+
+  test("publish mode points at the page that can fix the name", () => {
+    // The dialog is read-only in publish mode, so asking for a name here
+    // would block on a field the user cannot reach.
+    expect(
+      getBlockingReason({ ...whole, name: "  " }, preview, "publish"),
+    ).toBe("Give this expert a name on its page before publishing it.");
+  });
 });
 
 // A workflow without a stored listing is what the file carries on import, but
