@@ -8,6 +8,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { server } from "@/mocks/mock-server";
+import { resetNavigation } from "./navigation-mock";
 import { http, HttpResponse } from "msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
@@ -28,25 +29,14 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 // The generated default answers with random experts, which would render
 // random filter tabs on the page under test.
 beforeEach(() => {
+  resetNavigation();
   server.use(getListExpertIdentitiesMockHandler([]));
 });
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-    replace: vi.fn(),
-    prefetch: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
-  }),
-  usePathname: () => "/artifacts",
-  useSearchParams: () => new URLSearchParams(),
-  useParams: () => ({}),
-  notFound: () => {
-    throw new Error("NEXT_NOT_FOUND");
-  },
-}));
+vi.mock("next/navigation", async () => {
+  const { navigationMock } = await import("./navigation-mock");
+  return navigationMock();
+});
 
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
