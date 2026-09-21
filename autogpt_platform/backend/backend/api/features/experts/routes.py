@@ -346,6 +346,7 @@ async def list_expert_setup_items(
                 "application/zip": {"schema": {"type": "string", "format": "binary"}}
             }
         },
+        400: {"description": "Expert could not be packaged"},
         404: {"description": "Expert not found"},
         413: {"description": "Expert is too large to package"},
     },
@@ -377,6 +378,7 @@ async def download_expert_package(
                 "application/zip": {"schema": {"type": "string", "format": "binary"}}
             }
         },
+        400: {"description": "Expert could not be packaged"},
         404: {"description": "Expert not found"},
         413: {"description": "Expert is too large to package"},
     },

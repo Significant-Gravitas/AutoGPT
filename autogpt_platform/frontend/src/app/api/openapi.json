@@ -6876,6 +6876,7 @@
               }
             }
           },
+          "400": { "description": "Expert could not be packaged" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -7381,6 +7382,7 @@
               }
             }
           },
+          "400": { "description": "Expert could not be packaged" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },

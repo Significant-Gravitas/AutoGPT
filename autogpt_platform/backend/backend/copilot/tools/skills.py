@@ -148,7 +148,7 @@ _META_EXECUTABLE = "executable"
 # folder name is clean and the on-screen index never has dangling dashes.
 # Length cap matches MAX_NAME_CHARS via the {0,62} interior + 1 anchor at
 # each end.
-_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ def render_skill_markdown(skill: ParsedSkill) -> str:
 
 
 def _validate_name(name: str) -> str | None:
-    if not _NAME_RE.match(name):
+    if not SKILL_NAME_RE.match(name):
         return (
             "name must be a slug (lowercase a-z, 0-9, _ or -; "
             f"1-{MAX_NAME_CHARS} chars; must start with a letter or digit)"
@@ -1307,13 +1307,19 @@ async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
 
 
-async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:
+async def find_user_skill_slugs(
+    user_id: str, names: list[str], *, expert_id: str | None = None
+) -> dict[str, str]:
     """Folder slug per requested name, keyed by the lowercased name.
 
     Matches the folder first, then the frontmatter name — a skill written by
     hand may be listed under a name that differs from its folder. One listing
     covers the whole batch, and a folder carrying store-time metadata is
     matched without reading it, so only hand-written skills cost a fetch.
+
+    *expert_id* picks the folder to scan, exactly as :func:`skill_folder` does
+    elsewhere: an expert's skills live under its own folder, so resolving them
+    against personal Otto's would find nothing.
     """
     wanted = {n.strip().lower() for n in names if n.strip()}
     if not wanted:
@@ -1321,7 +1327,7 @@ async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str
     manager = await _get_user_skill_manager(user_id)
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
+    for f, slug in await _list_skill_roots(manager, skill_folder(expert_id)):
         if slug.strip().lower() in wanted:
             found[slug.strip().lower()] = slug
             continue

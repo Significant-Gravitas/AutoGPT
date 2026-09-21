@@ -45,7 +45,7 @@ from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
-from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
+from backend.copilot.tools.skills import SKILL_NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
@@ -3535,7 +3535,7 @@ def test_roster_bundled_skills_are_seeded_starter_skills():
 def test_roster_bundled_skills_are_hub_slugs():
     for entry in seed.ROSTER:
         for slug in entry["bundled_skills"]:
-            assert _NAME_RE.match(slug), (entry["name"], slug)
+            assert SKILL_NAME_RE.match(slug), (entry["name"], slug)
 
 
 def test_operations_experts_bundle_their_eight_skills_in_work_order():
