@@ -1,9 +1,13 @@
+import type { ComponentProps } from "react";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
+import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -174,8 +178,8 @@ class MockIntersectionObserver {
 }
 
 const baseProps = {
-  messages: [] as any[],
-  status: "ready" as const,
+  messages: [] as Message[],
+  status: "ready",
   error: undefined,
   isLoading: false,
   sessionID: "sess-123",
@@ -184,7 +188,7 @@ const baseProps = {
   isLoadingMore: false,
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
-};
+} satisfies ComponentProps<typeof ChatMessagesContainer>;
 
 describe("ChatMessagesContainer — assistant rendering", () => {
   const messages = [
@@ -546,10 +550,10 @@ describe("ChatMessagesContainer — turnStats", () => {
 
   it("renders the local timestamp on a user message (hover reveal)", () => {
     const userId = "user-1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -557,11 +561,10 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
       />,
     );
     // The timestamp is rendered in the MessageActions area alongside CopyButton;
@@ -575,7 +578,7 @@ describe("ChatMessagesContainer — turnStats", () => {
   });
 
   it("skips the user timestamp when turnStats has no entry for that message id", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "user-unknown",
         role: "user" as const,
@@ -583,11 +586,10 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={new Map() as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={new Map()}
       />,
     );
     const labels = screen.queryAllByText((_, el) =>
@@ -615,7 +617,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
 
   it("renders a QueueBadge when the row is the latest user in a queued session", () => {
     const userId = "user-q1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [
         userId,
         {
@@ -624,7 +626,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
         },
       ],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -634,11 +636,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
         sessionChatStatus="queued"
       />,
     );
@@ -688,7 +689,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
   );
 
   it("renders a Sent from badge linking to the session a delegated message came from", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "user-d1",
         role: "user" as const,
@@ -700,13 +701,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
         },
       },
     ];
-    render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-      />,
-    );
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
     const card = screen.getByTestId("sent-from-badge");
     expect(card.textContent).toContain("Sent from Ari");
     expect(card.getAttribute("href")).toBe(
@@ -729,7 +724,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
   }
 
   it("falls back to the session's delegation provenance on the opening message only", () => {
-    const messages = [
+    const messages: Message[] = [
       userRow("sess-123-seq-0", "first task"),
       {
         id: "sess-123-seq-1",
@@ -740,10 +735,8 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     ];
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={messages as any}
+        {...baseProps}
+        messages={messages}
         hasMoreMessages={false}
         sessionSentFrom={sessionSentFrom}
       />,
@@ -757,7 +750,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     // hasMoreMessages goes false after repeated load errors or at the
     // history cap while older rows still exist; the first retained row is
     // then a later human message, not the one the delegation opened with.
-    const messages = [
+    const messages: Message[] = [
       userRow("sess-123-seq-40", "typed by the user"),
       {
         id: "sess-123-seq-41",
@@ -767,10 +760,8 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     ];
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={messages as any}
+        {...baseProps}
+        messages={messages}
         hasMoreMessages={false}
         sessionSentFrom={sessionSentFrom}
       />,
@@ -783,10 +774,8 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     // identity does not depend on it.
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={[userRow("sess-123-seq-0", "first task")] as any}
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "first task")]}
         hasMoreMessages={true}
         sessionSentFrom={sessionSentFrom}
       />,
@@ -799,10 +788,8 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
   it("does NOT fall back onto a row whose id carries no DB sequence", () => {
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={[userRow("user-streamed", "first task")] as any}
+        {...baseProps}
+        messages={[userRow("user-streamed", "first task")]}
         hasMoreMessages={false}
         sessionSentFrom={sessionSentFrom}
       />,
@@ -813,10 +800,8 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
   it("does NOT fall back when the session carries no delegation provenance", () => {
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={[userRow("sess-123-seq-0", "hello")] as any}
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "hello")]}
         hasMoreMessages={false}
         sessionSentFrom={null}
       />,
@@ -825,29 +810,23 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
   });
 
   it("does NOT render a Sent from badge for an ordinary user message", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "user-plain",
         role: "user" as const,
         parts: [{ type: "text" as const, text: "hello" }],
       },
     ];
-    render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-      />,
-    );
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
     expect(screen.queryByTestId("sent-from-badge")).toBeNull();
   });
 
   it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
     const userId = "user-n1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -855,11 +834,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
       />,
     );
     expect(screen.queryByTestId("queue-badge")).toBeNull();
@@ -870,10 +848,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     // latest user message, the badge should stay hidden unless the
     // OWNING session is in the queued state.
     const userId = "user-q2";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -881,11 +859,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
         sessionChatStatus="idle"
       />,
     );
@@ -961,7 +938,7 @@ describe("ChatMessagesContainer — readOnly mode", () => {
   );
 
   it("renders no Sent from badge in a read-only transcript", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "sess-123-seq-0",
         role: "user" as const,
@@ -985,10 +962,8 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     ];
     render(
       <ChatMessagesContainer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        {...(baseProps as any)}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages={messages as any}
+        {...baseProps}
+        messages={messages}
         readOnly
         hasMoreMessages={false}
         sessionSentFrom={{
@@ -1049,10 +1024,10 @@ describe("ChatMessagesContainer — readOnly mode", () => {
 
   it("hides the queue-badge gate even when the session is queued", () => {
     const userId = "user-q-readonly";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
