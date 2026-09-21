@@ -934,9 +934,24 @@ async def _list_user_skills_from_workspace(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
 ) -> list[ParsedSkill]:
+    """The skills alone, for callers that only need the index."""
+    return [skill for _, skill in await _scan_user_skills(user_id, expert_id, scope)]
+
+
+async def _scan_user_skills(
+    user_id: str,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[tuple[str, ParsedSkill]]:
     """Workspace-side listing — no caching.  Body fields are always empty
     because the index never needs them; :func:`read_user_skill_with_body`
     is the path for retrieving full content.
+
+    Each skill is returned with the folder slug it was found under. A
+    ``SKILL.md`` may name itself differently from its folder, and two skills
+    can disagree in ways that make the name ambiguous, so a caller that has to
+    go back to storage must carry the slug from this scan rather than derive
+    it from the name afterwards.
 
     Uses ``WorkspaceFile.metadata`` (written at store time) for the fast
     path and falls back to a parallelised read of the SKILL.md body for
@@ -950,38 +965,41 @@ async def _list_user_skills_from_workspace(
     manager = await _get_user_skill_manager(user_id, scope)
     folder = skill_folder(expert_id)
 
-    skills: list[ParsedSkill] = []
-    needs_read: list[Any] = []
+    found: list[tuple[str, ParsedSkill]] = []
+    needs_read: list[tuple[Any, str]] = []
     for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
-            skills.append(entry)
+            found.append((slug, entry))
         else:
-            needs_read.append(f)
+            needs_read.append((f, slug))
 
     if needs_read:
         parsed = await asyncio.gather(
-            *(_parse_skill_from_workspace(manager, f.path) for f in needs_read),
+            *(_parse_skill_from_workspace(manager, f.path) for f, _ in needs_read),
         )
-        for p in parsed:
+        for (_, slug), p in zip(needs_read, parsed):
             if p is None:
                 continue
             # Index never needs the body — drop it so the cache payload
             # stays small (defaults are already body-less, fast-path
             # entries are body-less, keep the contract uniform).
-            skills.append(
-                ParsedSkill(
-                    name=p.name,
-                    description=p.description,
-                    body="",
-                    triggers=p.triggers,
-                    version=p.version,
+            found.append(
+                (
+                    slug,
+                    ParsedSkill(
+                        name=p.name,
+                        description=p.description,
+                        body="",
+                        triggers=p.triggers,
+                        version=p.version,
+                    ),
                 )
             )
 
-    skills.sort(key=lambda s: s.name)
-    return skills
+    found.sort(key=lambda pair: pair[1].name)
+    return found
 
 
 def _skills_cache_key(user_id: str, expert_id: str | None = None) -> str:
@@ -1096,6 +1114,29 @@ async def list_user_skills(
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     await _write_skills_cache(user_id, skills, expert_id)
     return skills
+
+
+async def list_user_skill_folders(
+    user_id: str,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[tuple[str, ParsedSkill]]:
+    """``(folder slug, skill)`` for every skill *expert_id* owns.
+
+    :func:`list_user_skills` answers from a cache that holds skills alone, so
+    a caller needing the folder as well takes this uncached path. It exists
+    for storage round-trips — the exporter reading each package back — where
+    resolving the folder from the skill's name afterwards is ambiguous: a
+    hand-written ``SKILL.md`` may name itself after a different skill's
+    folder, and the export would then package one skill's files twice and
+    drop the other.
+    """
+    pairs = await _scan_user_skills(user_id, expert_id, scope)
+    if expert_id is not None and await _copy_assigned_skills_not_yet_owned(
+        user_id, expert_id, [skill for _, skill in pairs]
+    ):
+        pairs = await _scan_user_skills(user_id, expert_id, scope)
+    return pairs
 
 
 async def _copy_assigned_skills_not_yet_owned(
@@ -1307,19 +1348,13 @@ async def find_user_skill_slug(user_id: str, name: str) -> str | None:
     return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
 
 
-async def find_user_skill_slugs(
-    user_id: str, names: list[str], *, expert_id: str | None = None
-) -> dict[str, str]:
+async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:
     """Folder slug per requested name, keyed by the lowercased name.
 
     Matches the folder first, then the frontmatter name — a skill written by
     hand may be listed under a name that differs from its folder. One listing
     covers the whole batch, and a folder carrying store-time metadata is
     matched without reading it, so only hand-written skills cost a fetch.
-
-    *expert_id* picks the folder to scan, exactly as :func:`skill_folder` does
-    elsewhere: an expert's skills live under its own folder, so resolving them
-    against personal Otto's would find nothing.
     """
     wanted = {n.strip().lower() for n in names if n.strip()}
     if not wanted:
@@ -1327,7 +1362,7 @@ async def find_user_skill_slugs(
     manager = await _get_user_skill_manager(user_id)
     found: dict[str, str] = {}
     unnamed: list[Any] = []
-    for f, slug in await _list_skill_roots(manager, skill_folder(expert_id)):
+    for f, slug in await _list_skill_roots(manager, SKILL_FOLDER):
         if slug.strip().lower() in wanted:
             found[slug.strip().lower()] = slug
             continue

@@ -38,10 +38,8 @@ from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
     SkillPackage,
     SkillPackageError,
-    find_user_skill_slugs,
-    list_user_skills,
+    list_user_skill_folders,
     read_user_skill_package,
-    skill_slug,
 )
 from backend.data import graph as graph_db
 from backend.data.graph import Graph
@@ -171,19 +169,16 @@ async def _owned_skills(
     """Every skill the expert owns, read from the folder it is actually stored
     under.
 
-    The listing reports a skill by its frontmatter name, which a hand-written
-    or legacy ``SKILL.md`` is free to spell differently from its folder — a
-    skill named ``Deep Research`` under ``deep-research``. Deriving the folder
-    from that name reads a path nothing was ever written to, so the skill would
-    be dropped from the export without a word. The stored slug is resolved from
-    the folder listing instead, and the derived name is only the fallback.
+    A listing reports a skill by its frontmatter name, which a hand-written or
+    legacy ``SKILL.md`` is free to spell differently from its folder — a skill
+    named ``Deep Research`` under ``deep-research``. Deriving the folder from
+    that name reads a path nothing was ever written to, so the skill would be
+    dropped from the export without a word; and resolving it by name afterwards
+    is ambiguous, because one skill's frontmatter name can be another skill's
+    folder. The folder therefore comes out of the same scan that found the
+    skill.
     """
-    skills = await list_user_skills(owner_user_id, expert_id=row.id)
-    stored = await find_user_skill_slugs(
-        owner_user_id, [skill.name for skill in skills], expert_id=row.id
-    )
-    for skill in skills:
-        slug = stored.get(skill.name.strip().lower()) or skill_slug(skill.name)
+    for slug, skill in await list_user_skill_folders(owner_user_id, expert_id=row.id):
         try:
             package = await read_user_skill_package(
                 owner_user_id, slug, expert_id=row.id
@@ -208,7 +203,7 @@ async def _bundled_skills(
     out of the package too."""
     for listing in await experts_db.bundled_skill_listings(user_id, row.id):
         try:
-            skill, package = skill_db.installable_skill(listing)
+            skill, package = await skill_db.installable_skill(listing)
         except ValueError as exc:
             logger.info(
                 "Template %s bundled skill '%s' cannot be packaged: %s",
