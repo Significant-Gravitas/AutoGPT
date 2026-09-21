@@ -154,6 +154,12 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       >
         <MessageContent className="text-[1rem] leading-relaxed">
+          {/* Announce the status on its own: the indicator's elapsed timer
+              ticks every second, so a live region around the whole thing
+              would re-read the upload state on every tick. */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {label}
+          </span>
           <ThinkingIndicator
             active
             elapsedSeconds={elapsedSeconds}

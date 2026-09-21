@@ -103,4 +103,15 @@ describe("PendingUploadMessage", () => {
       "Sending…",
     );
   });
+
+  it("announces the upload status to screen readers", () => {
+    render(<PendingUploadMessage pendingSend={{ text: "hi", attachments }} />);
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("Uploading 3 files…");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    // The elapsed timer must stay outside the live region, or every tick
+    // would re-announce the upload.
+    expect(status.textContent).not.toContain("thinking");
+  });
 });
