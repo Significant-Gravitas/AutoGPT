@@ -212,7 +212,9 @@ async def run_copilot_turn_via_queue(
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(session_id=session_id, message=message)
+        state = await queue_user_message(
+            session_id=session_id, message=message, metadata=message_metadata
+        )
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
