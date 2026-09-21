@@ -15,7 +15,14 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 from backend.api.features.experts.models import (
     _EXPERT_SOUL_TEXT_MAX_LENGTH,
@@ -32,6 +39,7 @@ from backend.api.features.experts.models import (
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
     MAX_PACKAGE_FILE_BYTES,
+    SKILL_NAME_RE,
     SkillPackage,
     SkillPackageError,
     validate_package,
@@ -111,6 +119,11 @@ class PackagedSkill(BaseModel):
     slug: str = Field(min_length=1, max_length=_SLUG_MAX_LENGTH)
     name: str = Field(min_length=1, max_length=_SLUG_MAX_LENGTH)
     description: str = Field(default="", max_length=_WORKFLOW_TEXT_MAX_LENGTH)
+
+    @field_validator("slug")
+    @classmethod
+    def check_slug_is_a_path_segment(cls, slug: str) -> str:
+        return check_skill_slug(slug)
 
 
 class PackagedWorkflow(BaseModel):
@@ -231,6 +244,27 @@ class ExpertPackage(BaseModel):
         )
 
 
+def check_skill_slug(slug: str) -> str:
+    """Refuse a slug that is not a plain path segment.
+
+    A slug names a folder twice over: ``skills/<slug>/`` inside the archive,
+    and the folder the importer installs into. ``..`` therefore writes members
+    that resolve *outside* the tree the manifest describes — ``skills/../``
+    lands beside ``expert.json`` here and anywhere else the file is unpacked.
+    Separators, backslashes, NULs and padding whitespace are refused for the
+    same reason: the name the reader partitions on has to be the name the
+    writer meant. The rule is the skill store's own, so a package can only
+    carry slugs that would survive being installed.
+    """
+    if not SKILL_NAME_RE.fullmatch(slug):
+        raise ValueError(
+            f"skill slug '{slug[:120]}' is not a valid folder name: lowercase "
+            "letters, digits, dashes and underscores only, starting and ending "
+            "with a letter or digit"
+        )
+    return slug
+
+
 def validate_expert_package(package: ExpertPackage) -> None:
     """Refuse a package that the ``.expert.zip`` reader would refuse.
 
@@ -251,6 +285,7 @@ def validate_expert_package(package: ExpertPackage) -> None:
             f"{MAX_PACKAGE_SKILLS}",
             over_limit=True,
         )
+    _check_manifest_matches_payload(package)
     for slug, skill in sorted(package.skills.items()):
         validate_packaged_skill(slug, skill)
     if (
@@ -267,6 +302,38 @@ def validate_expert_package(package: ExpertPackage) -> None:
             f"package unpacks to {package.size_bytes} bytes; the limit is "
             f"{MAX_PACKAGE_BYTES}",
             over_limit=True,
+        )
+
+
+def _check_manifest_matches_payload(package: ExpertPackage) -> None:
+    """Refuse a package whose manifest and bytes describe different experts.
+
+    The archive reader already refuses a tree that disagrees with its manifest.
+    Checking the same thing before writing means the writer cannot produce a
+    file its own reader rejects — and cannot silently drop avatar bytes that
+    the manifest never gave a name to.
+    """
+    listed = {card.slug for card in package.manifest.skills}
+    carried = set(package.skills)
+    for slug in sorted(carried):
+        check_skill_slug(slug)
+    if missing := sorted(listed - carried):
+        raise ExpertPackageError(
+            f"manifest lists skills {missing} the package carries no files for"
+        )
+    if extra := sorted(carried - listed):
+        raise ExpertPackageError(
+            f"package carries skills {extra} the manifest does not list"
+        )
+    avatar = package.manifest.avatar
+    declares_file = bool(avatar and avatar.kind == "file" and avatar.path)
+    if declares_file and package.avatar_bytes is None:
+        raise ExpertPackageError(
+            "manifest declares a file avatar but the package carries no bytes"
+        )
+    if package.avatar_bytes is not None and not declares_file:
+        raise ExpertPackageError(
+            "package carries avatar bytes the manifest does not declare"
         )
 
 

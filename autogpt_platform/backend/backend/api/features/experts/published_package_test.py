@@ -129,6 +129,7 @@ async def test_the_seeder_leaves_any_template_with_a_package_alone(
     entry: seed.RosterEntry = {
         "name": "Maria Ops",
         "role": "Roster role",
+        "job_title": "Roster job title",
         "tagline": "Roster tagline",
         "avatar_url": "/experts/maria.svg",
         "bio": "Roster bio.",

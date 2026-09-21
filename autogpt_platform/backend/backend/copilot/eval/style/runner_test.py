@@ -74,12 +74,14 @@ def test_plan_assembles_each_experts_own_prompt_set():
 
 def test_the_control_arm_warms_one_prompt_prefix_for_the_whole_roster():
     """Its system prompt and tools are plain Otto's whatever expert's
-    prompts it runs; a per-expert key would pay the cache write three times."""
-    jobs = plan_jobs(roster_experts(), load_fixtures(), RunOptions(control=3))
+    prompts it runs; a per-expert key would pay the cache write once per
+    expert on the roster instead of once in total."""
+    experts_on_roster = roster_experts()
+    jobs = plan_jobs(experts_on_roster, load_fixtures(), RunOptions(control=3))
     controls = {cache_prefix(j) for j in jobs if j.arm == "no_suffix"}
     experts = {cache_prefix(j) for j in jobs if j.arm == "expert"}
     assert len(controls) == 1
-    assert len(experts) == 3, "one per expert"
+    assert len(experts) == len(experts_on_roster), "one per expert"
 
 
 def test_plan_filters_kinds():
@@ -195,9 +197,11 @@ def test_wrong_spec_rows_pair_each_response_with_every_other_expert():
     experts = roster_experts()
     rows = [_row("Maria", 80.0), _row("Max", None, error="x")]
     crossed = wrong_spec_rows(rows, experts)
+    # Derived from the roster, not listed: a scored row pairs with every
+    # other expert's spec, so a literal pair set silently stops testing the
+    # "every other" part the moment the roster grows.
     assert {(r.expert, r.spec_expert) for r in crossed} == {
-        ("Maria", "Max"),
-        ("Maria", "Frankie"),
+        ("Maria", e.name) for e in experts if e.name != "Maria"
     }
     assert all(r.arm == "wrong_spec" and r.response == "hi" for r in crossed)
 
@@ -208,7 +212,7 @@ def test_the_generation_cost_is_counted_once_across_the_cross_spec_copies():
     usage = Usage(model="m", input_tokens=100, output_tokens=10, cost_usd=1.0)
     rows = [_row("Maria", 80.0, generation=usage)]
     rows += wrong_spec_rows(rows, roster_experts())
-    assert [r.generation for r in rows[1:]] == [None, None]
+    assert [r.generation for r in rows[1:]] == [None] * (len(roster_experts()) - 1)
     result = summarize(
         rows,
         roster_experts(["Maria"]),
@@ -358,7 +362,7 @@ async def test_run_scores_every_prompt_and_reads_it_against_the_baseline(
     assert result.cost_usd == pytest.approx(0.054)
     (comparison,) = result.comparison
     assert comparison.expert == "Max"
-    assert comparison.shared_prompts == 25, "the baseline's two unscored prompts"
+    assert comparison.shared_prompts == 23, "the baseline's four unscored prompts"
     save_baseline.assert_not_called()
     written = json.loads(out.read_text())
     assert written["fingerprint"] == result.fingerprint

@@ -33,11 +33,12 @@ from backend.api.features.experts.package_model import (
     validate_expert_package,
     validate_packaged_skill,
 )
-from backend.api.features.store import skill_db
+from backend.api.features.store import skill_db, skill_model
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
     SkillPackage,
     SkillPackageError,
+    find_user_skill_slugs,
     list_user_skills,
     read_user_skill_package,
     skill_slug,
@@ -112,7 +113,7 @@ async def build_expert_package(
     """
     description, samples = decode_voice_preferences(row.voicePreferences)
     packages, cards = await _skills(row, user_id)
-    avatar, avatar_bytes = await packaged_avatar(row.avatarUrl)
+    avatar, avatar_bytes = await packaged_avatar(row.avatarUrl, row.ownerUserId)
     manifest = ExpertManifest(
         identity=PackagedIdentity(
             name=row.name,
@@ -167,8 +168,22 @@ async def _skills(row: prisma.models.Expert, user_id: str) -> _Skills:
 async def _owned_skills(
     row: prisma.models.Expert, owner_user_id: str, roster: _Roster
 ) -> None:
-    for skill in await list_user_skills(owner_user_id, expert_id=row.id):
-        slug = skill_slug(skill.name)
+    """Every skill the expert owns, read from the folder it is actually stored
+    under.
+
+    The listing reports a skill by its frontmatter name, which a hand-written
+    or legacy ``SKILL.md`` is free to spell differently from its folder — a
+    skill named ``Deep Research`` under ``deep-research``. Deriving the folder
+    from that name reads a path nothing was ever written to, so the skill would
+    be dropped from the export without a word. The stored slug is resolved from
+    the folder listing instead, and the derived name is only the fallback.
+    """
+    skills = await list_user_skills(owner_user_id, expert_id=row.id)
+    stored = await find_user_skill_slugs(
+        owner_user_id, [skill.name for skill in skills], expert_id=row.id
+    )
+    for skill in skills:
+        slug = stored.get(skill.name.strip().lower()) or skill_slug(skill.name)
         try:
             package = await read_user_skill_package(
                 owner_user_id, slug, expert_id=row.id
@@ -204,7 +219,11 @@ async def _bundled_skills(
             continue
         if skill.name in roster.packages:
             continue
-        roster.admit(skill.name, skill.name, skill.description, package)
+        # The install names the stored skill after the listing's slug, so that
+        # is the folder; the card carries the listing's own name so a reviewer
+        # reads "Web Scraper" rather than "web-scraper".
+        display_name = skill_model.active_version(listing).name
+        roster.admit(skill.name, display_name, skill.description, package)
 
 
 async def _workflows(row: prisma.models.Expert) -> list[PackagedWorkflow]:
