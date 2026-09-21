@@ -39,6 +39,7 @@ export function logClientRequestFailure(failure: RequestFailure) {
   });
 }
 
+// The open windows outlive a test file; reset them between cases.
 export function resetClientRequestFailureLog() {
   openWindows.forEach(({ timer }) => clearTimeout(timer));
   openWindows.clear();
