@@ -427,3 +427,45 @@ describe("useSendMessage first send failing after the session exists", () => {
     expect(useCopilotUIStore.getState().initialPrompt).toBe("compare");
   });
 });
+
+describe("useSendMessage when creating the first chat's session fails", () => {
+  it("clears the placeholder so a failed first send leaves nothing behind", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result, createSession } = renderSendMessage(null);
+    createSession.mockRejectedValue(new Error("no session"));
+
+    let failure: unknown;
+    await act(async () => {
+      failure = await result.current
+        .onSend("first", [makeFile("talk.pdf")])
+        .catch((err: unknown) => err);
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(result.current.pendingSend).toBeNull();
+    expect(result.current.isUploadingFiles).toBe(false);
+    expect(useCopilotStreamStore.getState().pendingUploadSends).toEqual({});
+  });
+
+  it("clears a placeholder already bound to the new session", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result, createSession } = renderSendMessage(null);
+    createSession.mockImplementation(async () => {
+      // Binding moves the placeholder off the unbound key; failing after it
+      // must not leave the session-keyed one stranded.
+      useCopilotStreamStore
+        .getState()
+        .bindPendingFirstSendToSession(SESSION_ID);
+      throw new Error("no session");
+    });
+
+    await act(async () => {
+      await result.current
+        .onSend("first", [makeFile("talk.pdf")])
+        .catch(() => undefined);
+    });
+
+    expect(useCopilotStreamStore.getState().pendingUploadSends).toEqual({});
+    expect(renderSendMessage(SESSION_ID).result.current.pendingSend).toBeNull();
+  });
+});

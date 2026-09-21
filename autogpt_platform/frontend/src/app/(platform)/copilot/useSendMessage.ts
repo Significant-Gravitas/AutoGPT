@@ -265,13 +265,19 @@ export function useSendMessage({
       });
     } catch (err) {
       const {
+        pendingFirstSendSessionId,
         setPendingFirstSend,
         setPendingFileParts,
         clearPendingUploadSend,
       } = useCopilotStreamStore.getState();
       setPendingFirstSend(null);
       setPendingFileParts([]);
+      // `createSession` can fail after binding the send to the new id, which
+      // moves the placeholder off the unbound key. Clear both keys so an
+      // aborted first send never strands one on the freshly created session.
       clearPendingUploadSend(null);
+      if (pendingFirstSendSessionId)
+        clearPendingUploadSend(pendingFirstSendSessionId);
       throw err;
     } finally {
       isCreatingSessionRef.current = false;
