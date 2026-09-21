@@ -70,3 +70,60 @@ describe("FileChips", () => {
     ).toBeTruthy();
   });
 });
+
+describe("FileChips — image thumbnails", () => {
+  const localImage: Attachment = {
+    kind: "local",
+    file: new File(["png"], "photo.png", { type: "image/png" }),
+  };
+  const workspaceImage: Attachment = {
+    kind: "workspace",
+    fileId: "550e8400-e29b-41d4-a716-446655440000",
+    name: "diagram.jpg",
+    mimeType: "image/jpeg",
+  };
+
+  it("renders a thumbnail instead of a text chip for a local image", () => {
+    const createObjectURL = vi.fn(() => "blob:local-photo");
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+
+    try {
+      const { unmount } = render(
+        <FileChips attachments={[localImage]} onRemove={vi.fn()} />,
+      );
+      const img = screen.getByTestId("attachment-thumbnail");
+      expect(img.getAttribute("src")).toBe("blob:local-photo");
+      expect(img.getAttribute("alt")).toBe("photo.png");
+      expect(screen.queryByText("photo.png")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /remove photo\.png/i }),
+      ).toBeTruthy();
+
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:local-photo");
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+
+  it("renders a workspace image through the preview endpoint", () => {
+    render(<FileChips attachments={[workspaceImage]} onRemove={vi.fn()} />);
+    const img = screen.getByTestId("attachment-thumbnail");
+    expect(img.getAttribute("src")).toContain(
+      "/api/proxy/api/workspace/files/550e8400-e29b-41d4-a716-446655440000/preview",
+    );
+  });
+
+  it("keeps the text chip for non-image files", () => {
+    render(
+      <FileChips attachments={[workspaceAttachment]} onRemove={vi.fn()} />,
+    );
+    expect(screen.queryByTestId("attachment-thumbnail")).toBeNull();
+    expect(screen.getByText("report.pdf")).toBeTruthy();
+  });
+});

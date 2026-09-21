@@ -621,6 +621,15 @@ export function ChatMessagesContainer({
                 data-message-id={message.id}
                 className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
+                {fileParts.length > 0 && !isAssistant && (
+                  <MessageAttachments
+                    files={fileParts}
+                    isUser
+                    forceArtifacts={readOnly}
+                    filePattern={filePattern}
+                    readOnly={readOnly}
+                  />
+                )}
                 <MessageContent
                   className={cn(
                     isCompact
@@ -716,10 +725,9 @@ export function ChatMessagesContainer({
                     />
                   </MessageActions>
                 )}
-                {fileParts.length > 0 && (
+                {fileParts.length > 0 && isAssistant && (
                   <MessageAttachments
                     files={fileParts}
-                    isUser={message.role === "user"}
                     forceArtifacts={readOnly}
                     filePattern={filePattern}
                     readOnly={readOnly}

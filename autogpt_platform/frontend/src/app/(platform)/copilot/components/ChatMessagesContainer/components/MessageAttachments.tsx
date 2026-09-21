@@ -12,9 +12,11 @@ import {
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { AttachmentPreview } from "./AttachmentPreview";
 import { filePartToArtifactRef } from "../helpers";
 import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 
 interface Props {
   files: FileUIPart[];
@@ -63,7 +65,12 @@ export function MessageAttachments({
   if (files.length === 0) return null;
 
   return (
-    <div className="mt-2 flex flex-col gap-2">
+    <div
+      className={cn(
+        "flex gap-2",
+        isUser ? "flex-wrap items-end justify-end" : "mt-2 flex-col",
+      )}
+    >
       {files.map((file, i) => {
         if (isArtifactsEnabled) {
           const artifactRef = filePartToArtifactRef(
@@ -71,6 +78,15 @@ export function MessageAttachments({
             isUser ? "user-upload" : "agent",
             filePattern,
           );
+          if (artifactRef && isUser) {
+            return (
+              <AttachmentPreview
+                key={`attachment-${artifactRef.id}-${i}`}
+                artifact={artifactRef}
+                readOnly={readOnly}
+              />
+            );
+          }
           if (artifactRef) {
             return (
               <ArtifactCard

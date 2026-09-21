@@ -9,11 +9,16 @@ import {
 import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
+import { AttachmentThumbnail } from "./AttachmentThumbnail";
 
 function attachmentMimeType(attachment: Attachment): string {
   return attachment.kind === "local"
     ? attachment.file.type
     : attachment.mimeType;
+}
+
+function isImageAttachment(attachment: Attachment): boolean {
+  return attachmentMimeType(attachment).toLowerCase().startsWith("image/");
 }
 
 // Stable key so AnimatePresence animates the element that actually left, not
@@ -63,7 +68,7 @@ export function FileChips({
         >
           <div
             className={cn(
-              "flex w-full flex-wrap gap-2 px-3 pb-2 pt-2",
+              "flex w-full flex-wrap items-end gap-2 px-3 pb-2 pt-2",
               stacked && "gap-1.5 p-0",
             )}
           >
@@ -77,31 +82,56 @@ export function FileChips({
                 // the upload spinner while a send is in flight.
                 const showSpinner = isUploading && attachment.kind === "local";
                 const restOpacity = showSpinner ? 0.7 : 1;
+                const motionProps = {
+                  layout: true,
+                  initial: reduceMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, scale: 0.95, filter: "blur(4px)" },
+                  animate: reduceMotion
+                    ? { opacity: restOpacity }
+                    : { opacity: restOpacity, scale: 1, filter: "blur(0px)" },
+                  exit: reduceMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, scale: 0.95, filter: "blur(4px)" },
+                  transition: { duration: DURATION, ease: EASE_OUT },
+                  style: { willChange: "transform, opacity, filter" },
+                };
+                if (isImageAttachment(attachment)) {
+                  return (
+                    <motion.span
+                      key={attachmentKey(attachment)}
+                      {...motionProps}
+                      className="relative inline-flex h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100"
+                    >
+                      <AttachmentThumbnail
+                        attachment={attachment}
+                        name={name}
+                      />
+                      {showSpinner ? (
+                        <span className="absolute inset-0 flex items-center justify-center bg-white/60">
+                          <Icon
+                            icon={Loading03Icon}
+                            className="h-4 w-4 animate-spin text-zinc-500"
+                          />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${name}`}
+                          title={name}
+                          onClick={() => onRemove(index)}
+                          className="absolute right-1 top-1 rounded-full bg-zinc-900/70 p-0.5 text-white transition-colors hover:bg-zinc-900"
+                        >
+                          <Icon icon={Cancel01Icon} className="h-3 w-3" />
+                        </button>
+                      )}
+                    </motion.span>
+                  );
+                }
                 return (
                   <motion.span
                     key={attachmentKey(attachment)}
-                    layout
-                    initial={
-                      reduceMotion
-                        ? { opacity: 0 }
-                        : { opacity: 0, scale: 0.95, filter: "blur(4px)" }
-                    }
-                    animate={
-                      reduceMotion
-                        ? { opacity: restOpacity }
-                        : {
-                            opacity: restOpacity,
-                            scale: 1,
-                            filter: "blur(0px)",
-                          }
-                    }
-                    exit={
-                      reduceMotion
-                        ? { opacity: 0 }
-                        : { opacity: 0, scale: 0.95, filter: "blur(4px)" }
-                    }
-                    transition={{ duration: DURATION, ease: EASE_OUT }}
-                    style={{ willChange: "transform, opacity, filter" }}
+                    {...motionProps}
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700",
                       stacked &&

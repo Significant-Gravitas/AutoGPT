@@ -1,14 +1,10 @@
 "use client";
 
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
-import { useCopilotUIStore } from "../../store";
-import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
-import { classifyArtifact } from "../ArtifactPanel/helpers";
 import { ArrowRight01Icon, Download01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useArtifactCard } from "./useArtifactCard";
 
 interface Props {
   artifact: ArtifactRef;
@@ -33,40 +29,8 @@ function formatSize(bytes?: number): string {
 }
 
 export function ArtifactCard({ artifact, readOnly }: Props) {
-  const isActive = useCopilotUIStore(
-    (s) => s.artifactPanel.activeArtifact?.id === artifact.id,
-  );
-  const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const registerArtifactForAutoOpen = useCopilotUIStore(
-    (s) => s.registerArtifactForAutoOpen,
-  );
-
-  // Register this artifact on mount — the store decides whether to auto-open.
-  // Fires once per artifact ID; subsequent renders with the same ID are no-ops
-  // in the store (knownIds check).
-  // Skipped in readOnly mode — the share viewer has no panel for auto-open
-  // to target, and registering would just pollute the store.
-  useEffect(() => {
-    if (readOnly) return;
-    registerArtifactForAutoOpen(artifact);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-register on ID or MIME change
-  }, [artifact.id, artifact.mimeType, registerArtifactForAutoOpen, readOnly]);
-
-  const classification = classifyArtifact(
-    artifact.mimeType,
-    artifact.title,
-    artifact.sizeBytes,
-  );
-
-  function handleDownloadOnly() {
-    downloadArtifact(artifact).catch(() => {
-      toast({
-        title: "Download failed",
-        description: "Couldn't fetch the file.",
-        variant: "destructive",
-      });
-    });
-  }
+  const { isActive, classification, handleOpen, handleDownloadOnly } =
+    useArtifactCard(artifact, readOnly);
 
   if (!classification.openable) {
     return (
@@ -103,7 +67,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
   return (
     <button
       type="button"
-      onClick={() => openArtifact(artifact)}
+      onClick={handleOpen}
       className={cn(
         "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
         isActive ? "border-violet-300 bg-violet-50/50" : "border-zinc-200",
