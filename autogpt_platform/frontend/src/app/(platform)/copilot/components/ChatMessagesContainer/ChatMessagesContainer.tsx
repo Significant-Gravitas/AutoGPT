@@ -554,7 +554,7 @@ export function ChatMessagesContainer({
           {isLoading &&
             messages.length === 0 &&
             !isRestoringActiveSession &&
-            !pendingSend && (
+            !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
                 <LoadingSpinner className="text-neutral-600" />
               </div>

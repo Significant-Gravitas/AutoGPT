@@ -945,7 +945,7 @@ describe("ChatMessagesContainer — pendingSend", () => {
   });
 
   it("does not show the history spinner while the placeholder is up", () => {
-    const { container } = render(
+    render(
       <ChatMessagesContainer
         {...baseProps}
         isLoading
@@ -954,9 +954,7 @@ describe("ChatMessagesContainer — pendingSend", () => {
     );
 
     expect(screen.getByText("tell me about this")).toBeDefined();
-    expect(
-      container.querySelector(".animate-spin.text-neutral-600"),
-    ).toBeNull();
+    expect(screen.queryByTestId("loading-spinner")).toBeNull();
   });
 
   it("keeps the placeholder out of a read-only transcript", () => {
@@ -970,6 +968,21 @@ describe("ChatMessagesContainer — pendingSend", () => {
 
     expect(screen.queryByText("tell me about this")).toBeNull();
     expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("still shows the history spinner in a read-only transcript", () => {
+    // The placeholder is suppressed here, so nothing stands in for the
+    // spinner — hiding it would leave the transcript blank while it loads.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByTestId("loading-spinner")).toBeDefined();
   });
 });
 
