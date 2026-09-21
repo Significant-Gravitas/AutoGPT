@@ -65,6 +65,8 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="deepseek", display_name="DeepSeek"),
             CatalogCreator(name="google", display_name="Google"),
             CatalogCreator(name="gryphe", display_name="Gryphe"),
+            CatalogCreator(name="inception", display_name="Inception Labs"),
+            CatalogCreator(name="inclusionai", display_name="InclusionAI"),
             CatalogCreator(name="meta", display_name="Meta"),
             CatalogCreator(name="microsoft", display_name="Microsoft"),
             CatalogCreator(name="mistral-ai", display_name="Mistral AI"),
@@ -74,6 +76,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
             CatalogCreator(name="sakana", display_name="Sakana AI"),
+            CatalogCreator(name="unbiased", display_name="Unbiased"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
             CatalogCreator(name="z.ai", display_name="Z.ai"),
@@ -624,6 +627,25 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=4096,
                 price_tier=1,
                 cost=CatalogModelCost(run_credits=1),
+            ),
+            CatalogModel(
+                slug="inclusionai/ling-3.0-flash-vl",
+                display_name="Ling 3.0 Flash VL",
+                provider="open_router",
+                creator="inclusionai",
+                context_window=131072,
+                max_output_tokens=32768,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                supports_parallel_tool_calls=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=9.0,
+                    output_credits_per_1m=27.0,
+                    cache_read_credits_per_1m=1.8,
+                ),
             ),
             CatalogModel(
                 slug="meta-llama/llama-4-maverick",
@@ -1580,6 +1602,43 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=75.0,
                 ),
             ),
+            # ----- Inception Labs -----
+            CatalogModel(
+                slug="inception/mercury-2.5",
+                display_name="Mercury 2.5",
+                provider="open_router",
+                creator="inception",
+                context_window=260000,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                supports_parallel_tool_calls=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=6.0,
+                    output_credits_per_1m=22.5,
+                    cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            # ----- Unbiased -----
+            CatalogModel(
+                slug="unbiased/pareto",
+                display_name="Pareto",
+                provider="open_router",
+                creator="unbiased",
+                context_window=262144,
+                max_output_tokens=131072,
+                price_tier=2,
+                supports_tools=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=375.0,
+                    output_credits_per_1m=1125.0,
+                    cache_read_credits_per_1m=37.5,
+                ),
+            ),
             # ----- v0 by Vercel -----
             CatalogModel(
                 slug="v0-1.0-md",
@@ -1619,11 +1678,11 @@ def _build_catalog() -> CatalogPayload:
             "copilot_codex": {
                 "fast": {
                     "standard": "gpt-5.6-luna",
-                    "advanced": "gpt-5.6-terra",
+                    "advanced": "gpt-6-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-5.6-sol",
+                    "advanced": "gpt-6-astra",
                 },
             }
         },

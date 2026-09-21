@@ -224,6 +224,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+    INCLUSIONAI_LING_3_0_FLASH_VL = "inclusionai/ling-3.0-flash-vl"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
@@ -252,6 +253,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
+    # Inception Labs models
+    INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Unbiased models
+    UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"

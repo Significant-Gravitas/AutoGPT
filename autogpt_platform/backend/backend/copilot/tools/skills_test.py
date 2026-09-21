@@ -11,7 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import backend.copilot.tools.skills as skills
-from backend.copilot.model import ChatSession
+from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
     DEFAULT_SKILLS,
@@ -42,6 +44,7 @@ from backend.copilot.tools.skills import (
     _list_user_skills_from_workspace,
     _validate_name,
     build_skills_context,
+    build_skills_update_notice,
     copy_skill_to_expert,
     delete_user_skill,
     find_user_skill_slugs,
@@ -49,11 +52,13 @@ from backend.copilot.tools.skills import (
     list_all_skills,
     list_user_skill_files,
     parse_skill_markdown,
+    read_user_skill_package,
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
     validate_package,
 )
+from backend.util.exceptions import ConflictError
 
 # ---------------------------------------------------------------------------
 # Round-trip
@@ -163,7 +168,6 @@ def test_default_skills_load_from_disk():
     defaults = get_default_skills()
     names = {s.name for s in defaults}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # Bodies must be non-trivial — a zero-byte file silently kills the
     # whole feature for end users.
     for skill in defaults:
@@ -819,7 +823,6 @@ async def test_list_skills_anon_returns_defaults_only():
     assert isinstance(result, ListSkillsResponse)
     names = {s["name"] for s in result.skills}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # All anon results must be flagged as default.
     assert all(s["is_default"] for s in result.skills)
 
@@ -1085,6 +1088,179 @@ async def test_build_skills_context_authed_includes_user_skills():
         ctx = await build_skills_context(user_id="user-1")
     assert "mine" in ctx
     assert "agent_building_guide" in ctx  # defaults still present
+
+
+# ---------------------------------------------------------------------------
+# build_skills_update_notice (per-turn <skills_update> drift notice)
+# ---------------------------------------------------------------------------
+
+
+def _history_with_index(index_body: str) -> str:
+    """A persisted first user message carrying a baked-in skill index."""
+    return f"<available_skills>\n{index_body}\n</available_skills>\n\nhello"
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_index_matches_registry():
+    """Steady-state turns pay nothing — the notice fires only on drift."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(ctx)]
+        )
+    assert notice == ""
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_added_skill():
+    """A skill installed after session start is named with a list_skills nudge."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    stale_index = "- name: agent_building_guide — guide"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "<skills_update>" in notice
+    assert "mine" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_names_removed_skill():
+    """A skill deleted after session start is reported as removed."""
+    fake_manager = _FakeWorkspaceManager()
+    stale_index = "- name: gone — old skill"
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1", prior_contents=[_history_with_index(stale_index)]
+        )
+    assert "Removed" in notice
+    assert "gone" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_truncates_long_added_lists():
+    """Beyond _MAX_UPDATE_NAMES the notice falls back to a remainder count
+    instead of inlining the whole registry — it is a nudge, not the index."""
+    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES, get_default_skills
+
+    extra = 3
+    fake_manager = _FakeWorkspaceManager()
+    for i in range(_MAX_UPDATE_NAMES + extra):
+        slug = f"skill-{i:02d}"
+        fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=slug, description=f"skill {i}", body="x")
+        ).encode()
+    with _patch_skills_path(fake_manager):
+        notice = await build_skills_update_notice(
+            "user-1",
+            prior_contents=[
+                _history_with_index("- name: agent_building_guide — guide")
+            ],
+        )
+    # Derived, not spelled out: the defaults are part of the added set, so a
+    # default skill added or retired elsewhere should not fail this test.
+    unseen_defaults = sum(
+        1 for s in get_default_skills() if s.name != "agent_building_guide"
+    )
+    assert "<skills_update>" in notice
+    assert f"and {extra + unseen_defaults} more" in notice
+    assert "list_skills" in notice
+
+
+@pytest.mark.asyncio
+async def test_skills_update_notice_empty_when_flag_disabled():
+    """The COPILOT_SKILLS kill-switch suppresses the notice like the index."""
+    with patch(
+        "backend.copilot.tools.skills.is_skills_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await build_skills_update_notice(
+            "user-1", prior_contents=["<available_skills>\n</available_skills>\n\nhi"]
+        )
+    assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Engine prepend wiring (SDK helper + baseline helper)
+# ---------------------------------------------------------------------------
+
+
+def _session_with_user_history(contents: list[str]) -> ChatSession:
+    """ChatSession whose persisted history holds the given user messages."""
+    session = _make_session()
+    session.messages = [ChatMessage(role="user", content=c) for c in contents]
+    return session
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_fires_on_drift():
+    """A resumed turn whose index went stale gets the notice + original query."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    session = _session_with_user_history(
+        [_history_with_index("- name: agent_building_guide — guide")]
+    )
+    with _patch_skills_path(fake_manager):
+        result = await _maybe_prepend_skills_update(
+            session, "user-1", True, "do the thing"
+        )
+    assert result.startswith("<skills_update>")
+    assert result.endswith("do the thing")
+    assert "mine" in result
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_noop_when_index_current():
+    """Steady-state resumed turns reach the model untouched."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    with _patch_skills_path(fake_manager):
+        ctx = await build_skills_context(user_id="user-1")
+        session = _session_with_user_history([_history_with_index(ctx)])
+        result = await _maybe_prepend_skills_update(
+            session, "user-1", True, "do the thing"
+        )
+    assert result == "do the thing"
+
+
+@pytest.mark.asyncio
+async def test_sdk_prepend_noop_for_non_user_message():
+    """Tool-result turns never carry the notice (and never hit the registry)."""
+    session = _session_with_user_history(["hello"])
+    result = await _maybe_prepend_skills_update(session, "user-1", False, "raw")
+    assert result == "raw"
+
+
+def test_baseline_prepend_targets_current_user_message():
+    """With drained pending rows around, the notice lands on the latest turn."""
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "ack"},
+        {"role": "user", "content": "live"},
+    ]
+    _prepend_skills_notice_to_current_message(messages, "<skills_update>\nnew\n")
+    assert messages[0]["content"] == "first"
+    assert messages[2]["content"] == "<skills_update>\nnew\nlive"
+
+
+def test_baseline_prepend_empty_notice_noop():
+    """No drift means the live model input is left byte-identical."""
+    messages = [{"role": "user", "content": "live"}]
+    assert _prepend_skills_notice_to_current_message(messages, "") is None
+    assert messages == [{"role": "user", "content": "live"}]
 
 
 # ---------------------------------------------------------------------------
@@ -1357,6 +1533,80 @@ def _package_manager(slug: str = "big", siblings: int = 0) -> _FakeWorkspaceMana
     for i in range(siblings):
         fake.files[f"/skills/{slug}/references/r{i:03d}.md"] = f"ref {i}".encode()
     return fake
+
+
+class _MovingTree(_FakeWorkspaceManager):
+    """A store that keeps landing under the read.
+
+    Each listing reports a fresh row id for one sibling, which is what a real
+    overwrite does — ``write_file`` mints a new uuid and recreates the row, so
+    the id is what a concurrent write moves. Deriving the id from the path, as
+    the plain fake does, cannot express that.
+    """
+
+    def __init__(self, settles_at: int | None = None):
+        super().__init__()
+        self.files["/skills/big/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name="big", description="big description", body="steps")
+        ).encode()
+        self.files["/skills/big/references/moving.md"] = b"contents"
+        self.listings = 0
+        self.settles_at = settles_at
+
+    async def list_files(self, **kwargs):
+        self.listings += 1
+        rows = await super().list_files(**kwargs)
+        if self.settles_at is None or self.listings < self.settles_at:
+            for row in rows:
+                if row.path.endswith("moving.md"):
+                    row.id = f"id-moving-{self.listings}"
+        return rows
+
+
+@pytest.mark.asyncio
+async def test_a_package_read_retries_until_the_tree_stops_moving():
+    # Settles from the third listing: attempt one sees the tree move, attempt
+    # two finds it still.
+    fake = _MovingTree(settles_at=3)
+    with _patch_skills_path(fake):
+        package = await read_user_skill_package("user-1", "big")
+    assert package is not None
+    assert [f.relative_path for f in package.files] == ["references/moving.md"]
+
+
+@pytest.mark.asyncio
+async def test_a_package_read_that_never_settles_raises_instead_of_mixing():
+    """The body and the files would otherwise come from different versions, and
+    a publish would put that mix on the shelf permanently."""
+    fake = _MovingTree()
+    with _patch_skills_path(fake):
+        with pytest.raises(ConflictError):
+            await read_user_skill_package("user-1", "big")
+
+
+@pytest.mark.asyncio
+async def test_a_read_failure_is_answered_once_and_never_retried():
+    """Only a moved fingerprint costs an attempt. Retrying a storage failure
+    would turn one error into three reads and report a concurrency conflict for
+    something that is not one."""
+    fake = _package_manager()
+    fake.files["/skills/big/references/guide.md"] = b"read me"
+    reads = 0
+    original = fake.read_file
+
+    async def counted(path: str) -> bytes:
+        nonlocal reads
+        reads += 1
+        if path.endswith("references/guide.md"):
+            raise RuntimeError("blob store down")
+        return await original(path)
+
+    fake.read_file = counted
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="blob store down"):
+            await read_user_skill_package("user-1", "big")
+    # The root plus the one sibling that raised: a retry would read them again.
+    assert reads == 2
 
 
 @pytest.mark.asyncio

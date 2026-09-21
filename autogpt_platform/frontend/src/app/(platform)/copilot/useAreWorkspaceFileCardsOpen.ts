@@ -7,11 +7,13 @@ import { useCopilotUIStore } from "./store";
 // preview means the card is showing. The docked panel narrows the chat
 // column on its own, so it must never also trigger the slide, or the two
 // shifts stack and push the messages off screen under the app sidebar.
+// The computer face docks the same way, whatever tab is remembered under it.
 export function useAreWorkspaceFileCardsOpen() {
   return useCopilotUIStore(
     (s) =>
       s.artifactPanel.isOpen &&
       s.artifactPanel.activeArtifact == null &&
+      !s.artifactPanel.isComputerOpen &&
       s.artifactPanel.activeTab !== "artifacts",
   );
 }

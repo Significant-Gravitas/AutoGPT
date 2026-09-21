@@ -1,17 +1,8 @@
 "use client";
 
 import { Expert } from "@/app/api/__generated__/models/expert";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
 import { Camera01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { ChangeEvent, useRef } from "react";
 import { useExpertAvatarButton } from "./useExpertAvatarButton";
@@ -44,31 +35,13 @@ export function ExpertAvatarButton({ expert }: Props) {
         aria-label={`Change ${expert.name}'s photo`}
         className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        {isUploadedAvatar(expert.avatar_url) ? (
-          <Avatar className="size-24 border border-stone-500 bg-background ring-4 ring-background">
-            <AvatarImage
-              src={expert.avatar_url ?? undefined}
-              alt={expert.name}
-              width={192}
-              height={192}
-            />
-            <AvatarFallback>{expert.name}</AvatarFallback>
-          </Avatar>
-        ) : (
-          <span className="flex size-24 items-center justify-center rounded-full border border-stone-500 bg-background ring-4 ring-background">
-            <BotAvatar
-              config={expertAvatarConfig({
-                name: expert.name,
-                avatarUrl: expert.avatar_url,
-                color: expert.color,
-              })}
-              size={84}
-              trackPointer
-              showBadge={false}
-              title={expert.name}
-            />
-          </span>
-        )}
+        <ExpertAvatar
+          name={expert.name}
+          avatarUrl={expert.avatar_url}
+          color={expert.color}
+          size={96}
+          className="ring-4 ring-background"
+        />
 
         <span
           aria-hidden
