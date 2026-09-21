@@ -973,13 +973,14 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 # OpenRouter live pricing: $0.15/$0.47 per Mtok, $0.016/Mtok
-                # cached input — credit rates at the standard 1.5x margin
-                # (verified live 2026-09-21).
+                # cached input, $0.20/Mtok cache write — credit rates at the
+                # standard 1.5x margin (verified live 2026-09-21).
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=22.5,
                     output_credits_per_1m=70.5,
                     cache_read_credits_per_1m=2.4,
+                    cache_creation_credits_per_1m=30.0,
                 ),
             ),
             CatalogModel(
