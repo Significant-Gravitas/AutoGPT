@@ -13,7 +13,9 @@ import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
+import { SkillsList } from "../SkillsList/SkillsList";
 import { SkillsSection } from "../SkillsSection/SkillsSection";
+import { WorkflowsRail } from "../WorkflowsRail/WorkflowsRail";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
@@ -71,30 +73,43 @@ export const MainMarkeplacePage = () => {
             below its content changes what the reader has scrolled past. */}
         <CategoryFilter selected={category} onSelect={setCategory} />
         {showExperts ? <ExpertsSection category={category} /> : null}
-        {skillsHub.ready && skillsHub.enabled ? (
-          <SkillsSection category={category} />
-        ) : null}
-        {topAgents && (
-          <div className="mb-20" id={AGENTS_SECTION_ID}>
-            <AgentsSection
-              sectionTitle="All AI Workflows"
-              titleIcon={<AICatalogIcon size={30} />}
-              subtitle={
-                isHireExpertsEnabled
-                  ? "Install one on an Expert, or run it standalone."
-                  : "Ready-made automations from the community."
-              }
-              agents={topAgents.agents}
-            >
-              {/* Featured is a whole-marketplace shelf; under a category filter
-                  it would show workflows the filter excludes. */}
-              {!category &&
-                featuredAgents &&
-                featuredAgents.agents.length > 0 && (
-                  <FeaturedSection featuredAgents={featuredAgents.agents} />
-                )}
-            </AgentsSection>
-          </div>
+        {isHireExpertsEnabled ? (
+          <>
+            {skillsHub.ready && skillsHub.enabled ? (
+              <SkillsList category={category} />
+            ) : null}
+            {topAgents && (
+              <WorkflowsRail
+                id={AGENTS_SECTION_ID}
+                agents={topAgents.agents}
+                featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {skillsHub.ready && skillsHub.enabled ? (
+              <SkillsSection category={category} />
+            ) : null}
+            {topAgents && (
+              <div className="mb-20" id={AGENTS_SECTION_ID}>
+                <AgentsSection
+                  sectionTitle="All AI Workflows"
+                  titleIcon={<AICatalogIcon size={30} />}
+                  subtitle="Ready-made automations from the community."
+                  agents={topAgents.agents}
+                >
+                  {/* Featured is a whole-marketplace shelf; under a category filter
+                      it would show workflows the filter excludes. */}
+                  {!category &&
+                    featuredAgents &&
+                    featuredAgents.agents.length > 0 && (
+                      <FeaturedSection featuredAgents={featuredAgents.agents} />
+                    )}
+                </AgentsSection>
+              </div>
+            )}
+          </>
         )}
         {featuredCreators && (
           <div className="mb-4">
