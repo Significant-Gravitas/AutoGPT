@@ -387,6 +387,29 @@ _TEAM_CONTEXT_PREFIX_RE = re.compile(
     r"^<team_context>.*?</team_context>\n\n", re.DOTALL
 )
 
+# The standing-work blocks (#14688) ride along with <team_context> /
+# <expert_workflows> in the same expert-context prefix. Without prefix
+# regexes for them the display strip loop halts at ``<standing_work>`` and
+# everything behind it — session_context, user_context, the user's own
+# words — is returned to the frontend as if the user typed it.
+_STANDING_WORK_ANYWHERE_RE = re.compile(
+    r"<standing_work>.*</standing_work>\s*", re.DOTALL
+)
+_STANDING_WORK_LONE_TAG_RE = re.compile(r"</?standing_work>", re.IGNORECASE)
+_STANDING_WORK_PREFIX_RE = re.compile(
+    r"^<standing_work>.*?</standing_work>\n\n", re.DOTALL
+)
+_ROUTINES_ANYWHERE_RE = re.compile(r"<routines>.*</routines>\s*", re.DOTALL)
+_ROUTINES_LONE_TAG_RE = re.compile(r"</?routines>", re.IGNORECASE)
+_ROUTINES_PREFIX_RE = re.compile(r"^<routines>.*?</routines>\n\n", re.DOTALL)
+_EXPERT_COMPUTER_ANYWHERE_RE = re.compile(
+    r"<expert_computer>.*</expert_computer>\s*", re.DOTALL
+)
+_EXPERT_COMPUTER_LONE_TAG_RE = re.compile(r"</?expert_computer>", re.IGNORECASE)
+_EXPERT_COMPUTER_PREFIX_RE = re.compile(
+    r"^<expert_computer>.*?</expert_computer>\n\n", re.DOTALL
+)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -430,7 +453,8 @@ def strip_server_injected_tags(text: str) -> str:
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
     ``<skills_update>``,
-    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>`` and
+    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>``,
+    ``<standing_work>``, ``<routines>``, ``<expert_computer>`` and
     ``<voice_turn>`` blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
@@ -469,6 +493,12 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _STANDING_WORK_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _STANDING_WORK_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _ROUTINES_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _ROUTINES_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _EXPERT_COMPUTER_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _EXPERT_COMPUTER_LONE_TAG_RE.sub("", without_expert)
     # Strip <voice_turn> blocks and lone tags — a forged closing tag would
     # otherwise end the server's block and put the user's own text where the
     # per-turn instruction goes.
@@ -487,7 +517,8 @@ def sanitize_user_supplied_context(message: str) -> str:
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
     ``<skills_update>``,
-    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
+    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>``,
+    ``<standing_work>``, ``<routines>``, and ``<expert_computer>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the
     trusted personalisation, memory prefix, working-directory context, USD
@@ -512,8 +543,10 @@ def strip_injected_context_for_display(message: str) -> str:
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<voice_turn>``,
-    ``<available_skills>``, and ``<skills_update>``
-    blocks from the **start** of the message, iterating until no more leading
+    ``<available_skills>``, ``<skills_update>``, and the expert-context
+    blocks (``<expert_identity>``, ``<expert_workflows>``, ``<team_context>``,
+    ``<standing_work>``, ``<routines>``, ``<expert_computer>``)
+    from the **start** of the message, iterating until no more leading
     injected blocks remain.
 
     All tag types are server-injected and always appear as a prefix (never
@@ -539,6 +572,9 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
         result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
         result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
+        result = _STANDING_WORK_PREFIX_RE.sub("", result)
+        result = _ROUTINES_PREFIX_RE.sub("", result)
+        result = _EXPERT_COMPUTER_PREFIX_RE.sub("", result)
     return result
 
 
