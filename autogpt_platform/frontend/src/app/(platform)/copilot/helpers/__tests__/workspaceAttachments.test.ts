@@ -1,9 +1,12 @@
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { describe, expect, it } from "vitest";
+import openapiSpec from "@/app/api/openapi.json";
 import {
   type Attachment,
+  appendWithinCap,
   attachmentName,
   buildWorkspaceFilePart,
+  MAX_ATTACHMENTS,
   partitionAttachments,
   workspaceFileDownloadUrl,
   workspaceItemToAttachment,
@@ -80,3 +83,108 @@ describe("workspaceAttachments", () => {
     ]);
   });
 });
+
+describe("appendWithinCap", () => {
+  it("keeps exactly MAX_ATTACHMENTS and reports the rest as refused", () => {
+    const incoming = makeLocals(MAX_ATTACHMENTS + 3);
+
+    const { next, refused } = appendWithinCap([], incoming);
+
+    expect(next).toHaveLength(MAX_ATTACHMENTS);
+    expect(refused).toBe(3);
+    // The first ones in are the ones kept, so the user sees what they picked.
+    expect(next.map(attachmentName)).toEqual(
+      incoming.slice(0, MAX_ATTACHMENTS).map(attachmentName),
+    );
+  });
+
+  it("counts what is already attached against the cap", () => {
+    const prev = makeLocals(MAX_ATTACHMENTS - 2);
+
+    const { next, refused } = appendWithinCap(prev, makeLocals(5, "late"));
+
+    expect(next).toHaveLength(MAX_ATTACHMENTS);
+    expect(refused).toBe(3);
+  });
+
+  it("refuses nothing when everything fits", () => {
+    const { next, refused } = appendWithinCap(
+      makeLocals(2),
+      makeLocals(3, "b"),
+    );
+
+    expect(next).toHaveLength(5);
+    expect(refused).toBe(0);
+  });
+
+  it("skips a workspace file already attached without counting it as refused", () => {
+    const already = workspaceItemToAttachment(
+      makeWorkspaceItem({ id: "ws-1" }),
+    );
+
+    const { next, refused } = appendWithinCap([already], [already]);
+
+    expect(next).toEqual([already]);
+    expect(refused).toBe(0);
+  });
+
+  it("does not let a duplicate consume a slot a new file could have used", () => {
+    const already = workspaceItemToAttachment(
+      makeWorkspaceItem({ id: "ws-1" }),
+    );
+    const fresh = workspaceItemToAttachment(makeWorkspaceItem({ id: "ws-2" }));
+
+    const { next, refused } = appendWithinCap([already], [already, fresh]);
+
+    expect(next).toEqual([already, fresh]);
+    expect(refused).toBe(0);
+  });
+
+  it("leaves the caller's array alone", () => {
+    const prev = makeLocals(1);
+
+    appendWithinCap(prev, makeLocals(2, "b"));
+
+    expect(prev).toHaveLength(1);
+  });
+});
+
+describe("the composer cap against the backend's own", () => {
+  // The composer's count is not the whole request: `useWorkflowImportAutoSubmit`
+  // can add a file part the composer never held, so this must stay strictly
+  // under the backend's cap rather than meet it.
+  it.each(["StreamChatRequest", "QueuePendingMessageRequest"])(
+    "stays under %s.file_ids maxItems",
+    (schemaName) => {
+      const maxItems = fileIdsMaxItems(schemaName);
+      expect(maxItems).toBeGreaterThan(MAX_ATTACHMENTS);
+    },
+  );
+});
+
+function makeLocals(count: number, prefix = "a"): Attachment[] {
+  return Array.from({ length: count }, (_, i) => ({
+    kind: "local" as const,
+    file: new File(["x"], `${prefix}-${i}.txt`, { type: "text/plain" }),
+  }));
+}
+
+function fileIdsMaxItems(schemaName: string): number {
+  const schemas = (
+    openapiSpec as unknown as {
+      components: { schemas: Record<string, SchemaWithFileIds> };
+    }
+  ).components.schemas;
+  const fileIds = schemas[schemaName]?.properties?.file_ids;
+  const arrayBranch = (fileIds?.anyOf ?? []).find(
+    (branch) => branch.type === "array",
+  );
+  expect(arrayBranch?.maxItems).toBeTypeOf("number");
+  return arrayBranch!.maxItems!;
+}
+
+interface SchemaWithFileIds {
+  properties?: {
+    file_ids?: { anyOf?: { type?: string; maxItems?: number }[] };
+  };
+}

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
 import { useSendMessage } from "../useSendMessage";
+import { MAX_ATTACHMENTS } from "../helpers/workspaceAttachments";
 
 const { uploadFileDirectMock, toastMock } = vi.hoisted(() => ({
   uploadFileDirectMock: vi.fn(),
@@ -467,5 +468,49 @@ describe("useSendMessage when creating the first chat's session fails", () => {
 
     expect(useCopilotStreamStore.getState().pendingUploadSends).toEqual({});
     expect(renderSendMessage(SESSION_ID).result.current.pendingSend).toBeNull();
+  });
+});
+
+describe("useSendMessage send-time cap backstop", () => {
+  // The composer refuses the extra file as it is added, so this path is
+  // unreachable through the UI — it stays for any caller that is not the
+  // composer, and for a state forced past the cap.
+  it("refuses a batch over the cap without uploading or sending", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result, sendMessage } = renderSendMessage();
+
+    await act(async () => {
+      await result.current.onSend(
+        "too much",
+        Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, i) =>
+          makeFile(`over-${i}.pdf`),
+        ),
+      );
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Too many files" }),
+    );
+    expect(uploadFileDirectMock).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("lets exactly the cap through", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend(
+        "just enough",
+        Array.from({ length: MAX_ATTACHMENTS }, (_, i) =>
+          makeFile(`ok-${i}.pdf`),
+        ),
+      );
+    });
+
+    await waitFor(() =>
+      expect(uploadFileDirectMock).toHaveBeenCalledTimes(MAX_ATTACHMENTS),
+    );
+    expect(toastMock).not.toHaveBeenCalled();
   });
 });

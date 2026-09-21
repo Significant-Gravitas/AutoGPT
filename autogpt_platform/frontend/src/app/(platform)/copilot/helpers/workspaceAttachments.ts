@@ -21,6 +21,13 @@ export type Attachment =
   | { kind: "local"; file: File }
   | ({ kind: "workspace" } & WorkspaceAttachment);
 
+/** Per-message attachment ceiling, enforced as each file is added so the
+ *  composer can never build a message the send path would refuse. Stays UNDER
+ *  the backend's own cap (`StreamChatRequest.file_ids`, maxItems 20) because a
+ *  workflow-import part rides along outside this count — see the spec test in
+ *  `__tests__/workspaceAttachments.test.ts`. */
+export const MAX_ATTACHMENTS = 10;
+
 export function workspaceFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
@@ -67,4 +74,32 @@ export function partitionAttachments(attachments: Attachment[]): {
     }
   }
   return { localFiles, workspaceFiles };
+}
+
+/** Appends what fits under `MAX_ATTACHMENTS`, skipping workspace files already
+ *  attached — a re-picked file is not counted in `refused`. */
+export function appendWithinCap(
+  prev: Attachment[],
+  incoming: Attachment[],
+): { next: Attachment[]; refused: number } {
+  const next = [...prev];
+  let refused = 0;
+  for (const attachment of incoming) {
+    if (
+      attachment.kind === "workspace" &&
+      isAttached(next, attachment.fileId)
+    ) {
+      continue;
+    }
+    if (next.length >= MAX_ATTACHMENTS) {
+      refused += 1;
+      continue;
+    }
+    next.push(attachment);
+  }
+  return { next, refused };
+}
+
+function isAttached(attachments: Attachment[], fileId: string): boolean {
+  return attachments.some((a) => a.kind === "workspace" && a.fileId === fileId);
 }

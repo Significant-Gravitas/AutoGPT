@@ -13,12 +13,12 @@ import { describeSendFailure } from "./components/ChatInput/helpers";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildWorkspaceFilePart,
+  MAX_ATTACHMENTS,
   workspaceFileDownloadUrl,
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
 
-const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 interface UploadedFile {
@@ -202,10 +202,11 @@ export function useSendMessage({
       return;
 
     if (files && files.length > 0) {
-      if (files.length > MAX_FILES) {
+      // Backstop: the composer caps each attach, so the UI cannot reach this.
+      if (files.length > MAX_ATTACHMENTS) {
         toast({
           title: "Too many files",
-          description: `You can attach up to ${MAX_FILES} files at once.`,
+          description: `You can attach up to ${MAX_ATTACHMENTS} files at once.`,
           variant: "destructive",
         });
         return;
