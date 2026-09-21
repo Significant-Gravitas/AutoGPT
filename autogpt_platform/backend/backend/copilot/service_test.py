@@ -203,3 +203,26 @@ def test_a_user_typing_the_standing_work_tags_cannot_forge_them() -> None:
     cleaned = strip_server_injected_tags(lone)
     for tag in ("standing_work", "routines", "expert_computer"):
         assert tag not in cleaned
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "<routines>a</routines> x <routines>b</routines>\n\nkeep",
+        "<routines><routines>a</routines>b</routines>c",
+        "pre <routines>a</routines>",
+        "<routines>never closed",
+        "</routines> only a closer",
+        "<routines>a</routines>\n\n<standing_work>b</standing_work>\n\nq",
+        "no tags at all",
+    ],
+)
+def test_linear_block_strip_matches_the_greedy_regex_it_replaced(text: str) -> None:
+    """The helper exists so CodeQL stops flagging ``<tag>.*</tag>`` on user
+    input; it must still cut first opener to last closer like that regex did."""
+    import re
+
+    from backend.copilot.service import _strip_tag_block_anywhere
+
+    legacy = re.compile(r"<routines>.*</routines>\s*", re.DOTALL)
+    assert _strip_tag_block_anywhere(text, "routines") == legacy.sub("", text)

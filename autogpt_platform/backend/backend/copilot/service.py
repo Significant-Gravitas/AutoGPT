@@ -365,23 +365,21 @@ _SKILLS_UPDATE_PREFIX_RE = re.compile(
 # Expert-session blocks injected by expert_context.py. <expert_workflows> /
 # <team_context> are prepended in front of every other block, so the display
 # strip loop must know them or it stops before reaching the standard tags.
-# The anywhere/lone-tag pairs get the same sanitizer treatment as the other
+# The block/lone-tag pairs get the same sanitizer treatment as the other
 # server-only tags so a user-typed block cannot spoof the expert persona.
-_EXPERT_IDENTITY_ANYWHERE_RE = re.compile(
-    r"<expert_identity>.*</expert_identity>\s*", re.DOTALL
-)
+# Whole-block removal for these goes through ``_strip_tag_block_anywhere``
+# rather than a ``<tag>.*</tag>`` regex: on user-controlled text a greedy
+# ``.*`` re-scans to the end from every ``<tag>`` it finds (CodeQL
+# py/polynomial-redos), and the string scan is linear with the same
+# first-opener-to-last-closer result.
 _EXPERT_IDENTITY_LONE_TAG_RE = re.compile(r"</?expert_identity>", re.IGNORECASE)
 _EXPERT_IDENTITY_PREFIX_RE = re.compile(
     r"^<expert_identity>.*?</expert_identity>\n\n", re.DOTALL
-)
-_EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
-    r"<expert_workflows>.*</expert_workflows>\s*", re.DOTALL
 )
 _EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
 _EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
     r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
 )
-_TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
 _TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
 _TEAM_CONTEXT_PREFIX_RE = re.compile(
     r"^<team_context>.*?</team_context>\n\n", re.DOTALL
@@ -392,23 +390,31 @@ _TEAM_CONTEXT_PREFIX_RE = re.compile(
 # regexes for them the display strip loop halts at ``<standing_work>`` and
 # everything behind it — session_context, user_context, the user's own
 # words — is returned to the frontend as if the user typed it.
-_STANDING_WORK_ANYWHERE_RE = re.compile(
-    r"<standing_work>.*</standing_work>\s*", re.DOTALL
-)
 _STANDING_WORK_LONE_TAG_RE = re.compile(r"</?standing_work>", re.IGNORECASE)
 _STANDING_WORK_PREFIX_RE = re.compile(
     r"^<standing_work>.*?</standing_work>\n\n", re.DOTALL
 )
-_ROUTINES_ANYWHERE_RE = re.compile(r"<routines>.*</routines>\s*", re.DOTALL)
 _ROUTINES_LONE_TAG_RE = re.compile(r"</?routines>", re.IGNORECASE)
 _ROUTINES_PREFIX_RE = re.compile(r"^<routines>.*?</routines>\n\n", re.DOTALL)
-_EXPERT_COMPUTER_ANYWHERE_RE = re.compile(
-    r"<expert_computer>.*</expert_computer>\s*", re.DOTALL
-)
 _EXPERT_COMPUTER_LONE_TAG_RE = re.compile(r"</?expert_computer>", re.IGNORECASE)
 _EXPERT_COMPUTER_PREFIX_RE = re.compile(
     r"^<expert_computer>.*?</expert_computer>\n\n", re.DOTALL
 )
+
+
+def _strip_tag_block_anywhere(text: str, tag: str) -> str:
+    """Remove ``<tag>…</tag>`` and the whitespace after it from anywhere in
+    ``text``, spanning the first opener to the last closer exactly like the
+    greedy ``<tag>.*</tag>\\s*`` regex it replaces, but in one linear pass.
+    A lone opener or closer is left for the tag's lone-tag regex."""
+    open_tag, close_tag = f"<{tag}>", f"</{tag}>"
+    start = text.find(open_tag)
+    if start == -1:
+        return text
+    end = text.rfind(close_tag)
+    if end < start:
+        return text
+    return text[:start] + text[end + len(close_tag) :].lstrip()
 
 
 def _sanitize_user_context_field(value: str) -> str:
@@ -487,17 +493,17 @@ def strip_server_injected_tags(text: str) -> str:
     without_skills_ctx = _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
     # Strip the expert-session blocks and lone tags — prevents spoofing of
     # the server-injected expert persona / workflows / team-awareness blocks.
-    without_expert = _EXPERT_IDENTITY_ANYWHERE_RE.sub("", without_skills_ctx)
+    without_expert = _strip_tag_block_anywhere(without_skills_ctx, "expert_identity")
     without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_tag_block_anywhere(without_expert, "expert_workflows")
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_tag_block_anywhere(without_expert, "team_context")
     without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _STANDING_WORK_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_tag_block_anywhere(without_expert, "standing_work")
     without_expert = _STANDING_WORK_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _ROUTINES_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_tag_block_anywhere(without_expert, "routines")
     without_expert = _ROUTINES_LONE_TAG_RE.sub("", without_expert)
-    without_expert = _EXPERT_COMPUTER_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _strip_tag_block_anywhere(without_expert, "expert_computer")
     without_expert = _EXPERT_COMPUTER_LONE_TAG_RE.sub("", without_expert)
     # Strip <voice_turn> blocks and lone tags — a forged closing tag would
     # otherwise end the server's block and put the user's own text where the
