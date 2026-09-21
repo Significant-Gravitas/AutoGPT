@@ -406,9 +406,8 @@ class CodexAnthropicGateway:
         duplicate: _DuplicateSubmission,
         streamed: bool,
     ) -> web.StreamResponse:
-        # The response lock is held for as long as the accepted request is
-        # still producing its answer, so waiting on it is what turns a
-        # concurrent duplicate into the same answer rather than a 409.
+        # The lock is held while the accepted request is still writing, so
+        # waiting on it is what gives a concurrent duplicate the same answer.
         async with duplicate.conversation.response_lock:
             replay = self._take_replay(
                 duplicate.conversation,
@@ -463,10 +462,8 @@ class CodexAnthropicGateway:
                 record for record, _ in known if record.claim_fingerprint == fingerprint
             ]
             if claimed_by:
-                # The CLI re-sends a byte-identical request when the first
-                # attempt times out before its response arrives, so answering
-                # this one with the response that request already produced is
-                # the no-op the retry expects.
+                # The CLI re-sends this verbatim when its first attempt times
+                # out, so the response that request produced is the answer.
                 return _DuplicateSubmission(
                     conversation=claimed_by[0].conversation,
                     replay_key=fingerprint,
