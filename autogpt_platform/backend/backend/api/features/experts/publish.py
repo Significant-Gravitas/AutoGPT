@@ -80,11 +80,7 @@ async def publish_expert(
             template_id = existing.id
         else:
             created = await tx.expert.create(
-                data={
-                    **fields,
-                    "isTemplate": True,
-                    "publishedFromExpertId": row.id,
-                }
+                data={**fields, "publishedFromExpertId": row.id}
             )
             template_id = created.id
         await tx.expertpublishedpackage.upsert(
@@ -142,6 +138,10 @@ def _template_fields(
         "dayOne": SafeJson(encode_day_one(manifest.day_one)),
         "toolProfile": SafeJson(manifest.tool_profile),
         "skills": [card.slug for card in manifest.skills],
+        # Both halves of the write, so a republish restores the row's defining
+        # columns rather than assuming they still hold — the same reason
+        # `isArchived` is here rather than only on the create.
+        "isTemplate": True,
         "isArchived": False,
     }
 
