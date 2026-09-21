@@ -201,16 +201,22 @@ export function useSendMessage({
     if (!trimmed && (!files || files.length === 0) && !hasWorkspaceFiles)
       return;
 
+    // Backstop: the composer caps each attach, so the UI cannot reach this.
+    // Workspace references count too — uploaded or not, every attachment
+    // becomes one `file_ids` entry on the request the backend bounds.
+    if (
+      (files?.length ?? 0) + (workspaceFiles?.length ?? 0) >
+      MAX_ATTACHMENTS
+    ) {
+      toast({
+        title: "Too many files",
+        description: `You can attach up to ${MAX_ATTACHMENTS} files at once.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (files && files.length > 0) {
-      // Backstop: the composer caps each attach, so the UI cannot reach this.
-      if (files.length > MAX_ATTACHMENTS) {
-        toast({
-          title: "Too many files",
-          description: `You can attach up to ${MAX_ATTACHMENTS} files at once.`,
-          variant: "destructive",
-        });
-        return;
-      }
       const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
       if (oversized.length > 0) {
         toast({
