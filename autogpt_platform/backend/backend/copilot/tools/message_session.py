@@ -32,6 +32,7 @@ from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
 from .base import BaseTool
+from .expert_delegation import sent_from_metadata
 from .models import ErrorResponse, SessionMessageResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,7 @@ class MessageSessionTool(BaseTool):
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=target_id,
                 message=payload,
-                message_metadata={"from_session_id": session.session_id},
+                message_metadata=sent_from_metadata(session),
                 llm_auth_provider=target.metadata.llm_auth_provider,
                 llm_credential_id=target.metadata.llm_credential_id,
                 permissions=(

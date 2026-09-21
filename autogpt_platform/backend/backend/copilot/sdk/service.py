@@ -4531,6 +4531,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     organization_id: str | None = None,
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4623,7 +4624,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message
+        session, message, is_user_message, message_metadata
     )
     if _user_message_appended and is_user_message:
         track_user_message(
