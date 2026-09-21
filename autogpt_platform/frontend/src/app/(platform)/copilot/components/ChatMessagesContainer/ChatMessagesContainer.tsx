@@ -51,8 +51,13 @@ import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader } from "./components/ThreadHeader";
+import {
+  PENDING_UPLOAD_MESSAGE_ID,
+  PendingUploadMessage,
+} from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -79,6 +84,11 @@ interface Props {
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** A just-sent message whose local attachments are still uploading. It is
+   *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
+   *  so it renders as a placeholder bubble with an "Uploading files…"
+   *  status in the thinking indicator's usual spot. */
+  pendingSend?: PendingUploadSend | null;
   /** Extra bottom padding (px) applied to the scrollable message list so
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
@@ -314,6 +324,7 @@ export function ChatMessagesContainer({
   onRetry,
   turnStats,
   queuedMessages,
+  pendingSend,
   bottomContentPadding,
   readOnly = false,
   filePattern,
@@ -353,10 +364,13 @@ export function ChatMessagesContainer({
   // the underlying message stays whole. See `splitMessagesAtDrainHints`.
   const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
+  const showPendingSend = !readOnly && !!pendingSend;
   // Read off the rendered rows: a fallback follow-up row the split drops in
   // favour of the drain-point bubble has no element to anchor the tail on.
-  const lastUserMessageID =
-    renderRows.findLast((row) => row.role === "user")?.id ?? null;
+  // While a send is still uploading, the placeholder is the last user row.
+  const lastUserMessageID = showPendingSend
+    ? PENDING_UPLOAD_MESSAGE_ID
+    : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -537,11 +551,14 @@ export function ChatMessagesContainer({
               onLoadMore={onLoadMore}
             />
           )}
-          {isLoading && messages.length === 0 && !isRestoringActiveSession && (
-            <div className="flex flex-1 items-center justify-center">
-              <LoadingSpinner className="text-neutral-600" />
-            </div>
-          )}
+          {isLoading &&
+            messages.length === 0 &&
+            !isRestoringActiveSession &&
+            !showPendingSend && (
+              <div className="flex flex-1 items-center justify-center">
+                <LoadingSpinner className="text-neutral-600" />
+              </div>
+            )}
           {renderRows.map((message, rowIndex) => {
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
@@ -775,6 +792,12 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
+          {showPendingSend && pendingSend && (
+            <PendingUploadMessage
+              pendingSend={pendingSend}
+              isCompact={isCompact}
+            />
+          )}
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"

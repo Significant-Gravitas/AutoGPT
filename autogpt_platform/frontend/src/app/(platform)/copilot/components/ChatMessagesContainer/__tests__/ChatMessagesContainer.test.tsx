@@ -888,6 +888,104 @@ describe("ChatMessagesContainer — expert kickoff", () => {
   });
 });
 
+// ── pending upload placeholder ────────────────────────────────────────────
+
+describe("ChatMessagesContainer — pendingSend", () => {
+  const pendingSend = {
+    text: "tell me about this",
+    attachments: [
+      {
+        name: "talk.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 2048,
+        isUploading: true,
+      },
+      { name: "icon.png", mediaType: "image/png", isUploading: true },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the sent text and attachments before the message reaches the transcript", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(screen.getByText("talk.pdf")).toBeDefined();
+    expect(screen.getByText("icon.png")).toBeDefined();
+  });
+
+  it("narrates the upload in the thinking indicator", () => {
+    render(<ChatMessagesContainer {...baseProps} pendingSend={pendingSend} />);
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 2 files…",
+    );
+  });
+
+  it("uses the singular for a single file", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={{
+          ...pendingSend,
+          attachments: pendingSend.attachments.slice(0, 1),
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "Uploading 1 file…",
+    );
+  });
+
+  it("does not show the history spinner while the placeholder is up", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+      />,
+    );
+
+    expect(screen.getByText("tell me about this")).toBeDefined();
+    expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+
+  it("keeps the placeholder out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByText("tell me about this")).toBeNull();
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("still shows the history spinner in a read-only transcript", () => {
+    // The placeholder is suppressed here, so nothing stands in for the
+    // spinner — hiding it would leave the transcript blank while it loads.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading
+        pendingSend={pendingSend}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByTestId("loading-spinner")).toBeDefined();
+  });
+});
+
 // ── mid-turn drain split ──────────────────────────────────────────────────
 
 describe("ChatMessagesContainer — mid-turn follow-up", () => {
