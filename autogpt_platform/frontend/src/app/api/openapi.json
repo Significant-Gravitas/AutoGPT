@@ -19023,6 +19023,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Options"
+          },
+          "allow_multiple": {
+            "type": "boolean",
+            "title": "Allow Multiple",
+            "default": false
           }
         },
         "type": "object",
@@ -19526,6 +19531,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "routine_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -28021,6 +28030,8 @@
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
+          "routines",
+          "routine",
           "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",

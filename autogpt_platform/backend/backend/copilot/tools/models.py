@@ -58,6 +58,9 @@ class ResponseType(str, Enum):
     EXPERT_WORKFLOW = "expert_workflow"
     EXPERT_WORKFLOWS = "expert_workflows"
     EXPERT_CREDENTIALS = "expert_credentials"
+    # Standing work: the routines an expert offers, and one switched on or off.
+    ROUTINES = "routines"
+    ROUTINE = "routine"
     CREDENTIAL_GRANT_REQUESTED = "credential_grant_requested"
     SCHEDULE_CREATED = "schedule_created"
 
@@ -783,6 +786,9 @@ class ClarifyingQuestion(BaseModel):
     keyword: str
     example: str | None = None
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class AgentPreviewResponse(ToolResponseBase):

@@ -12,7 +12,8 @@ data source, trigger, or a choice between candidate blocks.
 Discover the platform's real options first (e.g. `find_capability`), then
 call `ask_question` listing those options ("The platform supports
 Gmail, Slack, and Google Docs — which for delivery?") and **wait for
-the answer**.
+the answer**. Set `allow_multiple` on a question whose options combine
+("which of these should it post to?") rather than compete.
 
 **Skip** when the goal already specifies every dimension (e.g. "scrape
 prices from Amazon and email me daily"). Data-shape questions are usually
@@ -33,7 +34,7 @@ sampling (step 2), not by deliberation.
    matches are returned, surface them to the user with the `[N% match]`
    prefix preserved and ask before building new; if they pick one, run
    it with `run_agent`. If the user has seen matches and explicitly
-   tells you to build anyway, retry `create_agent` with
+   tells you to build anyway, retry `tool:create_agent` with
    `library_check_ack=true` — **never set this proactively**. Builder-
    bound sessions bypass this gate automatically.
 
@@ -46,7 +47,7 @@ sampling (step 2), not by deliberation.
    If the sample fails on credentials, ask the user to connect and **stop
    designing until you've seen the data**. Skip only when the data shape is
    fully specified by the user or trivially known.
-3. **Show the plan**: Once steps 1–2 are past, call `decompose_goal` with
+3. **Show the plan**: Once steps 1–2 are past, call `tool:decompose_goal` with
    plain-English steps that describe **what the agent does for the
    user**, not blocks or wiring — e.g. for a YouTube summarizer:
    "Accept a YouTube URL", "Fetch the transcript", "Generate a
@@ -92,30 +93,30 @@ sampling (step 2), not by deliberation.
    string/line edits via your file tools or `python3` + `json` in
    `bash_exec`); never fork `agent_fixed.json` / `agent_v2.json` variants
    and never rewrite the whole file to change a few nodes.
-9. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+9. **Validate**: Call `tool:validate_agent_graph` with the agent JSON to check
    for errors. For any non-trivial graph, pass the file from step 8 by
    reference instead of re-emitting the JSON inline:
    `agent_json="@@agptfile:workspace:///agent.json"` (a plain string — the
    platform reads and parses the file). This avoids re-generating large
    JSON in tool arguments, where it can get truncated.
-10. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+10. **Fix if needed**: Call `tool:fix_agent_graph` to auto-fix common issues,
     or fix manually based on the error descriptions. Iterate until valid.
     Pass `write_to="agent.json"` so the fixed JSON is written back to the
     workspace file (pretty-printed) and the response returns a file
     reference — chain it straight into the next step without re-emitting
     the graph.
-11. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+11. **Save**: Call `tool:create_agent` (new) or `tool:edit_agent` (existing) with
     the final `agent_json` — again by file reference when it lives in a
     file: `agent_json="@@agptfile:workspace:///agent.json"`.
 12. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
     `wait_for_result=120` to verify the agent works end-to-end.
 13. **Inspect & fix**: Check the dry-run output for errors. If issues are
-    found, call `edit_agent` to fix and dry-run again. Repeat until the
+    found, call `tool:edit_agent` to fix and dry-run again. Repeat until the
     simulation passes or the problems are clearly unfixable.
     See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 **After every `edit_agent` on an agent that is scheduled or referenced by
-other agents**: (1) `list_schedules()` (unfiltered) and recreate any schedule
+other agents**: (1) `tool:list_schedules` (unfiltered) and recreate any schedule
 pinned to an older version (delete + `run_agent` with cron); (2) if other
 agents call this one via `AgentExecutorBlock`, update their pinned
 `graph_version` too. Editing without this leaves the old version running.
@@ -270,7 +271,7 @@ To compose agents using other agents as sub-agents:
    `"url"` as the sink_name)
 5. Wire outputs: link from source names matching the sub-agent's
    `output_schema` property names
-6. Pass `library_agent_ids` to `create_agent`/`customize_agent` with
+6. Pass `library_agent_ids` to `tool:create_agent`/`tool:customize_agent` with
    the library agent IDs used, so the fixer can validate schemas
 
 ### Using MCP Tools (MCPToolBlock)
@@ -370,7 +371,7 @@ not re-verified is not a fix. NEVER skip this step.
 
 #### Step-by-step workflow
 
-1. **Create/Edit**: Call `create_agent` or `edit_agent` to save the agent.
+1. **Create/Edit**: Call `tool:create_agent` or `tool:edit_agent` to save the agent.
 2. **Dry-run**: Call `run_agent` with `dry_run=True`, `wait_for_result=120`,
    and realistic sample inputs that exercise every path in the agent. This
    simulates execution using an LLM for each block — no real API calls,
@@ -379,8 +380,8 @@ not re-verified is not a fix. NEVER skip this step.
    `run_agent(dry_run=True, wait_for_result=...)` now returns the
    per-node trace directly in `execution.node_executions` on completion,
    so read it from the result and do NOT make a follow-up
-   `view_agent_output` call. (Only call `view_agent_output(...,
-   show_execution_details=True)` if you need the trace for a real,
+   `view_agent_output` call. (Only run `tool:view_agent_output` with
+   `show_execution_details=true` if you need the trace for a real,
    non-dry-run execution or for an execution started in a prior turn.)
    Look for:
    - **Errors / failed nodes** — a node raised an exception or returned an
@@ -393,7 +394,7 @@ not re-verified is not a fix. NEVER skip this step.
      missing or broken link from an upstream node.
    - **Unexpected values** — data arrived but in the wrong type or
      structure. Check type compatibility between linked ports.
-4. **Fix**: If any issues are found, call `edit_agent` with the corrected
+4. **Fix**: If any issues are found, call `tool:edit_agent` with the corrected
    agent JSON, then go back to step 2.
 5. **Repeat**: Continue the dry-run -> fix cycle until the simulation passes
    or the problems are clearly unfixable. If you stop making progress,
@@ -455,7 +456,7 @@ arrives. The agent must contain a webhook trigger block (surfaced by
 `find_capability(..., context="graph")`); such an agent can only be
 triggered, not run manually.
 
-**To set up a webhook trigger:** call `setup_agent_webhook_trigger` with the
+**To set up a webhook trigger:** call `tool:setup_agent_webhook_trigger` with the
 agent's `library_agent_id` and the trigger block's `trigger_config` (the trigger
 block's configuration inputs). Read those fields from the agent's
 `trigger_info.config_schema`, which `find_library_agent` returns for any
@@ -470,13 +471,13 @@ via `create_agent`/`edit_agent` — leave those inputs unset in the graph.
 you back here. The config is stored per-trigger on the **preset** and applied to
 the trigger node each time the webhook fires, so one agent can have several
 triggers (e.g. different repos) each configured independently. Always supply
-config via `setup_agent_webhook_trigger`'s `trigger_config` — never by editing
+config via `tool:setup_agent_webhook_trigger`'s `trigger_config` — never by editing
 the node.
 
 **Credentials must be chosen explicitly.** For provider webhooks (e.g. GitHub)
 the webhook is registered under a specific account, so always ask the user which
 connected account to use — never assume or auto-pick, even if only one exists.
-Call `setup_agent_webhook_trigger` without `credentials` first: it returns a
+Call `tool:setup_agent_webhook_trigger` without `credentials` first: it returns a
 setup card listing the available accounts per credential field. Ask the user
 which to use, then call again with `credentials={<field_name>: <credential_id>}`.
 If a field has no connected account, that **same card lets the user connect
@@ -498,7 +499,7 @@ then call again with `trigger_config` filled in.
 - **Provider webhooks (e.g. GitHub):** registered automatically once the account
   is chosen — no URL handoff is needed.
 
-To retrieve a webhook URL later, use `list_agent_triggers` — it returns the
+To retrieve a webhook URL later, use `tool:list_agent_triggers` — it returns the
 `webhook_url` for each webhook trigger.
 
 **Manual UI fallback** (if the user prefers to do it themselves): Library → open
@@ -506,8 +507,8 @@ the agent → "+ New Task" → enter config → "Set up Trigger" → "Triggers" 
 copy the webhook URL. The URL is **not** shown in the Builder.
 
 **Managing triggers & presets after setup:** a webhook trigger is a preset — use
-`list_presets` to find it, then `update_preset` (rename / pause-resume via
-`is_active` / reconfigure) or `delete_preset`. Webhook triggers fire
+`tool:list_presets` to find it, then `tool:update_preset` (rename / pause-resume via
+`is_active` / reconfigure) or `tool:delete_preset`. Webhook triggers fire
 automatically on their event and **can't** be run on demand;
 `run_agent(preset_id=…)` runs only **non-webhook** presets (and `save_as_preset`
 saves a run as one). See each tool's description for arguments.
@@ -554,7 +555,7 @@ scheduled agent**. Only split when some runs would otherwise do nothing.
 
 **Creating the two agents:**
 
-1. Build and save the **action agent** first, visibly (`create_agent`); it
+1. Build and save the **action agent** first, visibly (`tool:create_agent`); it
    takes a single event as input. Reuse an existing agent if one fits.
 2. Read its `graph_id`, `graph_version`, `input_schema`, and `output_schema`
    via `find_library_agent` to wire the `AgentExecutorBlock`.
@@ -569,12 +570,12 @@ agent whose graph contains an `AgentExecutorBlock` referencing the parent's
 `graph_id` is listed under that parent's triggers — no explicit linking
 needed.
 
-**Managing triggers:** `list_agent_triggers` (parent's `library_agent_id`)
+**Managing triggers:** `tool:list_agent_triggers` (parent's `library_agent_id`)
 lists trigger agents (`kind="agent"`) and webhook presets (`kind="webhook"`);
 check it before adding or deleting one. For `kind="webhook"` triggers it also
 returns the `webhook_url` — give that to the user verbatim if they need to
-(re)configure their external service. `list_schedules` (optionally filtered by
-`graph_id`) and `delete_schedule` manage schedules — change a cron by deleting
+(re)configure their external service. `tool:list_schedules` (optionally filtered by
+`graph_id`) and `tool:delete_schedule` manage schedules — change a cron by deleting
 and re-creating via `run_agent`. **Note**: editing a trigger agent makes a new
 version, but the old schedule keeps running the old one — delete and re-create
 the schedule after editing.

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -79,6 +80,7 @@ from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .resume_capability import ResumeCapabilityTool
+from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
 from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
@@ -218,6 +220,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "install_expert_workflow": InstallExpertWorkflowTool(),
     "remove_expert_workflow": RemoveExpertWorkflowTool(),
     "list_expert_workflows": ListExpertWorkflowsTool(),
+    # Standing work: what the expert offers to do unattended, and the round
+    # trip that turns one of those offers into a real cadence.
+    "list_routines": ListRoutinesTool(),
+    "schedule_routine": ScheduleRoutineTool(),
     "list_expert_credentials": ListExpertCredentialsTool(),
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
@@ -284,6 +290,11 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "install_expert_workflow": "expert_resources",
     "remove_expert_workflow": "expert_resources",
     "list_expert_workflows": "expert_resources",
+    # Routines ride the same gate as workflow installs: an expert manages its
+    # own standing work, and personal AutoPilot manages any expert's — and,
+    # with no expert named, the account's own.
+    "list_routines": "expert_resources",
+    "schedule_routine": "expert_resources",
     "list_expert_credentials": "expert_resources",
     "grant_expert_credential": "expert_admin",
     "revoke_expert_credential": "expert_admin",
@@ -453,9 +464,9 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
-    ``DEFERRED_TOOL_NAMES`` are refused outright: they are reached by id
-    through ``run_capability``, which applies the permission and envelope
-    gates this function does not.
+    ``DEFERRED_TOOL_NAMES`` are refused when the model names one directly:
+    they are reached by id through ``run_capability``, whose dispatch this
+    function resolves back into a call to the tool itself.
 
     ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
     default on purpose: they are an enforcement boundary, so a new call site
@@ -493,6 +504,12 @@ async def execute_tool(
             ).model_dump_json(),
             success=False,
         )
+
+    # A dispatch of a platform tool IS a call to that tool, so it runs the rest
+    # of this path under its own name: the refusal above still answers the model
+    # that named a deferred tool directly, because it ran before the resolve.
+    if dispatch := resolve_tool_dispatch(tool_name, parameters):
+        tool, tool_name, parameters = dispatch
 
     # Track tool call in PostHog
     logger.info(
