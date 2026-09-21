@@ -31,6 +31,7 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
+    MAX_PACKAGE_FILE_BYTES,
     SkillPackage,
     SkillPackageError,
     validate_package,
@@ -251,12 +252,7 @@ def validate_expert_package(package: ExpertPackage) -> None:
             over_limit=True,
         )
     for slug, skill in sorted(package.skills.items()):
-        try:
-            validate_package(skill)
-        except SkillPackageError as exc:
-            raise ExpertPackageError(
-                f"skill '{slug[:120]}': {exc}", over_limit=exc.over_limit
-            )
+        validate_packaged_skill(slug, skill)
     if (
         package.avatar_bytes is not None
         and len(package.avatar_bytes) > MAX_AVATAR_BYTES
@@ -270,6 +266,29 @@ def validate_expert_package(package: ExpertPackage) -> None:
         raise ExpertPackageError(
             f"package unpacks to {package.size_bytes} bytes; the limit is "
             f"{MAX_PACKAGE_BYTES}",
+            over_limit=True,
+        )
+
+
+def validate_packaged_skill(slug: str, skill: SkillPackage) -> None:
+    """Refuse one skill of a package that the ``.expert.zip`` reader would.
+
+    The skill format caps each sibling file but leaves the root ``SKILL.md``
+    bounded only by the whole; the archive reader holds every member of a
+    skill's folder, root included, to the file cap, so a root between the two
+    would export and then fail on re-import.
+    """
+    try:
+        validate_package(skill)
+    except SkillPackageError as exc:
+        raise ExpertPackageError(
+            f"skill '{slug[:120]}': {exc}", over_limit=exc.over_limit
+        )
+    root_bytes = len(skill.skill_md.encode("utf-8"))
+    if root_bytes > MAX_PACKAGE_FILE_BYTES:
+        raise ExpertPackageError(
+            f"skill '{slug[:120]}': SKILL.md is {root_bytes} bytes; the limit is "
+            f"{MAX_PACKAGE_FILE_BYTES}",
             over_limit=True,
         )
 

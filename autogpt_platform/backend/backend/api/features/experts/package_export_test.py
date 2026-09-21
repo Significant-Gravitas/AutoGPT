@@ -327,6 +327,24 @@ async def test_workflows_without_a_source_do_not_count_toward_the_cap():
     assert len(package.manifest.workflows) == MAX_PACKAGE_WORKFLOWS
 
 
+async def test_workflow_reading_stops_at_the_first_excess_exportable_workflow(
+    mocker: pytest_mock.MockFixture,
+):
+    """Every graph after the one that proved the expert over the cap is a
+    fetch that only delays the 413."""
+    get_graph = mocker.patch("backend.data.graph.get_graph", return_value=_graph())
+    unpublished = [
+        _workflow(id=f"wf-{i}", LibraryAgent=_library_agent())
+        for i in range(MAX_PACKAGE_WORKFLOWS + 10)
+    ]
+
+    with pytest.raises(ExpertPackageError, match="workflows") as exc:
+        await _build(_expert(Workflows=unpublished))
+
+    assert exc.value.over_limit
+    assert get_graph.call_count == MAX_PACKAGE_WORKFLOWS + 1
+
+
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
@@ -546,12 +564,100 @@ async def test_skills_that_are_each_legal_but_together_over_the_cap_are_refused(
     assert exc.value.over_limit
 
 
+async def test_skill_reading_stops_at_the_first_skill_that_overflows_the_package(
+    mocker: pytest_mock.MockFixture,
+):
+    """Fifty stored skills that each fit could otherwise be read whole — a
+    gibibyte held in memory — just to answer 413; and neither the avatar nor
+    a graph is worth fetching once the skills alone do not fit."""
+    half = [MAX_PACKAGE_FILE_BYTES] * 6  # 12 MiB, under the 20 MiB per-skill cap
+    _stored_skills(mocker, {f"skill-{i}": _skill_of(*half) for i in range(4)})
+    reads = mocker.patch.object(
+        package_export,
+        "read_user_skill_package",
+        side_effect=lambda _owner, slug, **_: _skill_of(*half),
+    )
+    avatar = mocker.patch.object(package_export, "packaged_avatar")
+    get_graph = mocker.patch("backend.data.graph.get_graph")
+
+    with pytest.raises(ExpertPackageError, match="unpacks to") as exc:
+        await _build(
+            _expert(
+                avatarUrl="https://cdn.example.com/maria.png",
+                Workflows=[_workflow(LibraryAgent=_library_agent())],
+            )
+        )
+
+    assert exc.value.over_limit
+    assert reads.call_count == 2
+    avatar.assert_not_called()
+    get_graph.assert_not_called()
+
+
+async def test_skill_reading_stops_at_the_first_skill_past_the_count_cap(
+    mocker: pytest_mock.MockFixture,
+):
+    _stored_skills(
+        mocker,
+        {f"skill-{i}": _skill_of() for i in range(MAX_PACKAGE_SKILLS + 10)},
+    )
+    reads = mocker.patch.object(
+        package_export,
+        "read_user_skill_package",
+        side_effect=lambda _owner, slug, **_: _skill_of(),
+    )
+
+    with pytest.raises(ExpertPackageError, match="skills") as exc:
+        await _build(_expert())
+
+    assert exc.value.over_limit
+    assert reads.call_count == MAX_PACKAGE_SKILLS + 1
+
+
+async def test_a_template_whose_bundled_skills_alone_overflow_is_refused(
+    mocker: pytest_mock.MockFixture,
+):
+    half = [MAX_PACKAGE_FILE_BYTES] * 6
+    mocker.patch.object(
+        package_export.experts_db,
+        "bundled_skill_listings",
+        return_value=[_hub_listing(f"listing-{i}") for i in range(3)],
+    )
+    installable = mocker.patch.object(
+        package_export.skill_db,
+        "installable_skill",
+        side_effect=lambda listing: (
+            ParsedSkill(name=listing.slug, description="d", body=""),
+            _skill_of(*half),
+        ),
+    )
+
+    with pytest.raises(ExpertPackageError, match="unpacks to") as exc:
+        await _build(_expert(ownerUserId=None, isTemplate=True), user_id=DOWNLOADER)
+
+    assert exc.value.over_limit
+    assert installable.call_count == 2
+
+
 async def test_a_stored_skill_file_over_the_cap_is_refused(
     mocker: pytest_mock.MockFixture,
 ):
     _stored_skills(mocker, {"research": _skill_of(MAX_PACKAGE_FILE_BYTES + 1)})
 
     with pytest.raises(ExpertPackageError, match="research") as exc:
+        await _build(_expert())
+    assert exc.value.over_limit
+
+
+async def test_a_stored_root_skill_md_over_the_file_cap_is_refused(
+    mocker: pytest_mock.MockFixture,
+):
+    """The skill store accepts a root of this size; the archive reader does
+    not, so the export is the place to say so."""
+    oversized = SkillPackage(skill_md=SKILL_MD + "x" * MAX_PACKAGE_FILE_BYTES)
+    _stored_skills(mocker, {"research": oversized})
+
+    with pytest.raises(ExpertPackageError, match="research.*SKILL.md") as exc:
         await _build(_expert())
     assert exc.value.over_limit
 

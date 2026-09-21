@@ -25,6 +25,7 @@ from backend.copilot.tools.skills import (
     MAX_PACKAGE_FILE_BYTES,
     SkillFile,
     SkillPackage,
+    validate_package,
 )
 
 IDENTITY = PackagedIdentity(name="Maria")
@@ -196,6 +197,10 @@ def test_a_package_within_every_cap_passes():
         ),
         (_with_skills(a=_skill(MAX_PACKAGE_FILE_BYTES + 1)), "skill 'a'"),
         (
+            _with_skills(a=SkillPackage(skill_md="x" * (MAX_PACKAGE_FILE_BYTES + 1))),
+            "skill 'a': SKILL.md",
+        ),
+        (
             _with_skills(
                 a=_skill(*[MAX_PACKAGE_FILE_BYTES] * 6),
                 b=_skill(*[MAX_PACKAGE_FILE_BYTES] * 6),
@@ -213,7 +218,7 @@ def test_a_package_within_every_cap_passes():
             "avatar",
         ),
     ],
-    ids=["manifest", "skill-file", "combined", "avatar"],
+    ids=["manifest", "skill-file", "skill-root", "combined", "avatar"],
 )
 def test_a_package_over_a_size_cap_is_refused_as_over_limit(
     package: ExpertPackage, message: str
@@ -221,6 +226,18 @@ def test_a_package_over_a_size_cap_is_refused_as_over_limit(
     with pytest.raises(ExpertPackageError, match=message) as exc:
         validate_expert_package(package)
     assert exc.value.over_limit
+
+
+def test_a_root_skill_md_exactly_at_the_file_cap_passes():
+    """The skill format leaves the root unbounded, so a standalone skill of
+    this size stores; the archive reader holds it to the file cap, and the
+    boundary is the reader's: at the cap is in, one byte over is out."""
+    at_cap = SkillPackage(skill_md="é" * (MAX_PACKAGE_FILE_BYTES // 2))
+    assert len(at_cap.skill_md.encode("utf-8")) == MAX_PACKAGE_FILE_BYTES
+    validate_package(at_cap)
+    validate_package(SkillPackage(skill_md="x" * (MAX_PACKAGE_FILE_BYTES + 1)))
+
+    validate_expert_package(_with_skills(a=at_cap))
 
 
 def test_a_skill_with_an_unsafe_path_is_refused_but_not_as_over_limit():

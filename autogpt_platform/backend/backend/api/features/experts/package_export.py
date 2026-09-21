@@ -31,9 +31,11 @@ from backend.api.features.experts.package_model import (
     PackagedWorkflow,
     expert_slug,
     validate_expert_package,
+    validate_packaged_skill,
 )
 from backend.api.features.store import skill_db
 from backend.copilot.tools.skills import (
+    MAX_PACKAGE_BYTES,
     SkillPackage,
     SkillPackageError,
     list_user_skills,
@@ -50,6 +52,43 @@ logger = logging.getLogger(__name__)
 _GRAPH_LOCAL_FIELDS = {"user_id", "organization_id", "team_id", "created_at"}
 
 _Skills = tuple[dict[str, SkillPackage], list[PackagedSkill]]
+
+
+class _Roster:
+    """The skills admitted to a package so far.
+
+    Each is held to its own caps and to the running count and size as it
+    arrives, so an expert whose skills alone cannot fit is refused before the
+    next package — or the avatar, or a graph — is read. Fifty stored skills
+    that each fit could otherwise be read whole just to answer 413.
+    """
+
+    def __init__(self) -> None:
+        self.packages: dict[str, SkillPackage] = {}
+        self.cards: list[PackagedSkill] = []
+        self.size_bytes = 0
+
+    def admit(
+        self, slug: str, name: str, description: str, package: SkillPackage
+    ) -> None:
+        validate_packaged_skill(slug, package)
+        if len(self.packages) >= MAX_PACKAGE_SKILLS:
+            # The folder is capped separately from the package, and a listing
+            # can run over it; a package quietly missing skills is not a backup.
+            raise ExpertPackageError(
+                f"expert has more than {MAX_PACKAGE_SKILLS} skills; the limit is "
+                f"{MAX_PACKAGE_SKILLS}",
+                over_limit=True,
+            )
+        self.size_bytes += package.size_bytes
+        if self.size_bytes > MAX_PACKAGE_BYTES:
+            raise ExpertPackageError(
+                f"package unpacks to at least {self.size_bytes} bytes in skills "
+                f"alone; the limit is {MAX_PACKAGE_BYTES}",
+                over_limit=True,
+            )
+        self.packages[slug] = package
+        self.cards.append(PackagedSkill(slug=slug, name=name, description=description))
 
 
 def package_filename(name: str) -> str:
@@ -117,25 +156,17 @@ async def _skills(row: prisma.models.Expert, user_id: str) -> _Skills:
     skill whose package was actually produced, because the reader refuses a
     manifest and a tree that disagree.
     """
+    roster = _Roster()
     if row.isTemplate:
-        packages, cards = await _bundled_skills(row, user_id)
+        await _bundled_skills(row, user_id, roster)
     elif row.ownerUserId:
-        packages, cards = await _owned_skills(row, row.ownerUserId)
-    else:
-        packages, cards = {}, []
-    if len(packages) > MAX_PACKAGE_SKILLS:
-        # The folder is capped separately from the package, and a listing can
-        # run over it; a package quietly missing skills is not a backup.
-        raise ExpertPackageError(
-            f"expert has {len(packages)} skills; the limit is {MAX_PACKAGE_SKILLS}",
-            over_limit=True,
-        )
-    return packages, cards
+        await _owned_skills(row, row.ownerUserId, roster)
+    return roster.packages, roster.cards
 
 
-async def _owned_skills(row: prisma.models.Expert, owner_user_id: str) -> _Skills:
-    packages: dict[str, SkillPackage] = {}
-    cards: list[PackagedSkill] = []
+async def _owned_skills(
+    row: prisma.models.Expert, owner_user_id: str, roster: _Roster
+) -> None:
     for skill in await list_user_skills(owner_user_id, expert_id=row.id):
         slug = skill_slug(skill.name)
         try:
@@ -150,20 +181,16 @@ async def _owned_skills(row: prisma.models.Expert, owner_user_id: str) -> _Skill
         if package is None:
             logger.info("Expert %s skill '%s' has no package to export", row.id, slug)
             continue
-        packages[slug] = package
-        cards.append(
-            PackagedSkill(slug=slug, name=skill.name, description=skill.description)
-        )
-    return packages, cards
+        roster.admit(slug, skill.name, skill.description, package)
 
 
-async def _bundled_skills(row: prisma.models.Expert, user_id: str) -> _Skills:
+async def _bundled_skills(
+    row: prisma.models.Expert, user_id: str, roster: _Roster
+) -> None:
     """A roster template's skills, read the way a hire installs them: only the
     live listings, only behind the Skills Hub flag for *user_id*, and rendered
     as the install would store them — so a listing a hire would skip is left
     out of the package too."""
-    packages: dict[str, SkillPackage] = {}
-    cards: list[PackagedSkill] = []
     for listing in await experts_db.bundled_skill_listings(user_id, row.id):
         try:
             skill, package = skill_db.installable_skill(listing)
@@ -175,15 +202,9 @@ async def _bundled_skills(row: prisma.models.Expert, user_id: str) -> _Skills:
                 exc,
             )
             continue
-        if skill.name in packages:
+        if skill.name in roster.packages:
             continue
-        packages[skill.name] = package
-        cards.append(
-            PackagedSkill(
-                slug=skill.name, name=skill.name, description=skill.description
-            )
-        )
-    return packages, cards
+        roster.admit(skill.name, skill.name, skill.description, package)
 
 
 async def _workflows(row: prisma.models.Expert) -> list[PackagedWorkflow]:
@@ -196,14 +217,15 @@ async def _workflows(row: prisma.models.Expert) -> list[PackagedWorkflow]:
             )
             continue
         workflows.append(packaged)
-    if len(workflows) > MAX_PACKAGE_WORKFLOWS:
-        # Installing has no such cap, so a valid expert can be over it; a
-        # package quietly missing runnable workflows is not a backup.
-        raise ExpertPackageError(
-            f"expert has {len(workflows)} exportable workflows; the limit is "
-            f"{MAX_PACKAGE_WORKFLOWS}",
-            over_limit=True,
-        )
+        if len(workflows) > MAX_PACKAGE_WORKFLOWS:
+            # Installing has no such cap, so a valid expert can be over it; a
+            # package quietly missing runnable workflows is not a backup, and
+            # the graphs of the rest are not worth reading to say so.
+            raise ExpertPackageError(
+                f"expert has more than {MAX_PACKAGE_WORKFLOWS} exportable "
+                f"workflows; the limit is {MAX_PACKAGE_WORKFLOWS}",
+                over_limit=True,
+            )
     return workflows
 
 
