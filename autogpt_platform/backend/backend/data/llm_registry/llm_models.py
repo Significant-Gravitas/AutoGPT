@@ -256,6 +256,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Inception Labs models
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Tencent models
+    TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models

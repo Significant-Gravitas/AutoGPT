@@ -346,6 +346,26 @@ def test_mercury_2_5_bills_at_authored_rates():
     assert mercury_entry.supports_parallel_tool_calls is True
 
 
+def test_hy4_preview_bills_at_authored_rates():
+    """Tencent Hy4 Preview (OpenRouter, live list price $0.834/$2.501 per
+    1M, $0.042/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    hy4 = LLMModel("tencent/hy4-preview")
+    assert MODEL_COST[hy4] == 2
+    assert TOKEN_COST[hy4].model_dump() == {
+        "input": 125.1,
+        "output": 375.15,
+        "cache_read": 6.3,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[hy4].max_output_tokens == 64000
+    hy4_entry = next(m for m in CATALOG.models if m.slug == "tencent/hy4-preview")
+    assert hy4_entry.price_tier == 2
+    assert hy4_entry.context_window == 1048576
+    assert hy4_entry.supports_tools is True
+    assert hy4_entry.supports_reasoning is True
+
+
 def test_pareto_bills_at_authored_rates():
     """Unbiased Pareto (OpenRouter, list price $2.50/$7.50 per 1M, $0.25/1M
     cached input) — flat tier and per-1M projections must match the
