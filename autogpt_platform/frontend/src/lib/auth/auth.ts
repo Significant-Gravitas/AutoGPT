@@ -10,6 +10,7 @@ import {
   AUTH_PASSWORD_BCRYPT_COST,
   AUTH_PASSWORD_MIN_LENGTH,
 } from "./password-policy";
+import { provisionPlatformUser } from "./provision-platform-user";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
@@ -82,6 +83,14 @@ export const auth = betterAuth({
               message: decision.reason ?? "Signups are not allowed.",
             });
           }
+        },
+        // Create the platform `User` row the moment the auth identity exists
+        // (email/password sign-up and first OAuth sign-in alike), so a
+        // session can never outrun it. Better Auth runs this after the commit
+        // and awaits it before the sign-up response returns; it must never
+        // throw, see provision-platform-user.ts for why.
+        after: async (user: { id: string; email: string; name: string }) => {
+          await provisionPlatformUser(authDbPool, user);
         },
       },
       update: {

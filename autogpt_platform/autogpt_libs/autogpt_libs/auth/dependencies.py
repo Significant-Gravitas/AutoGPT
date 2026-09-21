@@ -5,6 +5,7 @@ These are the high-level dependency functions used in route definitions.
 """
 
 import logging
+from collections import OrderedDict
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,6 +25,55 @@ optional_bearer = HTTPBearer(auto_error=False)
 IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 
 logger = logging.getLogger(__name__)
+
+# User ids whose platform ``User`` row this process has confirmed, so the
+# self-heal in ``get_user_id`` costs one indexed read per (process, user)
+# instead of one per request. Bounded LRU of ids only; a row is never deleted
+# once it exists, so an entry never goes stale.
+_PROVISIONED_USER_IDS: "OrderedDict[str, None]" = OrderedDict()
+_PROVISIONED_USER_IDS_MAX = 10_000
+
+
+def _remember_provisioned(user_id: str) -> None:
+    _PROVISIONED_USER_IDS[user_id] = None
+    _PROVISIONED_USER_IDS.move_to_end(user_id)
+    while len(_PROVISIONED_USER_IDS) > _PROVISIONED_USER_IDS_MAX:
+        _PROVISIONED_USER_IDS.popitem(last=False)
+
+
+async def _heal_platform_user(jwt_payload: dict) -> None:
+    """Best-effort ``_ensure_platform_user`` for every authenticated request.
+
+    ``get_request_context`` only heals in its no-personal-org branch, so the
+    routes that authenticate through ``get_user_id`` alone -- the onboarding
+    reads on every page load, push subscriptions, experiment assignments --
+    kept failing with a foreign-key violation for a session whose ``User``
+    row did not exist yet, until an org-scoped request happened to win the
+    race and heal it. Running the same heal here closes that gap.
+
+    Never raises, and never runs without a live database: ``autogpt_libs`` is
+    also imported without the backend package, and the backend's route unit
+    tests exercise this dependency with no connection at all.
+    """
+    user_id = jwt_payload.get("sub")
+    if not user_id or user_id in _PROVISIONED_USER_IDS:
+        return
+
+    try:
+        from backend.data.db import prisma  # deferred -- only needed at runtime
+    except ImportError:
+        return
+    if not prisma.is_connected():
+        return
+
+    try:
+        provisioned = await _ensure_platform_user(user_id, jwt_payload)
+    except Exception:
+        # A heal must never turn a request that would have worked into a 500.
+        logger.warning(f"Platform user self-heal failed for {user_id}", exc_info=True)
+        return
+    if provisioned:
+        _remember_provisioned(user_id)
 
 
 def get_optional_user_id(
@@ -102,6 +152,11 @@ async def get_user_id(
             status_code=401, detail="User ID not found in token"
         )
 
+    # Self-heal a missing platform User row for the token's own subject. Under
+    # impersonation that is the admin, never the target: the claims describe
+    # the admin, and provisioning the target from them would be wrong.
+    await _heal_platform_user(jwt_payload)
+
     # Check for admin impersonation header
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
     if impersonate_header:
@@ -131,8 +186,12 @@ ORG_HEADER_NAME = "X-Org-Id"
 TEAM_HEADER_NAME = "X-Team-Id"
 
 
-async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
+async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> bool:
     """Provision the platform ``User`` row for a valid token that has none.
+
+    Returns ``True`` when the row is known to exist afterwards (found, created,
+    or created by a concurrent request), ``False`` when it declined to try or
+    the attempt failed.
 
     The auth provider and the platform keep separate user tables, bridged only
     by the client calling ``POST /api/v1/auth/user`` after sign-in. Better Auth
@@ -159,16 +218,16 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     # under the admin's email.
     if user_id != jwt_payload.get("sub"):
         logger.debug("Not provisioning %s from an impersonator's claims", user_id)
-        return
+        return False
     if not jwt_payload.get("email"):
         # Nothing to provision with, so this account stays broken. Say so —
         # a silent return here is the exact failure mode this function exists
         # to end: bricked and invisible.
         logger.warning(f"Cannot provision user {user_id}: token carries no email claim")
-        return
+        return False
 
     if await prisma.user.find_unique(where={"id": user_id}) is not None:
-        return
+        return True
 
     from backend.data.user import get_or_create_user_with_status  # deferred
 
@@ -195,16 +254,16 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
                 "exists; the caller's org bootstrap will finish or report",
                 exc_info=True,
             )
-            return
+            return True
         logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
-        return
+        return False
 
     if not result.was_created:
         # Returning without raising is not proof we created anything: a
         # concurrent request can land its row between our probe and the
         # get-or-create's own lookup, which then simply reads it back. That
         # request reports the breach; this one would only double-count it.
-        return
+        return True
 
     # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
     # token with no platform user is an invariant breach worth seeing. Gated
@@ -213,6 +272,7 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     logger.error(
         f"Provisioned a missing platform User row for {user_id} on first touch"
     )
+    return True
 
 
 async def get_request_context(

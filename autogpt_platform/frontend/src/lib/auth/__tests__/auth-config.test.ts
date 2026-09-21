@@ -18,6 +18,11 @@ const sendAuthEmailMock = vi.fn();
 vi.mock("../email", () => ({
   sendAuthEmail: (...args: unknown[]) => sendAuthEmailMock(...args),
 }));
+const provisionPlatformUserMock = vi.fn();
+vi.mock("../provision-platform-user", () => ({
+  provisionPlatformUser: (...args: unknown[]) =>
+    provisionPlatformUserMock(...args),
+}));
 
 interface JwtPluginOptions {
   jwt: {
@@ -39,6 +44,17 @@ interface AuthEmailArgs {
 }
 
 interface CapturedAuthOptions {
+  databaseHooks: {
+    user: {
+      create: {
+        after: (user: {
+          id: string;
+          email: string;
+          name: string;
+        }) => Promise<void>;
+      };
+    };
+  };
   emailAndPassword: {
     minPasswordLength: number;
     revokeSessionsOnPasswordReset: boolean;
@@ -90,6 +106,7 @@ const PROVIDER_ENV_KEYS = [
 
 beforeEach(() => {
   sendAuthEmailMock.mockReset();
+  provisionPlatformUserMock.mockReset();
   for (const key of PROVIDER_ENV_KEYS) {
     vi.stubEnv(key, "");
   }
@@ -306,5 +323,18 @@ describe("auth table names", () => {
 
     const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
     expect(jwtPlugin?.opts?.schema?.jwks?.modelName).toBe("UserAuthJwks");
+  });
+
+  it("provisions the platform User row from the user.create.after hook", async () => {
+    const options = await loadAuthOptions();
+    const user = { id: "user-1", email: "new@example.com", name: "new" };
+
+    await options.databaseHooks.user.create.after(user);
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
+    const [pool, provisionedUser] = provisionPlatformUserMock.mock.calls[0];
+    // Reuses the shared auth pool rather than opening a second connection.
+    expect(pool).toBeDefined();
+    expect(provisionedUser).toEqual(user);
   });
 });
