@@ -1818,7 +1818,7 @@ def test_upstream_frontmatter_survives_a_round_trip(slug):
     assert render_skill_markdown(reparsed) == rendered
 
 
-def test_every_spec_frontmatter_field_is_carried():
+def test_carried_frontmatter_fields_survive_a_round_trip():
     raw = (
         "---\n"
         "name: kitchen-sink\n"
@@ -1830,6 +1830,8 @@ def test_every_spec_frontmatter_field_is_carried():
         "  - Read\n"
         "metadata:\n"
         "  author: someone\n"
+        "source: owner/repo\n"
+        "source_url: https://github.com/owner/repo/tree/abc/skills/kitchen-sink\n"
         "---\n"
         "body\n"
     )
@@ -1840,6 +1842,8 @@ def test_every_spec_frontmatter_field_is_carried():
         "compatibility": "claude-code >=2.0",
         "allowed-tools": ["Bash", "Read"],
         "metadata": {"author": "someone"},
+        "source": "owner/repo",
+        "source_url": "https://github.com/owner/repo/tree/abc/skills/kitchen-sink",
     }
     assert parse_skill_markdown(render_skill_markdown(parsed)).extra == parsed.extra
 
