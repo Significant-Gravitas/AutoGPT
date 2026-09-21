@@ -36,7 +36,7 @@ from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
 from forge.permissions import CommandPermissionManager
-from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
+from forge.utils.const import ASK_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -230,11 +230,7 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            is_last=(
-                last_proposal is not None
-                and last_proposal.use_tool.name == FINISH_COMMAND
-                and execute_approved
-            ),
+            is_last=False,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
@@ -286,6 +282,7 @@ class AgentProtocolServer:
                         task_id=task_id,
                         step_id=step.step_id,
                         output=last_proposal.use_tool.arguments["reason"],
+                        is_last=True,
                         additional_output=additional_output,
                     )
                     await agent.file_manager.save_state()

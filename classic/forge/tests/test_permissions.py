@@ -849,6 +849,36 @@ permissions:
         assert settings.permissions.allow == ["custom_command(*)"]
         assert settings.permissions.deny == []
 
+    def test_load_or_create_migrates_legacy_defaults(self, tmp_path: Path):
+        """load_or_create should update a legacy generated allow list."""
+        workspace = tmp_path / "workspace"
+        autogpt_dir = workspace / ".autogpt"
+        autogpt_dir.mkdir(parents=True)
+        settings_file = autogpt_dir / "autogpt.yaml"
+        settings_file.write_text(
+            """
+permissions:
+  allow:
+    - read_file({workspace}/**)
+    - write_file({workspace}/**)
+    - list_folder({workspace}/**)
+    - finish(*)
+    - custom_command(*)
+  deny: []
+"""
+        )
+
+        settings = WorkspaceSettings.load_or_create(workspace)
+
+        assert "list_folder({workspace})" in settings.permissions.allow
+        assert "ask_user(**)" in settings.permissions.allow
+        assert "finish(**)" in settings.permissions.allow
+        assert "finish(*)" not in settings.permissions.allow
+        assert "custom_command(*)" in settings.permissions.allow
+
+        reloaded = WorkspaceSettings.load_or_create(workspace)
+        assert reloaded == settings
+
     def test_add_permission(self, tmp_path: Path):
         """add_permission should add and save permission."""
         workspace = tmp_path / "workspace"
