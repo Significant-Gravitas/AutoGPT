@@ -10,10 +10,9 @@ from forge.permissions import ApprovalScope, CommandPermissionManager
 
 def test_permission_manager_is_noninteractive_and_default_deny(tmp_path):
     server = AgentProtocolServer.__new__(AgentProtocolServer)
-    server.app_config = SimpleNamespace(
-        workspace=tmp_path,
-        app_data_dir=tmp_path / ".autogpt",
-    )
+    server.app_config = MagicMock()
+    server.app_config.workspace = tmp_path
+    server.app_config.app_data_dir = tmp_path / ".autogpt"
 
     manager = server._get_permission_manager("AutoGPT-task-1")
     result = manager.check_command("execute_shell", {"command_line": "echo hello"})
@@ -32,7 +31,8 @@ async def test_create_task_passes_permission_manager():
         input="Inspect the workspace",
         additional_input={},
     )
-    server.db = SimpleNamespace(create_task=AsyncMock(return_value=task))
+    server.db = MagicMock()
+    server.db.create_task = AsyncMock(return_value=task)
     server.app_config = MagicMock()
     server.file_storage = MagicMock()
     server._get_task_llm_provider = MagicMock(return_value=MagicMock())
@@ -63,19 +63,17 @@ async def test_execute_step_passes_permission_manager():
     )
     state = MagicMock()
     server.get_task = AsyncMock(return_value=task)
-    server.agent_manager = SimpleNamespace(
-        load_agent_state=MagicMock(return_value=state)
-    )
+    server.agent_manager = MagicMock()
+    server.agent_manager.load_agent_state = MagicMock(return_value=state)
     server.app_config = MagicMock()
     server.file_storage = MagicMock()
     server._get_task_llm_provider = MagicMock(return_value=MagicMock())
     manager = MagicMock(spec=CommandPermissionManager)
     server._get_permission_manager = MagicMock(return_value=manager)
     completed_step = MagicMock()
-    server.db = SimpleNamespace(
-        create_step=AsyncMock(return_value=SimpleNamespace(step_id="step-1")),
-        update_step=AsyncMock(return_value=completed_step),
-    )
+    server.db = MagicMock()
+    server.db.create_step = AsyncMock(return_value=SimpleNamespace(step_id="step-1"))
+    server.db.update_step = AsyncMock(return_value=completed_step)
     agent = MagicMock()
     agent.event_history = []
     agent.propose_action = AsyncMock(side_effect=RuntimeError("stop after wiring"))

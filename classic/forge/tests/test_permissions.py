@@ -327,9 +327,7 @@ class TestCheckCommand:
         self, permission_manager: CommandPermissionManager
     ):
         """The default policy should allow folders inside the workspace."""
-        result = permission_manager.check_command(
-            "list_folder", {"folder": "sub"}
-        )
+        result = permission_manager.check_command("list_folder", {"folder": "sub"})
         assert result.allowed
 
     def test_list_folder_uses_executed_folder_when_path_conflicts(
