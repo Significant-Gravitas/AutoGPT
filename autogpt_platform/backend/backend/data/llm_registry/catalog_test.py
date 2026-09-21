@@ -81,6 +81,17 @@ def test_routing_cells_reference_enabled_models():
 
 _SNAPSHOT_PATH = Path(__file__).parent / "pre_catalog_costs_snapshot.json"
 
+# open_router models bill via COST_USD against the response's x-total-cost,
+# never from TOKEN_COST (block_cost_config._open_router_llm_cost). Their
+# per-1M rates are display only, and OpenRouter reprices continuously, so
+# pinning those values to the cutover snapshot pins a number that is
+# expected to drift and that no user is ever charged. Their *presence* in
+# the snapshot stays pinned by the absence-parity check below; only the
+# values are exempt. Every genuinely billed provider keeps full parity.
+_DISPLAY_ONLY_TOKEN_COST_SLUGS = frozenset(
+    m.slug for m in CATALOG.models if m.provider == "open_router"
+)
+
 
 def test_billing_matches_pre_catalog_snapshot():
     """Cutover-parity proof: the catalog-derived cost dicts reproduce the
@@ -94,9 +105,12 @@ def test_billing_matches_pre_catalog_snapshot():
     for slug, credits in snapshot["model_cost"].items():
         assert MODEL_COST[LLMModel(slug)] == credits, slug
     for slug, rate in snapshot["token_cost"].items():
+        if slug in _DISPLAY_ONLY_TOKEN_COST_SLUGS:
+            continue
         assert TOKEN_COST[LLMModel(slug)].model_dump() == rate, slug
     # Absence parity: the cutover itself must not silently move a model
-    # between flat-rate and token billing.
+    # between flat-rate and token billing. Presence is still pinned for the
+    # display-only slugs above — only their values are allowed to move.
     pre_cutover = set(snapshot["model_cost"])
     token_billed = {m.value for m in TOKEN_COST}
     assert token_billed & pre_cutover == set(snapshot["token_cost"])
@@ -130,8 +144,26 @@ def test_kimi_k3_bills_at_authored_rates():
     k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
-        "input": 450.0,
-        "output": 2250.0,
+        "input": 255.0,
+        "output": 1275.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+
+
+def test_deepseek_chat_display_rate_tracks_openrouter():
+    """SECRT-2701 regression pin: deepseek-chat's shown price had drifted to
+    ~3x understated ($0.14/$0.28 displayed against a live $0.32/$0.89) and
+    nothing caught it. These figures are display only — open_router settles
+    COST_USD against x-total-cost — but a wrong number shown before the user
+    picks a model is still wrong. Re-derive with
+    ``poetry run python scripts/check_openrouter_prices.py`` and move both
+    sides together when OpenRouter reprices.
+    """
+    chat = LLMModel("deepseek/deepseek-chat")
+    assert TOKEN_COST[chat].model_dump() == {
+        "input": 48.0,  # $0.32/1M x 150 cr/$
+        "output": 133.5,  # $0.89/1M x 150 cr/$
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
