@@ -22,7 +22,10 @@ class ReadSpreadsheetBlock(Block):
             advanced=False,
         )
         file_input: MediaFileType | None = SchemaField(
-            description="CSV or Excel file to read from (URL, data URI, or local path). Excel files are automatically converted to CSV",
+            description=(
+                "CSV or Excel file to read from (URL, data URI, or local path). "
+                "Excel files are automatically converted to CSV"
+            ),
             default=None,
             advanced=False,
         )
@@ -51,11 +54,26 @@ class ReadSpreadsheetBlock(Block):
             default=True,
         )
         skip_columns: list[str] = SchemaField(
-            description="The columns to skip from the start of the row",
+            description=(
+                "Column names (when has_header is True) or 0-based column indices "
+                "as strings (when has_header is False) to omit from each row"
+            ),
             default_factory=list,
         )
+        sheet_name: str | int = SchemaField(
+            description=(
+                "Excel sheet to read: sheet name (e.g. 'Q2') or 0-based index. "
+                "Defaults to the first sheet (0) so existing agents stay compatible. "
+                "Ignored for CSV inputs."
+            ),
+            default=0,
+            advanced=True,
+        )
         produce_singular_result: bool = SchemaField(
-            description="If True, yield individual 'row' outputs only (can be slow). If False, yield both 'rows' (all data)",
+            description=(
+                "If True, yield individual 'row' outputs only (can be slow). "
+                "If False, yield both 'rows' (all data)"
+            ),
             default=False,
         )
 
@@ -72,7 +90,12 @@ class ReadSpreadsheetBlock(Block):
             id="acf7625e-d2cb-4941-bfeb-2819fc6fc015",
             input_schema=ReadSpreadsheetBlock.Input,
             output_schema=ReadSpreadsheetBlock.Output,
-            description="Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows. Excel files are automatically converted to CSV format.",
+            description=(
+                "Reads CSV and Excel files and outputs the data as a list of "
+                "dictionaries and individual rows. Excel files are automatically "
+                "converted to CSV format. Use sheet_name to select a non-first "
+                "Excel sheet (default: first sheet)."
+            ),
             contributors=[ContributorDetails(name="Nicholas Tindle")],
             categories={BlockCategory.TEXT, BlockCategory.DATA},
             test_input=[
@@ -126,16 +149,21 @@ class ReadSpreadsheetBlock(Block):
             if file_extension in [".xlsx", ".xls"]:
                 # Handle Excel files
                 try:
-                    from io import StringIO
-
                     import pandas as pd
 
-                    # Read Excel file
-                    df = pd.read_excel(file_path)
+                    # Preserve literal NA-like strings and avoid float-upcasting
+                    # integer columns that contain gaps (see #14638).
+                    df = pd.read_excel(
+                        file_path,
+                        sheet_name=input_data.sheet_name,
+                        dtype=object,
+                        keep_default_na=False,
+                    )
 
-                    # Convert to CSV string
+                    # Convert to CSV string using the configured delimiter so
+                    # Excel and CSV branches stay consistent.
                     csv_buffer = StringIO()
-                    df.to_csv(csv_buffer, index=False)
+                    df.to_csv(csv_buffer, index=False, sep=input_data.delimiter)
                     csv_content = csv_buffer.getvalue()
 
                 except ImportError:
@@ -173,11 +201,17 @@ class ReadSpreadsheetBlock(Block):
         def process_row(row):
             data = {}
             for i, value in enumerate(row):
-                if i not in input_data.skip_columns:
-                    if input_data.has_header and header:
-                        data[header[i]] = value.strip() if input_data.strip else value
-                    else:
-                        data[str(i)] = value.strip() if input_data.strip else value
+                if input_data.has_header and header:
+                    if i >= len(header):
+                        continue
+                    col_key = header[i]
+                    if col_key in input_data.skip_columns:
+                        continue
+                    data[col_key] = value.strip() if input_data.strip else value
+                else:
+                    if str(i) in input_data.skip_columns:
+                        continue
+                    data[str(i)] = value.strip() if input_data.strip else value
             return data
 
         rows = [process_row(row) for row in reader]
