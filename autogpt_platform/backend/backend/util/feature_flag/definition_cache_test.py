@@ -12,8 +12,8 @@ from pydantic import ValidationError
 
 import backend.data.redis_client as redis_client
 import backend.util.feature_flag as ff
-import backend.util.feature_flag_definition_cache as cache
-import backend.util.feature_flag_posthog as ph
+import backend.util.feature_flag.definition_cache as cache
+import backend.util.feature_flag.posthog as ph
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.settings import Config, FeatureFlagBackend, FlagDefinitionCacheBackend
 from backend.util.testing import is_tcp_port_reachable
