@@ -47,9 +47,10 @@ PostHog locally without Redis.
 Every process tries `SET <key> <id> NX PX` on one Redis key each time it polls.
 The one that gets it fetches the definitions from PostHog and writes them to
 Redis; the others read that copy. The winner renews its own lock on every poll,
-so it keeps the job — and because the lock expires after two poll intervals, a
-refresher that dies hands the job to another process within about a minute. A
-process shutting down cleanly releases the lock immediately.
+so it keeps the job. The lock expires two poll intervals after its last renewal,
+and the next process to poll takes it, so a refresher that dies is replaced
+within 90 seconds at the defaults. One shutting down cleanly releases the lock
+immediately, and is replaced on the next poll.
 
 ### Telling it is working
 
