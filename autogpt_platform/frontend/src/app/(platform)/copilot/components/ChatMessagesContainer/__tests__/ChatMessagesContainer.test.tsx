@@ -668,22 +668,55 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     );
   });
 
+  const sessionSentFrom = {
+    sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    expertId: null,
+    expertName: null,
+  };
+
+  function userRow(id: string, text: string) {
+    return {
+      id,
+      role: "user" as const,
+      parts: [{ type: "text" as const, text }],
+    };
+  }
+
   it("falls back to the session's delegation provenance on the opening message only", () => {
     const messages = [
+      userRow("sess-123-seq-0", "first task"),
       {
-        id: "user-first",
-        role: "user" as const,
-        parts: [{ type: "text" as const, text: "first task" }],
-      },
-      {
-        id: "assistant-1",
+        id: "sess-123-seq-1",
         role: "assistant" as const,
         parts: [{ type: "text" as const, text: "done" }],
       },
+      userRow("sess-123-seq-2", "typed by the user"),
+    ];
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={messages as any}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    const cards = screen.getAllByTestId("sent-from-badge");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("Sent from Otto");
+  });
+
+  it("does NOT fall back onto a later row when pagination stopped short of the opening row", () => {
+    // hasMoreMessages goes false after repeated load errors or at the
+    // history cap while older rows still exist; the first retained row is
+    // then a later human message, not the one the delegation opened with.
+    const messages = [
+      userRow("sess-123-seq-40", "typed by the user"),
       {
-        id: "user-second",
-        role: "user" as const,
-        parts: [{ type: "text" as const, text: "typed by the user" }],
+        id: "sess-123-seq-41",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "sure" }],
       },
     ];
     render(
@@ -693,16 +726,56 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         messages={messages as any}
         hasMoreMessages={false}
-        sessionSentFrom={{
-          sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
-          expertId: null,
-          expertName: null,
-        }}
+        sessionSentFrom={sessionSentFrom}
       />,
     );
-    const cards = screen.getAllByTestId("sent-from-badge");
-    expect(cards).toHaveLength(1);
-    expect(cards[0].textContent).toContain("Sent from Otto");
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("keeps the fallback on the opening row while more history is still loadable", () => {
+    // The pagination flag flips true during a refetch; the opening row's
+    // identity does not depend on it.
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={[userRow("sess-123-seq-0", "first task")] as any}
+        hasMoreMessages={true}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.getByTestId("sent-from-badge").textContent).toContain(
+      "Sent from Otto",
+    );
+  });
+
+  it("does NOT fall back onto a row whose id carries no DB sequence", () => {
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={[userRow("user-streamed", "first task")] as any}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT fall back when the session carries no delegation provenance", () => {
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={[userRow("sess-123-seq-0", "hello")] as any}
+        hasMoreMessages={false}
+        sessionSentFrom={null}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
   });
 
   it("does NOT render a Sent from badge for an ordinary user message", () => {
@@ -840,6 +913,47 @@ describe("ChatMessagesContainer — readOnly mode", () => {
       ]);
     },
   );
+
+  it("renders no Sent from badge in a read-only transcript", () => {
+    const messages = [
+      {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "first task" }],
+      },
+      {
+        id: "sess-123-seq-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      {
+        id: "sess-123-seq-2",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: null,
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...(baseProps as any)}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages={messages as any}
+        readOnly
+        hasMoreMessages={false}
+        sessionSentFrom={{
+          sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          expertId: null,
+          expertName: null,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
 
   it("hides the load-older-messages sentinel even when more history exists", () => {
     render(

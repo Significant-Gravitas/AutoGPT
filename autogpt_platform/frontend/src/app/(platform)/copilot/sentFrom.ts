@@ -1,5 +1,7 @@
 import type { ChatSessionMetadata } from "@/app/api/__generated__/models/chatSessionMetadata";
 import { isValidUUID } from "@/lib/utils";
+import type { UIMessage } from "ai";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 
 export interface SentFrom {
   sessionId: string;
@@ -43,6 +45,14 @@ export function getSessionSentFrom(
     expertId: metadata?.delegated_by_expert_id ?? null,
     expertName: null,
   };
+}
+
+// The row that opened a thread is the one at DB sequence 0. Its hydrated id
+// carries that sequence, so the check does not depend on how much history the
+// client has retained: a paged, truncated or refetching thread can drop the
+// opening row, but it can never present a later row at sequence 0.
+export function isSessionOpeningMessage(message: UIMessage): boolean {
+  return message.role === "user" && extractDbSequence(message) === 0;
 }
 
 export function getSentFromDisplayName(

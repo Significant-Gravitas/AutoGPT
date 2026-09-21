@@ -3,6 +3,7 @@ import {
   getSentFromDisplayName,
   getSentFromMetadata,
   getSessionSentFrom,
+  isSessionOpeningMessage,
 } from "../sentFrom";
 
 const SESSION_ID = "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c";
@@ -68,6 +69,32 @@ describe("getSentFromDisplayName", () => {
     expect(getSentFromDisplayName(unnamed, null)).toBe("an expert");
     expect(getSentFromDisplayName({ ...unnamed, expertId: null }, null)).toBe(
       "Otto",
+    );
+  });
+});
+
+describe("isSessionOpeningMessage", () => {
+  function message(id: string, role: "user" | "assistant" = "user") {
+    return { id, role, parts: [] };
+  }
+
+  it("is the user row hydrated at DB sequence 0", () => {
+    expect(isSessionOpeningMessage(message("sess-seq-0"))).toBe(true);
+  });
+
+  it("is never a later row, whatever the client retained", () => {
+    expect(isSessionOpeningMessage(message("sess-seq-1"))).toBe(false);
+    expect(isSessionOpeningMessage(message("sess-seq-40"))).toBe(false);
+  });
+
+  it("is never a row without a DB sequence", () => {
+    expect(isSessionOpeningMessage(message("user-streamed"))).toBe(false);
+    expect(isSessionOpeningMessage(message("sess-idx-0"))).toBe(false);
+  });
+
+  it("is never an assistant row", () => {
+    expect(isSessionOpeningMessage(message("sess-seq-0", "assistant"))).toBe(
+      false,
     );
   });
 });

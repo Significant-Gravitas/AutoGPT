@@ -58,7 +58,11 @@ import {
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import { SentFromBadge } from "./components/SentFromBadge";
-import { getSentFromMetadata, type SentFrom } from "../../sentFrom";
+import {
+  getSentFromMetadata,
+  isSessionOpeningMessage,
+  type SentFrom,
+} from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -117,8 +121,8 @@ interface Props {
    *  header must not yet claim the thread is Otto's. */
   isResolvingExpertIdentity?: boolean;
   /** Where this thread's opening task came from (session-level delegation
-   *  metadata). Shown on the first user message when that message carries
-   *  no provenance of its own. */
+   *  metadata). Shown on the row that opened the thread (DB sequence 0) when
+   *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
@@ -378,9 +382,6 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const firstUserMessageID = hasMoreMessages
-    ? null
-    : (messages.find((message) => message.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -668,7 +669,7 @@ export function ChatMessagesContainer({
             const sentFrom = readOnly
               ? null
               : (getSentFromMetadata(message.metadata) ??
-                (message.id === firstUserMessageID ? sessionSentFrom : null));
+                (isSessionOpeningMessage(message) ? sessionSentFrom : null));
 
             return (
               <Message
