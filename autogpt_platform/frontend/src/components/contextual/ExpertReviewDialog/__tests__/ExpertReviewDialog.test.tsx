@@ -164,6 +164,27 @@ describe("ExpertReviewDialog", () => {
     expect(primaryButton().hasAttribute("disabled")).toBe(true);
   });
 
+  test("two identical issues render as two rows with distinct keys", async () => {
+    // Two workflows sharing a name produce two issues with the same code and
+    // the same message. React still renders both on a first mount when their
+    // keys collide, so the assertion that matters is that it did not have to
+    // warn about it — a colliding key is what drops one of them on re-render.
+    const repeated = [
+      { code: "unresolved", message: "'Digest' is not on this marketplace." },
+      { code: "unresolved", message: "'Digest' is not on this marketplace." },
+    ];
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    renderDialog({ preview: { ...preview, warnings: repeated } });
+
+    const banner = await screen.findByRole("status");
+    expect(banner.querySelectorAll("li").length).toBe(2);
+    expect(consoleError.mock.calls.flat().join(" ")).not.toContain("same key");
+    consoleError.mockRestore();
+  });
+
   // Only the publish route can tell whether an agent without a stored listing
   // was published later, so the dialog names it as the admin's own agent and
   // lets the route decide instead of calling it unpublished.

@@ -188,8 +188,12 @@ function IssueBanner({
     >
       <Icon icon={Alert02Icon} size={16} className="mt-0.5 shrink-0" />
       <ul className="flex flex-col gap-1">
-        {issues.map((issue) => (
-          <li key={`${issue.code}-${issue.message}`} className="text-sm">
+        {/* Keyed by position: two workflows sharing a name produce two issues
+            with the same code and the same message, and keying on those would
+            collide and drop one. The list is rendered whole from one response
+            and never reordered. */}
+        {issues.map((issue, index) => (
+          <li key={index} className="text-sm">
             {issue.message}
           </li>
         ))}
