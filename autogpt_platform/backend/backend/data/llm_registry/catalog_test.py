@@ -296,9 +296,7 @@ def test_qwen3_8_flash_bills_at_authored_rates():
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[qwen_flash].max_output_tokens == 131072
-    qwen_flash_entry = next(
-        m for m in CATALOG.models if m.slug == "qwen/qwen3.8-flash"
-    )
+    qwen_flash_entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen3.8-flash")
     assert qwen_flash_entry.price_tier == 1
     assert qwen_flash_entry.context_window == 1000000
     assert qwen_flash_entry.supports_tools is True
