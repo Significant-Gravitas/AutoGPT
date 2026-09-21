@@ -660,17 +660,19 @@ class CodexAnthropicGateway:
             if conversation.task is not None:
                 conversation.task.cancel()
             raise
-        self._record_replay(
-            conversation,
-            replay_key,
-            _Replay(
-                status=200,
-                headers=headers,
-                body=sink.body,
-                streamed=True,
-                expires_at=_now() + _REPLAY_TTL_SECONDS,
-            ),
-        )
+        body = sink.body
+        if body is not None:
+            self._record_replay(
+                conversation,
+                replay_key,
+                _Replay(
+                    status=200,
+                    headers=headers,
+                    body=body,
+                    streamed=True,
+                    expires_at=_now() + _REPLAY_TTL_SECONDS,
+                ),
+            )
         return response
 
     async def _write_boundary(
@@ -916,14 +918,25 @@ class _RecordingSink:
     def __init__(self, response: web.StreamResponse) -> None:
         self._response = response
         self._chunks: list[bytes] = []
+        self._buffered = 0
+        self._recording = True
 
     async def write(self, data: bytes) -> None:
-        self._chunks.append(data)
+        if self._recording:
+            self._buffered += len(data)
+            # A body past the cap can never be stored, so holding on to it
+            # would buffer an unbounded stream for a replay nobody can keep.
+            if self._buffered > _MAX_REPLAY_BYTES:
+                self._chunks.clear()
+                self._recording = False
+            else:
+                self._chunks.append(data)
         await self._response.write(data)
 
     @property
-    def body(self) -> bytes:
-        return b"".join(self._chunks)
+    def body(self) -> bytes | None:
+        """None once the stream outgrew the cap; a partial body must not be cached."""
+        return b"".join(self._chunks) if self._recording else None
 
 
 def _now() -> float:
