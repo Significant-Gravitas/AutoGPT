@@ -243,6 +243,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
+    QWEN3_8_FLASH = "qwen/qwen3.8-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
