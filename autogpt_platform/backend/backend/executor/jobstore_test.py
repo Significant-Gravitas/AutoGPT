@@ -318,7 +318,7 @@ def _scheduler_wired_to(store):
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
-        patch(f"{_SCHEDULER_PATH}._init_launchdarkly_for_scheduler"),
+        patch(f"{_SCHEDULER_PATH}._init_feature_flags_for_scheduler"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
