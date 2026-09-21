@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
+from backend.copilot.prompting import NO_REPLY
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
@@ -73,6 +74,11 @@ class DraftStreamer:
             return
         preview = text.strip()
         if not preview or preview == self._last_text:
+            return
+        # A reply the model may still be spelling out as NO_REPLY must not
+        # flash as a live preview: the finished reply would then be
+        # suppressed, leaving the user with a draft of a word meant for us.
+        if NO_REPLY.startswith(preview):
             return
         try:
             outcome = await self._adapter.send_stream_draft(
@@ -328,6 +334,22 @@ class TurnStreamer:
             except asyncio.CancelledError:
                 pass
             await adapter.stop_typing(target_id)
+
+        if not sent_any_content and buffer.strip() == NO_REPLY:
+            # The model chose silence, as its system prompt allows. This is
+            # not the "didn't produce a response" case below: that exists for
+            # a model that emitted nothing, and this one said so. Whole message
+            # only, and only when nothing was already flushed mid-stream, so a
+            # long reply that happens to contain the word is still delivered.
+            logger.info("Reply suppressed by NO_REPLY for target %s", target_id)
+            self._api.track_event(
+                platform=ctx.platform,
+                event_type="reply_suppressed",
+                server_id=ctx.server_id,
+                channel_type=ctx.channel_type,
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+            )
+            return
 
         if buffer.strip():
             if await self._send_text_and_artifacts(
@@ -613,6 +635,10 @@ def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
     options = _question_options(question)
     if not adapter.supports_choice_buttons or not text or not options:
         return False
+    # A native button consumes the question on the first click, so a
+    # multi-select one goes as numbered text the user can answer "1, 3" to.
+    if question.get("allow_multiple"):
+        return False
     if len(options) > adapter.max_choice_options:
         return False
     # A clipped label is worse than no button: two options sharing a prefix
@@ -731,6 +757,8 @@ def _clarification_message(clarification_output: dict[str, Any]) -> str:
         if options:
             numbered = "\n".join(f"{i}. {o}" for i, o in enumerate(options, 1))
             block = f"{block}\n{numbered}"
+            if question.get("allow_multiple"):
+                block = f"{block}\n(Pick one or more.)"
         blocks.append(block)
 
     if not blocks:

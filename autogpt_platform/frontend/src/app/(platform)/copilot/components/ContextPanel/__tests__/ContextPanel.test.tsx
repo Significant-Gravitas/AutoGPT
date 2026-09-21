@@ -66,6 +66,19 @@ describe("ContextPanel", () => {
     expect(container.querySelector("[data-context-panel]")).toBeNull();
   });
 
+  test("hides itself while the computer face is showing, whatever tab is remembered", () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        activeTab: "artifacts",
+        mode: "computer",
+        isComputerOpen: true,
+      },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    expect(container.querySelector("[data-context-panel]")).toBeNull();
+  });
+
   test("renders nothing when closed", () => {
     useCopilotUIStore.setState((s) => ({
       artifactPanel: {

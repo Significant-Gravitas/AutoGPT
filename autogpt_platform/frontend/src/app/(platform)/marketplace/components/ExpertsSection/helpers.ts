@@ -68,7 +68,10 @@ const ACCENTS: Record<string, ExpertAccent> = {
 };
 
 const ROLE_ACCENTS: Array<[RegExp, string]> = [
-  [/marketing|growth|brand/i, "violet"],
+  [
+    /marketing|growth|brand|seo|content|social|market|competitor|email|lifecycle/i,
+    "violet",
+  ],
   [/sales|revenue/i, "amber"],
   [/ops|operations|support/i, "sky"],
 ];

@@ -9,6 +9,14 @@ import {
 describe("getExpertAccent", () => {
   test("themes known roles and falls back to zinc", () => {
     expect(getExpertAccent("Marketing").pill).toContain("violet");
+    expect(getExpertAccent("SEO & Content").pill).toContain("violet");
+    expect(getExpertAccent("Social & Content Repurposing").pill).toContain(
+      "violet",
+    );
+    expect(getExpertAccent("Market & Competitor Intelligence").pill).toContain(
+      "violet",
+    );
+    expect(getExpertAccent("Email & Lifecycle").pill).toContain("violet");
     expect(getExpertAccent("Sales").pill).toContain("amber");
     expect(getExpertAccent("Ops").pill).toContain("sky");
     expect(getExpertAccent("Astrologer").pill).toContain("zinc");

@@ -45,18 +45,12 @@ export function SkillsSection({ category }: Props) {
         titleId={HEADING_ID}
         subtitle="Playbooks your experts follow — from brand voice to cold outreach. Teach them your way of working."
         action={sectionAction({ isLoggedIn, total })}
+        secondaryAction={
+          isLoggedIn
+            ? { label: "Build your own", href: "/library/skills" }
+            : undefined
+        }
       />
-      {isLoggedIn ? (
-        <div className="-mt-3 mb-6">
-          <Link
-            href="/library/skills"
-            className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
-          >
-            …or teach them a skill of your own
-          </Link>
-        </div>
-      ) : null}
-
       {isLoading ? (
         <div
           role="status"
