@@ -29,6 +29,7 @@ import logging
 import os
 import tarfile
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -60,6 +61,10 @@ DEFAULT_CATALOG_REF = "main"
 CATALOG_FILE = "catalog.yml"
 SKILLS_DIR = "skills"
 _CONTENT_DIR = Path(__file__).parent / "starter_skills"
+# One transaction for the whole catalog, so a failure leaves the marketplace
+# as it was. The default 30s covers a handful of listings; a full catalog is
+# several queries per listing against a remote database.
+SEED_TRANSACTION_TIMEOUT = timedelta(minutes=10)
 
 
 CatalogEntry = StarterSkill
@@ -1226,7 +1231,7 @@ async def _seed_loaded(
 ) -> list[str]:
     """Write a set whose packages have all been loaded and checked."""
     listing_ids = []
-    async with database.transaction() as tx:
+    async with database.transaction(timeout=SEED_TRANSACTION_TIMEOUT) as tx:
         for entry, parsed, files in loaded:
             listing = await _upsert_listing(tx, entry, parsed, files)
             listing_ids.append(listing.id)
