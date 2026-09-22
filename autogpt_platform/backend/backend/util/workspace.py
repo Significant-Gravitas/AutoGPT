@@ -17,7 +17,11 @@ from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db, workspace_skill_db
 from backend.data.skill_capacity import (
     MAX_SKILLS_PER_EXPERT,
+    SKILL_ORIGIN_LABELS,
+    SKILL_ORIGIN_USER,
     SkillLimitError,
+    SkillOwnedError,
+    skill_origin,
     skill_owner_folder,
 )
 from backend.data.workspace import WorkspaceFile
@@ -367,6 +371,7 @@ class WorkspaceManager:
                 raise ValueError(f"File already exists at path: {path}")
 
         replaced_storage_path: str | None = None
+        replaced_file_id: str | None = None
         try:
             if skill_owner_folder(path) is not None:
                 publication = await workspace_skill_db().publish_workspace_skill_file(
@@ -384,14 +389,22 @@ class WorkspaceManager:
                     )
                 )
                 if publication.status == "capacity":
+                    origin = skill_origin(metadata) or SKILL_ORIGIN_USER
                     raise SkillLimitError(
-                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT}). Delete an unused skill first."
+                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {SKILL_ORIGIN_LABELS[origin]} "
+                        "skills). Delete an unused skill first."
+                    )
+                if publication.status == "owned":
+                    raise SkillOwnedError(
+                        f"'{path.rsplit('/', 2)[1]}' is one of the owner's own skills; "
+                        "rename or delete it before installing a skill by that name."
                     )
                 if publication.status == "exists":
                     raise ValueError(f"File already exists at path: {path}")
                 assert publication.file is not None
                 file = publication.file
                 replaced_storage_path = publication.replaced_storage_path
+                replaced_file_id = publication.replaced_file_id
             else:
                 file = await _persist_db_record()
         except Exception:
@@ -406,6 +419,20 @@ class WorkspaceManager:
                 await storage.delete(replaced_storage_path)
             except Exception:
                 logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+
+        if replaced_file_id and replaced_file_id != file.id:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=replaced_file_id, user_id=self.user_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean up replaced skill embedding", exc_info=True
+                )
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "

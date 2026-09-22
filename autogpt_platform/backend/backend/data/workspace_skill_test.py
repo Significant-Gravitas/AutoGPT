@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from prisma import Json
 from prisma.errors import UniqueViolationError
 
 from backend.data import db
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
+from backend.data.workspace import rename_workspace_file
 from backend.data.workspace_skill import (
     WorkspaceSkillWrite,
     publish_workspace_skill_file,
@@ -54,7 +56,9 @@ def write(
     )
 
 
-async def seed(workspace_id: str, count: int, folder: str = "/skills"):
+async def seed(
+    workspace_id: str, count: int, folder: str = "/skills", origin: str | None = None
+):
     await db.prisma.userworkspacefile.create_many(
         data=[
             {
@@ -64,6 +68,7 @@ async def seed(workspace_id: str, count: int, folder: str = "/skills"):
                 "storagePath": f"test://{i}",
                 "mimeType": "text/markdown",
                 "sizeBytes": 20,
+                "metadata": Json({"skill_origin": origin} if origin else {}),
             }
             for i in range(count)
         ]
@@ -71,26 +76,34 @@ async def seed(workspace_id: str, count: int, folder: str = "/skills"):
 
 
 @asynccontextmanager
-async def repeatable_transaction():
+async def initially_repeatable_read_transaction():
     async with db.transaction() as tx:
         await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         yield tx
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("repeatable_read", [False, True])
+@pytest.mark.parametrize("initially_repeatable_read", [False, True])
+@pytest.mark.parametrize("origin", ["user", "marketplace"])
 async def test_concurrent_new_roots_cannot_both_take_last_slot(
-    workspace_id: str, repeatable_read: bool
+    workspace_id: str, initially_repeatable_read: bool, origin: str
 ):
-    await seed(workspace_id, MAX_SKILLS_PER_EXPERT - 1)
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT - 1, origin=origin)
     with (
-        patch("backend.data.workspace_skill.transaction", repeatable_transaction)
-        if repeatable_read
+        patch(
+            "backend.data.workspace_skill.transaction",
+            initially_repeatable_read_transaction,
+        )
+        if initially_repeatable_read
         else nullcontext()
     ):
         results = await asyncio.gather(
             *(
-                publish_workspace_skill_file(write(workspace_id, f"new-{i}"))
+                publish_workspace_skill_file(
+                    write(workspace_id, f"new-{i}").model_copy(
+                        update={"metadata": {"skill_origin": origin}}
+                    )
+                )
                 for i in range(8)
             )
         )
@@ -270,3 +283,121 @@ async def test_manager_publishes_and_replaces_real_files_at_capacity(
         with pytest.raises(FileNotFoundError):
             await manager.read_file_by_id(original.id)
         assert len(list(tmp_path.rglob("SKILL.md"))) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "full_origin,other_origin", [("user", "marketplace"), ("marketplace", "user")]
+)
+async def test_saved_and_installed_budgets_are_independent(
+    workspace_id: str, full_origin: str, other_origin: str
+):
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT, origin=full_origin)
+    request = write(workspace_id, "other-budget")
+    request.metadata = {"skill_origin": other_origin}
+    result = await publish_workspace_skill_file(request)
+    assert result.status == "stored"
+    assert (
+        await db.prisma.userworkspacefile.count(
+            where={"workspaceId": workspace_id, "isDeleted": False}
+        )
+        == MAX_SKILLS_PER_EXPERT + 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_origin_transfer_requires_destination_budget_slot(workspace_id: str):
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT, origin="user")
+    installed = write(workspace_id, "installed")
+    installed.metadata = {"skill_origin": "marketplace"}
+    result = await publish_workspace_skill_file(installed)
+    assert result.status == "stored"
+    saved = write(workspace_id, "installed")
+    saved.metadata = {"skill_origin": "user"}
+    rejected = await publish_workspace_skill_file(saved)
+    assert rejected.status == "capacity"
+    row = await db.prisma.userworkspacefile.find_unique(where={"id": installed.file_id})
+    assert row is not None and not row.isDeleted
+    assert row.metadata == {"skill_origin": "marketplace"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_marketplace_install_cannot_replace_owner_saved_root(
+    workspace_id: str,
+):
+    saved = write(workspace_id, "same")
+    saved.metadata = {"skill_origin": "user"}
+    installed = write(workspace_id, "same")
+    installed.metadata = {"skill_origin": "marketplace"}
+    results = await asyncio.gather(
+        publish_workspace_skill_file(saved), publish_workspace_skill_file(installed)
+    )
+    assert results[0].status == "stored"
+    assert results[1].status in {"stored", "owned"}
+    row = await db.prisma.userworkspacefile.find_unique(
+        where={"workspaceId_path": {"workspaceId": workspace_id, "path": saved.path}}
+    )
+    assert row is not None
+    assert row.id == saved.file_id
+    assert row.metadata == {"skill_origin": "user"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_marketplace_can_claim_legacy_root(workspace_id: str):
+    original = await publish_workspace_skill_file(write(workspace_id, "legacy"))
+    installed = write(workspace_id, "legacy")
+    installed.metadata = {"skill_origin": "marketplace"}
+    result = await publish_workspace_skill_file(installed)
+    assert result.status == "stored"
+    assert result.file is not None and original.file is not None
+    assert result.file.id != original.file.id
+    assert result.file.metadata == {"skill_origin": "marketplace"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rename_cannot_publish_an_extra_root_at_capacity(workspace_id: str):
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT)
+    file = await db.prisma.userworkspacefile.create(
+        data={
+            "workspaceId": workspace_id,
+            "name": "draft.md",
+            "path": "/skills/extra/draft.md",
+            "storagePath": "test://draft",
+            "mimeType": "text/markdown",
+            "sizeBytes": 20,
+        }
+    )
+    with pytest.raises(SkillLimitError):
+        await rename_workspace_file(file.id, workspace_id, "SKILL.md")
+    row = await db.prisma.userworkspacefile.find_unique(where={"id": file.id})
+    assert row is not None and row.path == "/skills/extra/draft.md"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rename_and_new_publication_share_last_slot(workspace_id: str):
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT - 1)
+    file = await db.prisma.userworkspacefile.create(
+        data={
+            "workspaceId": workspace_id,
+            "name": "draft.md",
+            "path": "/skills/renamed/draft.md",
+            "storagePath": "test://draft",
+            "mimeType": "text/markdown",
+            "sizeBytes": 20,
+        }
+    )
+    renamed, published = await asyncio.gather(
+        rename_workspace_file(file.id, workspace_id, "SKILL.md"),
+        publish_workspace_skill_file(write(workspace_id, "published")),
+        return_exceptions=True,
+    )
+    assert not isinstance(published, BaseException)
+    assert (not isinstance(renamed, SkillLimitError)) + (
+        published.status == "stored"
+    ) == 1
+    assert (
+        await db.prisma.userworkspacefile.count(
+            where={"workspaceId": workspace_id, "isDeleted": False, "name": "SKILL.md"}
+        )
+        == MAX_SKILLS_PER_EXPERT
+    )
