@@ -5,6 +5,26 @@ from pathlib import Path
 
 
 class E2ESeedCacheContractTests(unittest.TestCase):
+    def test_fresh_and_cached_seed_credentials_are_verified_before_tests(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        name = "Set up tests - Verify seeded credentials with fresh encryption key"
+        verification = workflow.split(f"- name: {name}\n", 1)[1].split(
+            "\n      - name:", 1
+        )[0]
+        self.assertIn("--refresh-credentials-only", verification)
+        self.assertNotIn("if:", verification)
+        self.assertNotIn("continue-on-error", verification)
+        self.assertLess(
+            workflow.index("- name: Set up tests - Create E2E test data"),
+            workflow.index(f"- name: {name}"),
+        )
+        self.assertLess(
+            workflow.index(f"- name: {name}"),
+            workflow.index("- name: Run Playwright E2E suite"),
+        )
+
     def test_seed_cache_key_uses_pristine_checkout(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"

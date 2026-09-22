@@ -369,6 +369,12 @@ jobs:
 
           echo "✅ Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)"
 
+      - name: Set up tests - Verify seeded credentials with fresh encryption key
+        run: |
+          docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+          docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
+            sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+
       - name: Copy source maps from Docker for E2E coverage
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
