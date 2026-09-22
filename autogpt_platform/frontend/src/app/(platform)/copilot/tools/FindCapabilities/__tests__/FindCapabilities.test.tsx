@@ -70,6 +70,28 @@ describe("FindCapabilitiesTool", () => {
     expect(screen.queryAllByText(/^(connected|sign in)$/)).toHaveLength(2);
   });
 
+  it("labels a skill as one, not as an action", () => {
+    const withSkill = {
+      ...OUTPUT,
+      count: 1,
+      capabilities: [
+        {
+          id: "skill:triage-and-prioritize",
+          name: "triage-and-prioritize",
+          purpose: "Triage a support ticket",
+          kind: "skill",
+        },
+      ],
+      fallback: [],
+    };
+    render(<FindCapabilitiesTool part={part({ output: withSkill })} />);
+    fireEvent.click(screen.getByText("Results"));
+
+    expect(screen.getByText("triage-and-prioritize")).toBeDefined();
+    expect(screen.getByText("skill")).toBeDefined();
+    expect(screen.queryByText("action")).toBeNull();
+  });
+
   it("singularises a lone result", () => {
     const single = {
       ...OUTPUT,

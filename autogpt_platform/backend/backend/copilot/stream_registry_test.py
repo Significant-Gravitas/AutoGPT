@@ -579,14 +579,29 @@ def test_reconstruct_chunk_round_trips_pending_drained():
     silently drops the hint and falls back to the slow backstop poll."""
     import orjson
 
-    from backend.copilot.response_model import StreamPendingDrained
+    from backend.copilot.response_model import (
+        StreamPendingDrained,
+        StreamPendingDrainedMessage,
+    )
 
-    stored = orjson.loads(StreamPendingDrained(drainedCount=3).model_dump_json())
+    stored = orjson.loads(
+        StreamPendingDrained(
+            drainedCount=2,
+            messages=[
+                StreamPendingDrainedMessage(id="pm-1", content="also add tests"),
+                StreamPendingDrainedMessage(id="pm-2", content="and docs"),
+            ],
+        ).model_dump_json()
+    )
 
     chunk = stream_registry._reconstruct_chunk(stored)
 
     assert isinstance(chunk, StreamPendingDrained)
-    assert chunk.drainedCount == 3
+    assert chunk.drainedCount == 2
+    assert [(m.id, m.content) for m in chunk.messages] == [
+        ("pm-1", "also add tests"),
+        ("pm-2", "and docs"),
+    ]
 
 
 def test_reconstruct_mode_changed_chunk():

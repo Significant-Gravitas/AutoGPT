@@ -13,7 +13,12 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
+from backend.copilot.tools.skills import (
+    SKILL_ORIGIN_MARKETPLACE,
+    SkillFile,
+    list_user_skills,
+    store_user_skill,
+)
 from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -172,7 +177,8 @@ async def install_marketplace_skill(
     caller's own library when ``None``.
 
     The listing's slug becomes the installed skill's name, so an install is
-    idempotent and a re-install picks up a newer approved version.
+    idempotent and a re-install picks up a newer approved version. The whole
+    package is passed, so a file the new version dropped is removed too.
     """
     listing = await _find_live_listing(slug)
     active = skill_model.active_version(listing)
@@ -187,10 +193,20 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
+        extra={
+            key: value
+            for key, value in (
+                ("license", active.license),
+                ("source", active.sourceRepo),
+                ("source_url", active.sourceUrl),
+            )
+            if value is not None
+        },
         # `[]`, never `None` — which means "leave the folder alone" and would
         # keep a sibling only the previously installed version had.
         files=await _read_version_files(active.id),
         expert_id=expert_id,
+        origin=SKILL_ORIGIN_MARKETPLACE,
     )
     if is_new:
         await prisma.models.SkillListing.prisma().update(
