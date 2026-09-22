@@ -7,8 +7,6 @@ import {
   type PlanKey,
 } from "@/components/molecules/PlanCard/plans";
 
-const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
-
 export interface SubscriptionPlansProps {
   plans: PlanDef[];
   country: Country;
@@ -26,14 +24,15 @@ export interface SubscriptionPlansProps {
 export type PlanDialog = "compare" | "trial" | null;
 
 export function formatPlanAmount(amount: number, currency: string) {
-  const decimalDigits = ZERO_DECIMAL_CODES.has(currency.toUpperCase()) ? 0 : 2;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     currencyDisplay: "symbol",
-    minimumFractionDigits: decimalDigits,
-    maximumFractionDigits: decimalDigits,
   }).format(amount);
+}
+
+export function supportsTrialPlan(planKey: string) {
+  return planKey === PLAN_KEYS.PRO || planKey === PLAN_KEYS.MAX;
 }
 
 function getTrialPricing(offer: TrialOfferResponse) {
@@ -67,10 +66,8 @@ export function getPlanPresentation(
   plan: PlanDef,
   props: SubscriptionPlansProps,
 ) {
-  const supportsTrial =
-    plan.key === PLAN_KEYS.PRO || plan.key === PLAN_KEYS.MAX;
   const offer =
-    supportsTrial && props.trialOffer?.tier === plan.key
+    supportsTrialPlan(plan.key) && props.trialOffer?.tier === plan.key
       ? props.trialOffer
       : null;
   const trial = offer?.billing_cycle === props.billing ? offer : null;

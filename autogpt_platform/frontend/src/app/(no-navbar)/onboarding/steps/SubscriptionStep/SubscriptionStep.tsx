@@ -1,6 +1,7 @@
 "use client";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
+import { supportsTrialPlan } from "@/components/organisms/SubscriptionPlans/helpers";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
@@ -14,8 +15,10 @@ export function SubscriptionStep() {
     !trial.queryError &&
     trial.trial?.eligible &&
     !trial.trial.converted &&
+    trial.trial.offer &&
+    supportsTrialPlan(trial.trial.offer.tier) &&
     subscription.plans.some((plan) => plan.key === trial.trial?.offer?.tier)
-      ? (trial.trial.offer ?? null)
+      ? trial.trial.offer
       : null;
 
   return (
