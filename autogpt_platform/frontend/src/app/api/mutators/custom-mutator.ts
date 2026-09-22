@@ -39,6 +39,7 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
   if (
     contentType &&
     (contentType.includes("application/pdf") ||
+      contentType.includes("application/zip") ||
       contentType.startsWith("image/") ||
       contentType.startsWith("video/"))
   ) {

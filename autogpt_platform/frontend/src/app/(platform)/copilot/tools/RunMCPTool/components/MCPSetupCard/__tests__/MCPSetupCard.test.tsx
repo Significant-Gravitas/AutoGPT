@@ -226,7 +226,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -238,7 +238,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
   });
 
   it("surfaces a rejected authorization response instead of offering a token", async () => {
@@ -296,12 +296,12 @@ describe("MCPSetupCard", () => {
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never);
 
@@ -346,7 +346,7 @@ describe("MCPSetupCard", () => {
     // First click: OAuth fails with 400 → shows manual token input
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -395,7 +395,7 @@ describe("MCPSetupCard", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -450,7 +450,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -501,7 +501,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -516,7 +516,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
@@ -535,7 +535,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -582,7 +582,7 @@ describe("MCPSetupCard", () => {
     // Drain the in-flight promise so React doesn't warn on unmount.
     resolveLogin?.({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     });
     await waitFor(() => {
@@ -649,7 +649,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -777,7 +777,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -871,7 +871,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
@@ -906,7 +906,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -941,7 +941,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     // Never settles: pins the in-flight state.
@@ -978,7 +978,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 

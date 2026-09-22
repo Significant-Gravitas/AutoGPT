@@ -123,11 +123,9 @@ jobs:
 
       - name: Copy default environment files
         working-directory: autogpt_platform
-        run: |
-          # Copy default environment files for development
-          cp .env.default .env
-          cp backend/.env.default backend/.env
-          cp frontend/.env.default frontend/.env
+        # Creates each .env from its .env.default and generates the secrets that
+        # .env.default deliberately leaves blank.
+        run: make init-env
 
       # Phase 1: Cache and load Docker images for faster setup
       - name: Set up Docker image cache

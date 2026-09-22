@@ -26,24 +26,31 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
+def canonical_provider(stored: str) -> str:
+    """The canonical provider value for a possibly-legacy stored string.
+
+    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
+    instead of ``"mcp"``, and credentials persisted then still carry it.
+    Anything already canonical, or naming a member we no longer have, comes
+    back unchanged.
+    """
+    if not stored.startswith("ProviderName."):
+        return stored
+    from backend.integrations.providers import ProviderName
+
+    try:
+        return ProviderName[stored.removeprefix("ProviderName.")].value
+    except KeyError:
+        return stored
+
+
 def provider_matches(stored: str, expected: str) -> bool:
     """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
 
-    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
-    instead of ``"mcp"``.  OAuth states persisted with the buggy format need
-    to match when ``expected`` is the canonical value (e.g. ``"mcp"``).
+    OAuth states persisted with the buggy format need to match when
+    ``expected`` is the canonical value (e.g. ``"mcp"``).
     """
-    if stored == expected:
-        return True
-    if stored.startswith("ProviderName."):
-        member = stored.removeprefix("ProviderName.")
-        from backend.integrations.providers import ProviderName
-
-        try:
-            return ProviderName[member].value == expected
-        except KeyError:
-            pass
-    return False
+    return stored == expected or canonical_provider(stored) == expected
 
 
 # This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached

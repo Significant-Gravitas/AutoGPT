@@ -80,13 +80,23 @@ To run the platform, follow these steps:
    cd AutoGPT/autogpt_platform
   ```
 
-- Copy the `.env.default` file to `.env` in `autogpt_platform`:
+- Create the `.env` files and generate your local secrets:
 
   ```
-   cp .env.default .env
+   make init-env
   ```
 
-  This command will copy the `.env.default` file to `.env` in the `autogpt_platform` directory. You can modify the `.env` file to add your own environment variables.
+  This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
+  and `frontend`) and fills in the secrets that `.env.default` deliberately
+  leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and
+  `BETTER_AUTH_SECRET` — with values generated for your machine. Those files
+  are public, so shipping working values in them would mean every install in
+  the world shared one publicly-readable key. It is safe to re-run: it never
+  overwrites an existing `.env` or a value you set yourself. You can then edit
+  the `.env` files to add your own environment variables.
+
+  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, so run this
+  before bringing the stack up.
 
 - Run the platform services:
   ```
@@ -106,7 +116,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) |
+| `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) and generate the secrets they leave blank |
 | `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
@@ -147,6 +157,128 @@ Frontend UI Server: 3000
 Backend Websocket Server: 8001
 Execution API Rest Server: 8006
 
+### Upgrading: secrets are generated per install
+
+`ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and `BETTER_AUTH_SECRET` used to
+come with a value in `.env.default`, so every install that did not set its own
+ran on the same three values. They are now blank there and generated for each
+install, and the backend **does not start** without an `ENCRYPTION_KEY` or
+with the one `.env.default` used to contain.
+
+A fresh install needs nothing beyond `make init-env` (or the installer script,
+which does the same). An install that already set its own values needs
+nothing either. Follow the steps below if you are upgrading an install that
+
+- has no `autogpt_platform/backend/.env`, or one without an `ENCRYPTION_KEY`
+  line — it was running on the value from `.env.default`; or
+- stops on startup with `ENCRYPTION_KEY is set to a value that was published…`
+  or `ENCRYPTION_KEY is not set`.
+
+Your connected integrations are encrypted with `ENCRYPTION_KEY`, so the steps
+move them to the new key instead of losing them. Run everything from
+`autogpt_platform/`.
+
+1. Stop the stack:
+
+   ```bash
+   docker compose down
+   ```
+
+2. Keep the key your data is currently encrypted with. If you never set one,
+   it is the value `.env.default` contained up to release `v0.7.4`:
+
+   ```bash
+   export OLD_ENCRYPTION_KEY=$(git show autogpt-platform-beta-v0.7.4:autogpt_platform/backend/.env.default \
+     | grep '^ENCRYPTION_KEY=' | cut -d= -f2-)
+   ```
+
+   If you did set one and are replacing it, export that value instead, and keep
+   a copy of the file outside the checkout until step 4 reports nothing
+   unreadable, because step 3 removes the only other place the key is written
+   down:
+
+   ```bash
+   cp -n backend/.env ~/autogpt-backend.env.before-upgrade
+   ```
+
+3. Generate the new values. `make init-env` creates any missing `.env` file
+   and fills in every secret whose line is present but empty; it never
+   overwrites a value. So in `backend/.env` make sure these two lines exist
+   with nothing after the `=`, and do the same for `BETTER_AUTH_SECRET=` in
+   `frontend/.env`:
+
+   ```
+   ENCRYPTION_KEY=
+   UNSUBSCRIBE_SECRET_KEY=
+   ```
+
+   Then:
+
+   ```bash
+   make init-env
+   ```
+
+   Without `make`, these are the same steps by hand. Copy a `.env.default`
+   only where no `.env` exists yet:
+
+   ```bash
+   cp -n .env.default .env
+   cp -n backend/.env.default backend/.env
+   cp -n frontend/.env.default frontend/.env
+   python3 single-container/runtime_config.py fill-env --path .env
+   python3 single-container/runtime_config.py fill-env --path backend/.env
+   python3 single-container/runtime_config.py fill-env --path frontend/.env
+   ```
+
+   Do not re-run the installer script for this: it also starts the stack,
+   which is step 5.
+
+4. Re-encrypt what is stored. Build the new images and bring the database up
+   to date first; `migrate` starts the database on its own:
+
+   ```bash
+   docker compose build migrate rest_server
+   docker compose run --rm migrate
+   ```
+
+   Then run the command, first as a dry run that only reports what it would
+   change, then with `--apply` to write it. `--no-deps` keeps it from waiting
+   on the rest of the stack, which it does not need:
+
+   ```bash
+   docker compose run --rm --no-deps -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key
+   docker compose run --rm --no-deps -e OLD_ENCRYPTION_KEY rest_server cli rotate-encryption-key --apply
+   ```
+
+   It is safe to run more than once: values already under the new key are left
+   alone, and a value that neither key can read is listed and not touched.
+   Running the backend outside Docker, the same command is
+   `poetry run cli rotate-encryption-key` in `autogpt_platform/backend`.
+
+5. Start the stack again. If `BETTER_AUTH_SECRET` changed in step 3, first
+   clear the token signing key the frontend stored under the old value: it can
+   no longer be decrypted, and until it is removed nobody can reach the
+   backend, even after signing in again. A new one is created on the next
+   sign-in. `--build` brings the remaining services to the release you built
+   in step 4:
+
+   ```bash
+   docker compose up -d --wait db
+   docker compose exec db psql -U postgres -c 'DELETE FROM platform."UserAuthJwks";'
+   docker compose up -d --build
+   ```
+
+Two smaller effects of the new values: unsubscribe links in emails sent before
+the upgrade stop working (`UNSUBSCRIBE_SECRET_KEY`), and everyone signs in
+again once (`BETTER_AUTH_SECRET`).
+
+Do step 4 before step 5. On a new key the stored values are still in the
+database but read as empty, and a user who connects an integration in that
+state replaces their stored set: their other credentials are marked revoked.
+If the stack already ran on the new key, stop it and run step 4 now. Whatever
+nobody touched is recovered; a user who connected something in between gets
+their older credentials re-encrypted but still revoked, and reconnects those.
+
 ### Upgrading an existing (Supabase-based) installation
 
 Older versions of the platform ran authentication on a bundled Supabase
@@ -162,6 +294,11 @@ three things changed:
    `.env` against its `.env.default` and copy the new keys across yourself.
    The `SUPABASE_*` URL/key variables are gone; the frontend now uses
    `BETTER_AUTH_SECRET` and `DATABASE_URL`.
+
+   `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and `BETTER_AUTH_SECRET` are no
+   longer filled in by `.env.default`: follow
+   [Upgrading: secrets are generated per install](#upgrading-secrets-are-generated-per-install)
+   as part of this step.
 2. **Database location**: the database now lives in a plain Postgres
    container (`pgvector/pgvector:pg15`) with its data in
    `autogpt_platform/data/db/data`. Your old data is untouched at
@@ -279,9 +416,10 @@ A fresh install (empty database) needs none of this.
 
 ### Additional Notes
 
-You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
-
-To generate a new encryption key, run the following command in python:
+`make init-env` already generates a unique `ENCRYPTION_KEY` for your install, so
+there is normally nothing to change here. To rotate it — for example if you
+carried a key over from an older checkout, back when `.env.default` shipped a
+working (and therefore public) one — generate a new key in python:
 
 ```python
 from cryptography.fernet import Fernet;Fernet.generate_key().decode()
@@ -293,7 +431,12 @@ Or run the following command in the `autogpt_platform/backend` directory:
 poetry run cli gen-encrypt-key
 ```
 
-Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
+Then replace the value in `autogpt_platform/backend/.env` and re-encrypt the
+stored integration credentials under it, with the previous value as
+`OLD_ENCRYPTION_KEY` — steps 4 and 5 of
+[Upgrading: secrets are generated per install](#upgrading-secrets-are-generated-per-install).
+Without that step the credentials stored under the previous key are unreadable
+and those integrations need reconnecting.
 
 #### Auth transport security (JWKS over untrusted networks)
 

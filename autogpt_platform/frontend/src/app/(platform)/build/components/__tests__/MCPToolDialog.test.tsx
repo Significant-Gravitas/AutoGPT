@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -69,7 +70,9 @@ async function connectPrivateServer() {
       }),
     );
   vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-    apiResponse(400, { detail: "OAuth not supported" }),
+    apiResponse(400, {
+      detail: { code: "no_oauth", message: "OAuth not supported" },
+    }),
   );
   vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
     apiResponse(200, CREDENTIAL),
@@ -90,6 +93,89 @@ async function connectPrivateServer() {
 describe("MCPToolDialog credential binding", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("ignores an old initiation after closing and reopening the same dialog", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    type LoginResponse = Awaited<
+      ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+    >;
+    let firstResolve!: (response: LoginResponse) => void;
+    let secondResolve!: (response: LoginResponse) => void;
+    const first = new Promise<LoginResponse>((resolve) => {
+      firstResolve = resolve;
+    });
+    const second = new Promise<LoginResponse>((resolve) => {
+      secondResolve = resolve;
+    });
+    const firstWindow = { closed: false, close: vi.fn() };
+    const secondWindow = { closed: false, close: vi.fn() };
+    vi.mocked(preOpenOAuthPopup)
+      .mockReturnValueOnce(firstWindow as unknown as Window)
+      .mockReturnValueOnce(secondWindow as unknown as Window);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const props = { onClose: vi.fn(), onConfirm: vi.fn() };
+    const view = render(<MCPToolDialog open {...props} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+    await waitFor(() =>
+      expect(postV2InitiateOauthLoginForAnMcpServer).toHaveBeenCalledTimes(1),
+    );
+
+    view.rerender(<MCPToolDialog open={false} {...props} />);
+    expect(firstWindow.close).toHaveBeenCalledOnce();
+    view.rerender(<MCPToolDialog open {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in & Connect" }));
+    await waitFor(() =>
+      expect(postV2InitiateOauthLoginForAnMcpServer).toHaveBeenCalledTimes(2),
+    );
+    await act(async () => {
+      firstResolve(
+        apiResponse(400, {
+          detail: { code: "no_oauth", message: "Old attempt" },
+        }),
+      );
+    });
+    expect(secondWindow.close).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("API token")).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Waiting for sign-in...",
+      }).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      secondResolve(
+        apiResponse(200, {
+          login_url: "https://login.example.com/new",
+          state_token: "new",
+        }),
+      );
+    });
+    await waitFor(() => expect(openOAuthPopup).toHaveBeenCalledOnce());
+    expect(openOAuthPopup).toHaveBeenCalledWith(
+      "https://login.example.com/new",
+      expect.objectContaining({ preOpenedWindow: secondWindow }),
+    );
   });
 
   it("surfaces a rejected authorization response instead of offering a token", async () => {
@@ -206,7 +292,9 @@ describe("MCPToolDialog credential binding", () => {
       fakeWindow as unknown as Window,
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
@@ -308,7 +396,9 @@ describe("MCPToolDialog credential binding", () => {
         }),
       );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
       apiResponse(200, CREDENTIAL),
@@ -348,7 +438,9 @@ describe("MCPToolDialog credential binding", () => {
       apiResponse(401, { detail: "Authentication required" }),
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     const providers = {
@@ -397,7 +489,9 @@ describe("MCPToolDialog credential binding", () => {
         apiResponse(401, { detail: "Invalid API credential" }),
       );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);
@@ -424,7 +518,9 @@ describe("MCPToolDialog credential binding", () => {
       apiResponse(401, { detail: "Authentication required" }),
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
-      apiResponse(400, { detail: "OAuth not supported" }),
+      apiResponse(400, {
+        detail: { code: "no_oauth", message: "OAuth not supported" },
+      }),
     );
 
     render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);

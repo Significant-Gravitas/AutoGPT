@@ -42,7 +42,6 @@ const ContextPanel = dynamic(
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   // The brain-dump experience swaps the dotted backdrop + notification
   // opt-in dialog for the quieter greeting surface (banner to follow).
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
@@ -91,17 +90,14 @@ export function CopilotPage() {
       {!isMobile && !showNewLayout && <ChatSidebar />}
       <MainArea
         isMobile={isMobile}
-        isArtifactsEnabled={isArtifactsEnabled}
         showNewLayout={showNewLayout}
         isBrainDumpEnabled={Boolean(isBrainDumpEnabled)}
         sessionId={sessionId}
         droppedFiles={droppedFiles}
         setDroppedFiles={setDroppedFiles}
       />
-      {isMobile && isArtifactsEnabled && sessionId && (
-        <ContextPanel sessionId={sessionId} mobile />
-      )}
-      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
+      {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
+      {isMobile && <ArtifactPanel mobile />}
       {isMobile && !showNewLayout && <MobileDrawer />}
       {!isBrainDumpEnabled && <NotificationDialog />}
       <CopilotModals />
@@ -111,7 +107,6 @@ export function CopilotPage() {
 
 interface MainAreaProps {
   isMobile: boolean;
-  isArtifactsEnabled: boolean;
   showNewLayout: boolean;
   isBrainDumpEnabled: boolean;
   sessionId: string | null;
@@ -121,7 +116,6 @@ interface MainAreaProps {
 
 function MainArea({
   isMobile,
-  isArtifactsEnabled,
   showNewLayout,
   isBrainDumpEnabled,
   sessionId,
@@ -167,19 +161,15 @@ function MainArea({
           />
           {/* Owns the session-entry reset that forgets the previous chat's
               artifact. */}
-          {isArtifactsEnabled && (
-            <ContextPanelAutoOpen
-              key={`context-auto-open-${sessionId ?? "new"}`}
-              sessionId={sessionId}
-            />
-          )}
+          <ContextPanelAutoOpen
+            key={`context-auto-open-${sessionId ?? "new"}`}
+            sessionId={sessionId}
+          />
         </FileDropZone>
       </div>
-      {!isMobile && isArtifactsEnabled && sessionId && (
-        <ContextPanel sessionId={sessionId} />
-      )}
-      {!isMobile && isArtifactsEnabled && sessionId && (
-        <ArtifactPanel hasExternalClose />
+      {!isMobile && sessionId && <ContextPanel sessionId={sessionId} />}
+      {!isMobile && sessionId && (
+        <ArtifactPanel hasExternalClose sessionId={sessionId} />
       )}
     </div>
   );
