@@ -30,13 +30,3 @@ regexes = [
     # LLM model name enum values falsely flagged as API keys
     '''Llama-\d.*Instruct''',
 ]
-
-[[rules]]
-id = "generic-api-key"
-
-[[rules.allowlists]]
-description = "Documented local development VAPID fixture"
-condition = "AND"
-regexTarget = "secret"
-paths = ['''^autogpt_platform/backend/\.env\.default$''']
-regexes = ['''^17hBPdSdn6TR_yAgQxA0TjTcvRj3Lf6znHnASZ4rOKc$''']

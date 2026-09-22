@@ -7,6 +7,9 @@ import { render } from "@/tests/integrations/test-utils";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FormRenderer } from "../FormRenderer";
+import Form from "../registry";
+import { customValidator } from "../utils/custom-validator";
+import { DateTimeInput } from "@/components/atoms/DateTimeInput/DateTimeInput";
 import {
   MoveDownButton,
   MoveUpButton,
@@ -202,7 +205,13 @@ it("labels nested JSON and links its own validation error", () => {
   render(
     form("one", {
       type: "object",
-      properties: { payload: { type: "object", title: "Payload" } },
+      properties: {
+        payload: {
+          type: "object",
+          title: "Payload",
+          description: "Structured payload",
+        },
+      },
     }),
   );
   const input = screen.getByLabelText("payload");
@@ -215,6 +224,46 @@ it("labels nested JSON and links its own validation error", () => {
   expect(
     screen.getByRole("button", { name: "Expand JSON input" }),
   ).not.toBeNull();
+});
+
+it("labels the native time control inside a datetime popover", () => {
+  render(
+    <DateTimeInput id="meeting" label="Meeting" value="2026-09-22T09:00:00" />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /meeting/i }));
+  expect(screen.getByLabelText("Time").getAttribute("type")).toBe("time");
+});
+
+it("describes JSON fields once when the schema retains its description", () => {
+  render(
+    <Form
+      schema={{
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            title: "Payload",
+            description: "Structured payload",
+          },
+        },
+      }}
+      uiSchema={{ payload: { "ui:field": "custom/json_text_field" } }}
+      validator={customValidator}
+      formContext={{
+        nodeId: "one",
+        domIdPrefix: "description-",
+        showHandles: false,
+        uiType: BlockUIType.STANDARD,
+      }}
+    />,
+  );
+  const described = screen
+    .getByLabelText("Payload")
+    .getAttribute("aria-describedby")!
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent)
+    .join(" ");
+  expect(described.match(/Structured payload/g)).toHaveLength(1);
 });
 
 it("names array actions for what they do and preserves their behavior", () => {

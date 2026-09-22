@@ -91,8 +91,7 @@ export const JsonTextField = (props: FieldProps) => {
           id={domId}
           aria-labelledby={labelId}
           aria-describedby={[
-            fieldAccessibility?.descriptionId,
-            descriptionId,
+            descriptionId ?? fieldAccessibility?.descriptionId,
             errorId,
           ]
             .filter(Boolean)

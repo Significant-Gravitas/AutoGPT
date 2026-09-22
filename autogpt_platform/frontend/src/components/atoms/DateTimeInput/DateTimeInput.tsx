@@ -72,6 +72,7 @@ export const DateTimeInput = ({
   const selected = React.useMemo(() => parseISODateTimeString(value), [value]);
   const [open, setOpen] = React.useState(false);
   const [timeValue, setTimeValue] = React.useState("");
+  const timeInputId = React.useId();
 
   // Update time value when selected date changes
   React.useEffect(() => {
@@ -211,10 +212,14 @@ export const DateTimeInput = ({
               }}
             />
             <div className="mt-3 border-t pt-3">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
+              <label
+                htmlFor={timeInputId}
+                className="mb-2 block text-sm font-medium text-gray-700"
+              >
                 Time
               </label>
               <input
+                id={timeInputId}
                 type="time"
                 value={timeValue}
                 onChange={(e) => handleTimeChange(e.target.value)}
