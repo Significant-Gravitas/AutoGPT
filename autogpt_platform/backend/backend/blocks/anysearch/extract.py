@@ -27,16 +27,13 @@ class AnySearchExtractBlock(Block):
         url: str = SchemaField(description="URL of the extracted page")
         title: str = SchemaField(description="Title of the extracted page")
         content: str = SchemaField(
-            description="Extracted page content, formatted as markdown"
-        )
-        error: str = SchemaField(
-            description="Error message if the extraction failed", default=""
+            description="Extracted readable page content (cleaned HTML, text, JSON, or markdown; untrusted web content)"
         )
 
     def __init__(self):
         super().__init__(
             id="dcaff561-4c3e-4669-b841-4392b98cb024",
-            description="Extracts the content of a single URL as markdown using "
+            description="Extracts readable content from a single URL using "
             "AnySearch, optimized for LLM consumption",
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
@@ -75,6 +72,11 @@ class AnySearchExtractBlock(Block):
     ) -> BlockOutput:
         try:
             data = unwrap_envelope(await self._extract(credentials, input_data.url))
+            url = data.get("url") or input_data.url
+            title = data.get("title") or ""
+            content = data.get("content") or ""
+            if not all(isinstance(v, str) for v in (url, title, content)):
+                raise ValueError("malformed extract response fields")
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Extract failed: {e}",
@@ -82,6 +84,6 @@ class AnySearchExtractBlock(Block):
                 block_id=self.id,
             ) from e
 
-        yield "url", data.get("url") or input_data.url
-        yield "title", data.get("title") or ""
-        yield "content", data.get("content") or ""
+        yield "url", url
+        yield "title", title
+        yield "content", content

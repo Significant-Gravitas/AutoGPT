@@ -10,7 +10,7 @@ Runs several AnySearch queries in parallel (client-side concurrency via asyncio)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block fans out up to 5 queries client-side with asyncio.gather - each query is an independent POST to /v1/search, so this is client-side concurrency, not a server-side batch endpoint (the AnySearch REST surface does not expose one). Results return grouped per query in input order; a failing query does not fail the batch - the error field on that group carries the message while the other groups still return results. The domain, sub_domain and sub_domain_params inputs apply to every query in the batch.
+The block fans out up to 5 queries client-side with asyncio.gather - each query is an independent POST to /v1/search, so this is client-side concurrency, not a server-side batch endpoint (the AnySearch REST surface does not expose one). Results return grouped per query in input order; a failing query does not fail the batch - the error field on that group carries the message while the other groups still return results. The shared vertical inputs apply to every query in the batch: `sub_domain` (e.g. `finance.quote`) is sent as `tag` and `sub_domain_params` as `params`; setting `domain` without `sub_domain`, or a `sub_domain` outside the domain prefix, is rejected by input validation before any request is sent. Providing more than five queries, or an empty list, is likewise rejected by input validation (`queries` allows 1-5 entries).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,9 +34,9 @@ The block fans out up to 5 queries client-side with asyncio.gather - each query 
 <!-- MANUAL: use_case -->
 **Multi-angle research**: Fan out 2-5 phrasings or sub-topics of one question in parallel, then merge the groups for an LLM synthesis step.
 
-**Hybrid general + vertical**: Mix a general query with domain-scoped queries when you are not sure which surface answers best.
+**Single-vertical sweep**: Run several phrasings inside one shared vertical - e.g. domain=finance with sub_domain=finance.quote and sub_domain_params {"type": "stock", "symbol": "NVDA"} applied to earnings, guidance, and analyst-rating queries at once.
 
-**Per-sub-domain coverage**: After discovering sub-domains, probe several of them in one step - e.g. finance.news and finance.quote for the same ticker.
+**Bounded batch retrieval**: Fetch up to 5 independent lookups in one node while sharing the same credential and result shape.
 <!-- END MANUAL -->
 
 ---

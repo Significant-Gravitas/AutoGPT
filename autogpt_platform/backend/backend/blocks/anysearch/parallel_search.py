@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any
 
+from pydantic import model_validator
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -38,7 +40,7 @@ class AnySearchParallelSearchBlock(Block):
             description="Maximum number of results per query",
             default=5,
             ge=1,
-            le=20,
+            le=10,
             advanced=True,
         )
         domain: AnySearchDomain | None = SchemaField(
@@ -58,12 +60,24 @@ class AnySearchParallelSearchBlock(Block):
             advanced=True,
         )
 
+        @model_validator(mode="after")
+        def _check_vertical_inputs(self):
+            if self.domain and not self.sub_domain:
+                raise ValueError("sub_domain is required when domain is set")
+            if (
+                self.domain
+                and self.sub_domain
+                and not self.sub_domain.startswith(f"{self.domain.value}.")
+            ):
+                raise ValueError(
+                    "sub_domain must belong to the selected domain "
+                    f"({self.domain.value}.*)"
+                )
+            return self
+
     class Output(BlockSchemaOutput):
         results: list[AnySearchQueryResults] = SchemaField(
             description="One result group per query, in input order"
-        )
-        error: str = SchemaField(
-            description="Error message if the search failed", default=""
         )
 
     def __init__(self):
@@ -120,23 +134,19 @@ class AnySearchParallelSearchBlock(Block):
         query = payload["query"]
         try:
             data = unwrap_envelope(await self._search(credentials, payload))
+            results = [result_from_dict(r) for r in data.get("results", [])]
         except Exception as e:
             return AnySearchQueryResults(query=query, error=str(e) or type(e).__name__)
-        return AnySearchQueryResults(
-            query=query,
-            results=[result_from_dict(r) for r in data.get("results", [])],
-        )
+        return AnySearchQueryResults(query=query, results=results)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         shared: dict[str, Any] = {"max_results": input_data.max_results}
-        if input_data.domain:
-            shared["domain"] = input_data.domain.value
         if input_data.sub_domain:
-            shared["sub_domain"] = input_data.sub_domain
+            shared["tag"] = input_data.sub_domain
         if input_data.sub_domain_params:
-            shared["sub_domain_params"] = input_data.sub_domain_params
+            shared["params"] = input_data.sub_domain_params
 
         groups = await asyncio.gather(
             *(

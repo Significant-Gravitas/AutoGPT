@@ -74,19 +74,28 @@ class AnySearchClient:
         response = await self.requests.post(
             f"{ANYSEARCH_API_URL}/v1/search", json=payload
         )
+        if not response.ok:
+            raise ValueError(
+                f"AnySearch search request failed with HTTP {response.status}"
+            )
         return response.json()
 
     async def extract(self, url: str) -> dict[str, Any]:
         response = await self.requests.post(
             f"{ANYSEARCH_API_URL}/v1/extract", json={"url": url}
         )
+        if not response.ok:
+            raise ValueError(
+                f"AnySearch extract request failed with HTTP {response.status}"
+            )
         return response.json()
 
 
 def unwrap_envelope(response: dict[str, Any]) -> dict[str, Any]:
     """Return the envelope's data payload; raise on API-level errors."""
+    code = response.get("code")
     data = response.get("data")
-    if response.get("code") != 0 or not isinstance(data, dict):
+    if isinstance(code, bool) or code != 0 or not isinstance(data, dict):
         message = response.get("message") or "unknown error"
         raise ValueError(f"AnySearch API error: {message}")
     return data
