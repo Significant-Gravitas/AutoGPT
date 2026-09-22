@@ -315,6 +315,27 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
     assert qwen_max_entry.context_window == 262144
 
 
+def test_qwen3_8_flash_bills_at_authored_rates():
+    """Qwen 3.8 Flash (OpenRouter, live list price $0.15/$0.47 per 1M,
+    $0.016/1M cached input, $0.20/1M cache write) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    qwen_flash = LLMModel("qwen/qwen3.8-flash")
+    assert MODEL_COST[qwen_flash] == 1
+    assert TOKEN_COST[qwen_flash].model_dump() == {
+        "input": 22.5,
+        "output": 70.5,
+        "cache_read": 2.4,
+        "cache_creation": 30.0,
+    }
+    assert MODEL_METADATA[qwen_flash].max_output_tokens == 131072
+    qwen_flash_entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen3.8-flash")
+    assert qwen_flash_entry.price_tier == 1
+    assert qwen_flash_entry.context_window == 1000000
+    assert qwen_flash_entry.supports_tools is True
+    assert qwen_flash_entry.supports_json_output is True
+    assert qwen_flash_entry.supports_reasoning is True
+
+
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
     """DeepSeek V4.1 Flash (OpenRouter, DeepSeek list price $0.15/$0.60 per
     1M, $0.003/1M cached input) — flat tier and per-1M projections must

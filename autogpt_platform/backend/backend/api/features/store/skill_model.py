@@ -29,6 +29,12 @@ class MarketplaceSkill(pydantic.BaseModel):
     install_count: int
     creator: str | None = None
     creator_avatar: str | None = None
+    source_repo: str | None = pydantic.Field(
+        default=None,
+        description="GitHub repo a vendored skill was taken from, as owner/name.",
+    )
+    source_url: str | None = None
+    license: str | None = None
 
     @classmethod
     def from_db(cls, listing: prisma.models.SkillListing) -> "MarketplaceSkill":
@@ -44,6 +50,9 @@ class MarketplaceSkill(pydantic.BaseModel):
             install_count=listing.installCount,
             creator=profile.username if profile else None,
             creator_avatar=profile.avatarUrl if profile else None,
+            source_repo=version.sourceRepo,
+            source_url=version.sourceUrl,
+            license=version.license,
         )
 
 
