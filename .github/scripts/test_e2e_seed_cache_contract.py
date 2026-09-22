@@ -5,6 +5,18 @@ from pathlib import Path
 
 
 class E2ESeedCacheContractTests(unittest.TestCase):
+    def test_seed_cache_key_uses_pristine_checkout(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        e2e_job = workflow.split("\n  e2e_test:\n", 1)[1]
+        steps = re.findall(r"^      - name: (.+)$", e2e_job, re.MULTILINE)
+        self.assertEqual(
+            steps[:2],
+            ["Checkout repository", "Set up tests - Cache E2E test data"],
+            "seed cache key must be evaluated before generated env/Compose files exist",
+        )
+
     def test_seed_cache_covers_transitive_inputs(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"

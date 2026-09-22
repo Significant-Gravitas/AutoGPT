@@ -177,6 +177,14 @@ jobs:
           ref: ${{ github.sha }}
           submodules: recursive
 
+      - name: Set up tests - Cache E2E test data
+        id: e2e-data-cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/e2e_test_data.sql
+          # Hash checkout inputs before fresh secrets and resolved Compose exist.
+          key: e2e-test-data-v3-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
+
       - name: Set up Platform - Pull BuildKit image
         id: buildkit-image
         working-directory: /tmp
@@ -258,14 +266,6 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
-
-      - name: Set up tests - Cache E2E test data
-        id: e2e-data-cache
-        uses: actions/cache@v5
-        with:
-          path: /tmp/e2e_test_data.sql
-          # Include transitive seed imports, agent fixtures, dependencies and DB config.
-          key: e2e-test-data-v3-${{ hashFiles('autogpt_platform/backend/**', 'autogpt_platform/autogpt_libs/**', 'autogpt_platform/docker-compose*.yml', 'autogpt_platform/.env.default', '.github/workflows/platform-fullstack-ci.yml') }}
 
       - name: Set up Platform - Start database
         id: database
