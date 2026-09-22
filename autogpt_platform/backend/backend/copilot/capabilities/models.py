@@ -105,9 +105,10 @@ def normalize_text(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> str:
     text = " ".join((text or "").split())
     if len(text) <= limit:
         return text
-    cut = text[:limit]
+    # One past the limit, so a word that ends exactly there is kept whole.
+    cut = text[: limit + 1]
     idx = cut.rfind(" ")
-    return (cut[:idx] if idx >= limit // 2 else cut).rstrip()
+    return (cut[:idx] if idx >= limit // 2 else cut[:limit]).rstrip()
 
 
 def clip_purpose(text: str | None, limit: int = PURPOSE_MAX_CHARS) -> str:
