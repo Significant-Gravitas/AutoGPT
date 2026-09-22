@@ -61,8 +61,8 @@ class DescribeCapabilityTool(BaseTool):
         return (
             "Inputs and outputs of one capability by id, before its first use. "
             "Blocks return their schema; MCP servers list their tools; platform "
-            "tools return their parameters; skills return their description "
-            "and triggers. Large enums are sampled unless expand=true."
+            "tools return their parameters. Large enums are sampled unless "
+            "expand=true."
         )
 
     @property

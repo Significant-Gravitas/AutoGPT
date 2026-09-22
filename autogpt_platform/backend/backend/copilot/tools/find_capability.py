@@ -42,11 +42,11 @@ class FindCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Search everything the platform can do: integrations, blocks, MCP "
-            "servers, platform tools and the skills available here, by service "
-            "name or action. Results are ranked and show whether the user has "
-            "connected each one. Call this before saying something is not "
-            "possible. Then describe_capability(id) to see inputs, and "
-            "run_capability(id, input) to act."
+            "servers, platform tools and skills, by service name or action. "
+            "Results are ranked and show whether the user has connected each "
+            "one. Call this before saying something is not possible. Then "
+            "describe_capability(id) to see inputs, and run_capability(id, "
+            "input) to act."
         )
 
     @property

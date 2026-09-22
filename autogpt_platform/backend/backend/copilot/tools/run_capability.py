@@ -56,7 +56,7 @@ class RunCapabilityTool(BaseTool):
         return (
             "Run a capability by id with its input (blocks: the block's inputs; "
             "MCP servers: {tool, arguments}; platform tools: their parameters; "
-            "skills: {} — running one loads it). "
+            "skills: {}). "
             "Never guess ids: take them from find_capability. An unconnected "
             "capability returns a sign-in card: show it and stop. review_required "
             "means wait for approval, then resume_capability(review_id). "

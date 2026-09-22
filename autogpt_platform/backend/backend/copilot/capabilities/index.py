@@ -105,7 +105,7 @@ class CapabilityIndex:
     def __len__(self) -> int:
         return len(self.entries)
 
-    def with_entries(self, extra: Sequence[CapabilityEntry]) -> "CapabilityIndex":
+    def with_entries(self, extra: Sequence[CapabilityEntry]) -> CapabilityIndex:
         """This index plus *extra*: the per-session layer (the owner's
         skills) over the platform registry.  The platform documents are
         reused, so only *extra* is tokenised; this index is left as is."""
