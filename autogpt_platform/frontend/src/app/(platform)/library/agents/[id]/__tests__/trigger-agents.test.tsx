@@ -622,7 +622,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     await screen.findByText("Trigger Details");
-    screen.getByDisplayValue("Webhook Trigger");
+    await screen.findByDisplayValue("Webhook Trigger");
   });
 
   test("agent:-prefixed activeItem renders the trigger agent detail view", async () => {
@@ -718,7 +718,7 @@ describe("Library agent view — trigger agents", () => {
     // The detail view renders from the hint alone — both list queries are
     // still gated at this point.
     await screen.findByText("Trigger Details");
-    screen.getByDisplayValue("Hint Routed Early");
+    await screen.findByDisplayValue("Hint Routed Early");
 
     releaseLists();
   });
