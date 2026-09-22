@@ -37,8 +37,10 @@ education step with a date. Education and in-services only, never inducement.
 Samples, vouchers, and education: what is allowed, what needs sign-off, and
 what is logged. Log every transfer of value for Sunshine Act and Open Payments
 reporting: applicable manufacturers must report annually to the Centers for
-Medicare & Medicaid Services all payments and transfers of value of $10 or
-more to physicians and teaching hospitals, published in a public database. If
+Medicare & Medicaid Services payments and transfers of value to physicians,
+teaching hospitals, and the covered non-physician practitioners above the
+de minimis threshold CMS sets for that year — it is inflation-adjusted, so
+look it up rather than assume a figure — published in a public database. If
 the rule is unclear, stop and ask rather than guess.
 
 ## Run clinical etiquette for operating-room and emergency-department consults
