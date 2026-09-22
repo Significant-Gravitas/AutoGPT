@@ -3,14 +3,19 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { cn } from "@/lib/utils";
-import { getCategoryAccent } from "../../ExpertsSection/helpers";
+import { getCategoryAccent } from "../ExpertsSection/helpers";
+
+type Size = "small" | "default";
 
 interface Props {
   selected: string | null;
   onSelect: (topic: string | null) => void;
+  /** "small" tucks the row into a section header; "default" is a page's own
+   *  filter and matches the height of the marketplace category pills. */
+  size?: Size;
 }
 
-export function SkillTopicChips({ selected, onSelect }: Props) {
+export function SkillTopicChips({ selected, onSelect, size = "small" }: Props) {
   const { categories } = useStoreCategories();
 
   if (categories.length === 0) return null;
@@ -19,10 +24,14 @@ export function SkillTopicChips({ selected, onSelect }: Props) {
     <div
       role="group"
       aria-label="Filter skills by topic"
-      className="flex flex-wrap gap-1 sm:justify-end"
+      className={cn(
+        "flex flex-wrap",
+        size === "small" ? "gap-1 sm:justify-end" : "gap-2",
+      )}
     >
       <TopicChip
         label="All"
+        size={size}
         isSelected={selected === null}
         onClick={() => onSelect(null)}
       />
@@ -32,6 +41,7 @@ export function SkillTopicChips({ selected, onSelect }: Props) {
           topic={category.value}
           label={category.label}
           title={category.description}
+          size={size}
           isSelected={selected === category.value}
           onClick={() =>
             onSelect(selected === category.value ? null : category.value)
@@ -46,11 +56,19 @@ interface ChipProps {
   topic?: string;
   label: string;
   title?: string;
+  size: Size;
   isSelected: boolean;
   onClick: () => void;
 }
 
-function TopicChip({ topic, label, title, isSelected, onClick }: ChipProps) {
+function TopicChip({
+  topic,
+  label,
+  title,
+  size,
+  isSelected,
+  onClick,
+}: ChipProps) {
   const { accent, icon } = getCategoryAccent(topic);
 
   return (
@@ -60,7 +78,10 @@ function TopicChip({ topic, label, title, isSelected, onClick }: ChipProps) {
       aria-pressed={isSelected}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-violet-600",
+        "inline-flex items-center rounded-full font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-violet-600",
+        size === "small"
+          ? "h-7 gap-1 px-2 text-xs"
+          : "h-9 gap-1.5 px-3.5 text-sm",
         isSelected
           ? topic
             ? accent.pill
@@ -71,7 +92,7 @@ function TopicChip({ topic, label, title, isSelected, onClick }: ChipProps) {
       {icon ? (
         <Icon
           icon={icon}
-          size={12}
+          size={size === "small" ? 12 : 15}
           className={isSelected ? undefined : accent.icon}
           aria-hidden
         />

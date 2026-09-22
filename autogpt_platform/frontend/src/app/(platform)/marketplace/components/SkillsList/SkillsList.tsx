@@ -11,11 +11,11 @@ import {
   SHELF_PREVIEW_SIZE,
 } from "../Shelf/helpers";
 import { ShelfMoreButton } from "../Shelf/ShelfMoreButton";
+import { SkillTopicChips } from "../SkillTopicChips/SkillTopicChips";
 import { formatCategoryLabel } from "../SkillsSection/helpers";
 import { useSkillsSection } from "../SkillsSection/useSkillsSection";
 import { SkillDialog } from "./components/SkillDialog";
 import { SkillTile } from "./components/SkillTile";
-import { SkillTopicChips } from "./components/SkillTopicChips";
 
 const HEADING_ID = "skills-heading";
 
