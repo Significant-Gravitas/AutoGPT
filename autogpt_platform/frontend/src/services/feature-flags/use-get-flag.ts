@@ -299,6 +299,9 @@ function useRecordFlagForSentry(key: string, value: unknown) {
       Sentry.getClient()
         ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
         ?.addFeatureFlag(key, value);
-    } catch {}
+    } catch (error) {
+      // Debug, not warn: captureConsoleIntegration would send it to Sentry.
+      console.debug(`Could not record flag ${key} for Sentry`, error);
+    }
   }, [key, value]);
 }

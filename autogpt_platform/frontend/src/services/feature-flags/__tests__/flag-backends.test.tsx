@@ -275,9 +275,12 @@ describe("Sentry's flag context", () => {
     });
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
 
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+
     const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
     expect(result.current).toBe(true);
+    expect(debug).toHaveBeenCalledOnce();
   });
 });
 
