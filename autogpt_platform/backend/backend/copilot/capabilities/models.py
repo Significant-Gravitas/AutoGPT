@@ -21,6 +21,10 @@ CapabilityContext = Literal["direct", "graph", "both"]
 ConnectionKeyType = Literal["provider", "server_url", "host", "none"]
 
 PURPOSE_MAX_CHARS = 160
+# Bounds the index-only description: room for any real block, tool or catalog
+# text (the longest block description is under 1,000 chars), and a ceiling on
+# what a runaway one can add to the index and its memory.
+DESCRIPTION_MAX_CHARS = 4000
 # The tool a skill runs through.  A turn that may not call it may not see
 # skills either, and a ``skill:`` dispatch is a call to it.
 SKILL_TOOL = "read_skill"
@@ -101,9 +105,16 @@ class CapabilityEntry(BaseModel):
         return self.context == "both" or context == "both" or self.context == context
 
 
-def normalize_text(text: str | None) -> str:
-    """*text* with its whitespace collapsed, for the index."""
-    return " ".join((text or "").split())
+def normalize_text(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> str:
+    """*text* with its whitespace collapsed and cut at *limit* on a word
+    boundary, for the index."""
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    # One past the limit, so a word that ends exactly there is kept whole.
+    cut = text[: limit + 1]
+    idx = cut.rfind(" ")
+    return (cut[:idx] if idx >= limit // 2 else cut[:limit]).rstrip()
 
 
 def clip_purpose(text: str | None, limit: int = PURPOSE_MAX_CHARS) -> str:
