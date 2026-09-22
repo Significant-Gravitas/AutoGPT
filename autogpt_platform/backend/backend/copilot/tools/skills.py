@@ -76,7 +76,6 @@ logger = logging.getLogger(__name__)
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
 MAX_SKILLS_PER_EXPERT = 150
-MAX_USER_SKILLS = MAX_SKILLS_PER_EXPERT  # Backwards-compatible alias
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 # Loaded only on activation, so it costs nothing per turn; 50k clears

@@ -26,7 +26,6 @@ from backend.copilot.tools.skills import (
     MAX_SKILLS_PER_EXPERT,
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
-    MAX_USER_SKILLS,
     BuiltInSkillError,
     DeleteSkillResponse,
     DeleteSkillTool,
@@ -67,9 +66,8 @@ from backend.util.exceptions import ConflictError
 
 
 def test_max_skills_per_expert_cap_constant():
-    """Verify the skill cap is bumped to 150 and backwards-compatible alias is maintained."""
+    """The cap #14692 asked for: room for a 50-skill bundle and the owner's own."""
     assert MAX_SKILLS_PER_EXPERT == 150
-    assert MAX_USER_SKILLS == MAX_SKILLS_PER_EXPERT
 
 
 # ---------------------------------------------------------------------------

@@ -420,7 +420,10 @@ class ExpertSkillsUpdate(BaseModel):
     expert must be library skills (default or uploaded); names already on
     the expert are kept as-is so marketplace skills survive a round-trip."""
 
-    skills: list[str] = Field(max_length=50)
+    # As many names as the expert's folder can hold: MAX_SKILLS_PER_EXPERT in
+    # copilot/tools/skills.py, which this module cannot import (the copilot
+    # tools import these models); models_test pins the two together.
+    skills: list[str] = Field(max_length=150)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
