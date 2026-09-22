@@ -208,7 +208,7 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   const { value } = useFlagSource(flag);
   const override = envFlagOverride(flag);
   const served = override ?? servedFlagValue(flag, value);
-  useRecordFlagForSentry(flag, override === undefined ? served : undefined);
+  recordFlagForSentry(flag, override === undefined ? served : undefined);
   return served;
 }
 
@@ -239,7 +239,7 @@ export function useFlagStatus<T extends Flag>(
   }, []);
 
   const served = override ?? servedFlagValue(flag, value);
-  useRecordFlagForSentry(flag, override === undefined ? served : undefined);
+  recordFlagForSentry(flag, override === undefined ? served : undefined);
 
   if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
     return { enabled: served, ready: true };
@@ -290,18 +290,18 @@ function areFeatureFlagsEnabled() {
 }
 
 // Records the value served, not the vendor's; env overrides pass undefined.
+// Called during render, not in an effect: a component that throws in the same
+// render never commits, and its error would reach Sentry without the flag.
 // Sentry's flag context holds booleans only; JSON-valued flags are skipped.
 // A recording failure must never break a flag read.
-function useRecordFlagForSentry(key: string, value: unknown) {
-  useEffect(() => {
-    if (typeof value !== "boolean") return;
-    try {
-      Sentry.getClient()
-        ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
-        ?.addFeatureFlag(key, value);
-    } catch (error) {
-      // Debug, not warn: captureConsoleIntegration would send it to Sentry.
-      console.debug(`Could not record flag ${key} for Sentry`, error);
-    }
-  }, [key, value]);
+function recordFlagForSentry(key: string, value: unknown) {
+  if (typeof value !== "boolean") return;
+  try {
+    Sentry.getClient()
+      ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
+      ?.addFeatureFlag(key, value);
+  } catch (error) {
+    // Debug, not warn: captureConsoleIntegration would send it to Sentry.
+    console.debug(`Could not record flag ${key} for Sentry`, error);
+  }
 }

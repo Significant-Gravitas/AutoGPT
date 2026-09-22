@@ -1,4 +1,5 @@
-import { renderHook } from "@testing-library/react";
+import { render, renderHook } from "@testing-library/react";
+import { Component, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const launchDarkly = vi.hoisted(() => ({
@@ -232,6 +233,37 @@ describe("Sentry's flag context", () => {
       HIRE_EXPERTS,
       true,
     );
+  });
+
+  it("records a flag read by a component that throws in the same render", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    let recordedAtCatch: unknown[][] = [];
+    function Reader(): ReactNode {
+      useGetFlag(Flag.HIRE_EXPERTS);
+      throw new Error("render failed");
+    }
+    class Boundary extends Component<{ children: ReactNode }> {
+      state = { failed: false };
+      static getDerivedStateFromError() {
+        return { failed: true };
+      }
+      componentDidCatch() {
+        recordedAtCatch = [...sentry.addFeatureFlag.mock.calls];
+      }
+      render() {
+        return this.state.failed ? null : this.props.children;
+      }
+    }
+
+    render(
+      <Boundary>
+        <Reader />
+      </Boundary>,
+    );
+
+    expect(recordedAtCatch).toContainEqual([HIRE_EXPERTS, true]);
   });
 
   it("records the default it serves while flags are disabled", async () => {
