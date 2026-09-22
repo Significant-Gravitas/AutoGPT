@@ -101,7 +101,8 @@ class HubSpotCompanyBlock(Block):
                 },
             )
             search_result = search_response.json()
-            company_id = search_result.get("results", [{}])[0].get("id")
+            companies = search_result.get("results", [])
+            company_id = companies[0].get("id") if companies else None
 
             if company_id:
                 response = await Requests().patch(

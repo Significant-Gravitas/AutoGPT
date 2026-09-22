@@ -46,3 +46,36 @@ async def test_get_company_yields_declared_outputs(
             ]
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_update_missing_company_reports_not_found_without_patching():
+    response = Mock()
+    response.json.return_value = {"results": []}
+    block = HubSpotCompanyBlock()
+
+    with (
+        patch(
+            "backend.blocks.hubspot.company.Requests.post",
+            AsyncMock(return_value=response),
+        ),
+        patch(
+            "backend.blocks.hubspot.company.Requests.patch", new_callable=AsyncMock
+        ) as update,
+    ):
+        outputs = [
+            output
+            async for output in block.execute(
+                {
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                    "domain": "example.com",
+                    "operation": "update",
+                    "company_data": {"name": "New name"},
+                },
+                credentials=TEST_CREDENTIALS,
+                execution_context=ExecutionContext(),
+            )
+        ]
+
+    assert outputs == [("company", {}), ("status", "company_not_found")]
+    update.assert_not_awaited()
