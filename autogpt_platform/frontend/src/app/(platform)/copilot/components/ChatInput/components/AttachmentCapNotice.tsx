@@ -32,8 +32,8 @@ export function AttachmentCapNotice({
     >
       <Icon icon={Alert02Icon} className="h-4 w-4 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1">
-        Up to {MAX_ATTACHMENTS} attachments per message, uploaded or from your
-        workspace — {refusedCount} not added
+        Up to {MAX_ATTACHMENTS} attachments per message — {refusedCount} not
+        added
       </span>
       <Button
         type="button"

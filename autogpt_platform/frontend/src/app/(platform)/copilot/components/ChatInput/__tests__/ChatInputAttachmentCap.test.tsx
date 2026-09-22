@@ -104,7 +104,7 @@ describe("ChatInput attachment cap — pasting", () => {
 
     const notice = await screen.findByRole("status");
     expect(notice.textContent).toContain(
-      `Up to ${MAX_ATTACHMENTS} attachments per message, uploaded or from your workspace — ${OVER} not added`,
+      `Up to ${MAX_ATTACHMENTS} attachments per message — ${OVER} not added`,
     );
     expect(removeButtons()).toHaveLength(MAX_ATTACHMENTS);
 
