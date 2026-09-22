@@ -1,0 +1,71 @@
+{
+  "id": "evt_1OxK2fLkdIwHu7ixSubscriptionCreated",
+  "object": "event",
+  "api_version": "2023-10-16",
+  "created": 1712000000,
+  "type": "customer.subscription.created",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "sub_1OxK2fLkdIwHu7ixABCDEFGH",
+      "object": "subscription",
+      "application": null,
+      "billing_cycle_anchor": 1712000000,
+      "cancel_at": null,
+      "cancel_at_period_end": false,
+      "canceled_at": null,
+      "collection_method": "charge_automatically",
+      "created": 1712000000,
+      "currency": "usd",
+      "current_period_end": 1714678400,
+      "current_period_start": 1712000000,
+      "customer": "cus_Pq1234ABCDEF",
+      "description": null,
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_1OxK2fLkdIwHu7ixABCDEFGH",
+            "object": "subscription_item",
+            "created": 1712000000,
+            "price": {
+              "id": "price_1OxABCLkdIwHu7ixMonthlyPro",
+              "object": "price",
+              "active": true,
+              "billing_scheme": "per_unit",
+              "currency": "usd",
+              "nickname": "Pro Monthly",
+              "product": "prod_Pq1234ProPlan",
+              "recurring": {
+                "interval": "month",
+                "interval_count": 1
+              },
+              "type": "recurring",
+              "unit_amount": 2000
+            },
+            "quantity": 1
+          }
+        ]
+      },
+      "latest_invoice": "in_1OxK2fLkdIwHu7ixABCDEFGH",
+      "livemode": false,
+      "metadata": {},
+      "plan": {
+        "id": "price_1OxABCLkdIwHu7ixMonthlyPro",
+        "object": "plan",
+        "active": true,
+        "amount": 2000,
+        "currency": "usd",
+        "interval": "month",
+        "interval_count": 1,
+        "nickname": "Pro Monthly",
+        "product": "prod_Pq1234ProPlan"
+      },
+      "quantity": 1,
+      "start_date": 1712000000,
+      "status": "active",
+      "trial_end": null,
+      "trial_start": null
+    }
+  }
+}

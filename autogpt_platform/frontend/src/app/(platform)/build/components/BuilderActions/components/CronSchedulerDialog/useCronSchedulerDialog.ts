@@ -1,5 +1,6 @@
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { trackScheduleCreatedGoal } from "@/services/analytics/activation-goals";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
@@ -44,6 +45,7 @@ export const useCronSchedulerDialog = ({
               title: "Schedule created",
               description: "Schedule created successfully",
             });
+            if (flowID) trackScheduleCreatedGoal({ id: flowID }, "builder");
             invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },

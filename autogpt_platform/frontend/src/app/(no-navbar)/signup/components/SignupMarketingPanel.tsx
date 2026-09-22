@@ -1,9 +1,10 @@
-import {
-  HammerIcon,
-  LightningIcon,
-  ShieldCheckIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarketingPanel";
+import {
+  FlashIcon,
+  HammerIcon,
+  SecurityCheckIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function SignupMarketingPanel() {
   return (
@@ -17,17 +18,17 @@ export function SignupMarketingPanel() {
       description="Discover, build, and deploy AI agents that automate real work — no code required. Start building agents in minutes."
       items={[
         {
-          icon: <LightningIcon size={20} weight="duotone" />,
+          icon: <Icon icon={FlashIcon} size={20} />,
           title: "Run in minutes",
           description: "Get started quickly and see results fast.",
         },
         {
-          icon: <HammerIcon size={20} weight="duotone" />,
+          icon: <Icon icon={HammerIcon} size={20} />,
           title: "Built for real work",
           description: "Powerful blocks that handle tasks across your stack.",
         },
         {
-          icon: <ShieldCheckIcon size={20} weight="duotone" />,
+          icon: <Icon icon={SecurityCheckIcon} size={20} />,
           title: "Secure & private",
           description: "Enterprise-grade security to keep your data safe.",
         },

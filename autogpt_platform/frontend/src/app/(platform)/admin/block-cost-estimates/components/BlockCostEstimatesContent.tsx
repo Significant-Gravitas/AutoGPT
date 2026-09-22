@@ -1,9 +1,9 @@
 "use client";
-
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { buildEstimatesJson, downloadJson } from "../helpers";
 import { useBlockCostEstimates } from "./useBlockCostEstimates";
+import { Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function BlockCostEstimatesContent() {
   const {
@@ -87,7 +87,7 @@ export function BlockCostEstimatesContent() {
           size="small"
           onClick={handleDownload}
           disabled={!data || data.total_rows === 0}
-          leftIcon={<DownloadSimpleIcon weight="bold" />}
+          leftIcon={<Icon icon={Download04Icon} />}
         >
           Download JSON
         </Button>

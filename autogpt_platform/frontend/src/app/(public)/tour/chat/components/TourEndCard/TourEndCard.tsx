@@ -2,13 +2,14 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CheckIcon, PlayIcon } from "@phosphor-icons/react";
 import {
   buildTourPricingUrl,
   TOUR_DEMO_CLAIM_SECONDS,
   TOUR_GITHUB_URL,
 } from "../../constants";
 import { useTourEndCard } from "./useTourEndCard";
+import { PlayIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function TourEndCard() {
   const { handlePricingClick, handleSelfHostClick, handleWatchAnother } =
@@ -18,7 +19,7 @@ export function TourEndCard() {
     <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-200/70 bg-white p-5 shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-6">
       <div className="flex flex-col items-center gap-2 text-center">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1">
-          <CheckIcon className="size-3.5 text-emerald-700" weight="bold" />
+          <Icon icon={Tick02Icon} className="size-3.5 text-emerald-700" />
           <Text variant="small-medium" className="!text-emerald-700">
             Agent built &amp; first run complete — {TOUR_DEMO_CLAIM_SECONDS}{" "}
             seconds
@@ -52,7 +53,7 @@ export function TourEndCard() {
         <Button
           variant="secondary"
           onClick={handleWatchAnother}
-          leftIcon={<PlayIcon className="size-4" weight="fill" />}
+          leftIcon={<Icon icon={PlayIcon} className="size-4" />}
           className="w-full"
         >
           Watch another scenario

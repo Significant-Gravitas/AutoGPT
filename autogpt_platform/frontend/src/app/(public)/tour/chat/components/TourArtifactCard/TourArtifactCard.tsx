@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowRightIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react";
 import type { TourArtifact } from "../../script/types";
+import { ArrowRight02Icon, Mail02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: TourArtifact;
@@ -10,7 +11,7 @@ export function TourArtifactCard({ artifact }: Props) {
   return (
     <div className="flex flex-col gap-2.5 rounded-xl border border-zinc-200/70 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-1.5 text-sm text-zinc-500">
-        <EnvelopeSimpleIcon className="size-4 shrink-0" />
+        <Icon icon={Mail02Icon} className="size-4 shrink-0" />
         <span>Artifact · {artifact.caption}</span>
       </div>
 
@@ -38,7 +39,10 @@ export function TourArtifactCard({ artifact }: Props) {
             <span className="text-red-700 line-through decoration-red-700/70">
               {artifact.diff.from}
             </span>
-            <ArrowRightIcon className="size-4 shrink-0 text-zinc-500" />
+            <Icon
+              icon={ArrowRight02Icon}
+              className="size-4 shrink-0 text-zinc-500"
+            />
             <span className="text-emerald-700">{artifact.diff.to}</span>
           </div>
           <span className="text-sm text-zinc-500">{artifact.diff.delta}</span>

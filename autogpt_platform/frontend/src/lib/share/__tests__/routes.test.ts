@@ -20,18 +20,13 @@ describe("share viewer path builders", () => {
 });
 
 describe("share viewer absolute URL builders", () => {
-  const ORIGINAL_ENV = process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
-
   beforeEach(() => {
-    delete process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
+    vi.stubEnv("BETTER_AUTH_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "");
   });
 
   afterEach(() => {
-    if (ORIGINAL_ENV === undefined) {
-      delete process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
-    } else {
-      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = ORIGINAL_ENV;
-    }
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
@@ -45,22 +40,39 @@ describe("share viewer absolute URL builders", () => {
   });
 
   test("executionShareUrl uses NEXT_PUBLIC_FRONTEND_BASE_URL when set", () => {
-    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = "https://shared.example.com";
-    vi.stubGlobal("window", {
-      location: { origin: "https://app.example.com" },
-    });
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://shared.example.com");
+    vi.stubGlobal("window", undefined);
+
     expect(executionShareUrl("abc-123")).toBe(
       "https://shared.example.com/share/abc-123",
     );
   });
 
-  test("chatShareUrl prefers env var over window.location", () => {
-    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL = "https://shared.example.com";
+  test("server-generated URLs prefer BETTER_AUTH_URL", () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://runtime.example.com");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://build.example.com");
+    vi.stubGlobal("window", undefined);
+
+    expect(chatShareUrl("abc-123")).toBe(
+      "https://runtime.example.com/share/chat/abc-123",
+    );
+  });
+
+  test("server-generated URLs have a safe local fallback", () => {
+    vi.stubGlobal("window", undefined);
+
+    expect(executionShareUrl("abc-123")).toBe(
+      "http://localhost:3000/share/abc-123",
+    );
+  });
+
+  test("browser URLs use the live origin instead of a build-time value", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://build.example.com");
     vi.stubGlobal("window", {
       location: { origin: "https://app.example.com" },
     });
-    expect(chatShareUrl("abc-123")).toBe(
-      "https://shared.example.com/share/chat/abc-123",
+    expect(executionShareUrl("abc-123")).toBe(
+      "https://app.example.com/share/abc-123",
     );
   });
 });

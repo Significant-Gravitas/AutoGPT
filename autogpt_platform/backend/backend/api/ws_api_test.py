@@ -385,7 +385,8 @@ async def test_authenticate_websocket_invalid_token_closes_4003(mocker) -> None:
 
     mocker.patch.object(settings.config, "enable_auth", True)
     mocker.patch(
-        "backend.api.ws_api.parse_jwt_token", side_effect=ValueError("bad token")
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(side_effect=ValueError("bad token")),
     )
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
@@ -402,7 +403,10 @@ async def test_authenticate_websocket_missing_sub_closes_4002(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
     mocker.patch.object(settings.config, "enable_auth", True)
-    mocker.patch("backend.api.ws_api.parse_jwt_token", return_value={"not_sub": "x"})
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"not_sub": "x"}),
+    )
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
 
@@ -418,7 +422,10 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     from backend.api.ws_api import authenticate_websocket
 
     mocker.patch.object(settings.config, "enable_auth", True)
-    mocker.patch("backend.api.ws_api.parse_jwt_token", return_value={"sub": "user-X"})
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-X"}),
+    )
     ws = AsyncMock(spec=WebSocket)
     ws.query_params = {"token": "abc"}
 

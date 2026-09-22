@@ -260,7 +260,7 @@ Agents are built using a visual block-based system where each block performs a s
 - Use Tailwind CSS utilities only
 - Use design system components from `src/components/` (atoms, molecules, organisms)
 - Never use `src/components/__legacy__/*`
-- Only use Phosphor Icons (`@phosphor-icons/react`)
+- Only use Hugeicons (`@hugeicons/core-free-icons`), rendered via the `Icon` atom
 - Prefer design tokens over hardcoded values
 
 **Error Handling:**

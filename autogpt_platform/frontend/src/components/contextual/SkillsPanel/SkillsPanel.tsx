@@ -9,12 +9,13 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { PlusIcon } from "@phosphor-icons/react";
 import { NEW_SKILL_PROMPT } from "../guidedPrompts";
 import { EmptySkills } from "./components/EmptySkills/EmptySkills";
 import { SkillListItem } from "./components/SkillListItem/SkillListItem";
 import { UploadSkillButton } from "./components/UploadSkillButton/UploadSkillButton";
 import { useSkillsPanel } from "./useSkillsPanel";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onGuidedPrompt: (prompt: string) => void;
@@ -29,11 +30,10 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
     <section className="space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
-          {withHeading && <Text variant="h2">AutoPilot skills</Text>}
+          {withHeading && <Text variant="h2">Skills</Text>}
           <Text variant="body" className="!text-zinc-500">
-            Reusable procedures your AutoPilot has distilled from past sessions.
-            Review what it remembers, import a new skill, or delete one you no
-            longer want it to reach for.
+            Reusable playbooks your experts follow. Review your skills, import a
+            new one, or delete one you no longer need.
           </Text>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -46,12 +46,12 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
                 onClick={() => onGuidedPrompt(NEW_SKILL_PROMPT)}
                 data-testid="skill-new-button"
               >
-                <PlusIcon className="mr-1 h-4 w-4" />
+                <Icon icon={PlusSignIcon} className="mr-1 h-4 w-4" />
                 New skill
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Teach AutoPilot a new skill in chat
+              Create a new skill in chat
             </TooltipContent>
           </Tooltip>
         </div>
@@ -63,7 +63,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
             message:
               error instanceof Error ? error.message : "Failed to load skills",
           }}
-          context="AutoPilot skills"
+          context="skills"
         />
       ) : isLoading ? (
         <div
@@ -78,7 +78,7 @@ export function SkillsPanel({ onGuidedPrompt, withHeading = true }: Props) {
         <ul
           className="flex flex-col gap-3"
           data-testid="skills-list"
-          aria-label="AutoPilot skills"
+          aria-label="Skills"
         >
           {skills.map((skill) => (
             <li key={skill.name}>

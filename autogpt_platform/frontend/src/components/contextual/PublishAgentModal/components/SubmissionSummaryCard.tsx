@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { motion } from "framer-motion";
-import { ClockIcon, ImageBrokenIcon } from "@phosphor-icons/react";
-
 import { Text } from "@/components/atoms/Text/Text";
+import { Clock01Icon, ImageNotFound01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agentName: string;
@@ -32,6 +33,7 @@ export function SubmissionSummaryCard({
         {thumbnailSrc ? (
           <Image
             src={thumbnailSrc}
+            unoptimized={isLocalStoreMediaUrl(thumbnailSrc)}
             alt=""
             fill
             sizes="86px"
@@ -39,7 +41,7 @@ export function SubmissionSummaryCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-zinc-400">
-            <ImageBrokenIcon size={20} weight="duotone" />
+            <Icon icon={ImageNotFound01Icon} size={20} />
           </div>
         )}
       </div>
@@ -59,7 +61,7 @@ export function SubmissionSummaryCard({
       </div>
       {isPending ? (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800">
-          <ClockIcon size={12} weight="duotone" />
+          <Icon icon={Clock01Icon} size={12} />
           In review
         </span>
       ) : null}

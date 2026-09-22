@@ -8,11 +8,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "../../base/standard/widgets/TextInput/TextInputExpanderModal";
 import { getHandleId, updateUiOption } from "../../helpers";
 import { useJsonTextField } from "./useJsonTextField";
 import { getPlaceholder } from "./helpers";
+import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const JsonTextField = (props: FieldProps) => {
   const {
@@ -97,7 +98,7 @@ export const JsonTextField = (props: FieldProps) => {
               type="button"
               className="p-1"
             >
-              <ArrowsOutIcon className="size-4" />
+              <Icon icon={ArrowExpandIcon} className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Expand input</TooltipContent>

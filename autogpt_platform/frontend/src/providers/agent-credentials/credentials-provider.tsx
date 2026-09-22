@@ -1,4 +1,5 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import type { CredentialsMetaResponse as GeneratedCredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -9,12 +10,15 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import {
+  postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
+} from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useState, useRef } from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -45,6 +49,12 @@ export type CredentialsProviderData = {
   mcpOAuthCallback: (
     code: string,
     state_token: string,
+    iss?: string,
+  ) => Promise<CredentialsMetaResponse>;
+  /** Stores a manually entered MCP credential for a server without OAuth. */
+  mcpStoreToken: (
+    server_url: string,
+    token: string,
   ) => Promise<CredentialsMetaResponse>;
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
@@ -101,6 +111,21 @@ export function upsertProviderCredentials(
 }
 
 /**
+ * Append credentials a freshly-loaded list does not carry yet: a
+ * `listCredentials()` request already in flight when one is created predates
+ * it, and publishing that response unmodified drops it. An id the list does
+ * carry needs no pending copy: the caller retires it in the same pass.
+ */
+export function mergePendingCredentials(
+  loaded: CredentialsMetaResponse[],
+  pending: CredentialsMetaResponse[] | undefined,
+): CredentialsMetaResponse[] {
+  if (!pending?.length) return loaded;
+  const loadedIds = new Set(loaded.map((c) => c.id));
+  return [...loaded, ...pending.filter((c) => !loadedIds.has(c.id))];
+}
+
+/**
  * Imperative actions on the credentials context.  Split out so the data
  * context can stay read-only for consumers that only render the list —
  * components that need to re-fetch after a side effect (e.g. Ayrshare
@@ -108,6 +133,15 @@ export function upsertProviderCredentials(
  */
 export const CredentialsActionsContext = createContext<{
   reload: () => void;
+  /**
+   * Add a just-created credential without waiting for a re-fetch. A flow that
+   * mints one outside this provider (device auth polls the backend directly)
+   * must call this, or `useCredentialsInput` reports it as *removed*.
+   */
+  upsert: (
+    provider: CredentialsProviderName,
+    credentials: GeneratedCredentialsMetaResponse,
+  ) => void;
 } | null>(null);
 
 export default function CredentialsProvider({
@@ -121,22 +155,55 @@ export default function CredentialsProvider({
   const [systemProviders, setSystemProviders] = useState<Set<string>>(
     new Set(),
   );
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
+
+  // Held until a load returns them: the store can still be null when the upsert
+  // lands, and an in-flight list can resolve with a list that predates it.
+  const pendingUpsertsRef = useRef<
+    Partial<Record<CredentialsProviderName, CredentialsMetaResponse[]>>
+  >({});
+  // Only the newest list request may publish or retire; an older one can
+  // resolve last with a response that predates an upsert.
+  const loadGenerationRef = useRef(0);
 
   const upsertCredentials = useCallback(
     (
       provider: CredentialsProviderName,
       credentials: CredentialsMetaResponse,
     ) => {
+      const pending = pendingUpsertsRef.current[provider] ?? [];
+      pendingUpsertsRef.current[provider] = [
+        ...pending.filter(
+          (c: CredentialsMetaResponse) => c.id !== credentials.id,
+        ),
+        credentials,
+      ];
       setProviders((prev) =>
         upsertProviderCredentials(prev, provider, credentials),
       );
     },
     [setProviders],
   );
+
+  /**
+   * Upsert a credential straight off the API. The generated model marks several
+   * fields nullable where the store's model uses `undefined`.
+   */
+  function upsertFromApi(
+    provider: CredentialsProviderName,
+    credentials: GeneratedCredentialsMetaResponse,
+  ) {
+    upsertCredentials(provider, {
+      ...credentials,
+      title: credentials.title ?? undefined,
+      scopes: credentials.scopes ?? undefined,
+      username: credentials.username ?? undefined,
+      host: credentials.host ?? undefined,
+    } as CredentialsMetaResponse);
+  }
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
   const oAuthCallback = useCallback(
@@ -162,11 +229,13 @@ export default function CredentialsProvider({
     async (
       code: string,
       state_token: string,
+      iss?: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
         const response = await postV2ExchangeOauthCodeForMcpTokens({
           code,
           state_token,
+          iss,
         });
         if (response.status !== 200) throw response.data;
         const credsMeta: CredentialsMetaResponse = {
@@ -184,6 +253,30 @@ export default function CredentialsProvider({
       }
     },
     [upsertCredentials, onFailToast],
+  );
+
+  /** Stores a manual MCP credential, and adds the result to the internal credentials store. */
+  const mcpStoreToken = useCallback(
+    async (
+      server_url: string,
+      token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      const response = await postV2StoreABearerTokenForAnMcpServer({
+        server_url,
+        token,
+      });
+      if (response.status !== 200) throw response.data;
+      const credsMeta: CredentialsMetaResponse = {
+        ...response.data,
+        title: response.data.title ?? undefined,
+        scopes: response.data.scopes ?? undefined,
+        username: response.data.username ?? undefined,
+        host: response.data.host ?? undefined,
+      };
+      upsertCredentials("mcp", credsMeta);
+      return credsMeta;
+    },
+    [upsertCredentials],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -263,6 +356,22 @@ export default function CredentialsProvider({
         if (!result.deleted) {
           return result;
         }
+        // A list request that started before the delete would otherwise
+        // resolve afterwards with the deleted credential and republish it.
+        loadGenerationRef.current += 1;
+        // A credential deleted while still pending would otherwise be merged
+        // straight back into the picker by the next load.
+        const pendingForProvider = pendingUpsertsRef.current[provider];
+        if (pendingForProvider?.length) {
+          const kept = pendingForProvider.filter(
+            (c: CredentialsMetaResponse) => c.id !== id,
+          );
+          if (kept.length) {
+            pendingUpsertsRef.current[provider] = kept;
+          } else {
+            delete pendingUpsertsRef.current[provider];
+          }
+        }
         setProviders((prev) => {
           if (!prev || !prev[provider]) return prev;
 
@@ -286,14 +395,42 @@ export default function CredentialsProvider({
   );
 
   const loadCredentials = useCallback(() => {
+    if (!isLoggedIn) {
+      // Left in place these would be merged into the *next* user's list,
+      // exposing the previous account's credential metadata.
+      pendingUpsertsRef.current = {};
+      // Retire any in-flight request so its response cannot publish over the
+      // logged-out state.
+      loadGenerationRef.current += 1;
+    }
     if (!isLoggedIn || providerNames.length === 0) {
-      if (isLoggedIn == false) setProviders({});
+      // null is the sole "still loading" sentinel; an empty object means
+      // "loaded, and this user has no providers". Keeping those distinct
+      // matters because consumers render an unavailable state from the
+      // latter, and showing that to an entitled user is wrong.
+      //
+      // Logged out, once auth has settled: genuinely empty. isLoggedIn is
+      // false while the auth store initializes too, hence the isUserLoading
+      // guard — without it a logged-in user briefly gets the empty map.
+      if (!isUserLoading && !isLoggedIn) {
+        setProviders({});
+        return;
+      }
+      // Logged in but provider names haven't arrived yet. If a previous
+      // logout left the empty map published, clear it back to null so this
+      // reads as loading rather than "nothing is available to you".
+      if (isLoggedIn) setProviders(null);
       return;
     }
+
+    const generation = ++loadGenerationRef.current;
 
     api
       .listCredentials()
       .then((response) => {
+        // Stale: publishing would overwrite fresher state, and retiring from
+        // it would strand credentials the newer response has not returned.
+        if (generation !== loadGenerationRef.current) return;
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
             if (!acc[cred.provider]) {
@@ -309,7 +446,28 @@ export default function CredentialsProvider({
           ...prev,
           ...Object.fromEntries(
             providerNames.map((provider) => {
-              const providerCredentials = credentialsByProvider[provider] ?? [];
+              const loaded = credentialsByProvider[provider] ?? [];
+              const pending = pendingUpsertsRef.current[provider];
+              // One predicate drives both the merge and the retirement: an id
+              // the server returned is caught up, so its pending copy is
+              // neither merged in nor kept.
+              const loadedIds = new Set(
+                loaded.map((c: CredentialsMetaResponse) => c.id),
+              );
+              const stillPending = pending?.filter(
+                (c: CredentialsMetaResponse) => !loadedIds.has(c.id),
+              );
+              const providerCredentials = mergePendingCredentials(
+                loaded,
+                stillPending,
+              );
+              if (pending?.length) {
+                if (stillPending?.length) {
+                  pendingUpsertsRef.current[provider] = stillPending;
+                } else {
+                  delete pendingUpsertsRef.current[provider];
+                }
+              }
 
               return [
                 provider,
@@ -321,6 +479,7 @@ export default function CredentialsProvider({
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
+                  mcpStoreToken,
                   createAPIKeyCredentials: (
                     credentials: APIKeyCredentialsCreatable,
                   ) => createAPIKeyCredentials(provider, credentials),
@@ -342,6 +501,7 @@ export default function CredentialsProvider({
   }, [
     api,
     isLoggedIn,
+    isUserLoading,
     providerNames,
     systemProviders,
     createAPIKeyCredentials,
@@ -350,18 +510,33 @@ export default function CredentialsProvider({
     deleteCredentials,
     oAuthCallback,
     mcpOAuthCallback,
+    mcpStoreToken,
     onFailToast,
   ]);
 
-  // Fetch provider names and system providers on mount
+  // Fetch provider names and system providers after authentication
   useEffect(() => {
+    if (!isLoggedIn) {
+      setProviderNames([]);
+      setSystemProviders(new Set());
+      return;
+    }
+
+    let isCurrent = true;
     Promise.all([api.listProviders(), api.listSystemProviders()])
       .then(([names, systemList]) => {
+        if (!isCurrent) return;
         setProviderNames(names);
         setSystemProviders(new Set(systemList));
       })
-      .catch(onFailToast("Load provider names"));
-  }, [api, onFailToast]);
+      .catch((error) => {
+        if (isCurrent) onFailToast("Load provider names")(error);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [api, isLoggedIn, onFailToast]);
 
   useEffect(() => {
     loadCredentials();
@@ -393,7 +568,9 @@ export default function CredentialsProvider({
   }, [queryClient, loadCredentials]);
 
   return (
-    <CredentialsActionsContext.Provider value={{ reload: loadCredentials }}>
+    <CredentialsActionsContext.Provider
+      value={{ reload: loadCredentials, upsert: upsertFromApi }}
+    >
       <CredentialsProvidersContext.Provider value={providers}>
         {children}
       </CredentialsProvidersContext.Provider>

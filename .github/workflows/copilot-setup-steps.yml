@@ -123,11 +123,9 @@ jobs:
 
       - name: Copy default environment files
         working-directory: autogpt_platform
-        run: |
-          # Copy default environment files for development
-          cp .env.default .env
-          cp backend/.env.default backend/.env
-          cp frontend/.env.default frontend/.env
+        # Creates each .env from its .env.default and generates the secrets that
+        # .env.default deliberately leaves blank.
+        run: make init-env
 
       # Phase 1: Cache and load Docker images for faster setup
       - name: Set up Docker image cache
@@ -152,11 +150,7 @@ jobs:
             "rabbitmq:management"
             "clamav/clamav-debian:latest"
             "busybox:latest"
-            "kong:2.8.1"
-            "supabase/gotrue:v2.170.0"
-            "supabase/postgres:15.8.1.049"
-            "supabase/postgres-meta:v0.86.1"
-            "supabase/studio:20250224-d10db0f"
+            "pgvector/pgvector:pg15"
           )
           
           # Check if any cached tar files exist (more reliable than cache-hit)

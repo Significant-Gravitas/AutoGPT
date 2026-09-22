@@ -8,16 +8,17 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  FilePlusIcon,
-  LightbulbIcon,
-  TrashIcon,
-  WarningIcon,
-} from "@phosphor-icons/react";
 import { DreamWriteRow } from "./components/DreamWriteRow";
 import { DreamDemotionRow } from "./components/DreamDemotionRow";
 import { DreamEntityInvalidationRow } from "./components/DreamEntityInvalidationRow";
 import { sectionCounts } from "./helpers";
+import {
+  Alert01Icon,
+  BulbIcon,
+  Delete02Icon,
+  FilePlusIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   operations: DreamOperationsSnapshot | null | undefined;
@@ -56,7 +57,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="writes">
           <AccordionTrigger>
             <SectionLabel
-              icon={<FilePlusIcon size={14} weight="bold" />}
+              icon={<Icon icon={FilePlusIcon} size={14} />}
               label="Writes"
               count={counts.writes}
             />
@@ -80,7 +81,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="proposals">
           <AccordionTrigger>
             <SectionLabel
-              icon={<LightbulbIcon size={14} weight="bold" />}
+              icon={<Icon icon={BulbIcon} size={14} />}
               label="Proposals"
               count={counts.proposals}
             />
@@ -104,7 +105,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="demotions">
           <AccordionTrigger>
             <SectionLabel
-              icon={<TrashIcon size={14} weight="bold" />}
+              icon={<Icon icon={Delete02Icon} size={14} />}
               label="Demotions"
               count={counts.demotions}
             />
@@ -125,7 +126,7 @@ export function DreamOperationsView({ operations }: Props) {
         <AccordionItem value="entities">
           <AccordionTrigger>
             <SectionLabel
-              icon={<WarningIcon size={14} weight="bold" />}
+              icon={<Icon icon={Alert01Icon} size={14} />}
               label="Entity invalidations"
               count={counts.entities}
             />

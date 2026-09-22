@@ -11,8 +11,9 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
-import { HourglassIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { CancelCircleIcon, HourglassIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionID: string | null;
@@ -69,7 +70,7 @@ export function QueueBadge({ sessionID }: Props) {
             className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-800"
             data-testid="queue-badge-queued"
           >
-            <HourglassIcon size={12} weight="bold" />
+            <Icon icon={HourglassIcon} size={12} />
             Queued
           </span>
         </TooltipTrigger>
@@ -88,7 +89,7 @@ export function QueueBadge({ sessionID }: Props) {
               data-testid="queue-cancel-button"
               className="inline-flex h-4 w-4 items-center justify-center rounded-full text-neutral-500 transition-colors hover:text-red-600 disabled:opacity-50"
             >
-              <XCircleIcon size={14} weight="fill" />
+              <Icon icon={CancelCircleIcon} size={14} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top">Cancel queued task</TooltipContent>

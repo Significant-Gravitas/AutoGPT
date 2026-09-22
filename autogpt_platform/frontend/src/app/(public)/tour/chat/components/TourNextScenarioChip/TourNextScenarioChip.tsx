@@ -1,11 +1,11 @@
 "use client";
-
-import { PlayIcon } from "@phosphor-icons/react";
 import { TOUR_NEXT_SCENARIO_SECONDS } from "../../constants";
 import { getNextTourScenario } from "../../script/tourScenarios";
 import { useTourStore } from "../../tourStore";
 import { trackTourCtaClick } from "../../tracking";
 import { useTourScenarioSelection } from "../../useTourScenarioSelection";
+import { PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function TourNextScenarioChip() {
   const activeScenarioId = useTourStore((s) => s.activeScenarioId);
@@ -29,7 +29,7 @@ export function TourNextScenarioChip() {
         onClick={handleClick}
         className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-violet-400 bg-violet-50/80 px-3.5 py-1.5 text-sm font-medium text-violet-700 transition-colors duration-300 animate-in fade-in slide-in-from-bottom-1 hover:bg-violet-100"
       >
-        <PlayIcon className="size-3.5 shrink-0" weight="fill" />
+        <Icon icon={PlayIcon} className="size-3.5 shrink-0" />
         <span className="truncate">
           Next: {nextScenario.label} — watch it in {TOUR_NEXT_SCENARIO_SECONDS}s
         </span>

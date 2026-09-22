@@ -28,7 +28,7 @@ vi.mock("@/services/environment", async (importActual) => {
   };
 });
 
-// Replace the Supabase token fetch with a static header so we don't need
+// Replace the auth token fetch with a static header so we don't need
 // real auth in tests.
 vi.mock("../helpers", async (importActual) => {
   const actual = await importActual<typeof import("../helpers")>();
@@ -38,16 +38,15 @@ vi.mock("../helpers", async (importActual) => {
   };
 });
 
-// useChatSession depends on useSupabase via useCopilotPage's auth gate.
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isUserLoading: false, isLoggedIn: true }),
+// useChatSession depends on useAuth via useCopilotPage's auth gate.
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
 // Keep mode/model toggles and artifacts off so the chat input renders a
 // single, predictable Submit button.
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
   },
@@ -62,7 +61,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("AutoPilot streaming — content rendering", () => {
+describe("Otto streaming — content rendering", () => {
   it("renders assistant text from a single text-delta frame", async () => {
     server.use(
       copilotStreamHandler({

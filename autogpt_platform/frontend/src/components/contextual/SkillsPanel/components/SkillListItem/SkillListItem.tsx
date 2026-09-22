@@ -3,17 +3,20 @@
 import type { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { PublishSkillButton } from "../PublishSkillButton/PublishSkillButton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  BookOpenIcon,
-  DownloadSimpleIcon,
-  EyeIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSkillListItem } from "./useSkillListItem";
+import {
+  BookOpen01Icon,
+  Delete02Icon,
+  Download04Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   skill: CopilotSkillInfo;
@@ -24,6 +27,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
   const {
     descriptionPreview,
     triggers,
+    fileRows,
     isDeleteOpen,
     openDelete,
     closeDelete,
@@ -38,6 +42,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     detail,
     detailErrorMessage,
   } = useSkillListItem({ skill });
+  const isSkillsHubEnabled = useGetFlag(Flag.SKILLS_HUB);
 
   return (
     <div
@@ -47,7 +52,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-violet-50">
-          <BookOpenIcon size={18} className="text-violet-700" weight="bold" />
+          <Icon icon={BookOpen01Icon} size={18} className="text-violet-700" />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -91,7 +96,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-view-button"
           aria-label="View skill"
         >
-          <EyeIcon className="h-4 w-4" />
+          <Icon icon={EyeIcon} className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
@@ -101,8 +106,11 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-download-button"
           aria-label="Download skill"
         >
-          <DownloadSimpleIcon className="h-4 w-4" />
+          <Icon icon={Download04Icon} className="h-4 w-4" />
         </Button>
+        {isSkillsHubEnabled ? (
+          <PublishSkillButton skillName={skill.name} />
+        ) : null}
         <Button
           variant="icon"
           size="icon"
@@ -110,7 +118,7 @@ export function SkillListItem({ skill, isNew = false }: Props) {
           data-testid="skill-delete-button"
           aria-label="Delete skill"
         >
-          <TrashIcon className="h-4 w-4" />
+          <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>
       </div>
 
@@ -156,19 +164,26 @@ export function SkillListItem({ skill, isNew = false }: Props) {
                 >
                   {detail?.body || "(no body)"}
                 </pre>
-                {detail?.sibling_files && detail.sibling_files.length > 0 ? (
+                {fileRows.length > 0 ? (
                   <div
                     className="flex flex-col gap-1"
-                    data-testid="skill-view-sibling-files"
+                    data-testid="skill-view-files"
                   >
                     <Text variant="small" className="!text-zinc-500">
-                      Bundled files ({detail.sibling_files.length}
-                      ):
+                      Package files ({detail?.files?.length ?? 0}):
                     </Text>
-                    <ul className="flex flex-col gap-0.5 pl-3 text-xs text-zinc-600">
-                      {detail.sibling_files.map((path) => (
-                        <li key={path} className="break-all">
-                          {path}
+                    <ul className="flex flex-col gap-0.5 text-xs text-zinc-600">
+                      {fileRows.map((row) => (
+                        <li
+                          key={row.path}
+                          className={`flex items-baseline justify-between gap-3 ${indentClass(row.depth)}`}
+                        >
+                          <span className="break-all">{row.label}</span>
+                          {row.sizeLabel ? (
+                            <span className="flex-shrink-0 tabular-nums text-zinc-400">
+                              {row.sizeLabel}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -188,8 +203,8 @@ export function SkillListItem({ skill, isNew = false }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete the skill <strong>{skill.name}</strong>? Your AutoPilot
-              will forget this procedure and can re-distill it later if needed.
+              Delete the skill <strong>{skill.name}</strong> from your library?
+              You can create or upload it again later if needed.
             </Text>
             <Dialog.Footer>
               <Button
@@ -213,4 +228,13 @@ export function SkillListItem({ skill, isNew = false }: Props) {
       </Dialog>
     </div>
   );
+}
+
+// Tailwind only sees class names it can read literally, so the indent is a
+// lookup rather than a computed padding; a path deeper than the list shares
+// its last step.
+const INDENT_CLASSES = ["pl-0", "pl-3", "pl-6", "pl-9", "pl-12"];
+
+function indentClass(depth: number): string {
+  return INDENT_CLASSES[Math.min(depth, INDENT_CLASSES.length - 1)];
 }

@@ -1,10 +1,19 @@
 """Tests for the Telegram adapter."""
 
+import html
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
+from backend.copilot.bot.adapters.base import (
+    EditOutcome,
+    FileAttachment,
+    StreamDraftOutcome,
+)
+from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
+from backend.copilot.bot.choices import ResolvedChoice
+from backend.copilot.bot.turn_stream import _clarification_message
 
 from .adapter import (
     TelegramAdapter,
@@ -256,6 +265,22 @@ class TestAnalytics:
 
 class TestOutbound:
     @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self):
+        """SECRT-2604: an ask_question payload must reach Telegram as a
+        plain text message with the numbered options intact, unmangled by
+        the adapter's real send path (sendMessage + HTML conversion)."""
+        a = _adapter()
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await a.send_message("-100555|7", text)
+        sent = a._client.call.call_args.kwargs["text"]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
+    @pytest.mark.asyncio
     async def test_send_message_renders_html_and_threads(self):
         a = _adapter()
         await a.send_message("-100555|7", "**bold** & plain")
@@ -265,6 +290,47 @@ class TestOutbound:
         assert kwargs["message_thread_id"] == 7
         assert kwargs["parse_mode"] == "HTML"
         assert kwargs["text"] == "<b>bold</b> &amp; plain"
+
+    @pytest.mark.asyncio
+    async def test_text_that_looks_like_a_marker_is_left_alone(self):
+        """The stash markers are private-use characters, never text a model
+        writes, so ordinary words and hex like E000 pass through untouched."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "code E000 and E001 for @Bently", (("Bently", "7"),)
+        )
+        assert a._client.call.call_args.kwargs["text"] == (
+            'code E000 and E001 for <a href="tg://user?id=7">@Bently</a>'
+        )
+
+    @pytest.mark.asyncio
+    async def test_mentions_by_name_and_id_ping_and_everything_else_is_escaped(
+        self,
+    ):
+        """The mention is resolved before HTML escaping, so "<@7>" the model
+        wrote is still recognisable, while an unknown "<@9>" and a
+        "<b>" it made up come out escaped."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "hi @Bently & <@7>, not <@9> <b>x</b>", (("Bently", "7"),)
+        )
+        anchor = '<a href="tg://user?id=7">@Bently</a>'
+        assert a._client.call.call_args.kwargs["text"] == (
+            f"hi {anchor} &amp; {anchor}, not &lt;@9&gt; &lt;b&gt;x&lt;/b&gt;"
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_sends_inline_keyboard(self):
+        a = _adapter()
+        sent = await a.send_choice_buttons(
+            "-100555|7", "Which region?", ["US", "EU"], "abcdef012345"
+        )
+        assert sent is True
+        assert a.supports_choice_buttons is True
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "-100555"
+        rows = kwargs["reply_markup"]["inline_keyboard"]
+        assert rows[0][0]["callback_data"] == "qans:abcdef012345:0"
 
     @pytest.mark.asyncio
     async def test_send_link_prefers_login_url_for_https(self):
@@ -350,6 +416,25 @@ def test_collect_mentionable_users_only_text_mentions_with_ids():
     assert _collect_mentionable_users(message) == (("Sam", "5"),)
 
 
+def test_the_author_is_mentionable_by_username_and_first_name():
+    message = {
+        "from": {"id": 7, "first_name": "Bently", "username": "bentlybro"},
+        "entities": [
+            {"type": "text_mention", "user": {"id": 5, "first_name": "Sam"}},
+        ],
+    }
+    assert _collect_mentionable_users(message) == (
+        ("bentlybro", "7"),
+        ("Bently", "7"),
+        ("Sam", "5"),
+    )
+
+
+def test_a_bot_author_is_never_mentionable():
+    message = {"from": {"id": 9, "first_name": "Other", "is_bot": True}}
+    assert _collect_mentionable_users(message) == ()
+
+
 async def _noop() -> None:
     return None
 
@@ -396,3 +481,224 @@ class TestStreamDrafts:
             await a.send_stream_draft("42", 7, "x" * 5000) is StreamDraftOutcome.SKIPPED
         )
         a._client.call.assert_not_awaited()
+
+
+class TestProactiveChunking:
+    @pytest.mark.asyncio
+    async def test_post_channel_message_chunks_canonical_before_html(self):
+        # Chunking must happen on the canonical markdown (where the splitter
+        # balances ``` fences), THEN localize per chunk — the old order cut
+        # inside <pre> blocks and Telegram 400s on unbalanced tags.
+        a = _adapter()
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        await a.post_channel_message("123", f"```python\n{code}\n```")
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2  # long enough to actually split
+        for c in calls:
+            sent = c.kwargs["text"]
+            assert sent.count("<pre>") == sent.count("</pre>") == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_chunked_post_keeps_what_landed(self):
+        # A 400/429 past the first chunk would otherwise report the whole post
+        # failed, and the model reposts — duplicating the delivered chunks.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[{"message_id": 77}, TelegramAPIError("sendMessage failed")]
+        )
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        ref = await a.post_channel_message("123", f"```python\n{code}\n```")
+        assert ref is not None
+        assert ref.id == "77"
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_failure_still_raises(self):
+        # Nothing landed, so the caller must hear about it and retry.
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=TelegramAPIError("sendMessage failed"))
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        with pytest.raises(TelegramAPIError):
+            await a.post_channel_message("123", f"```python\n{code}\n```")
+
+    @pytest.mark.asyncio
+    async def test_entity_dense_chunks_respect_the_parsed_length_cap(self):
+        # Telegram's 4096 cap counts characters AFTER entity parsing (Bot API,
+        # sendMessage.text), so the raw HTML may legitimately run over it;
+        # what must hold is the parsed length of every chunk.
+        a = _adapter()
+        line = '<div class="row">Tom & Jerry\'s "quote"</div>'
+        await a.post_channel_message("123", "\n".join([line] * 200))
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2
+        raw_over_cap = 0
+        for c in calls:
+            sent = c.kwargs["text"]
+            parsed = html.unescape(re.sub(r"<[^>]+>", "", sent))
+            assert len(parsed) <= 4096
+            raw_over_cap += len(sent) > 4096
+        assert raw_over_cap > 0  # the raw length is not the limit
+        joined = "".join(
+            html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
+        )
+        assert joined.count("Tom") == 200  # nothing dropped across the chunks
+
+
+class TestEditChannelMessage:
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_calls_edit_message_text(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.OK
+        assert a._client.call.call_args.args == ("editMessageText",)
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "123"
+        assert kwargs["message_id"] == 77
+        assert kwargs["text"] == "updated text"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self):
+        a = _adapter()
+        a._client.call = AsyncMock(return_value={})
+
+        await a.edit_channel_message("123", "77", "<b>raw</b> & **bold**")
+
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["text"] == a.localize_markup("<b>raw</b> & **bold**")
+        assert kwargs["parse_mode"] == "HTML"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_modified_is_ok(self):
+        # Telegram answers this when the text is byte-identical. The message
+        # is already in the requested state, so reporting failure only makes
+        # the model retry forever.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message is not modified"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "same")
+
+        assert outcome == EditOutcome.OK
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_too_old_is_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message can't be edited"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message to edit not found"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_on_other_error(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError("editMessageText failed: message is too old")
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.FAILED
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_bad_ref_id(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "not-a-number", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+        a._client.call.assert_not_awaited()
+
+
+class TestChoiceCallbackQuery:
+    @pytest.mark.asyncio
+    async def test_click_resolves_updates_message_and_dispatches(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:1",
+            "from": {"id": 42, "username": "bently"},
+            "message": {
+                "message_id": 9,
+                "chat": {"id": 42, "type": "private"},
+            },
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        calls = {c.args[0]: c.kwargs for c in a._client.call.call_args_list}
+        assert calls["answerCallbackQuery"]["callback_query_id"] == "cbq1"
+        assert calls["editMessageText"]["text"] == "✅ You answered: EU"
+        a._on_message_callback.assert_awaited_once()
+        ctx, dispatched_adapter = a._on_message_callback.await_args.args
+        assert dispatched_adapter is a
+        assert ctx.text == "EU"
+        assert ctx.platform == "telegram"
+        assert ctx.channel_type == "dm"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_shows_alert_and_does_not_dispatch(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:0",
+            "from": {"id": 42},
+            "message": {"message_id": 9, "chat": {"id": 42, "type": "private"}},
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        answer_calls = [
+            c
+            for c in a._client.call.call_args_list
+            if c.args == ("answerCallbackQuery",)
+        ]
+        assert len(answer_calls) == 1
+        assert answer_calls[0].kwargs["show_alert"] is True
+        edit_calls = [
+            c for c in a._client.call.call_args_list if c.args == ("editMessageText",)
+        ]
+        assert edit_calls == []
+        a._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_callback_data_acks_without_dispatching(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {"id": "cbq1", "data": "not-a-choice-callback"}
+
+        await a._dispatch_callback_query(callback_query)
+
+        assert a._client.call.call_args.args == ("answerCallbackQuery",)
+        a._on_message_callback.assert_not_awaited()
