@@ -230,3 +230,71 @@ def test_save_query_reaches_a_store_entry_through_the_synonym(index):
 def test_eager_tools_are_flagged_in_listing(index):
     hit = index.search("web search").hits[0]
     assert hit.entry.listing()["eager"] is True
+
+
+# ------------------------------------------------- the per-session skill layer
+
+
+def _skill(name: str, description: str) -> CapabilityEntry:
+    return CapabilityEntry(
+        id=f"skill:{name}",
+        kind="skill",
+        name=name,
+        purpose=description,
+        description=description,
+        tags=["skill"],
+        context="direct",
+        implementations=[Implementation(kind="skill", ref=name, context="direct")],
+    )
+
+
+TRIAGE = _skill("triage-linear-issues", "Triage and prioritise a Linear issue.")
+PLAYBOOK = _skill("issue-playbook", "Create an issue the way this team does.")
+
+
+def test_with_entries_layers_skills_without_touching_the_base_index(index):
+    layered = index.with_entries([TRIAGE])
+    assert len(layered) == len(index) + 1
+    assert layered.get(TRIAGE.id) is TRIAGE and index.get(TRIAGE.id) is None
+    assert index.with_entries([]) is index
+
+
+def test_a_skill_matching_as_well_as_a_block_ranks_with_connected_services(index):
+    layered = index.with_entries([PLAYBOOK])
+    # Nothing connected: the skill leads both unconnected issue blocks.
+    assert layered.search("create issue").names[0] == "issue-playbook"
+    state = ConnectionState(providers=frozenset({"github"}))
+    top = layered.search("create issue", connections=state).names[:2]
+    assert set(top) == {"issue-playbook", "GithubMakeIssueBlock"}
+    assert layered.search("create issue").hits[0].coverage == 2.0
+
+
+def test_skills_stay_in_the_main_list_of_a_service_query(index):
+    layered = index.with_entries([TRIAGE])
+    result = layered.search("linear issue")
+    assert result.service == "linear"
+    assert set(result.names) == {"LinearCreateIssueBlock", "triage-linear-issues"}
+    assert "triage-linear-issues" not in [h.entry.name for h in result.fallback]
+
+
+def test_skills_answer_to_the_read_skill_permission(index):
+    layered = index.with_entries([TRIAGE])
+    denied = CopilotPermissions(tools=["read_skill"])
+    assert (
+        "triage-linear-issues" not in layered.search("triage", permissions=denied).names
+    )
+    allowed = CopilotPermissions(tools=["web_search"])
+    assert "triage-linear-issues" in layered.search("triage", permissions=allowed).names
+
+
+def test_kind_filter_selects_skills(index):
+    layered = index.with_entries([TRIAGE, PLAYBOOK])
+    assert layered.search("issue", kind="skill").ids == [PLAYBOOK.id, TRIAGE.id]
+
+
+def test_a_platform_entry_keeps_a_bare_ref_a_skill_shares(index):
+    clone = _skill("web_search", "How this team searches the web.")
+    layered = index.with_entries([clone])
+    shared = layered.get("web_search")
+    assert shared is not None and shared.kind == "tool"
+    assert layered.get("skill:web_search") is clone

@@ -256,7 +256,10 @@ before signing off.
 The `<available_skills>` block injected at the start of the first user
 message is the discovery index for **reusable procedures** (built-in
 guides + user-distilled know-how). Treat it as the canonical answer to
-"do we already have a recipe for this?"
+"do we already have a recipe for this?" `find_capability` returns the
+same skills too (kind `skill`, id `skill:<name>`), ranked next to blocks
+and tools, so a search for a task surfaces a saved procedure as well;
+`run_capability` on one loads it.
 
 **Load before acting.** When the user's request matches a skill's
 description or triggers, run `tool:read_skill` with its `name` BEFORE planning the

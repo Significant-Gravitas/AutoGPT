@@ -1,9 +1,10 @@
 """Data model for the copilot capability registry.
 
 One :class:`CapabilityEntry` describes one thing the copilot can do: a
-platform tool, a block, an MCP server from the catalog, or (phase 2) a
-library agent.  The registry indexes entries by name, description and
-tags; argument schemas are fetched on demand and never indexed.
+platform tool, a block, an MCP server from the catalog, a skill of the
+session's owner, or (phase 2) a library agent.  The registry indexes
+entries by name, description and tags; argument schemas are fetched on
+demand and never indexed.
 """
 
 from __future__ import annotations
@@ -12,7 +13,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CapabilityKindName = Literal["tool", "block", "mcp_server", "mcp_tool", "agent"]
+CapabilityKindName = Literal[
+    "tool", "block", "mcp_server", "mcp_tool", "agent", "skill"
+]
 CapabilityClass = Literal["service", "primitive"]
 CapabilityContext = Literal["direct", "graph", "both"]
 ConnectionKeyType = Literal["provider", "server_url", "host", "none"]
@@ -22,6 +25,9 @@ PURPOSE_MAX_CHARS = 160
 # text (the longest block description is under 1,000 chars), and a ceiling on
 # what a runaway one can add to the index and its memory.
 DESCRIPTION_MAX_CHARS = 4000
+# The tool a skill runs through.  A turn that may not call it may not see
+# skills either, and a ``skill:`` dispatch is a call to it.
+SKILL_TOOL = "read_skill"
 
 
 class Implementation(BaseModel):
