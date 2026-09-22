@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Alert02Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 
 interface Props {
-  /** How many files the cap turned away on the last attach. */
+  /** How many attachments the cap turned away on the last attach. */
   refusedCount: number;
   onDismiss: () => void;
   className?: string;
@@ -32,7 +32,8 @@ export function AttachmentCapNotice({
     >
       <Icon icon={Alert02Icon} className="h-4 w-4 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1">
-        Up to {MAX_ATTACHMENTS} files per message — {refusedCount} not added
+        Up to {MAX_ATTACHMENTS} attachments per message, uploaded or from your
+        workspace — {refusedCount} not added
       </span>
       <Button
         type="button"

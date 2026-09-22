@@ -209,8 +209,8 @@ export function useSendMessage({
       MAX_ATTACHMENTS
     ) {
       toast({
-        title: "Too many files",
-        description: `You can attach up to ${MAX_ATTACHMENTS} files at once.`,
+        title: "Too many attachments",
+        description: `You can attach up to ${MAX_ATTACHMENTS} files at once, uploaded or from your workspace.`,
         variant: "destructive",
       });
       return;
