@@ -151,6 +151,8 @@ _META_EXECUTABLE = "executable"
 _META_SKILL_ORIGIN = "skill_origin"
 SKILL_ORIGIN_USER = "user"
 SKILL_ORIGIN_MARKETPLACE = "marketplace"
+# The built-in defaults: never stored, never counted, so not a storable origin.
+SKILL_ORIGIN_PLATFORM = "platform"
 _SKILL_ORIGINS = frozenset({SKILL_ORIGIN_USER, SKILL_ORIGIN_MARKETPLACE})
 _ORIGIN_LABELS = {SKILL_ORIGIN_USER: "saved", SKILL_ORIGIN_MARKETPLACE: "installed"}
 
@@ -438,6 +440,7 @@ def get_default_skill_with_body(name: str) -> ParsedSkill | None:
         description=default.description,
         body=body,
         triggers=default.triggers,
+        origin=SKILL_ORIGIN_PLATFORM,
     )
 
 
@@ -574,6 +577,11 @@ class BuiltInSkillError(Exception):
 class SkillLimitError(Exception):
     """Raised by :func:`store_user_skill` when the owner's cap for skills of
     that origin is reached."""
+
+
+class SkillOwnedError(Exception):
+    """Raised by :func:`store_user_skill` when a platform install would
+    replace a skill the owner saved under that name."""
 
 
 async def delete_user_skill(
@@ -782,8 +790,17 @@ async def store_user_skill(
         existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
         # One budget per origin: only skills of this origin fill this one,
         # and only a name new to it takes a slot.  A re-install of a bundled
-        # skill, or a rewrite of the owner's own, consumes nothing.
+        # skill, or a rewrite of the owner's own, consumes nothing.  The
+        # owner may take over a bundled name (it becomes theirs); the
+        # platform never replaces something the owner wrote.
         same_origin = {s.name for s in existing if s.origin == origin}
+        if origin == SKILL_ORIGIN_MARKETPLACE and any(
+            s.name == name and s.origin == SKILL_ORIGIN_USER for s in existing
+        ):
+            raise SkillOwnedError(
+                f"'{name}' is one of the owner's own skills; rename or delete "
+                "it before installing a skill by that name."
+            )
         at_cap = len(same_origin) >= MAX_USER_SKILLS
         is_new = name not in same_origin
         if at_cap and (is_new or not lock_held):
@@ -969,25 +986,26 @@ async def _list_user_skills_from_workspace(
     folder = skill_folder(expert_id)
 
     skills: list[ParsedSkill] = []
-    needs_read: list[Any] = []
+    needs_read: list[tuple[Any, dict[str, Any]]] = []
     for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
             skills.append(entry)
         else:
-            needs_read.append(f)
+            needs_read.append((f, meta))
 
     if needs_read:
         parsed = await asyncio.gather(
-            *(_parse_skill_from_workspace(manager, f.path) for f in needs_read),
+            *(_parse_skill_from_workspace(manager, f.path) for f, _ in needs_read),
         )
-        for p in parsed:
+        for (_, meta), p in zip(needs_read, parsed):
             if p is None:
                 continue
             # Index never needs the body — drop it so the cache payload
             # stays small (defaults are already body-less, fast-path
-            # entries are body-less, keep the contract uniform).
+            # entries are body-less, keep the contract uniform).  The
+            # origin is the row's, whatever the file says.
             skills.append(
                 ParsedSkill(
                     name=p.name,
@@ -995,6 +1013,7 @@ async def _list_user_skills_from_workspace(
                     body="",
                     triggers=p.triggers,
                     version=p.version,
+                    origin=_skill_origin(meta),
                 )
             )
 
@@ -1471,6 +1490,7 @@ def get_default_skills_for_index() -> list[ParsedSkill]:
             description=default.description,
             body="",
             triggers=default.triggers,
+            origin=SKILL_ORIGIN_PLATFORM,
         )
         for default in DEFAULT_SKILLS
     ]
@@ -1501,6 +1521,7 @@ def get_default_skills() -> list[ParsedSkill]:
                 description=default.description,
                 body=body,
                 triggers=default.triggers,
+                origin=SKILL_ORIGIN_PLATFORM,
             )
         )
     return result
@@ -1839,7 +1860,7 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
-        except (ValueError, SkillLimitError, ConflictError) as exc:
+        except (ValueError, SkillLimitError, SkillOwnedError, ConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] failed to store skill %s", name)

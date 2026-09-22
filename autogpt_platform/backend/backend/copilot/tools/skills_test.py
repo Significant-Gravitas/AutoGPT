@@ -16,6 +16,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
+    _MAX_ROOTS_PER_FOLDER,
     DEFAULT_SKILLS,
     MAX_BODY_CHARS,
     MAX_DESCRIPTION_CHARS,
@@ -27,6 +28,7 @@ from backend.copilot.tools.skills import (
     MAX_TRIGGERS,
     MAX_USER_SKILLS,
     SKILL_ORIGIN_MARKETPLACE,
+    SKILL_ORIGIN_PLATFORM,
     SKILL_ORIGIN_USER,
     BuiltInSkillError,
     DeleteSkillResponse,
@@ -39,6 +41,7 @@ from backend.copilot.tools.skills import (
     SkillFile,
     SkillLimitError,
     SkillNotFoundError,
+    SkillOwnedError,
     SkillPackage,
     SkillPackageError,
     StoreSkillResponse,
@@ -54,6 +57,7 @@ from backend.copilot.tools.skills import (
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skills,
+    get_default_skills_for_index,
     list_all_skills,
     list_user_skill_files,
     parse_skill_markdown,
@@ -671,6 +675,49 @@ async def test_installed_skills_have_a_cap_of_their_own():
             origin=SKILL_ORIGIN_MARKETPLACE,
         )
     assert stored.description == "newer"
+
+
+@pytest.mark.asyncio
+async def test_an_install_never_replaces_the_owners_own_skill():
+    """The owner may take over a bundled name; the platform may not take
+    over the owner's.  Refused as a conflict, and the owner's row is left."""
+    fake = _FakeWorkspaceManager()
+    _seed_skill(fake, "triage", origin=SKILL_ORIGIN_USER)
+    _seed_skill(fake, "bundled_x", origin=SKILL_ORIGIN_MARKETPLACE)
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillOwnedError, match="triage"):
+            await store_user_skill(
+                "user-1",
+                name="triage",
+                description="theirs",
+                body="theirs",
+                origin=SKILL_ORIGIN_MARKETPLACE,
+            )
+        taken_over = await store_user_skill(
+            "user-1", name="bundled_x", description="mine", body="mine"
+        )
+    assert fake.metadata["/skills/triage/SKILL.md"]["skill_origin"] == "user"
+    assert taken_over.origin == SKILL_ORIGIN_USER
+    assert fake.metadata["/skills/bundled_x/SKILL.md"]["skill_origin"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_a_row_read_back_from_its_file_keeps_the_rows_origin():
+    """A row without a usable description in its metadata is rebuilt from the
+    file; the origin still comes from the row, never defaults to the owner's."""
+    fake = _FakeWorkspaceManager()
+    path = "/skills/bundled/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(name="bundled", description="desc", body="body")
+    ).encode()
+    fake.metadata[path] = {"kind": "copilot_skill", "skill_origin": "marketplace"}
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+    assert [(s.name, s.origin) for s in skills] == [("bundled", "marketplace")]
+
+
+def test_default_skills_are_platform_origin_not_the_owners():
+    assert {s.origin for s in get_default_skills_for_index()} == {SKILL_ORIGIN_PLATFORM}
 
 
 @pytest.mark.asyncio
@@ -2533,7 +2580,7 @@ async def test_nested_skill_md_files_cannot_hide_a_root_skill():
     """A package shipping its own example SKILL.md files fills the capped,
     newest-first page; the listing must page past them to the real roots."""
     fake = _package_manager(slug="aaa-oldest")
-    for i in range(MAX_USER_SKILLS * 4 + 10):
+    for i in range(_MAX_ROOTS_PER_FOLDER * 4 + 10):
         fake.files[f"/skills/aaa-oldest/references/e{i:04d}/SKILL.md"] = b"example"
     with _patch_skills_path(fake):
         skills = await _list_user_skills_from_workspace("user-1")
