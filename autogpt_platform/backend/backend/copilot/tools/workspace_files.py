@@ -671,7 +671,7 @@ class ReadWorkspaceFileTool(BaseTool):
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
 # skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
-# frontmatter validation, the per-user cap, name regex, and content
+# frontmatter validation, the per-expert cap, name regex, and content
 # sanitisation. Allowing plain write_workspace_file / delete_workspace_file
 # there would bypass all of that and let the model accidentally (or
 # maliciously) corrupt the registry. Reads stay open so the model can still

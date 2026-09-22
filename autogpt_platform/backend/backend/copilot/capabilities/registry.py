@@ -105,6 +105,9 @@ def _merge(entries: list[CapabilityEntry]) -> list[CapabilityEntry]:
             continue
         tool.implementations += block.implementations
         tool.context = "both"
+        tool.description = " ".join(
+            text for text in (tool.description, block.description) if text
+        )
         tool.tags = sorted(set(tool.tags) | set(block.tags))
         tool.argument_names = list(
             dict.fromkeys(tool.argument_names + block.argument_names)
