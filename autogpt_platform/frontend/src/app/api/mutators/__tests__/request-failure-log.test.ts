@@ -42,13 +42,27 @@ describe("logClientRequestFailure", () => {
     logClientRequestFailure({ ...base, status: 504 });
     logClientRequestFailure({ ...base, status: 504 });
 
-    expect(console.warn).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(10_000);
 
-    expect(console.warn).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledTimes(2);
+    expect(console.error).toHaveBeenLastCalledWith(
       "Request failed on client ×3 in the last 10s",
       expect.objectContaining({ status: 504, url: base.url }),
     );
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("reports suppressed expected failures at warn", () => {
+    logClientRequestFailure({ ...base, status: 404 });
+    logClientRequestFailure({ ...base, status: 404 });
+    vi.advanceTimersByTime(10_000);
+
+    expect(console.warn).toHaveBeenLastCalledWith(
+      "Request failed on client ×2 in the last 10s",
+      expect.objectContaining({ status: 404, url: base.url }),
+    );
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("says nothing extra when the failure happened once", () => {

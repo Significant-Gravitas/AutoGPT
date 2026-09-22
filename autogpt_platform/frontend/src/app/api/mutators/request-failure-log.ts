@@ -30,7 +30,7 @@ export function logClientRequestFailure(failure: RequestFailure) {
       const closed = openWindows.get(key);
       openWindows.delete(key);
       if (closed?.suppressed) {
-        console.warn(
+        logAtSeverityOf(failure.status)(
           `Request failed on client ×${closed.suppressed + 1} in the last ${DEDUPE_WINDOW_MS / 1000}s`,
           { status: failure.status, method: failure.method, url: failure.url },
         );
@@ -65,12 +65,15 @@ function emit({
   errorMessage,
   responseData,
 }: RequestFailure) {
-  const log = EXPECTED_STATUSES.has(status) ? console.warn : console.error;
-  log("Request failed on client", {
+  logAtSeverityOf(status)("Request failed on client", {
     status,
     method,
     url,
     errorMessage,
     responseData: responseData || "No response data",
   });
+}
+
+function logAtSeverityOf(status: number) {
+  return EXPECTED_STATUSES.has(status) ? console.warn : console.error;
 }
