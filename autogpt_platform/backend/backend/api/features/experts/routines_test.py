@@ -66,6 +66,9 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Sofia", "evening-interview-prep"),
     ("Sofia", "urgent-thread-check"),
     ("Sofia", "weekly-pipeline-review"),
+    ("Zara", "competitor-brief"),
+    ("Zara", "launch-readiness-check"),
+    ("Zara", "weekly-gtm-scorecard"),
 }
 
 VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
