@@ -14,6 +14,7 @@ Where the avatar's bytes may come from is :mod:`package_avatar`'s problem.
 import logging
 
 import prisma.models
+from pydantic import ValidationError
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import decode_day_one, decode_voice_preferences
@@ -86,8 +87,18 @@ class _Roster:
                 f"alone; the limit is {MAX_PACKAGE_BYTES}",
                 over_limit=True,
             )
+        try:
+            card = PackagedSkill(slug=slug, name=name, description=description)
+        except ValidationError as exc:
+            # The store only ever writes folders the manifest model accepts, so
+            # this is storage it did not write; the download promises a 400
+            # that names the skill, not a crash.
+            reasons = "; ".join(
+                str(err["msg"]).removeprefix("Value error, ") for err in exc.errors()
+            )
+            raise ExpertPackageError(f"skill '{slug[:120]}': {reasons}")
         self.packages[slug] = package
-        self.cards.append(PackagedSkill(slug=slug, name=name, description=description))
+        self.cards.append(card)
 
 
 def package_filename(name: str) -> str:
