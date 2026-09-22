@@ -210,6 +210,7 @@ export function EmptySession({
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
+                  expertName={expertName}
                   recipientPicker={
                     isExpertsEnabled ? (
                       <RecipientChip

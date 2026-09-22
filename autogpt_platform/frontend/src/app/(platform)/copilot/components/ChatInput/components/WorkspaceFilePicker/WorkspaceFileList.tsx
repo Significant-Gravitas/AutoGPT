@@ -12,13 +12,13 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: WorkspaceFileItem[];
-  selectedIds: ReadonlyMap<string, WorkspaceFileItem>;
+  selectedFileIds: ReadonlySet<string>;
   onToggle: (item: WorkspaceFileItem) => void;
   isLoading: boolean;
   isError: boolean;
@@ -26,11 +26,14 @@ interface Props {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  emptyMessage: string;
+  /** Offered under the empty message, e.g. widening an expert-only listing. */
+  emptyAction?: ReactNode;
 }
 
 export function WorkspaceFileList({
   files,
-  selectedIds,
+  selectedFileIds,
   onToggle,
   isLoading,
   isError,
@@ -38,6 +41,8 @@ export function WorkspaceFileList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  emptyMessage,
+  emptyAction,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Show the top/bottom scroll-fade only when there's content hidden in that
@@ -80,9 +85,10 @@ export function WorkspaceFileList({
 
   if (files.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
-        No files in your workspace yet.
-      </p>
+      <div className="flex flex-col items-center gap-2 py-8">
+        <p className="text-center text-sm text-zinc-500">{emptyMessage}</p>
+        {emptyAction}
+      </div>
     );
   }
 
@@ -103,7 +109,7 @@ export function WorkspaceFileList({
       >
         <div className="grid grid-cols-2 gap-2">
           {files.map((file) => {
-            const isSelected = selectedIds.has(file.id);
+            const isSelected = selectedFileIds.has(file.id);
             const fileIcon = getFileTypeIcon(file.mime_type);
             return (
               <button

@@ -1,4 +1,5 @@
-import type { FileUIPart, UIMessage } from "ai";
+import type { UIMessage } from "ai";
+import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
@@ -95,7 +96,7 @@ interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
   pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
+  pendingFileParts: StoredAttachmentPart[];
 }
 
 interface CopilotStreamStore {
@@ -103,7 +104,7 @@ interface CopilotStreamStore {
   messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
-  pendingFileParts: FileUIPart[];
+  pendingFileParts: StoredAttachmentPart[];
   pendingUploadSends: Record<string, PendingUploadSend>;
 
   getCoord: (sessionId: string) => SessionCoord;
@@ -114,7 +115,7 @@ interface CopilotStreamStore {
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
-  setPendingFileParts: (parts: FileUIPart[]) => void;
+  setPendingFileParts: (parts: StoredAttachmentPart[]) => void;
   setPendingUploadSend: (
     sessionId: string | null,
     send: PendingUploadSend,
@@ -128,7 +129,7 @@ interface CopilotStreamStore {
   /** Read-and-clear; used by the post-session-creation flush effect. */
   takePendingFirstSend: (sessionId: string) => {
     send: PendingFirstSend | null;
-    parts: FileUIPart[];
+    parts: StoredAttachmentPart[];
   };
 
   /** Test-only: wipe all per-session state. */

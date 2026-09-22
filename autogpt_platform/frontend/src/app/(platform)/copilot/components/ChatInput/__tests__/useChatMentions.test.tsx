@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatMentions } from "../useChatMentions";
 
 const mockListWorkspaceFiles = vi.fn();
+const mockFolders = vi.fn(() => ({ data: { folders: [] } }));
 vi.mock("@/app/api/__generated__/endpoints/workspace/workspace", () => ({
   listWorkspaceFiles: (...args: unknown[]) => mockListWorkspaceFiles(...args),
+  useListWorkspaceFolders: () => mockFolders(),
 }));
 
 const FILE = {
@@ -62,6 +64,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -69,7 +72,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
 
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
     await waitFor(() =>
       expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
         limit: 8,
@@ -86,6 +89,7 @@ describe("useChatMentions", () => {
           value: "hello world",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -102,6 +106,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -125,12 +130,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     let handled = false;
     act(() => {
@@ -157,12 +163,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     act(() => {
       result.current.onKeyDown(keyEvent("Escape"));
@@ -188,12 +195,13 @@ describe("useChatMentions", () => {
           value: "hi @",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @")));
-    await waitFor(() => expect(result.current.files).toHaveLength(2));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     act(() => {
       expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
@@ -226,12 +234,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     for (const event of [
       keyEvent("Enter", true),
@@ -264,12 +273,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     // A shrinking result list can leave the highlighted index pointing past
     // the end before the clamp effect runs — accepting that must be a no-op,

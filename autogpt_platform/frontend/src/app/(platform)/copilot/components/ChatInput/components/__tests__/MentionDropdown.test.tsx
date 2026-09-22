@@ -2,7 +2,9 @@ import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import type { MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { MentionDropdown } from "../MentionDropdown";
+import type { MentionOption } from "../../useChatMentions";
 
 const FILE: WorkspaceFileItem = {
   id: "file-1",
@@ -18,7 +20,7 @@ function renderDropdown(
   overrides: Partial<Parameters<typeof MentionDropdown>[0]> = {},
 ) {
   const props = {
-    files: [] as WorkspaceFileItem[],
+    options: [] as MentionOption[],
     isLoading: false,
     isError: false,
     highlightedIndex: 0,
@@ -54,18 +56,58 @@ describe("MentionDropdown", () => {
   });
 
   it("renders a row per file and selects on mousedown", () => {
-    const { onSelect } = renderDropdown({ files: [FILE] });
+    const { onSelect } = renderDropdown({ options: [fileOption(FILE)] });
     const option = screen.getByRole("option", { name: /alpha\.txt/i });
     fireEvent.mouseDown(option);
-    expect(onSelect).toHaveBeenCalledWith(FILE);
+    expect(onSelect).toHaveBeenCalledWith(fileOption(FILE));
   });
 
   it("highlights a row on hover", () => {
     const { onHighlight } = renderDropdown({
-      files: [FILE],
+      options: [fileOption(FILE)],
       highlightedIndex: -1,
     });
     fireEvent.mouseEnter(screen.getByRole("option", { name: /alpha\.txt/i }));
     expect(onHighlight).toHaveBeenCalledWith(0);
   });
+
+  it("offers folders above files, with their count in the accessible name", () => {
+    renderDropdown({
+      options: [folderOption(FOLDER, 1), fileOption(FILE)],
+    });
+    const options = screen.getAllByRole("option");
+    expect(options[0].getAttribute("aria-label")).toBe(
+      "Folder Reports, 2 files",
+    );
+    expect(options[1].textContent).toContain("alpha.txt");
+  });
+
+  it("selects a folder option on mousedown", () => {
+    const { onSelect } = renderDropdown({
+      options: [folderOption(FOLDER, 0)],
+    });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Folder Reports/ }));
+    expect(onSelect).toHaveBeenCalledWith(folderOption(FOLDER, 0));
+  });
 });
+
+const FOLDER: WorkspaceFolder = {
+  id: "fld-1",
+  workspace_id: "ws-1",
+  name: "Reports",
+  parent_id: null,
+  file_count: 2,
+  created_at: new Date("2026-01-01T00:00:00Z"),
+  updated_at: new Date("2026-01-01T00:00:00Z"),
+};
+
+function fileOption(file: WorkspaceFileItem): MentionOption {
+  return { kind: "file", file };
+}
+
+function folderOption(
+  folder: WorkspaceFolder,
+  subfolderCount: number,
+): MentionOption {
+  return { kind: "folder", folder, subfolderCount };
+}

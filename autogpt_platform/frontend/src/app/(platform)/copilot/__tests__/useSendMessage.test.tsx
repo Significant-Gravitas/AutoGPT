@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
 import { useSendMessage } from "../useSendMessage";
+import type { WorkspaceAttachment } from "../helpers/workspaceAttachments";
 
 const { uploadFileDirectMock, toastMock } = vi.hoisted(() => ({
   uploadFileDirectMock: vi.fn(),
@@ -125,7 +126,14 @@ describe("useSendMessage with local attachments", () => {
       void result.current.onSend(
         "compare",
         [makeFile("icon.png", "image/png")],
-        [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+        [
+          {
+            kind: "workspace" as const,
+            fileId: FILE_ID,
+            name: "notes.txt",
+            mimeType: "text/plain",
+          },
+        ],
       );
     });
 
@@ -166,7 +174,14 @@ describe("useSendMessage with local attachments", () => {
       void result.current.onSend(
         "compare",
         [makeFile("talk.pdf")],
-        [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+        [
+          {
+            kind: "workspace" as const,
+            fileId: FILE_ID,
+            name: "notes.txt",
+            mimeType: "text/plain",
+          },
+        ],
       );
     });
 
@@ -363,7 +378,7 @@ describe("useSendMessage first send failing after the session exists", () => {
   async function startFirstSend(
     text: string,
     files: File[],
-    workspaceFiles?: { fileId: string; name: string; mimeType: string }[],
+    workspaceFiles?: WorkspaceAttachment[],
   ) {
     const newChat = renderSendMessage(null);
     newChat.createSession.mockImplementation(async () => {
@@ -404,7 +419,14 @@ describe("useSendMessage first send failing after the session exists", () => {
     const created = await startFirstSend(
       "compare",
       [],
-      [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+      [
+        {
+          kind: "workspace" as const,
+          fileId: FILE_ID,
+          name: "notes.txt",
+          mimeType: "text/plain",
+        },
+      ],
     );
 
     await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
