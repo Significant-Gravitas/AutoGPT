@@ -34,8 +34,8 @@ interface Args {
   addWorkspaceFile: (item: WorkspaceFileItem) => void;
   /** Expert the chat is scoped to; suggests only files that expert can attach. */
   expertId?: string | null;
-  /** Off when the workspace-files flag is: the picker then only offers
-   *  integrations and never queries the file API. */
+  /** False while the workspace-files flag is off: the picker then only
+   *  offers integrations and never queries the file API. */
   includeWorkspaceFiles?: boolean;
   /** Connected integrations offered above the file results. */
   integrations?: IntegrationMention[];
