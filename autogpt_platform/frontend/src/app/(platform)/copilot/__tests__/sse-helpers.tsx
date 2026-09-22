@@ -109,7 +109,12 @@ function Wrapper({
  * input into "limit reached" or injects ghost queued chips, so we pin them.
  */
 export function renderHost(
-  opts: { sessionOverride?: SessionOverride; searchParams?: string } = {},
+  opts: {
+    sessionOverride?: SessionOverride;
+    searchParams?: string;
+    /** Follow-ups the backend still holds in the session's pending buffer. */
+    pendingMessages?: string[];
+  } = {},
 ) {
   server.use(
     sessionHandler(opts.sessionOverride),
@@ -126,8 +131,8 @@ export function renderHost(
       reset_cost: 0,
     }),
     getGetV2GetPendingMessagesMockHandler200({
-      count: 0,
-      messages: [],
+      count: opts.pendingMessages?.length ?? 0,
+      messages: opts.pendingMessages ?? [],
     }),
     // useCopilotStop POSTs here when the user clicks Stop. The default
     // Orval handler returns random faker fields; pin to a deterministic

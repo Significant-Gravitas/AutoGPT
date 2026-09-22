@@ -220,6 +220,14 @@ function usePeekOnBoundary({
 // `submitted → streaming` (that's Turn 1's opener).  Any later new
 // assistant id in the same chain is the auto-continue.  Reset on every
 // turn boundary.
+//
+// A new id is only a *cue* to reconcile, never proof of a drain: the
+// backend emits `data-status` before `start`, so `useChat` parks the turn
+// in a placeholder under its own id and then pushes the real message once
+// `start` carries the server's id — the same "new assistant id" shape, with
+// the follow-up still sitting in the buffer. Promoting on the cue alone
+// drew the chip as a plain user bubble above the live tool chain (twice
+// after a mid-turn reload, once per peek). The buffer re-read decides.
 
 function useAutoContinuePromotion({
   sessionId,
@@ -242,6 +250,10 @@ function useAutoContinuePromotion({
   // Reset to null on every turn boundary (turn-start or becameIdle) so
   // the next chain starts fresh.
   const openerAssistantIdRef = useRef<string | null>(null);
+  const latestSessionIdRef = useRef<string | null>(sessionId);
+  useEffect(() => {
+    latestSessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -272,15 +284,21 @@ function useAutoContinuePromotion({
     }
     // Same id as opener — no new assistant yet, wait.
     if (latest === openerAssistantIdRef.current) return;
-    // A different id means the backend auto-continued.
+    // A different id: reconcile once against the buffer, then treat this
+    // id as the current opener so later deltas into it stay quiet.
+    openerAssistantIdRef.current = latest;
     if (queue.length === 0) return;
 
-    const promotedIds = new Set(queue.map((entry) => entry.id));
-    promoteBeforeAssistant(setMessages, latest, queue);
-    // Drop only the entries we promoted; entries appended after the
-    // snapshot (during the React commit) survive.
-    setQueue((current) =>
-      current.filter((entry) => !promotedIds.has(entry.id)),
+    const requestSessionId = sessionId;
+    const isCurrentSession = () =>
+      latestSessionIdRef.current === requestSessionId;
+    void pollBackendAndPromote(
+      sessionId,
+      queue,
+      setMessages,
+      setQueue,
+      isCurrentSession,
+      "auto-continue",
     );
   }, [messages, status, sessionId, queue, setMessages, setQueue]);
 }
@@ -322,25 +340,6 @@ function promoteChipsToTrailingBubbles(
 // twice (different ids → dedup misses).
 function bubbleIdFor(entry: QueuedMessage): string {
   return `pending-chip-${entry.id}`;
-}
-
-function promoteBeforeAssistant(
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
-  assistantId: string,
-  queue: QueuedMessage[],
-): void {
-  setMessages((prev) => {
-    const idx = prev.findIndex((m) => m.id === assistantId);
-    const insertAt = idx === -1 ? prev.length : idx;
-    const newBubbles = queue
-      .map((entry) =>
-        makePromotedUserBubble(entry.text, "auto-continue", bubbleIdFor(entry)),
-      )
-      // Skip bubbles that are already in the array (effect re-run safety).
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-    if (newBubbles.length === 0) return prev;
-    return [...prev.slice(0, insertAt), ...newBubbles, ...prev.slice(insertAt)];
-  });
 }
 
 // ── 3. Mid-turn drain promotion ────────────────────────────────────────
@@ -458,6 +457,7 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
+  flavour: "auto-continue" | "midturn" = "midturn",
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -497,7 +497,7 @@ async function pollBackendAndPromote(
   setMessages((prev) => {
     const newBubbles = drained
       .map((entry) =>
-        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
+        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry)),
       )
       // Skip bubbles that are already there (effect re-run safety).
       .filter((bubble) => !prev.some((m) => m.id === bubble.id));

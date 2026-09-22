@@ -378,6 +378,71 @@ describe("useCopilotPendingChips", () => {
     expect(promoted?.role).toBe("user");
   });
 
+  it("keeps the chip queued when useChat swaps its placeholder id while the backend still holds the message", async () => {
+    mockGetPending.mockResolvedValue({
+      status: 200,
+      data: { count: 1, messages: ["follow up"] },
+      headers: new Headers(),
+    } as Awaited<ReturnType<typeof getV2GetPendingMessages>>);
+
+    // The backend emits `data-status` before `start`, so the turn opens as
+    // a status-only placeholder under the SDK's own id…
+    const placeholder: Messages[number] = {
+      id: "sdk-placeholder",
+      role: "assistant",
+      parts: [
+        { type: "data-status", data: { message: "Preparing…" } },
+      ] as Messages[number]["parts"],
+    };
+    const { view, getMessages, rerender } = setupHook([placeholder]);
+    act(() => {
+      view.result.current.queueMessage("follow up");
+    });
+
+    // …and the server's message id lands after it. That is not an
+    // auto-continue: the follow-up is still in the buffer.
+    await act(async () => {
+      rerender([placeholder, assistantMessage(0)]);
+    });
+
+    await waitFor(() => expect(mockGetPending).toHaveBeenCalledWith("s1"));
+    expect(view.result.current.queuedMessages).toEqual(["follow up"]);
+    expect(getMessages().some((m) => m.id.startsWith("promoted-"))).toBe(false);
+
+    // Every later delta lands in the same message: one reconciliation per
+    // new id, not one per chunk.
+    await act(async () => {
+      rerender([placeholder, assistantMessage(0)]);
+    });
+    expect(mockGetPending).toHaveBeenCalledTimes(1);
+  });
+
+  it("promotes chips before the auto-continue assistant once the backend confirms the drain", async () => {
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+    act(() => {
+      view.result.current.queueMessage("follow up");
+    });
+
+    const continuation: Messages[number] = {
+      id: "assistant-continuation",
+      role: "assistant",
+      parts: [{ type: "text", text: "continuing…", state: "done" }],
+    };
+    await act(async () => {
+      rerender([assistantMessage(0), continuation]);
+    });
+
+    await waitFor(() => {
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+    const ids = getMessages().map((m) => m.id);
+    expect(ids).toHaveLength(3);
+    expect(ids[0]).toBe(ASSISTANT_ID);
+    expect(ids[1]).toMatch(/^promoted-auto-continue-pending-chip-/);
+    expect(ids[2]).toBe("assistant-continuation");
+  });
+
   it("does not promote when the backend buffer count still covers the local chips", async () => {
     mockGetPending.mockResolvedValue({
       status: 200,
