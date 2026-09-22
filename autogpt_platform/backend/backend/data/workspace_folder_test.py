@@ -57,7 +57,10 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
 
     @asynccontextmanager
     async def _fake_tx(*args, **kwargs):
-        yield None
+        # The hierarchy lock runs on the transaction, so it cannot be None.
+        tx = mocker.MagicMock()
+        tx.execute_raw = mocker.AsyncMock()
+        yield tx
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
@@ -155,7 +158,10 @@ async def test_bulk_move_validates_target_folder_ownership(mocker):
 
     @asynccontextmanager
     async def _fake_tx(*args, **kwargs):
-        yield None
+        # The hierarchy lock runs on the transaction, so it cannot be None.
+        tx = mocker.MagicMock()
+        tx.execute_raw = mocker.AsyncMock()
+        yield tx
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
@@ -180,7 +186,10 @@ async def test_bulk_move_to_root_skips_folder_lookup(mocker):
 
     @asynccontextmanager
     async def _fake_tx(*args, **kwargs):
-        yield None
+        # The hierarchy lock runs on the transaction, so it cannot be None.
+        tx = mocker.MagicMock()
+        tx.execute_raw = mocker.AsyncMock()
+        yield tx
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
@@ -293,7 +302,10 @@ async def test_delete_folder_takes_the_whole_subtree(mocker):
 
     @asynccontextmanager
     async def _fake_tx(*args, **kwargs):
-        yield None
+        # The hierarchy lock runs on the transaction, so it cannot be None.
+        tx = mocker.MagicMock()
+        tx.execute_raw = mocker.AsyncMock()
+        yield tx
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 

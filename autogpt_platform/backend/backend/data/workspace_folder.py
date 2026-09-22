@@ -150,12 +150,11 @@ async def create_folder(
     A parent outside this workspace, or already deleted, is a
     :class:`NotFoundError` rather than a foreign-key error: ``parentId`` is
     written directly and the FK only checks that the row exists.
-    """
-    if parent_id is not None:
-        await _get_folder_record(parent_id, workspace_id)
-    if await _name_taken(workspace_id, name, parent_id):
-        raise FolderAlreadyExistsError("A folder with this name already exists")
 
+    Creating under a parent takes the workspace's hierarchy lock, because a
+    check against a live parent and an insert under it must not straddle a
+    delete of that parent's subtree.
+    """
     create_data: dict = {
         "name": name,
         "Workspace": {"connect": {"id": workspace_id}},
@@ -165,10 +164,17 @@ async def create_folder(
     if parent_id is not None:
         create_data["Parent"] = {"connect": {"id": parent_id}}
 
-    try:
-        folder = await UserWorkspaceFolder.prisma().create(data=create_data)
-    except UniqueViolationError:
-        raise FolderAlreadyExistsError("A folder with this name already exists")
+    async with transaction() as tx:
+        if parent_id is not None:
+            await _lock_workspace_hierarchy(tx, workspace_id)
+            await _get_folder_record(parent_id, workspace_id)
+        if await _name_taken(workspace_id, name, parent_id):
+            raise FolderAlreadyExistsError("A folder with this name already exists")
+
+        try:
+            folder = await UserWorkspaceFolder.prisma(tx).create(data=create_data)
+        except UniqueViolationError:
+            raise FolderAlreadyExistsError("A folder with this name already exists")
 
     logger.info(f"Created workspace folder {folder.id} in workspace {workspace_id}")
     return WorkspaceFolder.from_db(folder)
@@ -240,7 +246,7 @@ async def apply_folder_update(
     moves it to the workspace root.
     """
     async with transaction() as tx:
-        await _lock_workspace_moves(tx, workspace_id)
+        await _lock_workspace_hierarchy(tx, workspace_id)
 
         folder = await _get_folder_record(folder_id, workspace_id)
         moving = not isinstance(parent_id, _Unchanged)
@@ -285,8 +291,12 @@ async def apply_folder_update(
     return await get_folder(folder_id, workspace_id)
 
 
-async def _lock_workspace_moves(tx: Prisma, workspace_id: str) -> None:
-    """Hold the workspace's move lock until the transaction ends.
+async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
+    """Hold the workspace's folder-hierarchy lock until the transaction ends.
+
+    Moves, parented creates and subtree deletes all check the tree and then
+    write it, so they serialize against each other or one can act on a shape
+    another has already changed.
 
     execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
     Prisma cannot deserialize as a result column.
@@ -323,13 +333,17 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
 
     Files are reparented to root (``folderId = null``) rather than deleted —
     the semantics the single-folder delete already had — so nothing is
-    orphaned behind a hidden folder, however deep it sat. Descendants are
-    resolved before the transaction opens, then deleted inside it.
-    """
-    await _get_folder_record(folder_id, workspace_id)
-    doomed = await _subtree_ids(workspace_id, folder_id)
+    orphaned behind a hidden folder, however deep it sat.
 
+    The subtree is resolved under the workspace's hierarchy lock, so a move or
+    a create cannot add a folder to it after the snapshot and leave that folder
+    live under a deleted parent, reachable from no root-anchored listing.
+    """
     async with transaction() as tx:
+        await _lock_workspace_hierarchy(tx, workspace_id)
+        await _get_folder_record(folder_id, workspace_id)
+        doomed = await _subtree_ids(workspace_id, folder_id)
+
         await UserWorkspaceFile.prisma(tx).update_many(
             where={"folderId": {"in": doomed}, "workspaceId": workspace_id},
             data={"folderId": None},
