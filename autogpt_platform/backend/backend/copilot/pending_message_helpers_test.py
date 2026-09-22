@@ -991,3 +991,37 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
     resolve_mock.assert_awaited_once_with(
         "user-1", ["file-1"], session_id="sess-1", expert_id="expert-a"
     )
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_names_attached_folders_in_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = QueuePendingMessageResponse(
+        buffer_length=1,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    queue_mock = AsyncMock(return_value=response)
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+    folder = SimpleNamespace(id="folder-1", name="Invoices", file_count=3)
+    resolve_mock = AsyncMock(return_value=[folder])
+    monkeypatch.setattr(
+        helpers_module, "resolve_attachable_workspace_folders", resolve_mock
+    )
+
+    await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+        folder_ids=["folder-1"],
+        expert_id="expert-a",
+    )
+
+    resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
+    assert "Invoices" in queue_mock.call_args.kwargs["message"]

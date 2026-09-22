@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspaceFile, UserWorkspaceFolder
+from prisma.models import UserWorkspace, UserWorkspaceFile, UserWorkspaceFolder
 
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
@@ -28,7 +28,9 @@ from backend.data.workspace_folder import (
     delete_folder,
     list_workspace_folders,
     move_folder,
+    resolve_attachable_workspace_folders,
 )
+from backend.data.workspace_scope import WorkspaceScope
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -290,3 +292,39 @@ async def test_a_move_onto_a_taken_name_is_refused(server: SpinTestServer):
 
     with pytest.raises(FolderAlreadyExistsError):
         await move_folder(loose.id, workspace, parent.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_attaching_folders_drops_foreign_and_deleted_ones_and_gates_on_scope(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    workspace = await _workspace()
+    owner = await UserWorkspace.prisma().find_unique(where={"id": workspace})
+    assert owner is not None
+    mine = await create_folder(workspace, "Invoices")
+    deleted = await create_folder(workspace, "Old")
+    await delete_folder(deleted.id, workspace)
+    foreign = await create_folder(await _workspace(), "Theirs")
+    ids = [mine.id, deleted.id, foreign.id]
+
+    resolved = await resolve_attachable_workspace_folders(
+        owner.userId, ids, expert_id=None
+    )
+    assert [f.id for f in resolved] == [mine.id]
+
+    # A missing expert resolves to a fail-closed scope: no folders at all.
+    assert (
+        await resolve_attachable_workspace_folders(
+            owner.userId, ids, expert_id=str(uuid.uuid4())
+        )
+        == []
+    )
+
+    async def granted(user_id: str, expert_id: str) -> WorkspaceScope:
+        return WorkspaceScope(expert_id=expert_id, reads_user_files=True)
+
+    monkeypatch.setattr(workspace_folder, "resolve_expert_workspace_scope", granted)
+    resolved = await resolve_attachable_workspace_folders(
+        owner.userId, ids, expert_id="exp-1"
+    )
+    assert [f.id for f in resolved] == [mine.id]

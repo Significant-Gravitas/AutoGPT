@@ -19,6 +19,7 @@ from backend.copilot.tools.workspace_files import (
     _folder_subtree,
 )
 from backend.data.workspace_folder import WorkspaceFolder
+from backend.data.workspace_scope import WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
 NOW = datetime(2026, 9, 22, tzinfo=timezone.utc)
@@ -55,7 +56,7 @@ def db():
     with (
         patch("backend.util.workspace.workspace_db", return_value=db),
         patch(
-            "backend.copilot.tools.workspace_files.workspace_folder_db",
+            "backend.util.workspace.workspace_folder_db",
             return_value=folders,
         ),
         patch(
@@ -90,6 +91,7 @@ async def test_folder_id_lists_that_folder_and_its_child_folders(db):
     result = await _list(db, folder_id="invoices")
 
     assert [f.folder_id for f in result.folders] == ["2026"]
+    assert "in folder Invoices:" in result.message
     assert db.list_workspace_files.call_args.kwargs["folder_id"] == "invoices"
     assert db.count_workspace_files.call_args.kwargs["folder_id"] == "invoices"
 
@@ -150,3 +152,25 @@ def test_the_subtree_walk_terminates_on_a_cycle():
 
     assert sorted(subtree) == ["a", "b"]
     assert unsearched == 0
+
+
+@pytest.mark.parametrize(
+    "scope, sees_folders",
+    [
+        (WorkspaceScope(expert_id="exp-1", session_ids=["sess-1"]), False),
+        (WorkspaceScope(expert_id="exp-1", reads_user_files=True), True),
+        (None, True),
+    ],
+)
+async def test_folders_are_listed_only_for_a_scope_that_reads_user_files(
+    db, scope, sees_folders
+):
+    manager = WorkspaceManager("user-1", "ws-1", "sess-1", scope=scope)
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        new=AsyncMock(return_value=manager),
+    ):
+        result = await _list(db)
+
+    assert bool(result.folders) is sees_folders
+    assert ("[folder]" in result.message) is sees_folders

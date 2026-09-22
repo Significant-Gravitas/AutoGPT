@@ -23,7 +23,6 @@ from backend.copilot.tools.workdir import (
     validate_ephemeral_path,
 )
 from backend.data.activity_event import ActivityEventDraft
-from backend.data.db_accessors import workspace_folder_db
 from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
@@ -425,9 +424,7 @@ class ListWorkspaceFilesTool(BaseTool):
 
         try:
             manager = await get_workspace_manager(user_id, session_id)
-            folders = await workspace_folder_db().list_workspace_folders(
-                manager.workspace_id
-            )
+            folders = await manager.list_folders()
             descend = folder_id if recursive else None
             subtree, unsearched = (
                 _folder_subtree(folders, descend) if descend else ([], 0)
@@ -467,7 +464,12 @@ class ListWorkspaceFilesTool(BaseTool):
                 if f.parent_id == folder_id
             ]
             scope = "all sessions" if include_all_sessions else "current session"
-            where = f"folder {folder_id}" if folder_id else f"workspace ({scope})"
+            names = {f.id: f.name for f in folders}
+            where = (
+                f"folder {names.get(folder_id, folder_id)}"
+                if folder_id
+                else f"workspace ({scope})"
+            )
             total_size = sum(f.size_bytes for f in file_infos)
 
             # Build a human-readable summary so the agent can relay details.
