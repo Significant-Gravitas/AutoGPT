@@ -88,7 +88,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "content-repurposing",
         "categories": ["marketing", "content"],
-        "required_providers": [],
+        "required_providers": ["reddit"],
     },
     {
         "slug": "competitor-teardown",
@@ -402,12 +402,26 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "robin-getting-started",
         "categories": ["support", "operations"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": [
+            "google",
+            "mcp_gong",
+            "mcp_granola",
+            "mcp_linear",
+            "notion",
+            "slack",
+        ],
     },
     {
         "slug": "blake-getting-started",
         "categories": ["sales"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": [
+            "google",
+            "hubspot",
+            "mcp_gong",
+            "mcp_granola",
+            "notion",
+            "slack",
+        ],
     },
     {
         "slug": "logistics-shipment-and-customs",
@@ -492,7 +506,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "escalations-and-incidents",
         "categories": ["support", "operations"],
-        "required_providers": ["slack"],
+        "required_providers": ["mcp_linear", "slack"],
     },
     {
         "slug": "knowledge-centered-service",
@@ -747,7 +761,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "anika-getting-started",
         "categories": ["sales", "operations"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": ["google", "hubspot", "mcp_granola", "notion", "slack"],
     },
     {
         "slug": "define-the-partner-icp",
@@ -917,7 +931,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "daniel-getting-started",
         "categories": ["finance", "operations"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": ["google", "hubspot", "notion", "slack", "stripe"],
     },
     {
         "slug": "budget-vs-actuals-and-reforecast",
@@ -967,7 +981,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "alex-getting-started",
         "categories": ["development", "research"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": ["github", "google", "mcp_linear", "notion", "slack"],
     },
     {
         "slug": "product-roadmap-and-prioritization",
@@ -1022,7 +1036,13 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "sofia-getting-started",
         "categories": ["operations"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": [
+            "google",
+            "mcp_granola",
+            "mcp_linear",
+            "notion",
+            "slack",
+        ],
     },
     {
         "slug": "role-intake-and-scorecard",
@@ -1037,7 +1057,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "candidate-sourcing-strategy",
         "categories": ["operations", "research"],
-        "required_providers": [],
+        "required_providers": ["github"],
     },
     {
         "slug": "passive-candidate-outreach",
@@ -1072,7 +1092,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
     {
         "slug": "james-getting-started",
         "categories": ["operations"],
-        "required_providers": ["google", "notion", "slack"],
+        "required_providers": ["google", "mcp_linear", "notion", "slack"],
     },
     {
         "slug": "ops-run-the-operating-rhythm",
