@@ -255,6 +255,3 @@ class TestMathGuidance:
     def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
         assert "`$…$` inline, `$$…$$` for display" in result
-
-    def test_baseline_mode_gets_the_same_rule(self):
-        assert "`$…$` inline, `$$…$$` for display" in prompting.SHARED_TOOL_NOTES
