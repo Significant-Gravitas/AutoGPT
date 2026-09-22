@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { isKey } from "@/lib/keyboard";
 
@@ -11,6 +12,8 @@ interface Props {
   setIsOpen: (open: boolean) => void;
   mode: "create" | "edit";
   initialName?: string;
+  /** Folder the new one lands in, shown under the input. Absent at the root. */
+  location?: string;
   isSubmitting: boolean;
   onSubmit: (values: { name: string }) => void;
 }
@@ -20,6 +23,7 @@ export function FolderFormDialog({
   setIsOpen,
   mode,
   initialName = "",
+  location,
   isSubmitting,
   onSubmit,
 }: Props) {
@@ -60,6 +64,11 @@ export function FolderFormDialog({
             className="w-full"
             wrapperClassName="!mb-0"
           />
+          {location ? (
+            <Text variant="small" className="text-zinc-500">
+              Inside &ldquo;{location}&rdquo;
+            </Text>
+          ) : null}
           <Button
             variant="primary"
             className="mt-2"

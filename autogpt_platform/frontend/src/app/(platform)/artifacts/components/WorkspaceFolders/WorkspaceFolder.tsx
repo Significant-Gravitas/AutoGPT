@@ -1,15 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { FILE_DRAG_MIME, readFileDragIds } from "./drag";
+import { FolderActionsMenu } from "./FolderActionsMenu";
+import { folderSummary } from "./folderTree";
 import { FOLDER_STYLE } from "./folder-constants";
-import {
-  Delete02Icon,
-  Folder01Icon,
-  PencilIcon,
-} from "@hugeicons/core-free-icons";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
 
@@ -17,7 +14,9 @@ interface Props {
   id: string;
   name: string;
   fileCount: number;
+  subfolderCount: number;
   onEdit: () => void;
+  onMove: () => void;
   onDelete: () => void;
   onClick: () => void;
   onFileDrop: (fileIds: string[], folderId: string) => void;
@@ -27,7 +26,9 @@ export function WorkspaceFolder({
   id,
   name,
   fileCount,
+  subfolderCount,
   onEdit,
+  onMove,
   onDelete,
   onClick,
   onFileDrop,
@@ -92,34 +93,16 @@ export function WorkspaceFolder({
           {name}
         </Text>
         <Text variant="small" className="text-zinc-500">
-          {fileCount} {fileCount === 1 ? "file" : "files"}
+          {folderSummary(fileCount, subfolderCount)}
         </Text>
       </div>
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        <Button
-          variant="icon"
-          size="icon"
-          aria-label="Rename folder"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="h-9 w-9 !p-2 text-zinc-500 hover:text-zinc-800"
-        >
-          <Icon icon={PencilIcon} size={16} />
-        </Button>
-        <Button
-          variant="icon"
-          size="icon"
-          aria-label="Delete folder"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="h-9 w-9 !p-2 text-zinc-500 hover:text-red-600"
-        >
-          <Icon icon={Delete02Icon} size={16} />
-        </Button>
+      <div className="flex items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <FolderActionsMenu
+          folderName={name}
+          onRename={onEdit}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
       </div>
     </div>
   );

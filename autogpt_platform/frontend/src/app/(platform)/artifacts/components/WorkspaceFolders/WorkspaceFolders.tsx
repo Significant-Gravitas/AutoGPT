@@ -7,17 +7,21 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import type { WorkspaceFolder as WorkspaceFolderModel } from "@/app/api/__generated__/models/workspaceFolder";
 import { useArtifactsFolders } from "../../useArtifactsFolders";
 import { FolderDialogs } from "./FolderDialogs";
+import { childrenOf, subfolderCountOf } from "./folderTree";
 import { WorkspaceFolder } from "./WorkspaceFolder";
 
 interface Props {
+  /** Folder whose children are shown; `null` is the workspace root. */
+  parentId: string | null;
   onSelectFolder: (folderId: string) => void;
 }
 
-export function WorkspaceFolders({ onSelectFolder }: Props) {
+export function WorkspaceFolders({ parentId, onSelectFolder }: Props) {
   const { folders, isLoading, isError, error, moveFilesToFolder } =
     useArtifactsFolders();
 
   const [editing, setEditing] = useState<WorkspaceFolderModel | null>(null);
+  const [moving, setMoving] = useState<WorkspaceFolderModel | null>(null);
   const [deleting, setDeleting] = useState<WorkspaceFolderModel | null>(null);
 
   if (isLoading) {
@@ -41,7 +45,8 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
     );
   }
 
-  if (folders.length === 0) return null;
+  const children = childrenOf(folders, parentId);
+  if (children.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-3" data-testid="workspace-folders">
@@ -49,14 +54,16 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
         Folders
       </Text>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {folders.map((folder) => (
+        {children.map((folder) => (
           <WorkspaceFolder
             key={folder.id}
             id={folder.id}
             name={folder.name}
             fileCount={folder.file_count ?? 0}
+            subfolderCount={subfolderCountOf(folders, folder.id)}
             onClick={() => onSelectFolder(folder.id)}
             onEdit={() => setEditing(folder)}
+            onMove={() => setMoving(folder)}
             onDelete={() => setDeleting(folder)}
             onFileDrop={(fileIds, folderId) => {
               moveFilesToFolder({ fileIds, folderId }).catch(() => {});
@@ -66,8 +73,10 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
       </div>
       <FolderDialogs
         editing={editing}
+        moving={moving}
         deleting={deleting}
         onEditClose={() => setEditing(null)}
+        onMoveClose={() => setMoving(null)}
         onDeleteClose={() => setDeleting(null)}
       />
     </div>
