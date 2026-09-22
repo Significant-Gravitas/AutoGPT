@@ -258,19 +258,19 @@ describe("WorkspaceFilePicker", () => {
     expect(selectedNames()).toEqual(["f-1", "f-3"]);
   });
 
-  it("presents the grid as a multi-select listbox", async () => {
+  // No listbox role: that promises arrow-key navigation the grid lacks.
+  it("exposes each card's selection as a pressed toggle button", async () => {
     mockPage(makeFiles(2));
     render(
       <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
     );
     await screen.findByText("f-0");
 
-    const listbox = screen.getByRole("listbox", { name: /workspace files/i });
-    expect(listbox.getAttribute("aria-multiselectable")).toBe("true");
-    expect(screen.getAllByRole("option")).toHaveLength(2);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(card("f-0").getAttribute("aria-pressed")).toBe("false");
 
     fireEvent.click(card("f-0"));
-    expect(card("f-0").getAttribute("aria-selected")).toBe("true");
+    expect(card("f-0").getAttribute("aria-pressed")).toBe("true");
   });
 });
 
@@ -282,13 +282,13 @@ function mockPage(files: ReturnType<typeof makeFiles>) {
 }
 
 function card(name: string) {
-  return screen.getByRole("option", { name: new RegExp(`^${name}\\b`) });
+  return screen.getByRole("button", { name: new RegExp(`^${name}\\b`) });
 }
 
 function selectedNames() {
   return screen
-    .getAllByRole("option")
-    .filter((el) => el.getAttribute("aria-selected") === "true")
+    .getAllByRole("button")
+    .filter((el) => el.getAttribute("aria-pressed") === "true")
     .map((el) => el.querySelector("[title]")?.textContent ?? "")
     .sort();
 }

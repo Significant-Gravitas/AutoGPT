@@ -103,12 +103,7 @@ export function WorkspaceFileList({
         onScroll={updateEdges}
         className="max-h-[24rem] overflow-y-auto py-1"
       >
-        <div
-          role="listbox"
-          aria-multiselectable
-          aria-label="Workspace files"
-          className="grid grid-cols-2 gap-2"
-        >
+        <div className="grid grid-cols-2 gap-2">
           {files.map((file, index) => {
             const isSelected = selectedIds.has(file.id);
             const fileIcon = getFileTypeIcon(file.mime_type);
@@ -116,7 +111,6 @@ export function WorkspaceFileList({
               <button
                 key={file.id}
                 type="button"
-                role="option"
                 onClick={(e) =>
                   onSelect(index, {
                     shift: e.shiftKey,
@@ -124,7 +118,7 @@ export function WorkspaceFileList({
                   })
                 }
                 onKeyDown={(e) => handleRangeKey(e, index, onSelect)}
-                aria-selected={isSelected}
+                aria-pressed={isSelected}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
                   isSelected
