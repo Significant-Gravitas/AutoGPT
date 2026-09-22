@@ -70,29 +70,40 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "youtube-to-linkedin-post-converter",
     "youtube-transcription-scraper",
 }
-# Personas that deliberately ship no workflows, so the 2-4 preload bound below
-# stays a real check on everyone else. Remy's workflow listings are unavailable;
-# the other names are skills-only by design.
+# Personas that ship no workflows, so the 2-4 preload bound below stays a real
+# check on everyone else. Three different reasons, and only the middle one is a
+# design choice: Remy's workflow listings are unavailable; dev's specialists are
+# skills-only by design; and Alex, Daniel, James and Sofia carry skills and
+# routines but no preloads because the marketplace has no listing in their
+# domains at all -- every one of the 17 store listings is sales, marketing or
+# content, so there is nothing for recruiting, finance, product or ops to
+# preload. That last group should leave this set once such listings exist.
+# Note this set now exempts 23 of the 33 roster entries, so the bound below is
+# only really checking the remaining ten.
 PERSONAS_WITHOUT_WORKFLOWS = {
-    "Remy",
-    "Mina",
-    "Theo",
-    "Quinn",
-    "Harper",
-    "Vera",
-    "Ellis",
-    "Devon",
-    "Riley",
-    "Jordan",
-    "Sasha",
-    "Priya",
-    "Marco",
-    "Noor",
+    "Alex",
     "Casey",
+    "Daniel",
+    "Devon",
+    "Ellis",
+    "Harper",
     "Ines",
-    "Omar",
-    "Lena",
+    "James",
+    "Jordan",
     "Kai",
+    "Lena",
+    "Marco",
+    "Mina",
+    "Noor",
+    "Omar",
+    "Priya",
+    "Quinn",
+    "Remy",
+    "Riley",
+    "Sasha",
+    "Sofia",
+    "Theo",
+    "Vera",
 }
 EXPECTED_SKILLS_ONLY_ROSTER = {
     "Devon": [
@@ -131,8 +142,8 @@ EXPECTED_SKILLS_ONLY_ROSTER = {
 # may carry one; pinning the whole set here makes adding a cron a deliberate
 # edit to this test rather than a silent roster change.
 EXPECTED_ROSTER_SCHEDULES = {
-    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
     ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
 }
 EXPECTED_OPERATIONS_SKILLS = {
     "Harper": [
@@ -3547,7 +3558,15 @@ def test_wave_three_covers_exactly_the_nine_new_experts():
         "Lena",
         "Kai",
     }
-    assert len(seed.ROSTER) == 24
+
+
+def test_the_roster_is_the_expected_size_with_unique_names():
+    """Kept out of the wave-three test above so that adding an expert on either
+    side edits the test about the roster rather than the one about dev's nine.
+    Names must be unique: two entries sharing one is what forced the rename of
+    this branch's Casey, Priya and Sasha when dev's wave three landed."""
+    # 24 from dev's waves plus the nine generalist experts this branch adds.
+    assert len(seed.ROSTER) == 33
     names = [entry["name"] for entry in seed.ROSTER]
     assert len(names) == len(set(names))
 

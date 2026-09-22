@@ -757,11 +757,13 @@ def test_default_skills_are_platform_origin_not_the_owners():
 
 @pytest.mark.asyncio
 async def test_store_user_skill_rejects_an_unknown_origin():
-    with _patch_skills_path(_FakeWorkspaceManager()):
-        with pytest.raises(ValueError, match="origin"):
-            await store_user_skill(
-                "user-1", name="x", description="ok", body="ok", origin="platform"
-            )
+    with (
+        _patch_skills_path(_FakeWorkspaceManager()),
+        pytest.raises(ValueError, match="origin"),
+    ):
+        await store_user_skill(
+            "user-1", name="x", description="ok", body="ok", origin="platform"
+        )
 
 
 @pytest.mark.asyncio
@@ -834,12 +836,27 @@ async def test_origin_survives_the_index_cache():
 
 
 @pytest.mark.asyncio
-async def test_store_skill_at_cap_refuses_when_lock_not_held():
-    """When ``AsyncClusterLock.try_acquire`` returns a DIFFERENT owner
-    (i.e. contention or Redis hiccup) the fallback path is unlocked.
-    In that branch the cap check must be treated strictly — refuse the
-    write at-or-above MAX_SKILLS_PER_EXPERT even on an upsert, otherwise two
-    concurrent writers could both see N==cap and both commit."""
+async def test_stale_empty_skill_index_cannot_bypass_capacity_preflight():
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        fake.files[f"/skills/skill_{i}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=f"skill_{i}", description="desc", body="body")
+        ).encode()
+    with (
+        _patch_skills_path(fake),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            AsyncMock(return_value=[]),
+        ),
+    ):
+        with pytest.raises(SkillLimitError):
+            await store_user_skill("user-1", name="extra", description="d", body="b")
+    assert len(fake.files) == MAX_SKILLS_PER_EXPERT
+
+
+@pytest.mark.asyncio
+async def test_store_skill_at_cap_allows_upsert_without_redis_lock():
+    """Root publication owns capacity even when Redis cannot coordinate writes."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
     for i in range(MAX_SKILLS_PER_EXPERT):
@@ -875,8 +892,7 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
             description="ok",
             body="ok",
         )
-        # Upsert at-cap → also rejected in unlocked branch (cannot prove
-        # atomicity, so refuse defensively).
+        # Updating an existing root does not consume capacity.
         upsert_result = await tool._execute(
             user_id="user-1",
             session=_make_session(),
@@ -886,8 +902,7 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
         )
     assert isinstance(new_result, ErrorResponse)
     assert "limit" in new_result.message.lower()
-    assert isinstance(upsert_result, ErrorResponse)
-    assert "limit" in upsert_result.message.lower()
+    assert isinstance(upsert_result, StoreSkillResponse)
 
 
 @pytest.mark.asyncio
@@ -2259,6 +2274,23 @@ async def test_a_failed_file_write_leaves_no_skill_and_no_tree():
                 ],
             )
         assert await _list_user_skills_from_workspace("user-1") == []
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_root_publication_removes_new_package_files():
+    fake = _FailingWorkspaceManager(fail_on=3)
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            await store_user_skill(
+                "user-1",
+                name="pkg",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(relative_path=f"r{i}.md", content=b"x") for i in range(2)
+                ],
+            )
     assert fake.files == {}
 
 

@@ -49,6 +49,10 @@ def resolve_connected(
 
 def tier(entry: CapabilityEntry, connected: bool | None) -> int:
     """0 = connected service ... 3 = bare primitive; used for tie-breaks."""
+    if entry.kind == "skill":
+        # The owner's own procedure: nothing to connect, written for this
+        # user, so it ranks with the services they have connected.
+        return 0
     if entry.klass == "service":
         return 0 if connected else 1
     # A host-keyed primitive resolves its credential from the request URL at

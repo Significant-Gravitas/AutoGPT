@@ -16484,7 +16484,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "File not found" },
-          "409": { "description": "A file with this name already exists here" },
+          "409": {
+            "description": "File name conflict or skill capacity reached"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

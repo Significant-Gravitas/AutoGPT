@@ -17,18 +17,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/components/atoms/Select/Select", () => {
   function Select({
     id,
+    label,
+    "aria-labelledby": labelledBy,
+    "aria-describedby": describedBy,
     value,
     onValueChange,
     options,
   }: {
     id: string;
+    label: string;
+    "aria-labelledby"?: string;
+    "aria-describedby"?: string;
     value?: string;
     onValueChange?: (value: string) => void;
     options: { value: string; label: string }[];
   }) {
     return (
       <select
-        aria-label={id}
+        id={id}
+        aria-label={label}
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
         value={value ?? ""}
         onChange={(event) => onValueChange?.(event.target.value)}
       >
@@ -186,7 +195,7 @@ describe("Code Generation transport fields", () => {
     expect(screen.queryByText("System Prompt")).toBeNull();
     expect(screen.queryByText("Reasoning Effort")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("agpt_%_transport"), {
+    fireEvent.change(screen.getByLabelText("Transport"), {
       target: { value: "1" },
     });
 
@@ -225,7 +234,7 @@ function renderTransport(
 }
 
 function transportOptionLabels() {
-  const select = screen.getByLabelText("agpt_%_transport");
+  const select = screen.getByLabelText("Transport");
   return Array.from(select.querySelectorAll("option")).map(
     (option) => option.textContent,
   );
@@ -370,7 +379,7 @@ describe("Transport options gated by provider entitlement", () => {
   it("does not touch the model dropdown, which no credential discriminates on", () => {
     renderTransport({ openai: makeProvider("openai", "OpenAI", []) });
 
-    const model = screen.getByLabelText("agpt_%_model");
+    const model = screen.getByLabelText("Codex Model");
     expect(
       Array.from(model.querySelectorAll("option")).map((o) => o.textContent),
     ).toEqual(["gpt-5.3-codex", "gpt-5.1-codex"]);
@@ -444,7 +453,7 @@ describe("An optional discriminator is still gated", () => {
       </CredentialsProvidersContext.Provider>,
     );
 
-    const select = screen.getByLabelText("agpt_%_transport");
+    const select = screen.getByLabelText("Transport");
     const labels = Array.from(select.querySelectorAll("option")).map(
       (o) => o.textContent,
     );
@@ -485,7 +494,7 @@ describe("An optional discriminator is still gated", () => {
       </CredentialsProvidersContext.Provider>,
     );
 
-    const select = screen.getByLabelText("agpt_%_transport");
+    const select = screen.getByLabelText("Transport");
     const platform = Array.from(select.querySelectorAll("option")).find(
       (option) => option.textContent === "AutoGPT Platform",
     );
@@ -572,7 +581,7 @@ describe("LLM blocks keep every model option", () => {
       </CredentialsProvidersContext.Provider>,
     );
 
-    const model = screen.getByLabelText("agpt_%_model");
+    const model = screen.getByLabelText("Model");
     expect(
       Array.from(model.querySelectorAll("option")).map((o) => o.textContent),
     ).toEqual(["gpt-4o", "claude-opus-4-5-20251101", "llama3.3"]);
