@@ -426,6 +426,31 @@ async def test_a_stored_skill_the_skill_download_refuses_is_refused_here_too(
     assert exc.value.over_limit
 
 
+async def test_a_stored_folder_that_cannot_be_a_package_slug_is_refused_not_a_crash(
+    mocker: pytest_mock.MockFixture,
+):
+    """The skill store never writes a folder with a space in its name, so one
+    can only reach the export from storage it did not write. Its card fails
+    the manifest model; that has to surface as the route's 400, named after
+    the folder, rather than as an unhandled validation error."""
+    mocker.patch.object(
+        package_export,
+        "list_user_skill_folders",
+        return_value=[
+            ("my skill", ParsedSkill(name="My Skill", description="Digs.", body=""))
+        ],
+    )
+    mocker.patch.object(
+        package_export,
+        "read_user_skill_package",
+        return_value=SkillPackage(skill_md=SKILL_MD),
+    )
+
+    with pytest.raises(ExpertPackageError, match="my skill") as exc:
+        await _build(_expert())
+    assert not exc.value.over_limit
+
+
 async def test_a_skill_with_no_stored_package_is_left_out_of_both(
     mocker: pytest_mock.MockFixture,
 ):
