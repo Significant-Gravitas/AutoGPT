@@ -2,8 +2,8 @@
 
 One :class:`CapabilityEntry` describes one thing the copilot can do: a
 platform tool, a block, an MCP server from the catalog, or (phase 2) a
-library agent.  The registry indexes entries by name, purpose and tags;
-argument schemas are fetched on demand and never indexed.
+library agent.  The registry indexes entries by name, description and
+tags; argument schemas are fetched on demand and never indexed.
 """
 
 from __future__ import annotations
@@ -55,6 +55,11 @@ class CapabilityEntry(BaseModel):
     klass: CapabilityClass = "service"
     name: str
     purpose: str = Field(max_length=PURPOSE_MAX_CHARS)
+    # Everything the source says about the capability, for the index only:
+    # ``purpose`` is the first sentence or two of it, sized for a listing,
+    # and the sentence that names what a block does in CoPilot ("saves to
+    # workspace") is often the one clipped away.  Never listed.
+    description: str = ""
     tags: list[str] = Field(default_factory=list)
     context: CapabilityContext = "both"
     implementations: list[Implementation] = Field(default_factory=list)
@@ -90,9 +95,14 @@ class CapabilityEntry(BaseModel):
         return self.context == "both" or context == "both" or self.context == context
 
 
+def normalize_text(text: str | None) -> str:
+    """*text* with its whitespace collapsed, for the index."""
+    return " ".join((text or "").split())
+
+
 def clip_purpose(text: str | None, limit: int = PURPOSE_MAX_CHARS) -> str:
     """First sentence-ish of *text*, at most *limit* characters."""
-    text = " ".join((text or "").split())
+    text = normalize_text(text)
     if len(text) <= limit:
         return text
     cut = text[: limit - 1]

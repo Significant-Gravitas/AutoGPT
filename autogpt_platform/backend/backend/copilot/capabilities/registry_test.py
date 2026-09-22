@@ -52,6 +52,10 @@ def test_bash_exec_and_execute_code_block_are_one_capability(index):
     folded = MERGED_IMPLEMENTATIONS["tool:bash_exec"]
     assert all(e.name != folded for e in index.entries)
     assert index.search("execute python code").names[0] == "bash_exec"
+    # The folded block's description joins the tool's, so a query phrased
+    # for the block ("sandbox") still lands on the one capability.
+    assert "sandbox" in entry.description
+    assert index.search("code sandbox").names[0] == "bash_exec"
 
 
 def test_block_capability_kind_drives_class(index):

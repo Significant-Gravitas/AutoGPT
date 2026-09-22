@@ -12,10 +12,29 @@ LINEAR_ID = "11111111-1111-1111-1111-111111111111"
 HTTP_ID = "22222222-2222-2222-2222-222222222222"
 GITHUB_ID = "33333333-3333-3333-3333-333333333333"
 INPUT_ID = "44444444-4444-4444-4444-444444444444"
+FILE_ID = "55555555-5555-5555-5555-555555555555"
+
+# Four sentences, of which ``clip_purpose`` keeps the first two: the one that
+# says what the block does in CoPilot is the one a "save" query needs.
+FILE_STORE_DESCRIPTION = (
+    "Downloads and stores a file from a URL, data URI, or local path. "
+    "Use this to fetch images, documents, or other files for processing. "
+    "In CoPilot: saves to workspace (use list_workspace_files to see it). "
+    "In graphs: outputs a data URI to pass to other blocks."
+)
 
 
 def _block(
-    block_id, name, purpose, *, provider=None, klass="service", context="both", args=()
+    block_id,
+    name,
+    purpose,
+    *,
+    provider=None,
+    klass="service",
+    context="both",
+    args=(),
+    description="",
+    tags=("issue tracking",),
 ):
     connection = (
         Connection(required=True, key_type="provider", key=provider)
@@ -28,7 +47,8 @@ def _block(
         klass=klass,
         name=name,
         purpose=purpose,
-        tags=[*([provider] if provider else []), "issue tracking"],
+        description=description,
+        tags=[*([provider] if provider else []), *tags],
         context=context,
         implementations=[Implementation(kind="block", ref=block_id)],
         connection=connection,
@@ -62,6 +82,33 @@ def index() -> CapabilityIndex:
                 args=("url", "method", "body"),
             ),
             _block(INPUT_ID, "AgentInputBlock", "Graph input.", context="graph"),
+            _block(
+                FILE_ID,
+                "FileStoreBlock",
+                "Downloads and stores a file from a URL, data URI, or local path.",
+                klass="primitive",
+                args=("file_in",),
+                description=FILE_STORE_DESCRIPTION,
+                tags=("file",),
+            ),
+            CapabilityEntry(
+                id="tool:read_workspace_file",
+                kind="tool",
+                name="read_workspace_file",
+                purpose="Read a file from persistent workspace.",
+                description=(
+                    "Read a file from persistent workspace. Use save_to_path "
+                    "to copy to working dir for processing."
+                ),
+                tags=["file", "read", "workspace"],
+                context="direct",
+                implementations=[
+                    Implementation(
+                        kind="tool", ref="read_workspace_file", context="direct"
+                    )
+                ],
+                argument_names=["path", "save_to_path"],
+            ),
             CapabilityEntry(
                 id="tool:web_search",
                 kind="tool",
@@ -161,6 +208,23 @@ def test_argument_names_are_searchable(index):
 def test_empty_and_nonsense_queries(index):
     assert index.search("   ").hits == []
     assert index.search("zzzz qqqq").hits == []
+
+
+def test_description_past_the_listed_purpose_is_indexed_but_not_listed(index):
+    """ "save file output" names FileStoreBlock only through the sentence
+    ``clip_purpose`` drops; indexing the whole description finds it, and
+    the listing the model reads stays the clipped purpose."""
+    result = index.search("save file output")
+    assert result.names[0] == "FileStoreBlock"
+    assert "description" not in result.hits[0].entry.listing()
+    assert result.hits[0].entry.listing()["purpose"] != FILE_STORE_DESCRIPTION
+
+
+def test_save_query_reaches_a_store_entry_through_the_synonym(index):
+    hits = index.search("save a file").hits
+    store = next(h for h in hits if h.entry.name == "FileStoreBlock")
+    assert store.coverage == 2.0  # "save" as written (description), "file"
+    assert store.entry in [h.entry for h in hits[:2]]
 
 
 def test_eager_tools_are_flagged_in_listing(index):

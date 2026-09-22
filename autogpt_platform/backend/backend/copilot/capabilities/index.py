@@ -276,7 +276,7 @@ def _coverage(groups: list[list[str]], doc: frozenset[str]) -> float:
 
 def _document(entry: CapabilityEntry) -> list[str]:
     tokens = tokenize(entry.name) * _NAME_WEIGHT
-    tokens += tokenize(entry.purpose)
+    tokens += tokenize(entry.description or entry.purpose)
     for tag in entry.tags:
         tokens += tokenize(tag) or [tag.lower()]
     tokens += tokenize(" ".join(entry.argument_names))

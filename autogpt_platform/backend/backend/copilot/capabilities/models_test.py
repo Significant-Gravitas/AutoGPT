@@ -18,7 +18,11 @@ def test_clip_purpose_falls_back_to_word_boundary_with_ellipsis():
 
 def test_listing_is_compact_and_only_shows_connection_when_required():
     entry = CapabilityEntry(
-        id="tool:web_search", kind="tool", name="web_search", purpose="Search."
+        id="tool:web_search",
+        kind="tool",
+        name="web_search",
+        purpose="Search.",
+        description="Search. Returns the top results for a query.",
     )
     assert entry.listing() == {
         "id": "tool:web_search",

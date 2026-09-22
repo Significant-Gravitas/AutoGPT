@@ -19,6 +19,7 @@ from backend.copilot.capabilities.models import (
     Connection,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 from backend.data.model import CredentialsFieldInfo
@@ -69,6 +70,7 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
         klass=block.capability_kind,
         name=block.name,
         purpose=clip_purpose(block.optimized_description or block.description),
+        description=normalize_text(block.description),
         tags=tags,
         context="graph" if graph_only else "both",
         implementations=[Implementation(kind="block", ref=block.id, name=block.name)],
