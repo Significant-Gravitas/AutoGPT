@@ -100,7 +100,9 @@ function TopicChip({
         ) : undefined
       }
       className={cn(
-        "min-w-0 rounded-full",
+        // The variant's #a6a6a6 is for a lone action; a row of chips reads
+        // quieter with a lighter edge.
+        "min-w-0 rounded-full border-[#dfdfdf] hover:border-[#dfdfdf]",
         size === "small" ? "gap-1 px-2" : "gap-1.5 px-3.5",
         isSelected &&
           (accent === NEUTRAL_ACCENT
