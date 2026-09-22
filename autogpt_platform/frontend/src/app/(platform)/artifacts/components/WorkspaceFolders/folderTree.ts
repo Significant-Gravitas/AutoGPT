@@ -60,16 +60,6 @@ export function subfolderCountOf(
     .length;
 }
 
-/** `Reports / 2026 / Q3`, for a one-line location label. */
-export function folderPath(
-  folders: WorkspaceFolder[],
-  folderId: string,
-): string {
-  return ancestorsOf(folders, folderId)
-    .map((folder) => folder.name)
-    .join(" / ");
-}
-
 /**
  * The one-line summary a folder gets wherever it is not being browsed —
  * direct counts only, so it never claims a subtree total it did not count.

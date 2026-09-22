@@ -4,7 +4,6 @@ import {
   ancestorsOf,
   childrenOf,
   descendantIdsOf,
-  folderPath,
   folderSummary,
   subfolderCountOf,
 } from "./folderTree";
@@ -118,16 +117,6 @@ describe("subfolderCountOf", () => {
     expect(subfolderCountOf(TREE, "reports")).toBe(2);
     expect(subfolderCountOf(TREE, "y2026")).toBe(1);
     expect(subfolderCountOf(TREE, "q3")).toBe(0);
-  });
-});
-
-describe("folderPath", () => {
-  test("joins the ancestor names with the folder's own", () => {
-    expect(folderPath(TREE, "q3")).toBe("Reports / 2026 / Q3");
-  });
-
-  test("is the bare name at the root", () => {
-    expect(folderPath(TREE, "archive")).toBe("Archive");
   });
 });
 
