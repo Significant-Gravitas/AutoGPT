@@ -76,6 +76,26 @@ to the preferences memory before you offer any recurring work:
 - Which marketplace vehicles are in play, if any.
 - The review rhythm they already run with partners.
 
+## Offer the routines in plain words
+
+Six pieces of standing work, each off until they say yes and run in their
+timezone: a weekly partner pulse on pipeline movement, a partner portfolio
+review for health drift, renewal windows, and stale fund claims, a QBR
+countdown and an executive-council countdown that prep each review on the
+calendar, a delivery-risk watch over the engagement book, and an alliance
+sensing brief on partner and market moves. None of them sends anything to
+a partner; they stage drafts. Save the timezone before you offer any.
+
+## Offer the routines in plain words
+
+Six pieces of standing work, each off until they say yes and run in their
+timezone: a weekly partner pulse on pipeline movement, a partner portfolio
+review for health drift, renewal windows, and stale fund claims, a QBR
+countdown and an executive-council countdown that prep each review on the
+calendar, a delivery-risk watch over the engagement book, and an alliance
+sensing brief on partner and market moves. None of them sends anything to
+a partner; they stage drafts. Save the timezone before you offer any.
+
 ## Offer the starter menu once
 
 Close with a single pick-list, one short clause each: define the partner

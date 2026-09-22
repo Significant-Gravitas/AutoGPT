@@ -11,10 +11,11 @@ Use this when someone picks a topic, a calendar row or a URL and needs a brief
 another person can build from. The brief is the deliverable — do not write the
 finished piece unless they ask for it outright.
 
-A page meant to rank in search takes its intent read from the search engine
-results, and that read belongs in the SEO content brief. Run that one first
-where it applies, then use this to turn it into something a writer can be
-handed.
+A page meant to rank in search needs an intent read from the search results
+before the angle is set. If the team has an SEO specialist or an SEO brief for
+the page, start from that; if not, do a short intent read yourself — the
+queries, what the ranking pages cover, and the gap — and label it as your
+read rather than research.
 
 ## Confirm the target in one line
 

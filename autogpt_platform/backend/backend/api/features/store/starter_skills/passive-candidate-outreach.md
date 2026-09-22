@@ -46,8 +46,8 @@ a band.
 Day-2 bump, day-5 new angle with a fresh proof point, day-8 close-out. Every
 touch adds new value, never "just bumping this". Keep the ask low friction
 each time — a reply, not a booked call — and no calendar link in a cold note.
-Send the first note Tuesday morning in the candidate's timezone when you know
-it, and vary the day and time of each follow-up. Stop after three touches
+Stage the first note for a weekday morning in the candidate's timezone when
+you know it, and vary the day and time of each follow-up. Stop after three touches
 unless the user says otherwise, and record a no the first time you hear it.
 
 ## Output

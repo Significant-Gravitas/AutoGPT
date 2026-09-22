@@ -29,10 +29,12 @@ The eligibility bar comes first: net-new, BANT-qualified — budget,
 authority, need, timeline — and the partner in good standing.
 
 Track every registration through Submitted, In-review, Approved, or
-Action required with the reviewer's comments attached. Decide inside a
-48-hour SLA, with a reminder at 24 hours and an escalation at 48. Protect
-for 60 days, alert 7 days before expiry, and allow exactly one 30-day
-renewal with sign-off. Never auto-renew.
+Action required with the reviewer's comments attached. Decide inside two
+business days, with a reminder at one and an escalation at two. Protect
+for 90 days, alert 7 days before expiry, and allow exactly one 30-day
+renewal on logged activity with sign-off. Never auto-renew. Where the
+program's published rules differ from these defaults, the program rules
+win — cite them.
 
 Every claimed deal names its registration identifier and date, its state,
 its window, and its conflict check. Closes need a Closed-Lost reason.

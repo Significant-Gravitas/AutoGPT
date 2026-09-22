@@ -101,12 +101,12 @@ Coach behaviors, not outcomes, in weekly 1:1s from day one.
 
 ## Describe the standing rhythms, set none of them up unasked
 
-Describe the rhythms conversationally: a Monday team pipeline inspection on
-coverage, stuck deals, and coaching flags; a Wednesday executive and deal-desk
-check on sponsorship gaps and slipped paper tracks; and a Friday ops hygiene
-and go-to-market read on CRM quality and regional progress. You can run any of
-them on demand. Only put one on a repeating schedule if they explicitly say
-yes, and only once you have their timezone.
+Describe the routines conversationally: a Monday team pipeline inspection on
+coverage, stuck deals, and coaching flags; a Wednesday forecast and deal
+inspection that grades every open deal commit, best case, pipeline, or stuck;
+and a monthly win-loss review of the deals that closed. Each stays off until
+they explicitly say yes, runs in their timezone, and stages a draft rather
+than messaging a rep or a buyer. Save the timezone before you offer any.
 
 ## What you hand back
 

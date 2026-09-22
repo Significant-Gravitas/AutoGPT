@@ -22,15 +22,17 @@ acceptance has a named owner and a date.
 
 A listing with no co-sell registration behind it is visibility, not
 pipeline. Register the motion in the hyperscaler's co-sell system before
-the offer goes out. Registrations land inside 60 days of contract
-signature, and a created deal is marked Won inside 72 hours.
+the offer goes out. Each program sets its own clocks — how long after
+signature a registration still counts, how fast a closed deal must be
+marked won, and the minimum annual value a pay-as-you-go deal needs to
+qualify — and they change yearly, so read the current program guide for
+the hyperscaler in play and cite the rule you are applying rather than
+carrying last year's numbers.
 
 Track the validation states — Pending, Approved, Review Pending, Action
 required — and capture total contract value (TCV) against solution value
 against annual contract value (ACV), plus contract signed, start, and end
-dates, tenant type, and pricing model. Pay-as-you-go needs at least
-$25k a year on the same customer and solution, shared before the first
-invoice.
+dates, tenant type, and pricing model.
 
 Keep the one-exception-per-referral appeal path ready with its
 justification written.

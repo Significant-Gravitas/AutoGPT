@@ -16,8 +16,8 @@ already knows there.
 Rank contacts director-plus first: economic buyer, champion, technical
 evaluator, procurement or legal, then users and coaches. Each entry carries
 name, title, role tag, and a dated hook with a source URL when one exists.
-Apply the buyer-access test: no path to the economic buyer means the deal
-closes under half the time, so name the warm path or the gap. A champion
+Apply the buyer-access test: a deal with no path to the economic buyer
+closes far less often, so name the warm path or the gap. A champion
 proves out only when they will sell inside the room and open the buyer
 door — enthusiasm alone is a coach.
 

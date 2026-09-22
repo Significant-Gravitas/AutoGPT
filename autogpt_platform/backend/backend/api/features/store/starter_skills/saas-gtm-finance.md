@@ -27,12 +27,15 @@ equals ending ARR. Say which period and which cohort in the same line.
 
 Compute net revenue retention (NRR) and gross revenue retention (GRR)
 on the same cohort and period, and state the denominator plainly. Never
-blend cohorts silently. Benchmarks: NRR at or above 100% is healthy and
-120% is elite; GRR at or above 90% is healthy and 95% is elite.
+blend cohorts silently. Common SaaS benchmarks, which vary by segment
+and deal size: NRR at or above 100% is healthy and 120% is elite; GRR at
+or above 90% is healthy and 95% is elite. Say which segment a benchmark
+was drawn from before grading against it.
 
 Split logo churn from revenue churn, and check the new-logo share of
-growth: at least half of revenue growth should come from new logos, or
-a strong NRR may be masking a new-logo problem.
+growth: when nearly all growth is expansion, a strong NRR can be masking
+a new-logo problem, so say what share came from new logos and what that
+implies for this stage of company rather than applying one fixed ratio.
 
 ## Pipeline coverage and the quarter grade
 

@@ -10,11 +10,13 @@ version: "1"
 Use this once a voice already exists and the question has moved from *how do we
 sound* to *what do we say, to whom, and where*.
 
-This skill does not capture the voice. Sentence length, contractions, headings,
-punctuation habits and the check-a-draft pass belong to the brand voice guide —
-run that first. If a positioning read already exists from an ideal customer
-profile (ICP) exercise, start from it rather than writing a second one that
-disagrees.
+This skill does not capture the voice. Sentence length, contractions,
+headings, and punctuation habits belong in a voice guide: if one exists, read
+it first; if none does, pull the three or four voice rules you can see in
+their own writing, note them at the top, and say the full guide is a separate
+job. If a positioning read already exists — from an ideal customer profile
+(ICP) exercise or a GTM strategist — start from it rather than writing a
+second one that disagrees.
 
 ## The positioning line
 

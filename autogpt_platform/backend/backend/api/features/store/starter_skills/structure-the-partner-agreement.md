@@ -36,9 +36,11 @@ who owns the customer relationship; deal registration and rules of
 engagement; and the open items for Legal and Finance.
 
 The registration block carries its own mechanics: the eligibility bar, a
-24-to-48-hour approval SLA, a 60-day protection window, one 30-day
-renewal with sign-off, and pre-written rulings for multi-partner claims
-and for a customer choosing a different partner.
+two-business-day approval SLA, a 90-day protection window, one 30-day
+renewal on logged activity with sign-off, and pre-written rulings for
+multi-partner claims and for a customer choosing a different partner —
+the same defaults the program design and the channel operations use, so
+one partner never reads two rule sets.
 
 Non-exclusive by default. Exclusivity is a red flag that needs the
 owner's explicit yes, every time.
