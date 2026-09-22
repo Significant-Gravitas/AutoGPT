@@ -1,11 +1,18 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { cn } from "@/lib/utils";
 import { getCategoryAccent } from "../ExpertsSection/helpers";
 
 type Size = "small" | "default";
+
+/** The zinc fallback `getCategoryAccent` hands back for "All", research and
+ *  development. Its glossy chip is too faint to read as selected next to a
+ *  white row, so those chips take a plain fill instead. */
+const NEUTRAL_ACCENT = getCategoryAccent(undefined).accent;
+const NEUTRAL_SELECTED = "border-transparent bg-zinc-100 text-zinc-900";
 
 interface Props {
   selected: string | null;
@@ -72,32 +79,36 @@ function TopicChip({
   const { accent, icon } = getCategoryAccent(topic);
 
   return (
-    <button
-      type="button"
+    // Outline, so a row of filters never reads as a row of actions. The
+    // selected one takes the accent's glossy chip, whose gradient sits over
+    // the variant's hover wash rather than being replaced by it.
+    <Button
+      variant="outline"
+      size={size === "small" ? "xs" : "small"}
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
+      unmask={false}
+      leftIcon={
+        icon ? (
+          <Icon
+            icon={icon}
+            size={size === "small" ? 12 : 15}
+            className={isSelected ? undefined : accent.icon}
+            aria-hidden
+          />
+        ) : undefined
+      }
       className={cn(
-        "inline-flex items-center rounded-full font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-violet-600",
-        size === "small"
-          ? "h-7 gap-1 px-2 text-xs"
-          : "h-9 gap-1.5 px-3.5 text-sm",
-        isSelected
-          ? topic
-            ? accent.pill
-            : "bg-zinc-900 text-white"
-          : "bg-white text-zinc-600 ring-1 ring-inset ring-zinc-200 hover:text-zinc-900 hover:ring-zinc-300",
+        "min-w-0 rounded-full",
+        size === "small" ? "gap-1 px-2" : "gap-1.5 px-3.5",
+        isSelected &&
+          (accent === NEUTRAL_ACCENT
+            ? NEUTRAL_SELECTED
+            : cn(accent.chip, "border-transparent")),
       )}
     >
-      {icon ? (
-        <Icon
-          icon={icon}
-          size={size === "small" ? 12 : 15}
-          className={isSelected ? undefined : accent.icon}
-          aria-hidden
-        />
-      ) : null}
       {label}
-    </button>
+    </Button>
   );
 }
