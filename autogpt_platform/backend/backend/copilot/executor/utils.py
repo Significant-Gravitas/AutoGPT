@@ -1,12 +1,14 @@
-"""RabbitMQ queue configuration for CoPilot executor.
+"""RabbitMQ topology for the CoPilot executor.
 
-Defines two exchanges and queues following the graph executor pattern:
-- 'copilot_execution' (DIRECT) for chat generation tasks
-- 'copilot_cancel' (FANOUT) for cancellation requests
+- 'copilot_execution' (DIRECT) for chat generation tasks, one shared queue so
+  the fleet shares the work.
+- 'copilot_cancel' (FANOUT) for cancellation requests, one queue per pod so
+  every pod sees every cancel and the one holding the session acts on it.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -32,6 +34,9 @@ from backend.copilot.tree import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    from pika.adapters.blocking_connection import BlockingChannel
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +106,16 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+# Pre-2026-09 topology: one durable queue bound to the fanout and consumed by
+# every pod, so RabbitMQ round-robined each cancel to a single arbitrary pod.
+# Old-image pods keep draining it through a rollout; the reaper below deletes it
+# once none is left, so no operator step is needed on any install.
+LEGACY_COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+COPILOT_CANCEL_QUEUE_PREFIX = "copilot_cancel.pod"
+
+# Only waits for the last old-image pod to drain, which is a rollout-scale
+# event; costs one passive declare per pod per interval.
+LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS = 5 * 60
 
 
 def get_session_lock_key(session_id: str) -> str:
@@ -123,14 +137,9 @@ GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = COPILOT_CONSUMER_TIMEOUT_SECONDS
 
 
 def create_copilot_queue_config() -> RabbitMQConfig:
-    """Create RabbitMQ configuration for CoPilot executor.
+    """Declare both exchanges and the shared run queue.
 
-    Defines two exchanges and queues:
-    - 'copilot_execution' (DIRECT) for chat generation tasks
-    - 'copilot_cancel' (FANOUT) for cancellation requests
-
-    Returns:
-        RabbitMQConfig with exchanges and queues defined
+    The cancel queue is deliberately absent; see the comment below.
     """
     run_queue = Queue(
         name=COPILOT_EXECUTION_QUEUE_NAME,
@@ -166,19 +175,84 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=COPILOT_CANCEL_QUEUE_NAME,
-        exchange=COPILOT_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-        arguments={"x-queue-type": "quorum"},
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming
+    # connection, and declared by the consumer itself in
+    # ``declare_pod_cancel_queue``. Declaring it in the shared config would
+    # bind one queue for the whole fleet again, and every other holder of this
+    # config (the API, which only publishes) would own a queue nobody drains.
     return RabbitMQConfig(
         vhost=Config().rabbitmq_vhost,
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
+
+
+def declare_pod_cancel_queue(channel: "BlockingChannel", executor_id: str) -> str:
+    """Give this pod its own queue on the cancel fanout and return its name.
+
+    A fanout reaches every pod only when every pod owns a queue: consumers on
+    one shared queue get round-robined, so a cancel lands on one arbitrary pod
+    and the pod actually running that session never hears it. Exclusive and
+    auto-delete, so the queue dies with the connection that declared it.
+    """
+    queue_name = f"{COPILOT_CANCEL_QUEUE_PREFIX}.{executor_id}.{uuid4().hex[:8]}"
+    channel.queue_declare(
+        queue=queue_name, durable=False, exclusive=True, auto_delete=True
+    )
+    channel.queue_bind(
+        queue=queue_name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+    )
+    return queue_name
+
+
+def start_legacy_cancel_queue_reaper(channel: "BlockingChannel") -> None:
+    """Delete the retired fleet-wide cancel queue once no pod is draining it.
+
+    Runs now and every few minutes after, on the consumer's own connection:
+    a pika ``BlockingConnection`` is not thread-safe, and ``call_later`` fires
+    from inside ``start_consuming``. An old-image pod that reconnects declares
+    that queue again, so the pass repeats for as long as this consumer lives.
+    """
+    reap_legacy_cancel_queue(channel)
+    try:
+        channel.connection.call_later(
+            LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS,
+            lambda: start_legacy_cancel_queue_reaper(channel),
+        )
+    except Exception as e:
+        logger.debug(f"Legacy cancel queue reaper not re-armed: {e}")
+
+
+def reap_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
+    """Delete the legacy cancel queue if it exists and nothing consumes it.
+
+    The consumer count is the rollout gate: while an old-image pod still drains
+    that queue, deleting it would take its cancels away. Runs on a scratch
+    channel because a 404 from the passive declare closes the channel it
+    arrives on, and the caller's is carrying the consumer.
+    """
+    try:
+        scratch = channel.connection.channel()
+    except Exception:
+        logger.warning("Could not open a channel to reap the legacy cancel queue")
+        return False
+    try:
+        queue = scratch.queue_declare(
+            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME, passive=True
+        ).method
+        if queue.consumer_count:
+            return False
+        # Check-then-act, because RabbitMQ refuses `if_unused` on a quorum queue:
+        # a pod that re-consumes in the gap re-declares it when it reconnects.
+        scratch.queue_delete(queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME)
+        logger.info(f"Deleted retired queue {LEGACY_COPILOT_CANCEL_QUEUE_NAME}")
+        return True
+    except Exception as e:
+        logger.debug(f"{LEGACY_COPILOT_CANCEL_QUEUE_NAME} not reaped: {e}")
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 # ============ Message Models ============ #
@@ -210,6 +284,11 @@ class CoPilotExecutionEntry(BaseModel):
 
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
+
+    message_metadata: dict[str, Any] | None = None
+    """Persisted on the user message row (e.g. ``from_session_id`` /
+    ``from_expert_id`` provenance for a delegated or handed-off task) so the
+    thread can render where the message came from."""
 
     organization_id: str | None = None
     """Active organization for tenant-scoped execution"""
@@ -271,6 +350,7 @@ async def enqueue_copilot_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    message_metadata: dict[str, Any] | None = None,
     *,
     envelope: TurnEnvelope,
 ) -> None:
@@ -314,6 +394,7 @@ async def enqueue_copilot_turn(
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        message_metadata=message_metadata,
         envelope=envelope,
     )
 
@@ -344,6 +425,7 @@ async def schedule_turn(
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -410,6 +492,7 @@ async def schedule_turn(
             permissions=permissions,
             request_arrival_at=request_arrival_at,
             spawn=spawn,
+            message_metadata=message_metadata,
         )
 
 
@@ -433,6 +516,7 @@ async def dispatch_turn(
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -500,6 +584,7 @@ async def dispatch_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            message_metadata=message_metadata,
             envelope=envelope,
         )
         slot.keep()
@@ -624,8 +709,6 @@ async def schedule_chat_turn(
     """
     # Deferred so the executor module stays a leaf for the queue dataclasses
     # (only the chat HTTP path persists user messages this way).
-    from uuid import uuid4
-
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.prompting import VOICE_TURN_PREFIX
     from backend.copilot.service import strip_server_injected_tags

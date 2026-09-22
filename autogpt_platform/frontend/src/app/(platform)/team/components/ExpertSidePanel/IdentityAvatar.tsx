@@ -4,11 +4,8 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
-import {
-  expertAvatarConfig,
-  isUploadedAvatar,
-} from "@/components/molecules/BotAvatar/helpers";
+import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 export interface PanelIdentity {
@@ -28,12 +25,12 @@ export function IdentityAvatar({ identity, className, imageSize }: Props) {
   if (identity.isAutopilot) {
     return <AutopilotAvatar size={imageSize} className={className} />;
   }
-  if (!isUploadedAvatar(identity.avatarUrl)) {
+  const config = expertNotionConfig(identity);
+  if (config) {
     return (
-      <BotAvatar
-        config={expertAvatarConfig(identity)}
+      <NotionAvatarImage
+        config={config}
         size={imageSize}
-        showBadge={false}
         title={identity.name}
         className={className}
       />

@@ -15,6 +15,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
     resolve_expert_workspace_scope,
@@ -408,6 +409,13 @@ async def rename_workspace_file(
     file = await get_workspace_file(file_id, workspace_id)
     if file is None:
         return None
+    folder = skill_owner_folder(
+        posixpath.join(posixpath.dirname(file.path), "SKILL.md")
+    )
+    if folder is not None:
+        from backend.data.workspace_skill import rename_workspace_skill_file
+
+        return await rename_workspace_skill_file(file_id, workspace_id, name, folder)
     new_path = posixpath.join(posixpath.dirname(file.path), name)
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
@@ -442,9 +450,9 @@ async def soft_delete_workspace_file(
         return None
 
     deleted_at = datetime.now(timezone.utc)
-    # Modify path to free up the unique constraint for new files at original path
-    # Format: {original_path}__deleted__{timestamp}
-    deleted_path = f"{file.path}__deleted__{int(deleted_at.timestamp())}"
+    # Frees the path for the next write, to microseconds: `write_file` soft-deletes
+    # the row it overwrites, so two writes in one second would collide here.
+    deleted_path = f"{file.path}__deleted__{deleted_at.timestamp():.6f}"
 
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FC, useEffect, useState } from "react";
+import React, { FC, useEffect, useId, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -31,6 +31,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   placeholder,
   inputType = "text",
 }) => {
+  const inputId = useId();
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
@@ -75,9 +76,9 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
           <Text variant="body">{description}</Text>
           <Input
             type="textarea"
-            label=""
+            label={title || "Edit value"}
             hideLabel
-            id="input-expander-modal"
+            id={inputId}
             value={tempValue}
             className={cn(
               "!min-h-[300px] rounded-2xlarge",
@@ -93,6 +94,9 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
               variant="secondary"
               size="small"
               onClick={copyValue}
+              aria-label={
+                isCopied ? "Copied to clipboard" : "Copy to clipboard"
+              }
               className={cn(
                 "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
                 isCopied &&

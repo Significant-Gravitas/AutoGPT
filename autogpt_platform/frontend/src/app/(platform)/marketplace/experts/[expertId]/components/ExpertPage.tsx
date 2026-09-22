@@ -26,6 +26,7 @@ import { ExpertSkills } from "./ExpertSkills";
 import { ExpertWorkflowList } from "./ExpertWorkflowList";
 import { useExpertPage } from "../useExpertPage";
 import { useHireFlow } from "@/services/experts/useHireFlow";
+import { useTrackExpertProfileOpened } from "@/services/experts/use-track-funnel-view-once";
 
 const MAIN_CLASS =
   "mx-auto flex w-full max-w-[760px] flex-col px-6 pb-24 pt-8 md:px-8";
@@ -44,6 +45,7 @@ function BackToMarketplaceLink() {
 
 export function ExpertPage() {
   const { expertId } = useParams<{ expertId: string }>();
+  useTrackExpertProfileOpened(expertId);
   const {
     expert,
     hiredExpert,
@@ -126,7 +128,7 @@ export function ExpertPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
-      <ExpertPageHeader expert={expert} accent={accent} actions={actions} />
+      <ExpertPageHeader expert={expert} actions={actions} />
       <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
         <ExpertDayOne
           name={firstName}

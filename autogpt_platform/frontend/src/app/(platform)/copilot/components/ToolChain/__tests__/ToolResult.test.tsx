@@ -945,3 +945,427 @@ describe("ToolResult", () => {
     });
   });
 });
+
+describe("ToolResult start_desktop", () => {
+  afterEach(() => cleanup());
+
+  it("embeds the live desktop stream instead of dumping the payload", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    const frame = screen.getByTitle("Interactive desktop (sbx-1)");
+    expect(frame.getAttribute("src")).toBe(
+      "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+    );
+    expect(screen.getByText("Open in new tab")).toBeDefined();
+    expect(screen.queryByText(/"kind"/)).toBeNull();
+  });
+
+  it("shows a shared-transcript viewer a notice, not the owner-only frame", () => {
+    render(
+      <ToolResult
+        readOnly
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "/api/proxy/api/desktop-preview?token=abc",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+              requires_auth: true,
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("falls back to the generic view when the stream is missing", () => {
+    render(
+      <ToolResult
+        row={row({ message: "Failed to start the desktop." }, "start_desktop")}
+      />,
+    );
+    expect(screen.getByText("Failed to start the desktop.")).toBeDefined();
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+  });
+});
+
+describe("ToolResult run_capability", () => {
+  afterEach(() => cleanup());
+
+  const desktopPayload = {
+    type: "desktop_stream",
+    message: "Desktop started.",
+    desktop_stream: {
+      kind: "desktop_stream",
+      url: "/api/proxy/api/desktop-preview?token=abc",
+      provider: "e2b",
+      sandbox_id: "sbx-2",
+    },
+  };
+
+  it("embeds the desktop when start_desktop ran as a capability", () => {
+    render(
+      <ToolResult
+        row={row(desktopPayload, "run_capability", {
+          id: "tool:start_desktop",
+          input: {},
+        })}
+      />,
+    );
+
+    const frame = screen.getByTitle("Interactive desktop (sbx-2)");
+    expect(frame.getAttribute("src")).toBe(
+      "/api/proxy/api/desktop-preview?token=abc",
+    );
+    expect(screen.queryByText(/"kind"/)).toBeNull();
+    expect(screen.queryByText(/desktop stream/i)).toBeNull();
+  });
+
+  it("keeps the shared-transcript notice on the capability path", () => {
+    render(
+      <ToolResult
+        readOnly
+        row={row(
+          {
+            ...desktopPayload,
+            desktop_stream: {
+              ...desktopPayload.desktop_stream,
+              requires_auth: true,
+            },
+          },
+          "resume_capability",
+          { id: "tool:start_desktop" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
+  });
+
+  it("still renders a plain capability result as before", () => {
+    render(
+      <ToolResult
+        row={row(
+          { message: "Ran it.", result: { total: 3 } },
+          "run_capability",
+          { id: "tool:count" },
+        )}
+      />,
+    );
+
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+    expect(screen.getByText(/total/i)).toBeDefined();
+  });
+});
+
+describe("ToolResult deferred platform tools", () => {
+  const cases: {
+    tool: string;
+    input: Record<string, unknown>;
+    output: Record<string, unknown>;
+    marker: string | RegExp;
+  }[] = [
+    {
+      tool: "find_agent",
+      input: { query: "leads" },
+      output: { agents: [{ id: "lib-1", source: "library", name: "Leads" }] },
+      marker: "Leads",
+    },
+    {
+      tool: "find_library_agent",
+      input: { query: "leads" },
+      output: {
+        agents: [{ id: "lib-2", source: "library", name: "Lib", runs: 1200 }],
+      },
+      marker: "1,200 runs",
+    },
+    {
+      tool: "list_schedules",
+      input: {},
+      output: {
+        schedules: [
+          {
+            name: "Daily run",
+            next_run_time: "2026-08-21T10:00:00Z",
+            cron: "0 10 * * *",
+            kind: "copilot_turn",
+          },
+        ],
+      },
+      marker: "chat",
+    },
+    {
+      tool: "list_folders",
+      input: {},
+      output: { folders: [{ name: "Marketing", agent_count: 3 }] },
+      marker: "3 agents",
+    },
+    {
+      tool: "search_docs",
+      input: { query: "blocks" },
+      output: {
+        results: [
+          {
+            title: "Blocks",
+            section: "Guide",
+            snippet: "How blocks work",
+            doc_url: "https://docs.agpt.co/blocks",
+          },
+        ],
+      },
+      marker: "How blocks work",
+    },
+    {
+      tool: "list_skills",
+      input: {},
+      output: { skills: [{ name: "summarize" }, { name: "draft" }] },
+      marker: "Skills",
+    },
+    {
+      tool: "get_sub_session_result",
+      input: { sub_session_id: "sub-1" },
+      output: {
+        status: "COMPLETED",
+        response: "Everything worked",
+        elapsed_seconds: 75,
+        sub_autopilot_session_link: "/copilot?session=sub-1",
+      },
+      marker: "1m 15s",
+    },
+    {
+      tool: "validate_agent_graph",
+      input: { agent_json: {} },
+      output: { valid: true },
+      marker: "Graph is valid",
+    },
+    {
+      tool: "setup_agent_webhook_trigger",
+      input: { library_agent_id: "lib-1" },
+      output: {
+        message: "Webhook ready",
+        webhook_url: "https://hooks.example.com/h1",
+      },
+      marker: "https://hooks.example.com/h1",
+    },
+    {
+      tool: "setup_agent_webhook_trigger",
+      input: { library_agent_id: "lib-1" },
+      output: {
+        message: "Connect an account",
+        setup_info: { agent_id: "agent-1", agent_name: "Tracker" },
+      },
+      marker: "mode:trigger",
+    },
+  ];
+
+  it.each(cases)(
+    "renders the $tool card the same when it ran through run_capability",
+    ({ tool, input, output, marker }) => {
+      const direct = render(<ToolResult row={row(output, tool, input)} />);
+      expect(screen.getByText(marker)).toBeDefined();
+      const expected = direct.container.innerHTML;
+      direct.unmount();
+
+      const wrapped = render(
+        <ToolResult
+          row={row(output, "run_capability", { id: `tool:${tool}`, input })}
+        />,
+      );
+
+      expect(wrapped.container.innerHTML).toBe(expected);
+    },
+  );
+
+  it("keeps the open-agent link for a deferred find_agent", () => {
+    render(
+      <ToolResult
+        row={row(
+          { agents: [{ id: "lib-1", source: "library", name: "Leads" }] },
+          "run_capability",
+          { id: "tool:find_agent", input: { query: "leads" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+      "/library/agents/lib-1",
+    );
+  });
+
+  it("resolves a bare tool name the way the backend does", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "run_capability", {
+          id: "validate_agent_graph",
+          input: {},
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Graph is valid")).toBeDefined();
+  });
+
+  it("reads the nested input as the tool's input", () => {
+    render(
+      <ToolResult
+        row={row(
+          { execution_id: "exec-2", graph_id: "graph-9" },
+          "run_capability",
+          {
+            id: "tool:schedule_agent",
+            input: { username_agent_slug: "creator/scraper" },
+          },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("creator/scraper")).toBeDefined();
+  });
+
+  it.each(["delete_workspace_file", "store_skill", "validate_agent_graph"])(
+    "shows the error when a deferred %s call failed",
+    (tool) => {
+      render(
+        <ToolResult
+          row={row(
+            { type: "error", message: "File not found: notes.txt" },
+            "run_capability",
+            { id: `tool:${tool}`, input: { path: "notes.txt" } },
+          )}
+        />,
+      );
+
+      expect(screen.getByText("File not found: notes.txt")).toBeDefined();
+    },
+  );
+
+  it("does not take an inherited object key for a tool name", () => {
+    render(
+      <ToolResult
+        row={row({ note: "first", other: "second" }, "run_capability", {
+          id: "constructor",
+          input: { url: "https://nested.example.com/page" },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/nested\.example\.com/)).toBeNull();
+    expect(screen.getByText("first")).toBeDefined();
+  });
+
+  it("does not render a validate_only response as an execution card", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "run_capability", {
+          id: "tool:validate_agent_graph",
+          input: {},
+          validate_only: true,
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("does not render capability details as an execution card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "capability_details",
+            message: "Validate a graph.",
+            capability: { id: "tool:validate_agent_graph", kind: "tool" },
+            valid: true,
+          },
+          "run_capability",
+          { id: "tool:validate_agent_graph", input: {} },
+        )}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("does not render a describe_capability response as an execution card", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "describe_capability", {
+          id: "tool:validate_agent_graph",
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("leaves a resumed call alone, since it names a review and not a tool", () => {
+    render(
+      <ToolResult
+        row={row({ valid: true }, "resume_capability", {
+          review_id: "copilot-node-abc:1f",
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Graph is valid")).toBeNull();
+  });
+
+  it("keeps block capability rows on the block card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            block_id: "b1",
+            block_name: "Get Weather",
+            outputs: { temperature: [21] },
+          },
+          "run_capability",
+          { id: "block:b1", input: { city: "Oslo" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Get Weather")).toBeDefined();
+  });
+
+  it("keeps MCP capability rows on the MCP setup card", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            message: "Connect the tracker",
+            setup_info: { agent_id: "mcp", agent_name: "Tracker" },
+          },
+          "run_capability",
+          { id: "mcp:mcp.example.com", input: { tool: "list_issues" } },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("mcp-setup-card")).toBeDefined();
+  });
+});

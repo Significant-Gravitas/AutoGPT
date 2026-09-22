@@ -33,6 +33,7 @@ import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -49,6 +50,7 @@ from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
     safe_caller_name,
+    sent_from_metadata,
     unknown_target_message,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
@@ -84,7 +86,7 @@ class DelegateToExpertTool(BaseTool):
             f"work. Waits up to wait_for_result sec (max "
             f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
             "status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property
@@ -198,6 +200,7 @@ class DelegateToExpertTool(BaseTool):
             # A teammate keeps their own teammates; depth still bounds the chain.
             spawn=SpawnRequest(may_spawn=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
         )
         elapsed = time.monotonic() - started_at
         discarded = (
@@ -216,16 +219,18 @@ class DelegateToExpertTool(BaseTool):
             if outcome == "completed"
             else None
         )
+        delegated = response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            actor=target.name,
+        )
+        delegated.message += await build_spawn_state_note()
         return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=target.name,
-            ),
+            delegated,
             DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,

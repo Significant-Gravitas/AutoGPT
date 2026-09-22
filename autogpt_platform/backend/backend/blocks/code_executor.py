@@ -27,6 +27,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -129,6 +130,7 @@ class BaseE2BExecutorMixin:
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
+        metadata: Optional[dict[str, str]] = None,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -144,14 +146,28 @@ class BaseE2BExecutorMixin:
         files: list[SandboxFileOutput] = []
         try:
             if sandbox_id:
-                # Connect to existing sandbox (ExecuteCodeStepBlock case)
+                # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
+                # id is caller-supplied and any id connects under our key, so
+                # the box must be stamped with this user before it is used.
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await AsyncSandbox.get_info(sandbox_id, api_key=api_key)
+                user_id = execution_context.user_id if execution_context else None
+                if not owned_by_user(info.metadata, user_id):
+                    raise PermissionError(
+                        f"Sandbox {sandbox_id} does not belong to this user"
+                    )
                 sandbox = await AsyncSandbox.connect(
                     sandbox_id=sandbox_id, api_key=api_key
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(
-                    api_key=api_key, template=template_id, timeout=timeout
+                    api_key=api_key,
+                    template=template_id,
+                    timeout=timeout,
+                    metadata=metadata,
                 )
                 if setup_commands:
                     for cmd in setup_commands:
@@ -326,6 +342,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="0b02b072-abe7-11ef-8372-fb5d162dd712",
+            capability_kind="primitive",
             description="Executes code in a sandbox environment with internet access.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeBlock.Input,
@@ -376,6 +393,9 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 execution_context=execution_context,
                 extract_files=True,
                 envs=envs,
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
 
             # Determine result object shape & filter out empty formats
@@ -460,6 +480,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
+            capability_kind="primitive",
             description=(
                 "Instantiate a sandbox environment with internet access "
                 "in which you can execute code with the Execute Code Step block."
@@ -485,7 +506,12 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             _, text_output, stdout, stderr, sandbox_id, _ = await self.execute_code(
@@ -495,6 +521,9 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
             if sandbox_id:
                 yield "sandbox_id", sandbox_id
@@ -565,6 +594,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
     def __init__(self):
         super().__init__(
             id="82b59b8e-ea10-4d57-9161-8b169b0adba6",
+            capability_kind="primitive",
             description="Execute code in a previously instantiated sandbox.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=ExecuteCodeStepBlock.Input,
@@ -585,7 +615,12 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             results, text_output, stdout, stderr, _, _ = await self.execute_code(
@@ -594,6 +629,8 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
+                # The ownership check on the supplied id needs the caller.
+                execution_context=execution_context,
             )
 
             # Determine result object shape & filter out empty formats

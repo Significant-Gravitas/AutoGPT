@@ -370,6 +370,46 @@ async def test_mark_session_completed_swallows_dispatcher_errors():
 
 
 @pytest.mark.asyncio
+async def test_mark_session_completed_skip_error_publish_emits_no_stream_error():
+    """``skip_error_publish`` is what lets a user-initiated cancel end a turn
+    without the frontend rendering "the assistant encountered an error".
+
+    Both arms run so the suppression is shown to be load-bearing: the same
+    call without the flag publishes the StreamError. The terminal StreamFinish
+    is published either way, so a subscriber still sees the turn end.
+    """
+
+    async def _mark(*, skip_error_publish: bool):
+        publish_mock = AsyncMock()
+        with (
+            patch.object(
+                stream_registry,
+                "get_redis_async",
+                new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+            ),
+            patch.object(
+                stream_registry,
+                "hash_compare_and_set",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(stream_registry, "publish_chunk", new=publish_mock),
+        ):
+            await stream_registry.mark_session_completed(
+                "sess-1",
+                error_message="Operation cancelled",
+                skip_error_publish=skip_error_publish,
+            )
+        return [call.args[1] for call in publish_mock.call_args_list]
+
+    suppressed = await _mark(skip_error_publish=True)
+    assert not any(isinstance(c, stream_registry.StreamError) for c in suppressed)
+    assert any(isinstance(c, stream_registry.StreamFinish) for c in suppressed)
+
+    published = await _mark(skip_error_publish=False)
+    assert any(isinstance(c, stream_registry.StreamError) for c in published)
+
+
+@pytest.mark.asyncio
 async def test_mark_session_completed_skips_lock_release_when_already_completed():
     """CAS failure = someone else completed the session first; we must not
     delete their already-released lock, and we must NOT publish StreamFinish
@@ -539,14 +579,29 @@ def test_reconstruct_chunk_round_trips_pending_drained():
     silently drops the hint and falls back to the slow backstop poll."""
     import orjson
 
-    from backend.copilot.response_model import StreamPendingDrained
+    from backend.copilot.response_model import (
+        StreamPendingDrained,
+        StreamPendingDrainedMessage,
+    )
 
-    stored = orjson.loads(StreamPendingDrained(drainedCount=3).model_dump_json())
+    stored = orjson.loads(
+        StreamPendingDrained(
+            drainedCount=2,
+            messages=[
+                StreamPendingDrainedMessage(id="pm-1", content="also add tests"),
+                StreamPendingDrainedMessage(id="pm-2", content="and docs"),
+            ],
+        ).model_dump_json()
+    )
 
     chunk = stream_registry._reconstruct_chunk(stored)
 
     assert isinstance(chunk, StreamPendingDrained)
-    assert chunk.drainedCount == 3
+    assert chunk.drainedCount == 2
+    assert [(m.id, m.content) for m in chunk.messages] == [
+        ("pm-1", "also add tests"),
+        ("pm-2", "and docs"),
+    ]
 
 
 def test_reconstruct_mode_changed_chunk():
