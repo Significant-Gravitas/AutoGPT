@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workspace_files import (
     _MAX_RECURSIVE_FOLDERS,
     ListWorkspaceFilesTool,
@@ -108,6 +109,16 @@ async def test_recursive_spans_the_whole_subtree(db):
         "q1",
     ]
     assert [f.folder_id for f in result.folders] == ["2026"]
+
+
+async def test_an_empty_folder_id_is_refused_rather_than_listing_everything(db):
+    """An empty string is not "no folder": the manager reads it as present and
+    drops the current-session filter, then the query reads it as false and drops
+    the folder filter, so the model would get the whole workspace."""
+    result = await ListWorkspaceFilesTool()._execute("user-1", _session(), folder_id="")
+
+    assert isinstance(result, ErrorResponse)
+    db.list_workspace_files.assert_not_awaited()
 
 
 async def test_recursive_is_ignored_without_a_folder(db):

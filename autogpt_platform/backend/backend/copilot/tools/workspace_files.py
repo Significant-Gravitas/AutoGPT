@@ -413,6 +413,15 @@ class ListWorkspaceFilesTool(BaseTool):
 
         limit = min(limit, 100)
 
+        # "" is not "no folder": it survives the manager's `is not None` test,
+        # which drops the current-session filter, and then reads as false in the
+        # query, which drops the folder filter — listing the whole workspace.
+        if folder_id is not None and not folder_id.strip():
+            return ErrorResponse(
+                message="folder_id must name a folder; omit it to list the root",
+                session_id=session_id,
+            )
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
             folders = await workspace_folder_db().list_workspace_folders(
