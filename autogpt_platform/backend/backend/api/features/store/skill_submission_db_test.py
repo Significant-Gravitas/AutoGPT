@@ -23,6 +23,15 @@ LIBRARY_SKILL = ParsedSkill(
 )
 
 
+def _package(
+    skill: ParsedSkill | None, files: list[SkillFile] | None = None
+) -> SkillPackage | None:
+    """What the library hands a submission: the rendered SKILL.md plus siblings."""
+    if skill is None:
+        return None
+    return SkillPackage(skill_md=render_skill_markdown(skill), files=files or [])
+
+
 def _library_package(files: list[SkillFile] | None = None) -> SkillPackage:
     return SkillPackage(
         skill_md=render_skill_markdown(LIBRARY_SKILL), files=files or []
@@ -100,6 +109,45 @@ async def test_publishing_without_a_marketplace_profile_is_refused(setup_test_us
         await skill_submission_db.submit_skill(setup_test_user, _request())
 
     assert await prisma.models.SkillListing.prisma().count() == 0
+
+
+async def test_publishing_and_editing_snapshot_the_skill_license(creator, mocker):
+    package = mocker.patch.object(
+        skill_submission_db,
+        "read_user_skill_package",
+        return_value=_package(
+            ParsedSkill(
+                name=LIBRARY_SKILL.name,
+                description=LIBRARY_SKILL.description,
+                body=LIBRARY_SKILL.body,
+                triggers=LIBRARY_SKILL.triggers,
+                extra={"license": "MIT"},
+            )
+        ),
+    )
+    submission = await skill_submission_db.submit_skill(creator, _request())
+    created = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": submission.skill_listing_version_id}
+    )
+    assert created is not None and created.license == "MIT"
+
+    package.return_value = _package(
+        ParsedSkill(
+            name=LIBRARY_SKILL.name,
+            description=LIBRARY_SKILL.description,
+            body=LIBRARY_SKILL.body,
+            triggers=LIBRARY_SKILL.triggers,
+            extra={"license": "Apache-2.0"},
+        )
+    )
+    await skill_submission_db.edit_skill_submission(
+        creator, submission.skill_listing_version_id, _request()
+    )
+
+    updated = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": submission.skill_listing_version_id}
+    )
+    assert updated is not None and updated.license == "Apache-2.0"
 
 
 async def test_publishing_a_skill_that_is_not_in_the_library_is_refused(

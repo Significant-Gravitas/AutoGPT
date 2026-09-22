@@ -90,8 +90,12 @@ function renderAgentPage() {
   );
 }
 
+const datafast = vi.fn();
+
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
+    datafast.mockReset();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -131,6 +135,9 @@ describe("Install on Expert from marketplace detail", () => {
     expect(await screen.findByText("Installed on Maria")).toBeDefined();
     expect(installExpertId).toBe("expert-maria");
     expect(installBody).toEqual({ store_listing_version_id: "listing-1" });
+    expect(datafast).toHaveBeenCalledWith("workflow_installed_on_expert", {
+      expert_id: "expert-maria",
+    });
   });
 
   test("toasts success when the workflow is already installed", async () => {

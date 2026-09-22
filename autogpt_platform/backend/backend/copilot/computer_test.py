@@ -263,6 +263,18 @@ class TestOpenDesktop:
         desktop.start_stream.assert_awaited_once_with("issued-before")
 
     @pytest.mark.asyncio
+    async def test_a_stream_stopped_at_the_pause_reopens_under_a_new_password(self):
+        """The pause leaves an empty marker where the password was: to an open
+        that is no password, so the stack restarts under a fresh one."""
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis("sb-1", stream="")
+        sandbox, desktop = _sandbox("sb-1"), _desktop("sb-1")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p:
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with(None)
+
+    @pytest.mark.asyncio
     async def test_a_password_left_over_from_a_replaced_box_is_not_reused(self):
         """The screen flag names another box: whatever password Redis still
         holds belonged to that one."""
@@ -313,21 +325,18 @@ class TestOpenDesktop:
         # screen flag and the stream password.
         redis.set = AsyncMock(side_effect=[False, True, True, True])
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
-        with (
-            redis_p,
-            get_p,
-            cls_p,
-            cfg_p,
-            patch(f"{_C}.asyncio.sleep", AsyncMock()) as sleep,
-        ):
+        lock_key = f"copilot:e2b:expert:{_EXPERT}:shell:display:lock"
+        with redis_p, get_p, cls_p, cfg_p, patch(f"{_C}._DESKTOP_LOCK_POLL_SECONDS", 0):
             stream, first_time, _ = await open_desktop(owner, {}, "k", user_id=_USER)
 
         assert not first_time and stream.sandbox_id == "sb-1"
-        sleep.assert_awaited_once()
+        # It went back for the lock rather than starting a second display stack.
+        attempts = [c for c in redis.set.await_args_list if c.args[0] == lock_key]
+        assert len(attempts) == 2
         # The lock is released by token, never a bare delete of the key.
-        script, _, lock_key, token = redis.eval.await_args.args
-        assert lock_key == f"copilot:e2b:expert:{_EXPERT}:shell:display:lock"
-        assert token == redis.set.await_args_list[1].args[1]
+        _script, _, released_key, token = redis.eval.await_args.args
+        assert released_key == lock_key
+        assert token == attempts[1].args[1]
 
     @pytest.mark.asyncio
     async def test_the_open_is_cut_off_before_the_lock_can_lapse(self):
@@ -359,7 +368,8 @@ class TestOpenDesktop:
         redis = _redis(None, lock_free=False)
         with (
             patch(f"{_C}.get_redis_async", AsyncMock(return_value=redis)),
-            patch(f"{_C}.asyncio.sleep", AsyncMock()),
+            patch(f"{_C}._DESKTOP_LOCK_POLL_SECONDS", 0.01),
+            patch(f"{_C}._DESKTOP_LOCK_WAIT_SECONDS", 0.015),
             patch(f"{_C}.get_or_create_owner_sandbox", AsyncMock()) as get_mock,
         ):
             with pytest.raises(RuntimeError, match="still opening"):

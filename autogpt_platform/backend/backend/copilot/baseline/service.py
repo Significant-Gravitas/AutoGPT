@@ -45,6 +45,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
@@ -79,6 +80,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
+from backend.copilot.permissions import denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     get_chat_platform_supplement,
@@ -130,6 +132,8 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
     kickoff_turn_disabled_tools,
+    origin_disabled_tools,
+    tool_names_in_groups,
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
@@ -1149,31 +1153,26 @@ async def _baseline_tool_executor(
             )
         )
 
+    # A dispatch of a platform tool IS a call to that tool, so everything below
+    # names the tool that runs rather than the dispatcher it arrived through.
+    # ``execute_tool`` still gets the call the model made: refusing a deferred
+    # tool named directly is a judgement about that call, not this one.
+    called_name, called_args = tool_name, tool_args
+    if dispatch := resolve_tool_dispatch(tool_name, tool_args):
+        called_name, called_args = dispatch.name, dispatch.args
+
     _emit(
         state,
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name),
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=called_name),
     )
     _emit(
         state,
         StreamToolInputAvailable(
             toolCallId=tool_call_id,
-            toolName=tool_name,
-            input=tool_args,
+            toolName=called_name,
+            input=called_args,
         ),
     )
-
-    # Announce the tool call to the session so in-turn guards like
-    # ``require_guide_read`` can see it *right now*, before the tool
-    # actually runs.  Without this, the tool_call row lives only in
-    # ``state.session_messages`` until the ``finally`` block flushes it
-    # into ``session.messages`` at turn end — so a second tool in the
-    # same turn (e.g. ``create_agent`` after ``get_agent_building_guide``)
-    # scans a stale ``session.messages`` and the guard re-fires despite
-    # the guide having been called.  The announce-set is cleared at turn
-    # end; we deliberately don't touch ``session.messages`` here to avoid
-    # duplicating the assistant row that ``_baseline_conversation_updater``
-    # persists at turn end.
-    session.announce_inflight_tool_call(tool_name, tool_args)
 
     def on_display_name(name: str) -> None:
         state.tool_persistence.set_display_name(tool_call_id, name)
@@ -1203,7 +1202,7 @@ async def _baseline_tool_executor(
         return state.tool_persistence.record_result(
             ToolCallResult(
                 tool_call_id=tool_call_id,
-                tool_name=tool_name,
+                tool_name=called_name,
                 content=tool_output,
             )
         )
@@ -1211,7 +1210,7 @@ async def _baseline_tool_executor(
         error_output = f"Tool execution error: {e}"
         logger.error(
             "[Baseline] Tool %s failed: %s",
-            tool_name,
+            called_name,
             error_output,
             exc_info=True,
         )
@@ -1219,7 +1218,7 @@ async def _baseline_tool_executor(
             state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
-                toolName=tool_name,
+                toolName=called_name,
                 output=error_output,
                 success=False,
             ),
@@ -1227,7 +1226,7 @@ async def _baseline_tool_executor(
         return state.tool_persistence.record_result(
             ToolCallResult(
                 tool_call_id=tool_call_id,
-                tool_name=tool_name,
+                tool_name=called_name,
                 content=error_output,
                 is_error=True,
             )
@@ -1711,6 +1710,7 @@ async def stream_chat_completion_baseline(
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -1759,7 +1759,7 @@ async def stream_chat_completion_baseline(
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    if maybe_append_user_message(session, message, is_user_message):
+    if maybe_append_user_message(session, message, is_user_message, message_metadata):
         if is_user_message:
             track_user_message(
                 user_id=user_id,
@@ -2273,10 +2273,11 @@ async def stream_chat_completion_baseline(
     )
     # A hire's kickoff turn is a server-sent control message, so nothing on
     # it was asked for: narrow it to the onboarding card and nothing else.
+    # Otherwise hide what the origin gate would refuse anyway.
     disabled_tools = (
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
-        else frozenset()
+        else origin_disabled_tools(session.metadata.origin)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
@@ -2285,6 +2286,22 @@ async def stream_chat_completion_baseline(
     # --- Permission filtering ---
     if permissions is not None:
         tools = _filter_tools_by_permissions(tools, permissions)
+
+    # run_capability reaches deferred tools by id; bound it with the same
+    # hidden set that shaped the schema list above.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+        envelope=envelope,
+        hidden_tools=(
+            tool_names_in_groups(disabled_tool_groups)
+            | disabled_tools
+            | denied_tool_names(permissions)
+        ),
+    )
 
     # Pre-mark cache_control on the last tool schema once per session.  The
     # tool set is static within a request, so doing this here (instead of in
@@ -2320,7 +2337,7 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-baseline",
-            tags=["baseline"],
+            tags=["baseline", "tool_surface:registry"],
         )
         _trace_ctx.__enter__()
     except Exception:

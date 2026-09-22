@@ -32,14 +32,24 @@ vi.mock("../vadSession", () => ({
 const spoken: string[] = [];
 let transcript = "Build me a Slack agent";
 
-let transcribe: () => Promise<string> = async () => transcript;
+let transcribe: (audio: Blob) => Promise<string> = async () => transcript;
+/** Every blob handed to the transcriber, so a retry can be proved identical. */
+const transcribed: Blob[] = [];
 
 vi.mock("../speechApi", () => ({
   synthesizeSpeech: vi.fn(async (text: string) => {
     spoken.push(text);
     return new Blob([text]);
   }),
-  transcribeUtterance: vi.fn(() => transcribe()),
+  transcribeUtterance: vi.fn((audio: Blob) => {
+    transcribed.push(audio);
+    return transcribe(audio);
+  }),
+}));
+
+const downloaded: Blob[] = [];
+vi.mock("../downloadRecording", () => ({
+  downloadRecording: (blob: Blob) => downloaded.push(blob),
 }));
 
 const clicks: string[] = [];
@@ -89,6 +99,8 @@ describe("useVoiceMode", () => {
     });
     sessions.length = 0;
     vadLoad = Promise.resolve();
+    transcribed.length = 0;
+    downloaded.length = 0;
     transcribe = async () => transcript;
     transcript = "Build me a Slack agent";
     vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(
@@ -651,6 +663,174 @@ describe("useVoiceMode", () => {
       "Great question — let me look that up.",
     ]);
     vi.useRealTimers();
+  });
+
+  it("keeps the recording when transcription fails", async () => {
+    // The whole bug: a transient 500 used to drop the audio on the floor and
+    // leave the user with nothing but a toast.
+    const onSend = vi.fn();
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const view = render({ onSend });
+
+    await enable(view);
+    await speak();
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(view.result.current.failure).toEqual({
+      message: "Transcription failed",
+    });
+    // The mic comes back, as before — the failure is offered, not forced.
+    expect(view.result.current.state).toBe("listening");
+  });
+
+  it("falls back to a readable message when the failure is not an Error", async () => {
+    transcribe = async () => {
+      throw "the network went away";
+    };
+    const view = render({});
+
+    await enable(view);
+    await speak();
+
+    expect(view.result.current.failure).toEqual({
+      message: "Transcription failed",
+    });
+  });
+
+  it("retries the same recording, byte for byte, and finishes the turn", async () => {
+    const onSend = vi.fn();
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const view = render({ onSend });
+
+    await enable(view);
+    await speak();
+    expect(transcribed).toHaveLength(1);
+
+    transcribe = async () => transcript;
+    await act(async () => view.result.current.retryFailedUtterance());
+
+    expect(transcribed).toHaveLength(2);
+    expect(transcribed[1]).toBe(transcribed[0]);
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith(transcript));
+    expect(view.result.current.failure).toBeNull();
+    expect(view.result.current.state).toBe("thinking");
+  });
+
+  it("still has the recording after a retry fails too", async () => {
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const view = render({});
+
+    await enable(view);
+    await speak();
+    await act(async () => view.result.current.retryFailedUtterance());
+
+    expect(transcribed).toHaveLength(2);
+    expect(view.result.current.failure).not.toBeNull();
+    expect(view.result.current.state).toBe("listening");
+
+    await act(async () => view.result.current.downloadFailedUtterance());
+    expect(downloaded).toEqual([transcribed[0]]);
+  });
+
+  it("does not close the session out from under the error", async () => {
+    // The mic closes after 8s of silence. Reading an error and deciding takes
+    // longer than that, and closing takes the recording with it.
+    vi.useFakeTimers();
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const view = render({ silenceTimeoutMs: 8_000 });
+
+    await enable(view);
+    await speak();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(view.result.current.state).toBe("listening");
+    expect(view.result.current.failure).not.toBeNull();
+
+    // It is held open, not held open forever: the session cap still ends it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    });
+    expect(view.result.current.state).toBe("off");
+    vi.useRealTimers();
+  });
+
+  it("drops a failure that arrives after the user left voice mode", async () => {
+    // Stop while the transcript is in flight, then let it reject. Writing the
+    // failure back from a dead turn used to resurrect the old audio under the
+    // next activation, with a Retry that would send it.
+    let failTranscribing!: (error: Error) => void;
+    transcribe = () => new Promise((_, reject) => (failTranscribing = reject));
+    const view = render({});
+
+    await enable(view);
+    await act(async () => vad.onSpeechStart());
+    await act(async () => vad.onSpeechEnd(new Blob(["wav"])));
+    expect(view.result.current.state).toBe("transcribing");
+
+    await act(async () => view.result.current.toggle());
+    expect(view.result.current.state).toBe("off");
+    await act(async () => failTranscribing(new Error("Transcription failed")));
+    await act(async () => undefined);
+
+    expect(view.result.current.failure).toBeNull();
+
+    // Restarting gets a clean session, not the last one's error and audio.
+    await enable(view);
+    expect(view.result.current.state).toBe("listening");
+    expect(view.result.current.failure).toBeNull();
+    await act(async () => view.result.current.downloadFailedUtterance());
+    expect(downloaded).toHaveLength(0);
+
+    // The dead turn is not counted against the new session either.
+    expect(
+      tracked.filter(([event]) => event === "voice_turn_dropped"),
+    ).toHaveLength(0);
+  });
+
+  it("forgets the failed recording once the user speaks again", async () => {
+    // Otherwise the stale row sits over a live mic, and Retry sends audio the
+    // user has already moved on from.
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const view = render({});
+
+    await enable(view);
+    await speak();
+    expect(view.result.current.failure).not.toBeNull();
+
+    await act(async () => vad.onSpeechStart());
+
+    expect(view.result.current.failure).toBeNull();
+    await act(async () => view.result.current.downloadFailedUtterance());
+    expect(downloaded).toHaveLength(0);
+  });
+
+  it("does not retry over an utterance already in flight", async () => {
+    transcribe = async () => {
+      throw new Error("Transcription failed");
+    };
+    const onSend = vi.fn();
+    const view = render({ onSend });
+
+    await enable(view);
+    await speak();
+    await act(async () => vad.onSpeechStart());
+
+    await act(async () => view.result.current.retryFailedUtterance());
+
+    expect(transcribed).toHaveLength(1);
+    expect(view.result.current.state).toBe("hearing");
   });
 
   it("shuts itself down when the flag goes off", async () => {

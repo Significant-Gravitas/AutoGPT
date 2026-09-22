@@ -23,8 +23,8 @@ import {
   buildExpectedInputsSchema,
   buildPreviewRunMessage,
   buildRunMessage,
-  buildTriggerSetupMessage,
   buildSiblingInputsFromCredentials,
+  buildTriggerSetupMessage,
   checkAllCredentialsComplete,
   checkAllInputsComplete,
   checkCanRun,
@@ -34,6 +34,7 @@ import {
   getRequestedProviders,
   isRejectedCredentialSelected,
   mergeInputValues,
+  reportCredentialPicks,
 } from "./helpers";
 import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
 
@@ -218,6 +219,10 @@ export function SetupRequirementsCard({
       justConnected,
       credentialsReady: !needsCredentials || isAllCredsComplete,
       buildMessage: () => buildProceedMessage(),
+      // A trigger's line carries the chosen credential ids, and an edit-mode
+      // card's may carry run inputs; only a bare confirmation is shareable.
+      credentialsOnly: needsCredentials && !needsInputs && !isTriggerMode,
+      beforeSend: () => reportCredentialPicks(sessionID, inputCredentials),
       onSent: markSent,
       connectors: needsCredentials
         ? {
@@ -290,7 +295,9 @@ export function SetupRequirementsCard({
   function handleRun() {
     const message = buildProceedMessage();
     markSent();
-    onSend(message);
+    void reportCredentialPicks(sessionID, inputCredentials).then(() =>
+      onSend(message),
+    );
   }
 
   return (
