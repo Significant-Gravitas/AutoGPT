@@ -1357,3 +1357,19 @@ class TestCompactionRequestRouting:
 
         assert isinstance(outcome, _Continuation)
         assert outcome.conversation is record.conversation
+
+    async def test_reframed_delivery_after_an_abandoned_call_is_completed(
+        self,
+    ) -> None:
+        """Abandoning keeps the result on the record, so a later pure
+        re-delivery under a new fingerprint reads as a *completed* call —
+        not a closed one whose result was never seen."""
+        gateway = _unstarted_gateway()
+        _pending_tool_call(gateway, "toolu_1")
+        assert (
+            gateway._continue_conversation(_compaction_payload("toolu_1", "notes.txt"))
+            is None
+        )
+
+        with pytest.raises(_DuplicateToolResultError, match="completed model call"):
+            gateway._continue_conversation(_delivery_payload("toolu_1", "notes.txt"))

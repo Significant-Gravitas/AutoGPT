@@ -5121,7 +5121,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=sdk_model,
             sdk_env=sdk_env,
             window_source=(
-                ("account" if codex_engine else "engine-default")
+                (
+                    "explicit"
+                    if config.claude_agent_context_window is not None
+                    else "account" if codex_engine else "engine-default"
+                )
                 if codex_gateway
                 else None
             ),

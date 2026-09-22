@@ -85,8 +85,9 @@ class CodexEngineWindow(BaseModel):
         """The advertised limit as a percentage of the window, or None.
 
         None when no limit was advertised, or when it is not below the
-        window — codex-rs would never compact on such a value, and neither
-        should the CLI be told to.
+        window — codex-rs would never compact on such a value, so it is not
+        a trigger; ``autocompact_pct`` then falls back to the engine default
+        of 90%.
         """
         limit = self.auto_compact_token_limit
         if limit is None or limit <= 0 or limit >= self.context_window:
