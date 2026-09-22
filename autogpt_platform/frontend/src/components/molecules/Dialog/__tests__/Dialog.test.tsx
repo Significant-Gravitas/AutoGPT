@@ -34,7 +34,7 @@ describe("Dialog", () => {
     renderDialog({ title: "My Title" });
 
     const dialog = screen.getByRole("dialog");
-    const heading = within(dialog).getByText("My Title");
+    const heading = within(dialog).getByRole("heading", { name: "My Title" });
     expect(heading).toBeDefined();
     expect(heading.classList.contains("sr-only")).toBe(false);
   });
@@ -43,7 +43,7 @@ describe("Dialog", () => {
     renderDialog({});
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
@@ -52,7 +52,7 @@ describe("Dialog", () => {
     renderDialog({ title: "" });
 
     const dialog = screen.getByRole("dialog");
-    const fallback = within(dialog).getByText("Dialog");
+    const fallback = within(dialog).getByRole("heading", { name: "Dialog" });
     expect(fallback).toBeDefined();
     expect(fallback.classList.contains("sr-only")).toBe(true);
   });
@@ -115,5 +115,27 @@ describe("Dialog", () => {
     });
 
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("associates an sr-only Description with constant text Dialog", () => {
+    renderDialog({ title: "My Title" });
+
+    const dialog = screen.getByRole("dialog");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe("Dialog");
+    expect(description?.classList.contains("sr-only")).toBe(true);
+  });
+
+  test("associates the same default sr-only Description when title is missing", () => {
+    renderDialog({});
+
+    const dialog = screen.getByRole("dialog");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe("Dialog");
+    expect(description?.classList.contains("sr-only")).toBe(true);
   });
 });

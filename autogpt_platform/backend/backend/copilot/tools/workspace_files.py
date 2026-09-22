@@ -679,8 +679,8 @@ class ReadWorkspaceFileTool(BaseTool):
 _SKILLS_REGISTRY_PREFIX = "skills/"
 _EXPERTS_PREFIX = "experts/"
 _SKILLS_REGISTRY_ERROR = (
-    "Path is managed by the skills registry; use store_skill / "
-    "delete_skill instead. (read_workspace_file can still read "
+    "Path is managed by the skills registry; use tool:store_skill / "
+    "tool:delete_skill instead. (read_workspace_file can still read "
     "sibling files inside a skill bundle.)"
 )
 
@@ -933,8 +933,8 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use list_workspace_files to find candidates, then "
-                    "delete_workspace_file to free space and retry — or ask "
+                    " Use tool:list_workspace_files to find candidates, then "
+                    "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
             return ErrorResponse(message=msg, session_id=session_id)
