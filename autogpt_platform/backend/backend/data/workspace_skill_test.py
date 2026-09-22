@@ -12,7 +12,7 @@ from prisma.errors import UniqueViolationError
 
 from backend.data import db
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
-from backend.data.workspace import rename_workspace_file
+from backend.data.workspace import WorkspaceFile, rename_workspace_file
 from backend.data.workspace_skill import (
     WorkspaceSkillWrite,
     publish_workspace_skill_file,
@@ -392,6 +392,7 @@ async def test_rename_and_new_publication_share_last_slot(workspace_id: str):
         return_exceptions=True,
     )
     assert not isinstance(published, BaseException)
+    assert isinstance(renamed, (WorkspaceFile, SkillLimitError))
     assert (not isinstance(renamed, SkillLimitError)) + (
         published.status == "stored"
     ) == 1

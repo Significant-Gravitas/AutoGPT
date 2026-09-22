@@ -757,11 +757,13 @@ def test_default_skills_are_platform_origin_not_the_owners():
 
 @pytest.mark.asyncio
 async def test_store_user_skill_rejects_an_unknown_origin():
-    with _patch_skills_path(_FakeWorkspaceManager()):
-        with pytest.raises(ValueError, match="origin"):
-            await store_user_skill(
-                "user-1", name="x", description="ok", body="ok", origin="platform"
-            )
+    with (
+        _patch_skills_path(_FakeWorkspaceManager()),
+        pytest.raises(ValueError, match="origin"),
+    ):
+        await store_user_skill(
+            "user-1", name="x", description="ok", body="ok", origin="platform"
+        )
 
 
 @pytest.mark.asyncio

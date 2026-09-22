@@ -74,12 +74,11 @@ async def publish_workspace_skill_file(
             and existing_origin == SKILL_ORIGIN_USER
         ):
             return WorkspaceSkillPublication(status="owned")
-        if not active or (existing_origin or SKILL_ORIGIN_USER) != origin:
-            if (
-                await _root_count(tx, write.workspace_id, folder, origin)
-                >= MAX_SKILLS_PER_EXPERT
-            ):
-                return WorkspaceSkillPublication(status="capacity")
+        if (not active or (existing_origin or SKILL_ORIGIN_USER) != origin) and (
+            await _root_count(tx, write.workspace_id, folder, origin)
+            >= MAX_SKILLS_PER_EXPERT
+        ):
+            return WorkspaceSkillPublication(status="capacity")
         record = (
             await _replace_root(tx, existing.id, write)
             if existing
