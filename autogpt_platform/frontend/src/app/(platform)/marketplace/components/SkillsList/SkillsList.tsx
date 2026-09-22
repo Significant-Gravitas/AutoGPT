@@ -54,7 +54,7 @@ export function SkillsList({ category }: Props) {
     >
       <SectionHeader
         size="small"
-        titleIcon={<Icon icon={Book04Icon} size={28} aria-hidden />}
+        titleIcon={<Icon icon={Book04Icon} size="3.75rem" aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."

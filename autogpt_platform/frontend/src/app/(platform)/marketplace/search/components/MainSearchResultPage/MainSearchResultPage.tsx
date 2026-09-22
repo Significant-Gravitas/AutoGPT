@@ -10,7 +10,7 @@ import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { SectionHeader } from "../../../components/SectionHeader";
 import { SkillCard } from "../../../components/SkillsSection/components/SkillCard";
 import { ExpertCard } from "../../../components/ExpertsSection/components/ExpertCard";
-import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
+import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
@@ -121,7 +121,7 @@ export const MainSearchResultPage = ({
               {showExperts && expertsCount > 0 ? (
                 <section aria-labelledby="search-experts-heading">
                   <SectionHeader
-                    titleIcon={<AITeamIcon size={30} />}
+                    titleIcon={<Icon icon={UserAiIcon} size={30} aria-hidden />}
                     title="Experts"
                     titleId="search-experts-heading"
                   />

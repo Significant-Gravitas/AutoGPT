@@ -1,8 +1,9 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
@@ -51,7 +52,7 @@ export function ExpertsSection({ category }: Props) {
   return (
     <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
-        titleIcon={<AITeamIcon size={30} />}
+        titleIcon={<Icon icon={UserAiIcon} size="3.75rem" aria-hidden />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         action={

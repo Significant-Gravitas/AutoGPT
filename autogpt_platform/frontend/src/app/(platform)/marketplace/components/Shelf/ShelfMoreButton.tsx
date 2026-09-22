@@ -22,7 +22,7 @@ export function ShelfMoreButton({
       type="button"
       aria-expanded={isExpanded}
       onClick={onToggle}
-      className="mt-4 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+      className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
     >
       {isExpanded
         ? "Show fewer"

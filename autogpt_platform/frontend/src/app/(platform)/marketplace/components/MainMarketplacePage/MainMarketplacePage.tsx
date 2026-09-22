@@ -1,12 +1,13 @@
 "use client";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   Flag,
   useFlagStatus,
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
-import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
@@ -95,7 +96,9 @@ export const MainMarkeplacePage = () => {
               <div className="mb-20" id={AGENTS_SECTION_ID}>
                 <AgentsSection
                   sectionTitle="All AI Workflows"
-                  titleIcon={<AICatalogIcon size={30} />}
+                  titleIcon={
+                    <Icon icon={UserAiIcon} size="3.75rem" aria-hidden />
+                  }
                   subtitle="Ready-made automations from the community."
                   agents={topAgents.agents}
                 >
@@ -116,11 +119,15 @@ export const MainMarkeplacePage = () => {
             <FeaturedCreators featuredCreators={featuredCreators.creators} />
           </div>
         )}
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+        {/* The expert layout invites publishing from under the workflows
+            shelf instead, where it cannot outshout the shelf itself. */}
+        {!isHireExpertsEnabled ? (
+          <BecomeACreator
+            title="Become a Creator"
+            description="Join our ever-growing community of hackers and tinkerers"
+            buttonText="Become a Creator"
+          />
+        ) : null}
       </main>
       <MarketplaceTabIntro />
     </div>

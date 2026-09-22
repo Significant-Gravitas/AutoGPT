@@ -1,8 +1,10 @@
 "use client";
 
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
-import { AICatalogIcon } from "../AICatalogIcon";
 import { SectionHeader } from "../SectionHeader";
 import { SHELF_GRID, SHELF_PREVIEW_SIZE } from "../Shelf/helpers";
 import { ShelfMoreButton } from "../Shelf/ShelfMoreButton";
@@ -33,7 +35,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
     >
       <SectionHeader
         size="small"
-        titleIcon={<AICatalogIcon size={22} />}
+        titleIcon={<Icon icon={UserAiIcon} size="3.75rem" aria-hidden />}
         title="Workflows"
         titleId={HEADING_ID}
         subtitle="Automations your experts can run — or install one yourself."
@@ -43,14 +45,31 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
           <WorkflowTile key={agent.slug} agent={agent} />
         ))}
       </ul>
-      {ordered.length > SHELF_PREVIEW_SIZE ? (
-        <ShelfMoreButton
-          isExpanded={isExpanded}
-          count={ordered.length}
-          noun="workflows"
-          onToggle={() => setIsExpanded(!isExpanded)}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        {ordered.length > SHELF_PREVIEW_SIZE ? (
+          <ShelfMoreButton
+            isExpanded={isExpanded}
+            count={ordered.length}
+            noun="workflows"
+            onToggle={() => setIsExpanded(!isExpanded)}
+          />
+        ) : (
+          <span />
+        )}
+        {/* The old full-width creator banner sat at the bottom of the page and
+            spoke louder than the shelf it advertised; one line under the
+            workflows is the whole invitation. */}
+        <PublishAgentModal
+          trigger={
+            <button
+              type="button"
+              className="text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-900 hover:underline"
+            >
+              Publish your workflows
+            </button>
+          }
         />
-      ) : null}
+      </div>
     </section>
   );
 }
