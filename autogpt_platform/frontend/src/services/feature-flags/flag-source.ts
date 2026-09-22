@@ -1,8 +1,5 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
-import type { FeatureFlagsIntegration } from "@sentry/nextjs";
-import { useEffect } from "react";
 import { useDualFlag } from "./backends/dual";
 import { useLaunchDarklyFlag } from "./backends/launchdarkly";
 import { usePostHogFlag } from "./backends/posthog";
@@ -18,9 +15,7 @@ export interface FlagSourceResult {
 // The one seam every flag read passes through, and the only thing a test has
 // to mock to control flags regardless of which vendor is configured.
 export function useFlagSource(key: string): FlagSourceResult {
-  const result = useSelectedFlagSource(key);
-  useRecordFlagForSentry(key, result.value);
-  return result;
+  return useSelectedFlagSource(key);
 }
 
 // Picked at module load, not per render: the backend is a build-time constant,
@@ -31,16 +26,3 @@ const useSelectedFlagSource =
     : FLAG_BACKEND === "dual"
       ? useDualFlag
       : useLaunchDarklyFlag;
-
-// Sentry's flag context holds booleans only; JSON-valued flags are skipped.
-// A recording failure must never break a flag read.
-function useRecordFlagForSentry(key: string, value: unknown) {
-  useEffect(() => {
-    if (typeof value !== "boolean") return;
-    try {
-      Sentry.getClient()
-        ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
-        ?.addFeatureFlag(key, value);
-    } catch {}
-  }, [key, value]);
-}

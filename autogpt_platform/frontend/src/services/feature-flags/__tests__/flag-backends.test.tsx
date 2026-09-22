@@ -221,17 +221,42 @@ describe("Sentry's flag context", () => {
     ["posthog", "posthog"],
     ["dual", "dual"],
   ])("records the served boolean in %s mode", async (_, backend) => {
-    const { Flag, useGetFlag } = await loadWithBackend(backend);
+    const { Flag, useFlagStatus } = await loadWithBackend(backend);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     launchDarkly.flags = { [HIRE_EXPERTS]: true };
     postHog.enabled.mockReturnValue(backend === "posthog");
 
-    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
     expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
       HIRE_EXPERTS,
       true,
     );
+  });
+
+  it("records the default it serves while flags are disabled", async () => {
+    env.launchDarklyEnabled = false;
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toBe(false);
+    expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
+      HIRE_EXPERTS,
+      false,
+    );
+  });
+
+  it("records nothing for an env-forced flag", async () => {
+    const { Flag, useFlagStatus, useGetFlag } =
+      await loadWithBackend(undefined);
+    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
   });
 
   it("records nothing for a JSON-valued flag", async () => {

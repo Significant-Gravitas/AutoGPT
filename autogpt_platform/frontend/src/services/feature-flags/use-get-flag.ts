@@ -2,6 +2,8 @@
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
+import * as Sentry from "@sentry/nextjs";
+import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
 import { useFlagSource } from "./flag-source";
@@ -204,18 +206,10 @@ export function envFlagOverride<T extends Flag>(
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   const { value } = useFlagSource(flag);
-  const areFlagsEnabled = areFeatureFlagsEnabled();
-
   const override = envFlagOverride(flag);
-  if (override !== undefined) {
-    return override;
-  }
-
-  if (!areFlagsEnabled || isPwMockEnabled) {
-    return defaultFlags[flag];
-  }
-
-  return resolveFlagValue(flag, value);
+  const served = override ?? servedFlagValue(flag, value);
+  useRecordFlagForSentry(flag, override === undefined ? served : undefined);
+  return served;
 }
 
 const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
@@ -244,17 +238,18 @@ export function useFlagStatus<T extends Flag>(
     return () => clearTimeout(timer);
   }, []);
 
-  if (override !== undefined) {
-    return { enabled: override, ready: true };
-  }
-  if (!areFlagsEnabled || isPwMockEnabled) {
-    return { enabled: defaultFlags[flag], ready: true };
-  }
+  const served = override ?? servedFlagValue(flag, value);
+  useRecordFlagForSentry(flag, override === undefined ? served : undefined);
 
-  return {
-    enabled: resolveFlagValue(flag, value),
-    ready: resolved || timedOut,
-  };
+  if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
+    return { enabled: served, ready: true };
+  }
+  return { enabled: served, ready: resolved || timedOut };
+}
+
+function servedFlagValue<T extends Flag>(flag: T, value: unknown) {
+  if (!areFeatureFlagsEnabled() || isPwMockEnabled) return defaultFlags[flag];
+  return resolveFlagValue(flag, value);
 }
 
 // PostHog answers a flag with no payload as a bare boolean, so a JSON-valued
@@ -292,4 +287,18 @@ function areFeatureFlagsEnabled() {
     default:
       return environment.areFeatureFlagsEnabled();
   }
+}
+
+// Records the value served, not the vendor's; env overrides pass undefined.
+// Sentry's flag context holds booleans only; JSON-valued flags are skipped.
+// A recording failure must never break a flag read.
+function useRecordFlagForSentry(key: string, value: unknown) {
+  useEffect(() => {
+    if (typeof value !== "boolean") return;
+    try {
+      Sentry.getClient()
+        ?.getIntegrationByName<FeatureFlagsIntegration>("FeatureFlags")
+        ?.addFeatureFlag(key, value);
+    } catch {}
+  }, [key, value]);
 }
