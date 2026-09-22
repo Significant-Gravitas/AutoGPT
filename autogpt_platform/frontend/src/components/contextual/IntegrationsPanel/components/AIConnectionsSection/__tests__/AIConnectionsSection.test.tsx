@@ -186,6 +186,12 @@ describe("AIConnectionsSection", () => {
     act(() => connectChatGPT.mock.calls[0][0]());
 
     expect(await screen.findByText("Connected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /ChatGPT/ })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toBe("/integrations/openai.png");
     expect(screen.queryByRole("button", { name: "ChatGPT" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
@@ -213,6 +219,12 @@ describe("AIConnectionsSection", () => {
     );
 
     expect(await screen.findByText("Connected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("radio", { name: /Microsoft 365 Copilot/ })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toBe("/integrations/microsoft.webp");
     expect(
       screen.queryByRole("button", { name: "Microsoft 365 Copilot" }),
     ).toBeNull();

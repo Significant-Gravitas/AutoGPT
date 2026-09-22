@@ -15,7 +15,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 
 import { useOAuthConnect } from "../ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
-import { routeOf, visibleOffers } from "./helpers";
+import { isProviderLinked, routeOf, visibleOffers } from "./helpers";
 
 export function useAIConnectionsSection() {
   const queryClient = useQueryClient();
@@ -110,15 +110,8 @@ export function useAIConnectionsSection() {
   return {
     connectChatGPT,
     isConnectingChatGPT,
-    isChatGPTLinked: offers.some(
-      (offer) =>
-        offer.auth_provider === "codex" && Boolean(offer.credential_id),
-    ),
-    isMicrosoftLinked: offers.some(
-      (offer) =>
-        offer.auth_provider === "microsoft_365_copilot" &&
-        Boolean(offer.credential_id),
-    ),
+    isChatGPTLinked: isProviderLinked(offers, "codex"),
+    isMicrosoftLinked: isProviderLinked(offers, "microsoft_365_copilot"),
     connections: offers,
     accountFor,
     credentialFor,
