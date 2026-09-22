@@ -255,10 +255,14 @@ def shutdown_feature_flags() -> None:
     """Reverse of :func:`initialize_feature_flags`."""
     _stop_shadow_evaluations()
     backend = settings.config.feature_flag_backend
-    if backend is not FeatureFlagBackend.POSTHOG:
-        shutdown_launchdarkly()
-    if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        posthog.shutdown_posthog_flags()
+    try:
+        if backend is not FeatureFlagBackend.POSTHOG:
+            shutdown_launchdarkly()
+    finally:
+        # `ldclient.close()` can raise; skipping PostHog teardown would leak its
+        # poller and latch `_init_attempted` against an in-process restart.
+        if backend is not FeatureFlagBackend.LAUNCHDARKLY:
+            posthog.shutdown_posthog_flags()
 
 
 def _stop_shadow_evaluations() -> None:

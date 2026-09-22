@@ -547,6 +547,18 @@ class TestShutdownStopsShadowEvaluations:
 
         assert ff._shadow_evaluations_stopped is False
 
+    def test_a_failed_launchdarkly_teardown_still_closes_posthog(self, mocker):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        mocker.patch.object(
+            ff, "shutdown_launchdarkly", side_effect=RuntimeError("ld teardown")
+        )
+        posthog_shutdown = mocker.patch.object(ph, "shutdown_posthog_flags")
+
+        with pytest.raises(RuntimeError, match="ld teardown"):
+            ff.shutdown_feature_flags()
+
+        posthog_shutdown.assert_called_once()
+
 
 class TestForcedFlagsInEveryBackend:
     @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
