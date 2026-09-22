@@ -1251,7 +1251,7 @@ def test_list_files_combines_expert_id_with_the_folder_filters(
     mock_instance.list_files.return_value = []
     mock_manager_cls.return_value = mock_instance
 
-    response = client.get(f"/files?expert_id=expert-a&{query}")
+    response = client.get(f"/files?expert_id=expert-a&{query}&include_user_files=true")
 
     assert response.status_code == 200
     kwargs = mock_instance.list_files.call_args.kwargs
@@ -1259,12 +1259,22 @@ def test_list_files_combines_expert_id_with_the_folder_filters(
     assert kwargs["include_user_files"] is True
 
 
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("expert_id=expert-a", False),
+        ("expert_id=expert-a&include_user_files=true", True),
+    ],
+)
 @patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
-def test_list_files_for_an_expert_spans_the_users_own_files(
-    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+def test_list_files_spans_the_users_own_files_only_when_asked(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, query, expected
 ):
+    """Opt-in: a view already filtered to one expert keeps showing that
+    expert's files, so the existing "From: <expert>" tab does not silently
+    start listing every upload the user ever made."""
     mock_get_workspace.return_value = _make_workspace()
     mock_resolve_scope.return_value = WorkspaceScope(
         expert_id="expert-a", session_ids=["s1"], reads_user_files=True
@@ -1273,10 +1283,37 @@ def test_list_files_for_an_expert_spans_the_users_own_files(
     mock_instance.list_files.return_value = []
     mock_manager_cls.return_value = mock_instance
 
-    response = client.get("/files?expert_id=expert-a")
+    response = client.get(f"/files?{query}")
 
     assert response.status_code == 200
-    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is True
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is expected
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_include_user_files_cannot_widen_a_revoked_experts_listing(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+):
+    """The scope decides: asking for user files does not grant them."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(expert_id="expert-x")
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-x&include_user_files=true")
+
+    assert response.status_code == 200
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is False
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+def test_list_files_rejects_include_user_files_without_an_expert(mock_get_workspace):
+    response = client.get("/files?include_user_files=true")
+    assert response.status_code == 400
+    assert "include_user_files" in response.json()["detail"]
+    mock_get_workspace.assert_not_called()
 
 
 @patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
