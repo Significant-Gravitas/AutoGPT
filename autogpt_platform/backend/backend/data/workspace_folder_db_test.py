@@ -6,6 +6,8 @@ three things a tree adds over a flat list — creating a child, deleting a
 subtree, and moving one without detaching it from the root.
 """
 
+import asyncio
+import contextlib
 import uuid
 
 import pytest
@@ -16,6 +18,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.data import workspace_folder
 from backend.data.user import get_or_create_user
 from backend.data.workspace import create_workspace_file, get_or_create_workspace
 from backend.data.workspace_folder import (
@@ -179,6 +182,55 @@ async def test_moving_a_folder_under_a_parent_and_back_to_the_root(
 
     back = await move_folder(loose.id, workspace, None)
     assert back.parent_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_two_moves_racing_into_each_other_cannot_build_a_cycle(
+    server: SpinTestServer, mocker
+):
+    """Each mover reads the ancestor chain before either writes, so without the
+    workspace move lock both pass their check and become each other's parent —
+    a subtree no root-anchored listing can reach.
+
+    Concurrency alone does not produce that interleaving, so the first mover is
+    held inside its check until the second reaches one too. Under the lock the
+    second never gets there, the wait times out, and the moves run in sequence,
+    which is the whole point.
+    """
+    workspace = await _workspace()
+    a = await create_folder(workspace, "A")
+    b = await create_folder(workspace, "B")
+
+    real_ancestors = workspace_folder._ancestor_ids
+    both_checking = asyncio.Event()
+    entered = 0
+
+    async def gated(workspace_id: str, folder_id: str) -> list[str]:
+        nonlocal entered
+        entered += 1
+        mine = entered
+        if mine > 1:
+            both_checking.set()
+        chain = await real_ancestors(workspace_id, folder_id)
+        if mine == 1:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(both_checking.wait(), timeout=2)
+        return chain
+
+    mocker.patch.object(workspace_folder, "_ancestor_ids", gated)
+
+    outcomes = await asyncio.gather(
+        move_folder(a.id, workspace, b.id),
+        move_folder(b.id, workspace, a.id),
+        return_exceptions=True,
+    )
+
+    assert entered == 2, "both movers must have reached the cycle check"
+    refused = [o for o in outcomes if isinstance(o, FolderValidationError)]
+    assert len(refused) == 1, outcomes
+
+    parents = {f.id: f.parent_id for f in await list_workspace_folders(workspace)}
+    assert None in (parents[a.id], parents[b.id]), parents
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -4635,7 +4635,7 @@
       "post": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Enable Chat Sharing",
-        "description": "Enable sharing for a chat session.\n\nFlag-gated: refuses with 403 when ``chat-sharing`` is off so a stale\nfrontend cannot enable shares post-rollback.",
+        "description": "Enable sharing for a chat session.",
         "operationId": "postV2EnableChatSharing",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4665,7 +4665,6 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "403": { "description": "Chat sharing is not enabled for this user" },
           "404": { "description": "Chat session not found for user" },
           "422": {
             "description": "Validation Error",

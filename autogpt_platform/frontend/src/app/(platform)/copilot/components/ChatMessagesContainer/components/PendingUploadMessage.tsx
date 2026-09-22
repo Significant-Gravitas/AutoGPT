@@ -3,8 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { File02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
 import type {
   PendingUploadAttachment,
   PendingUploadSend,
@@ -74,30 +73,6 @@ function PendingArtifactCard({ attachment }: CardProps) {
   );
 }
 
-function PendingFileCard({ attachment }: CardProps) {
-  return (
-    <div className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3">
-      <div className="flex items-center gap-2">
-        <Icon icon={File02Icon} className="h-5 w-5 shrink-0 text-neutral-400" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-zinc-800">
-            {attachment.name}
-          </p>
-          <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
-            {attachment.mediaType || "file"}
-          </p>
-        </div>
-        {attachment.isUploading && (
-          <Icon
-            icon={Loading03Icon}
-            className="h-4 w-4 shrink-0 animate-spin text-purple-400"
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Optimistic stand-in for a user message whose local attachments are still
  * uploading. Mirrors the real bubble and attachment cards so the swap to the
@@ -105,7 +80,6 @@ function PendingFileCard({ attachment }: CardProps) {
  * the backend's own status lines ("Preparing workspace…") appear next.
  */
 export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const { elapsedSeconds } = useElapsedTimer(true);
   const label = uploadStatusLabel(pendingSend.attachments);
 
@@ -133,19 +107,12 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         )}
         {pendingSend.attachments.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
-            {pendingSend.attachments.map((attachment, i) =>
-              isArtifactsEnabled ? (
-                <PendingArtifactCard
-                  key={`${attachment.name}-${i}`}
-                  attachment={attachment}
-                />
-              ) : (
-                <PendingFileCard
-                  key={`${attachment.name}-${i}`}
-                  attachment={attachment}
-                />
-              ),
-            )}
+            {pendingSend.attachments.map((attachment, i) => (
+              <PendingArtifactCard
+                key={`${attachment.name}-${i}`}
+                attachment={attachment}
+              />
+            ))}
           </div>
         )}
       </Message>
