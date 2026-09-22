@@ -1012,7 +1012,7 @@ class TestValidateWithJsonschema:
             validate_with_jsonschema(malformed, {"value": 5})
         assert not cache
 
-    @pytest.mark.parametrize("block_cls", [SendSlackMessageBlock, OrchestratorBlock])
+    @pytest.mark.parametrize("block_cls", [SendSlackMessageBlock])
     def test_real_credentialed_block_schemas_are_cacheable(
         self, block_cls, monkeypatch
     ):
@@ -1025,6 +1025,48 @@ class TestValidateWithJsonschema:
         first = json_util._compiled_validator(schema)
         second = json_util._compiled_validator(schema)
         assert first is second
+        assert len(cache) == 1
+
+    def test_large_orchestrator_schema_validates_without_cache_admission(
+        self, monkeypatch
+    ):
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_KEY_BYTES", 1024)
+        schema = OrchestratorBlock().input_schema.jsonschema()
+        for data in ({"prompt": "hello"}, {"prompt": 123}):
+            assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
+                schema, data
+            )
+        assert not cache
+
+    def test_concurrent_nested_references_preserve_validation_results(
+        self, monkeypatch
+    ):
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        schema = {
+            "$defs": {"value": {"type": "integer", "minimum": 0}},
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"$ref": "#/$defs/value"}}
+            },
+            "required": ["items"],
+        }
+
+        def validate(index: int) -> str | None:
+            data = {"items": [index, index if index % 2 == 0 else -1]}
+            expected = self._baseline_outcome(schema, data)
+            actual = validate_with_jsonschema(schema, data)
+            assert actual == expected
+            return actual
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            outcomes = list(pool.map(validate, range(200)))
+
+        assert [error is None for error in outcomes] == [
+            index % 2 == 0 for index in range(200)
+        ]
         assert len(cache) == 1
 
     def test_string_subclass_schema_key_stays_injective(self):

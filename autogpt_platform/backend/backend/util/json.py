@@ -142,8 +142,8 @@ _SchemaTypeFingerprint = tuple[tuple[int, type[Any]], ...]
 _SchemaCacheKey = tuple[bytes, _SchemaTypeFingerprint]
 
 _VALIDATOR_CACHE: OrderedDict[_SchemaCacheKey, Any] = OrderedDict()
-# The 565 built-in Block classes can each contribute a normal and dry-run
-# schema; 2,048 covers that working set while leaving room for user schemas.
+# Built-in blocks contribute normal and dry-run schemas. The bounded LRU
+# leaves room for user schemas without retaining arbitrarily large inputs.
 _VALIDATOR_CACHE_MAX_ENTRIES = 2048
 _VALIDATOR_CACHE_MAX_KEY_BYTES = 32 * 1024
 _VALIDATOR_CACHE_LOCK = Lock()
