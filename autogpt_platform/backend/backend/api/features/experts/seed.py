@@ -1387,7 +1387,7 @@ async def _resolve_roster_skills() -> dict[str, str]:
     if missing:
         raise RuntimeError(
             f"Skills Hub is missing roster listings for: {', '.join(missing)}. "
-            "Seed the starter skills before seeding the expert roster."
+            "Seed the skills catalog before seeding the expert roster."
         )
     return resolved
 

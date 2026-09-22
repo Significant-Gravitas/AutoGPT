@@ -12,6 +12,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -39,6 +40,7 @@ import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
+import type { SentFrom } from "../../sentFrom";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -52,6 +54,7 @@ export interface ChatContainerProps {
   error: Error | undefined;
   sessionId: string | null;
   sessionChatStatus?: string;
+  sessionSentFrom?: SentFrom | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -82,6 +85,9 @@ export interface ChatContainerProps {
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
   isUploadingFiles?: boolean;
+  /** The message whose attachments are still uploading, shown as a
+   *  placeholder bubble until the real one lands in `messages`. */
+  pendingSend?: PendingUploadSend | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -116,6 +122,7 @@ export const ChatContainer = ({
   error,
   sessionId,
   sessionChatStatus,
+  sessionSentFrom,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -131,6 +138,7 @@ export const ChatContainer = ({
   onEnqueue,
   queuedMessages,
   isUploadingFiles,
+  pendingSend,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -309,12 +317,14 @@ export const ChatContainer = ({
                   activeStreamStartedAt={activeStreamStartedAt}
                   sessionID={sessionId}
                   sessionChatStatus={sessionChatStatus}
+                  sessionSentFrom={sessionSentFrom}
                   hasMoreMessages={hasMoreMessages}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={onLoadMore}
                   onRetry={handleRetry}
                   turnStats={turnStats}
                   queuedMessages={queuedMessages}
+                  pendingSend={pendingSend}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
