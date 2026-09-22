@@ -248,8 +248,17 @@ from ._test_data import make_session
 # here is the branch itself — it already contains dev's tip 480c6f5509:
 #     dev 480c6f5509                              76,245 (89 tools)
 #     + this PR's two descriptions   +440         76,685 (89 tools)
-# Plus one; this line carries no margin by design.
-_CHAR_BUDGET = 76_686
+# Plus one; that line carried no margin by design, and dev overtook it within
+# the day: #14779 made the session's skills first-class find_capability
+# candidates, growing find_capability and run_capability, and the merge ref
+# measured 76,714 — 28 over — with none of this branch's delta having moved.
+# Re-measured on this branch merged with dev b6b03f5e72:
+#     merged tree                                 76,714 (89 tools)
+#     + headroom                       +300       77,014
+# The margin is deliberate and is the same exception the wire budget's #14476
+# note names: this is queued while dev is still moving, and a measured-plus-one
+# ceiling reds the queue's merge ref on the next reworded description.
+_CHAR_BUDGET = 77_014
 
 
 @pytest.fixture(scope="module")
@@ -433,7 +442,13 @@ def test_total_schema_char_budget() -> None:
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 69_156
+#
+# Re-measured on this branch merged with dev b6b03f5e72, after #14779 grew
+# find_capability and run_capability: the merge ref measured 69,183, 27 over
+# the plus-one ceiling above. Same headroom, for the same reason.
+#     merged tree                                 69,183
+#     + headroom                       +300       69,483
+_SESSION_WIRE_BUDGET = 69_483
 
 
 def test_largest_declared_session_wire_budget() -> None:

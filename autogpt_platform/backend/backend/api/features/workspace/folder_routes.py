@@ -16,13 +16,13 @@ from pydantic import BaseModel, Field
 
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
 from backend.data.workspace_folder import (
+    UNCHANGED,
     WorkspaceFolder,
+    apply_folder_update,
     bulk_move_files_to_folder,
     create_folder,
     delete_folder,
     list_workspace_folders,
-    move_folder,
-    update_folder,
 )
 
 router = fastapi.APIRouter(
@@ -116,21 +116,17 @@ async def update_workspace_folder(
     """Rename a folder, change its icon, and/or move it.
 
     Sending ``parent_id: null`` moves the folder to the workspace root;
-    leaving the field out keeps it where it is. The move is applied first, so
-    a rejected destination leaves the folder untouched rather than renamed;
-    a request that both moves and renames is checked against the folder's
-    current name at the destination.
+    leaving the field out keeps it where it is. Move and rename are applied
+    together or not at all, and the new name is checked for a clash against
+    the destination.
     """
     workspace = await get_or_create_workspace(user_id)
-    if "parent_id" in payload.model_fields_set:
-        await move_folder(
-            folder_id=folder_id,
-            workspace_id=workspace.id,
-            parent_id=payload.parent_id,
-        )
-    return await update_folder(
+    return await apply_folder_update(
         folder_id=folder_id,
         workspace_id=workspace.id,
+        parent_id=(
+            payload.parent_id if "parent_id" in payload.model_fields_set else UNCHANGED
+        ),
         name=payload.name,
         icon=payload.icon,
     )

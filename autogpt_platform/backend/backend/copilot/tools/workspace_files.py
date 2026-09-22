@@ -519,7 +519,8 @@ def _folder_subtree(
 
     Nearest first, so a cap truncates the deepest folders rather than an
     arbitrary set, and the caller can name the remainder for the model to
-    list directly.
+    list directly. Deliberately not shared with ``workspace_folder._subtree_ids``:
+    that one walks DB rows and must not cap, since it drives a delete.
     """
     children: dict[str | None, list[str]] = {}
     for folder in folders:
@@ -789,7 +790,7 @@ class ReadWorkspaceFileTool(BaseTool):
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
 # skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
-# frontmatter validation, the per-user cap, name regex, and content
+# frontmatter validation, the per-expert cap, name regex, and content
 # sanitisation. Allowing plain write_workspace_file / delete_workspace_file
 # there would bypass all of that and let the model accidentally (or
 # maliciously) corrupt the registry. Reads stay open so the model can still
