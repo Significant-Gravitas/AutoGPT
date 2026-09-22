@@ -11,6 +11,8 @@ def _make_library_agent(
     *,
     graph_id: str = "g1",
     executions: list | None = None,
+    name: str | None = None,
+    description: str | None = None,
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
@@ -22,10 +24,13 @@ def _make_library_agent(
         isDeleted=False,
         isArchived=False,
         isHidden=False,
+        name=name,
+        description=description,
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         AgentGraph=prisma.models.AgentGraph(
             id=graph_id,
             version=1,
@@ -34,9 +39,46 @@ def _make_library_agent(
             userId="u1",
             isActive=True,
             createdAt=datetime.datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
         ),
     )
+
+
+def test_from_db_prefers_marketplace_name_and_description():
+    """Snapshotted marketplace title/description override the graph's own."""
+    agent = _make_library_agent(
+        name="Published Title",
+        description="Published description",
+    )
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Published Title"
+    assert result.description == "Published description"
+
+
+def test_from_db_falls_back_to_graph_name_and_description():
+    """User-created agents (no snapshot) fall back to the graph's values."""
+    agent = _make_library_agent(name=None, description=None)
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Agent"
+    assert result.description == "Desc"
+
+
+def test_from_db_preserves_empty_marketplace_description():
+    """An intentionally-empty published value is kept, not replaced by the graph.
+
+    Only a missing snapshot (None) falls back; an empty string is a real value.
+    """
+    agent = _make_library_agent(name="Published Title", description="")
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert result.name == "Published Title"
+    assert result.description == ""
 
 
 def test_from_db_execution_count_override_covers_success_rate():
@@ -52,6 +94,7 @@ def test_from_db_execution_count_override_covers_success_rate():
         updatedAt=now,
         isDeleted=False,
         isShared=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
     )
     agent = _make_library_agent(executions=[exec1])
 
@@ -66,6 +109,7 @@ def test_from_db_execution_count_override_covers_success_rate():
 async def test_agent_preset_from_db(test_user_id: str):
     # Create mock DB agent
     db_agent = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="test-agent-123",
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
@@ -76,6 +120,7 @@ async def test_agent_preset_from_db(test_user_id: str):
         isActive=True,
         userId=test_user_id,
         isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         InputPresets=[
             prisma.models.AgentNodeExecutionInputOutput.model_validate(
                 {
@@ -97,3 +142,52 @@ async def test_agent_preset_from_db(test_user_id: str):
     assert agent.name == "Test Agent"
     assert agent.description == "Test agent description"
     assert agent.inputs == {"input1": {"type": "string", "value": "test value"}}
+
+
+def test_preset_serialization_redacts_webhook_signing_material():
+    """A serialized preset must never leak the webhook's signing secret or
+    provider webhook id (GHSA-4m2w-qfr5-9f3v), while still exposing the ingress
+    URL and non-sensitive metadata the frontend needs."""
+    from backend.data.integrations import Webhook
+    from backend.integrations.providers import ProviderName
+
+    webhook = Webhook(
+        id="wh-1",
+        user_id="u1",
+        provider=ProviderName.GITHUB,
+        credentials_id="cred-1",
+        webhook_type="repo",
+        resource="owner/repo",
+        events=["pull_request"],
+        config={},
+        secret="super-secret-signing-key",
+        provider_webhook_id="gh-provider-123",
+    )
+    preset = library_model.LibraryAgentPreset(
+        id="preset-1",
+        user_id="u1",
+        created_at=datetime.datetime.now(),
+        updated_at=datetime.datetime.now(),
+        graph_id="g1",
+        graph_version=1,
+        inputs={},
+        credentials={},
+        name="p",
+        description="",
+        is_active=True,
+        webhook_id="wh-1",
+        webhook=webhook,
+    )
+
+    dumped = preset.model_dump(mode="json")
+    assert dumped["webhook"] is not None
+    assert "secret" not in dumped["webhook"]
+    assert "provider_webhook_id" not in dumped["webhook"]
+    # Non-sensitive fields callers rely on are preserved.
+    assert dumped["webhook"]["id"] == "wh-1"
+    assert dumped["webhook"]["url"]
+
+    # The secret must not leak through JSON string serialization either.
+    serialized = preset.model_dump_json()
+    assert "super-secret-signing-key" not in serialized
+    assert "gh-provider-123" not in serialized

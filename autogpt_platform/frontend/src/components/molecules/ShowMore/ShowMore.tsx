@@ -2,9 +2,10 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { getIconSize, ShowMoreTextVariant } from "./helpers";
+import { ArrowDown01Icon, ArrowUp01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface ShowMoreProps {
   children: string;
@@ -62,12 +63,12 @@ export function ShowMore({
       >
         {isExpanded ? (
           <>
-            <CaretUpIcon size={iconSize} weight="bold" />
+            <Icon icon={ArrowUp01Icon} size={iconSize} />
             <span>less</span>
           </>
         ) : (
           <>
-            <CaretDownIcon size={iconSize} weight="bold" />
+            <Icon icon={ArrowDown01Icon} size={iconSize} />
             <span>more</span>
           </>
         )}

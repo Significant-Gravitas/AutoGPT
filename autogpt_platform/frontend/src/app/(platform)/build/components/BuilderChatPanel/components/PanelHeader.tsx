@@ -1,5 +1,10 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { ArrowCounterClockwise, ChatCircle, X } from "@phosphor-icons/react";
+import {
+  BubbleChatIcon,
+  Cancel01Icon,
+  RefreshIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onClose: () => void;
@@ -17,7 +22,7 @@ export function PanelHeader({
   return (
     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
       <div className="flex items-center gap-2">
-        <ChatCircle size={18} weight="fill" className="text-violet-600" />
+        <Icon icon={BubbleChatIcon} size={18} className="text-violet-600" />
         <span className="text-sm font-semibold text-slate-800">
           Chat with Builder
         </span>
@@ -28,7 +33,7 @@ export function PanelHeader({
             variant="ghost"
             size="small"
             onClick={onRevert}
-            leftIcon={<ArrowCounterClockwise size={14} />}
+            leftIcon={<Icon icon={RefreshIcon} size={14} />}
             aria-label={
               revertTargetVersion != null
                 ? `Revert to version ${revertTargetVersion}`
@@ -45,7 +50,7 @@ export function PanelHeader({
           onClick={onClose}
           aria-label="Close"
         >
-          <X size={16} />
+          <Icon icon={Cancel01Icon} size={16} />
         </Button>
       </div>
     </div>

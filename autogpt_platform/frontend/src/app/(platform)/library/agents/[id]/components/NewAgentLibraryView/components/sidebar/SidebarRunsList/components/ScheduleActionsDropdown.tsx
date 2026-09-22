@@ -20,9 +20,10 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { DotsThreeVertical } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -115,7 +116,7 @@ export function ScheduleActionsDropdown({
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
           >
-            <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+            <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

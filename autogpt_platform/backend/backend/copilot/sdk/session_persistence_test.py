@@ -16,8 +16,11 @@ state allows correct content accumulation by _dispatch_response.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
+
+import pytest
 
 from backend.copilot.constants import (
     STOPPED_BY_USER_MARKER,
@@ -29,10 +32,12 @@ from backend.copilot.response_model import (
     StreamStartStep,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.service import (
     _dispatch_response,
     _intermediate_flush_blocked,
+    _resolve_tool_result_name,
     _StreamAccumulator,
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
@@ -594,3 +599,131 @@ class TestIntermediateFlushBlocked:
             session.messages[0].tool_calls[0]["function"]["name"]
             == "setup_agent_webhook_trigger"
         )
+
+
+class TestLateToolCallPersistence:
+    """Tool calls arriving after the assistant row was flushed to the DB must
+    be flagged for back-fill, and tool-result rows must carry the tool name —
+    otherwise the tool activity is invisible in session history (both UIs
+    render from toolCalls / name)."""
+
+    def _acc_with_appended_assistant(
+        self, ctx: MagicMock, *, sequence: int | None
+    ) -> _StreamAccumulator:
+        msg = ChatMessage(role="assistant", content="Working...", sequence=sequence)
+        ctx.session.messages.append(msg)
+        return _StreamAccumulator(
+            assistant_response=msg,
+            accumulated_tool_calls=[],
+            has_appended_assistant=True,
+            has_tool_results=False,
+        )
+
+    def test_tool_call_after_flush_flags_row_for_backfill(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=42)
+
+        ev = StreamToolInputAvailable(
+            toolCallId="c1", toolName="find_block", input={"query": "notion"}
+        )
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        assert acc.assistant_response.tool_calls is not None
+        assert acc.assistant_response.tool_calls[0]["function"]["name"] == "find_block"
+        assert acc.assistant_response.tool_calls_pending_save is True
+
+    def test_tool_call_before_flush_is_not_flagged(self) -> None:
+        """Unsaved rows (sequence None) are persisted with their tool_calls by
+        the normal insert path — no back-fill needed."""
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolInputAvailable(toolCallId="c1", toolName="find_block", input={})
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        assert acc.assistant_response.tool_calls is not None
+        assert acc.assistant_response.tool_calls_pending_save is False
+
+    def test_tool_result_row_carries_tool_name(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolOutputAvailable(
+            toolCallId="c1", toolName="find_block", output="found 3 blocks"
+        )
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name == "find_block"
+        assert tool_rows[0].tool_call_id == "c1"
+
+    def test_nameless_tool_result_resolves_name_from_matching_call(self) -> None:
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+        acc.assistant_response.tool_calls = [
+            {"id": "c1", "type": "function", "function": {"name": "run_agent"}}
+        ]
+
+        ev = StreamToolOutputAvailable(toolCallId="c1", toolName=None, output="done")
+        _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name == "run_agent"
+
+    def test_nameless_tool_result_with_no_matching_call_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No adapter name AND no matching tool_call in history: the row is
+        persisted nameless (nothing to resolve from), but loudly."""
+        ctx = _make_ctx()
+        state = _make_state()
+        acc = self._acc_with_appended_assistant(ctx, sequence=None)
+
+        ev = StreamToolOutputAvailable(toolCallId="ghost", toolName=None, output="?")
+        with caplog.at_level(logging.WARNING):
+            _dispatch_response(ev, acc, ctx, state, False, "[test]")
+
+        tool_rows = [m for m in ctx.session.messages if m.role == "tool"]
+        assert len(tool_rows) == 1
+        assert tool_rows[0].name is None
+        assert any("nameless tool-result" in r.message for r in caplog.records)
+
+    def test_resolve_tool_result_name_matched_but_nameless_call_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A matching tool_call whose function dict carries no name must not
+        bypass the nameless warning."""
+        session = _make_session()
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[{"id": "c1", "type": "function", "function": {}}],
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _resolve_tool_result_name(session, "c1", None) is None
+        assert any("has no function name" in r.message for r in caplog.records)
+
+    def test_resolve_tool_result_name_no_match_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        session = _make_session()
+        session.messages.append(
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {"id": "other", "type": "function", "function": {"name": "x"}}
+                ],
+            )
+        )
+        with caplog.at_level(logging.WARNING):
+            assert _resolve_tool_result_name(session, "missing", None) is None
+        assert any("nameless tool-result" in r.message for r in caplog.records)

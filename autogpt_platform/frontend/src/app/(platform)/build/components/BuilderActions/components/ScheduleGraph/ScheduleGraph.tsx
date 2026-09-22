@@ -5,10 +5,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ClockIcon } from "@phosphor-icons/react";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 import { useScheduleGraph } from "./useScheduleGraph";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
   const {
@@ -30,7 +31,7 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
               onClick={handleScheduleGraph}
               disabled={!flowID}
             >
-              <ClockIcon className="size-4" />
+              <Icon icon={Clock01Icon} className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>

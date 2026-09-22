@@ -1,6 +1,4 @@
 "use client";
-
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Badge } from "@/components/atoms/Badge/Badge";
@@ -15,6 +13,8 @@ import {
   rowsContainerVariants,
 } from "../../../helpers";
 import { useInvoicesCard } from "./useInvoicesCard";
+import { Download04Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index?: number;
@@ -149,7 +149,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                           }
                         }}
                       >
-                        <DownloadSimpleIcon size={14} />
+                        <Icon icon={Download04Icon} size={14} />
                       </Button>
                     </td>
                   </motion.tr>

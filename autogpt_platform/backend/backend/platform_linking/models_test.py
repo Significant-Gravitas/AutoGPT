@@ -3,6 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
+from backend.util.json import to_dict
+
 from .models import (
     BotChatRequest,
     ConfirmLinkResponse,
@@ -12,6 +14,8 @@ from .models import (
     Platform,
     ResolveResponse,
     ResolveServerRequest,
+    WorkspaceArtifact,
+    WorkspaceUploadRequest,
 )
 
 
@@ -176,3 +180,52 @@ class TestResponseModels:
     def test_delete_link_response(self):
         resp = DeleteLinkResponse(success=True)
         assert resp.success is True
+
+
+class TestBinaryContentOverJsonRpc:
+    """Binary file bytes must survive the JSON service RPC.
+
+    Plain ``bytes`` fields are strict-UTF-8-decoded by JSON serialization,
+    so a binary artifact (e.g. a JPEG starting 0xff) fails to serialize on
+    the ``fetch_workspace_artifact`` / ``upload_workspace_files`` hops.
+    """
+
+    # First bytes of a JPEG — not valid UTF-8.
+    _BINARY = b"\xff\xd8\xff\xe0" + bytes(range(256))
+
+    def _artifact(self) -> WorkspaceArtifact:
+        return WorkspaceArtifact(
+            file_id="f1",
+            filename="photo.jpg",
+            mime_type="image/jpeg",
+            size_bytes=len(self._BINARY),
+            content=self._BINARY,
+        )
+
+    def test_artifact_binary_content_survives_the_wire(self):
+        # Server response leg: FastAPI serializes via jsonable_encoder …
+        wire = to_dict(self._artifact())
+        assert isinstance(wire["content"], str)  # base64, JSON-safe
+        # … client leg: TypeAdapter validates the JSON back into the model.
+        restored = WorkspaceArtifact.model_validate(wire)
+        assert restored.content == self._BINARY
+
+    def test_upload_request_binary_content_survives_the_wire(self):
+        request = WorkspaceUploadRequest(
+            platform=Platform.TELEGRAM,
+            platform_user_id="u1",
+            filename="photo.jpg",
+            mime_type="image/jpeg",
+            content=self._BINARY,
+        )
+        wire = to_dict(request)
+        assert isinstance(wire["content"], str)
+        restored = WorkspaceUploadRequest.model_validate(wire)
+        assert restored.content == self._BINARY
+
+    def test_raw_bytes_stay_bytes_in_process(self):
+        # In-process consumers (adapters attach .content directly) must keep
+        # seeing raw bytes — only the JSON wire format is base64.
+        artifact = self._artifact()
+        assert artifact.content == self._BINARY
+        assert artifact.model_dump()["content"] == self._BINARY

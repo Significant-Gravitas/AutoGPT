@@ -10,6 +10,7 @@ import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import LibraryFolderCreationDialog from "../LibraryFolderCreationDialog/LibraryFolderCreationDialog";
 import { LibrarySortMenu } from "../LibrarySortMenu/LibrarySortMenu";
 import { AgentFilterMenu } from "../AgentFilterMenu/AgentFilterMenu";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   tabs: LibraryTab[];
@@ -69,7 +70,7 @@ export function LibrarySubSection({
               className="inline-flex items-center gap-1.5"
               disabled={tab.id === "favorites" && favoritesCount === 0}
             >
-              <tab.icon size={16} />
+              <Icon icon={tab.icon} size={16} />
               {getTabLabel(tab)}
             </TabsLineTrigger>
           ))}

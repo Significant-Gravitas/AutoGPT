@@ -1,8 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CopyIcon, XIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useDuplicateGraph } from "../../hooks/useDuplicateGraph";
+import { Cancel01Icon, Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function ReadOnlyBanner() {
   const { duplicate, isDuplicating, canDuplicate, isCheckingLibrary } =
@@ -36,7 +37,7 @@ export function ReadOnlyBanner() {
           onClick={duplicate}
           loading={isDuplicating}
           disabled={!canDuplicate}
-          leftIcon={<CopyIcon className="size-4" />}
+          leftIcon={<Icon icon={Copy01Icon} className="size-4" />}
         >
           Duplicate
         </Button>
@@ -48,7 +49,7 @@ export function ReadOnlyBanner() {
         aria-label="Dismiss"
         title="Dismiss"
       >
-        <XIcon className="h-4 w-4" />
+        <Icon icon={Cancel01Icon} className="h-4 w-4" />
       </Button>
     </div>
   );

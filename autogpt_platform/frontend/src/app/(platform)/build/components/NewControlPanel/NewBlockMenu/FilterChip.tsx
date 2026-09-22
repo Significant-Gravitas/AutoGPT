@@ -1,9 +1,10 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
-import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import React, { ButtonHTMLAttributes, useState } from "react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
@@ -48,7 +49,7 @@ export const FilterChip: React.FC<Props> = ({
             transition={{ duration: 0.3, type: "spring", bounce: 0.2 }}
             className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-50"
           >
-            <XIcon size={12} weight="bold" className="text-violet-700" />
+            <Icon icon={Cancel01Icon} size={12} className="text-violet-700" />
           </motion.span>
         )}
         {number !== undefined && isHovered && (

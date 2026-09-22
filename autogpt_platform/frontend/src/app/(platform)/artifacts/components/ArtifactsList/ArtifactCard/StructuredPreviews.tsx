@@ -1,7 +1,6 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { EnvelopeSimpleIcon, PhoneIcon } from "@phosphor-icons/react";
 import { getFilePreviewUrl } from "../helpers";
 
 // Whole file (kind is gated < 110KB) via the preview endpoint, which sets
@@ -14,6 +13,8 @@ import {
   type VcardPreview as VcardData,
 } from "../parsers";
 import { Fallback, LoadingPlaceholder, useFileText } from "./PreviewParts";
+import { CallIcon, Mail02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface PreviewProps {
   file: WorkspaceFileItem;
@@ -159,13 +160,13 @@ function ContactCard({ contact }: { contact: VcardData }) {
       ) : null}
       {contact.tel ? (
         <span className="flex items-center gap-1 text-xs text-zinc-500">
-          <PhoneIcon size={12} className="shrink-0" />
+          <Icon icon={CallIcon} size={12} className="shrink-0" />
           <span className="truncate">{contact.tel}</span>
         </span>
       ) : null}
       {contact.email ? (
         <span className="flex items-center gap-1 text-xs text-zinc-500">
-          <EnvelopeSimpleIcon size={12} className="shrink-0" />
+          <Icon icon={Mail02Icon} size={12} className="shrink-0" />
           <span className="truncate">{contact.email}</span>
         </span>
       ) : null}

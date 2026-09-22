@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -13,19 +14,26 @@ import {
   getGetV2GetUserProfileMockHandler401,
   getPostV2UpdateUserProfileMockHandler200,
   getPostV2UpdateUserProfileMockHandler422,
-  getPostV2UploadSubmissionMediaMockHandler200,
-  getPostV2UploadSubmissionMediaMockHandler401,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 
 import SettingsProfilePage from "../page";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 const toastSpy = vi.hoisted(() => vi.fn());
+const uploadAvatarSpy = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
+
+vi.mock("@/lib/direct-upload", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/direct-upload")>();
+  return {
+    ...actual,
+    uploadSubmissionMediaDirect: uploadAvatarSpy,
+  };
+});
 
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -51,7 +59,7 @@ function makeProfile(overrides: Partial<ProfileDetails> = {}): ProfileDetails {
 }
 
 function authenticate() {
-  mockUseSupabase.mockReturnValue({
+  mockUseAuth.mockReturnValue({
     user: {
       id: "user-1",
       email: "user@example.com",
@@ -62,7 +70,6 @@ function authenticate() {
     },
     isLoggedIn: true,
     isUserLoading: false,
-    supabase: {},
   });
 }
 
@@ -131,6 +138,30 @@ describe("SettingsProfilePage - data loading", () => {
     expect(
       await screen.findByRole("heading", { name: /^profile$/i, level: 1 }),
     ).toBeDefined();
+  });
+
+  test("renders an empty form (not an error) when the user has no profile yet", async () => {
+    // A 404 from the profile endpoint means "no profile yet" — the page must
+    // render the empty form so the user can create one, not an error card.
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/store/profile", () =>
+        HttpResponse.json(
+          { detail: "User does not have a profile yet" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<SettingsProfilePage />);
+
+    const nameInput = (await screen.findByLabelText(
+      /display name/i,
+    )) as HTMLInputElement;
+    expect(nameInput.value).toBe("");
+    expect((screen.getByLabelText(/^handle$/i) as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
 });
 
@@ -572,11 +603,9 @@ describe("SettingsProfilePage - save & discard", () => {
 
 describe("SettingsProfilePage - avatar upload", () => {
   test("uploading an avatar updates the form state", async () => {
-    server.use(
-      getGetV2GetUserProfileMockHandler200(makeProfile()),
-      getPostV2UploadSubmissionMediaMockHandler200(
-        "https://cdn.example.com/uploaded.png",
-      ),
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    uploadAvatarSpy.mockResolvedValueOnce(
+      "https://cdn.example.com/uploaded.png",
     );
 
     render(<SettingsProfilePage />);
@@ -603,10 +632,8 @@ describe("SettingsProfilePage - avatar upload", () => {
   });
 
   test("upload error surfaces a destructive toast", async () => {
-    server.use(
-      getGetV2GetUserProfileMockHandler200(makeProfile()),
-      getPostV2UploadSubmissionMediaMockHandler401(),
-    );
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    uploadAvatarSpy.mockRejectedValueOnce(new Error("Unauthorized"));
 
     render(<SettingsProfilePage />);
 
@@ -627,15 +654,41 @@ describe("SettingsProfilePage - avatar upload", () => {
       );
     });
   });
+
+  test("rejects an oversized avatar before uploading and explains the limit", async () => {
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    toastSpy.mockClear();
+    uploadAvatarSpy.mockClear();
+
+    render(<SettingsProfilePage />);
+
+    await screen.findByLabelText(/display name/i);
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const bigFile = new File(["x"], "avatar.png", { type: "image/png" });
+    Object.defineProperty(bigFile, "size", { value: 51 * 1024 * 1024 });
+    fireEvent.change(fileInput, { target: { files: [bigFile] } });
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File too large",
+          variant: "destructive",
+        }),
+      );
+    });
+    expect(uploadAvatarSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("SettingsProfilePage - skeleton & nullish profile fields", () => {
   test("renders the skeleton on first render before the user resolves", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
       isLoggedIn: false,
       isUserLoading: true,
-      supabase: {},
     });
 
     const { container } = render(<SettingsProfilePage />);

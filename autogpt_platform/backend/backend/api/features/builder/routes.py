@@ -2,7 +2,12 @@ import logging
 from typing import Annotated, Sequence, cast, get_args
 
 import fastapi
-from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from autogpt_libs.auth.dependencies import (
+    get_request_context,
+    get_user_id,
+    requires_user,
+)
+from autogpt_libs.auth.models import RequestContext
 
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
@@ -147,6 +152,7 @@ async def get_providers(
 )
 async def search(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
     search_query: Annotated[str | None, fastapi.Query()] = None,
     filter: Annotated[str | None, fastapi.Query()] = None,
     search_id: Annotated[str | None, fastapi.Query()] = None,
@@ -184,6 +190,7 @@ async def search(
         search_query=search_query,
         filters=filters,
         by_creator=by_creator,
+        organization_id=ctx.org_id,
     )
 
     # Paginate results
@@ -208,6 +215,7 @@ async def search(
             by_creator=by_creator,
             search_id=search_id,
         ),
+        organization_id=ctx.org_id,
     )
 
     return builder_model.SearchResponse(
@@ -225,8 +233,9 @@ async def search(
 )
 async def get_counts(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
 ) -> builder_model.CountResponse:
     """
     Get item counts for the menu categories in the Blocks Menu.
     """
-    return await builder_db.get_counts(user_id)
+    return await builder_db.get_counts(user_id, organization_id=ctx.org_id)
