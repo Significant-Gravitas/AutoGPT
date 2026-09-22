@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { BookOpen01Icon } from "@hugeicons/core-free-icons";
+import { Book04Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
 import {
@@ -54,7 +54,7 @@ export function SkillsList({ category }: Props) {
     >
       <SectionHeader
         size="small"
-        titleIcon={<Icon icon={BookOpen01Icon} size={22} aria-hidden />}
+        titleIcon={<Icon icon={Book04Icon} size={28} aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."

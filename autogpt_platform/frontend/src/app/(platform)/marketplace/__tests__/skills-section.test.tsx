@@ -401,7 +401,7 @@ describe("Marketplace SkillsSection", () => {
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

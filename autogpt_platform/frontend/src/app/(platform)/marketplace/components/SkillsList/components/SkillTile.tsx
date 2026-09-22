@@ -1,10 +1,7 @@
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-import {
-  BookOpen01Icon,
-  CheckmarkCircle02Icon,
-} from "@hugeicons/core-free-icons";
+import { Book04Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { getCategoryAccent } from "../../ExpertsSection/helpers";
 import { ShelfTile } from "../../Shelf/ShelfTile";
 
@@ -23,12 +20,7 @@ export function SkillTile({ skill, isInstalled, onSee }: Props) {
       onClick={onSee}
       mediaClassName={cn("h-10 w-10", accent.pill)}
       media={
-        <Icon
-          icon={BookOpen01Icon}
-          size={18}
-          className={accent.icon}
-          aria-hidden
-        />
+        <Icon icon={Book04Icon} size={18} className={accent.icon} aria-hidden />
       }
       title={skill.title}
       subtitle={skill.description}
