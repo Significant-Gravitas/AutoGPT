@@ -95,7 +95,9 @@ class StagehandObserveBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -178,7 +180,9 @@ class StagehandActBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -274,7 +278,9 @@ class StagehandExtractBlock(Block):
             default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
