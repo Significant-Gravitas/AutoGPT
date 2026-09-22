@@ -114,7 +114,7 @@ async def upload_copilot_skill(
     Parses the canonical frontmatter + body, then reuses
     :func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill
     is validated, capped, and persisted exactly like one the copilot distils
-    via ``store_skill``.  Malformed files return 400, the per-user cap returns
+    via ``store_skill``.  Malformed files return 400, the per-expert cap returns
     409, and an existing slug is overwritten (upsert).
     """
     await _require_skill_owner(user_id, expert_id)
@@ -194,7 +194,7 @@ async def _store_uploaded_skill(
     files: list[SkillFile] | None = None,
 ) -> ParsedSkill:
     """Persist a parsed upload, mapping each refusal to its status: 409 at the
-    per-user cap, 413 over a package limit, 400 for anything malformed."""
+    per-expert cap, 413 over a package limit, 400 for anything malformed."""
     try:
         return await store_user_skill(
             user_id,

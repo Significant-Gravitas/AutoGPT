@@ -23,9 +23,9 @@ from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
     MAX_PACKAGE_FILE_BYTES,
     MAX_PACKAGE_FILES,
+    MAX_SKILLS_PER_EXPERT,
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
-    MAX_USER_SKILLS,
     BuiltInSkillError,
     DeleteSkillResponse,
     DeleteSkillTool,
@@ -59,6 +59,16 @@ from backend.copilot.tools.skills import (
     validate_package,
 )
 from backend.util.exceptions import ConflictError
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+
+def test_max_skills_per_expert_cap_constant():
+    """The cap #14692 asked for: room for a 50-skill bundle and the owner's own."""
+    assert MAX_SKILLS_PER_EXPERT == 150
+
 
 # ---------------------------------------------------------------------------
 # Round-trip
@@ -562,13 +572,13 @@ async def test_store_skill_strips_server_injected_tags_from_body():
 
 
 @pytest.mark.asyncio
-async def test_store_skill_enforces_max_user_skills_cap():
-    """Hitting the per-user cap returns ErrorResponse instead of
-    silently appending the (MAX_USER_SKILLS+1)-th skill."""
+async def test_store_skill_enforces_max_skills_per_expert_cap():
+    """Hitting the per-expert cap returns ErrorResponse instead of
+    silently appending the (MAX_SKILLS_PER_EXPERT+1)-th skill."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    # Pre-fill the workspace with MAX_USER_SKILLS distinct slugs.
-    for i in range(MAX_USER_SKILLS):
+    # Pre-fill the workspace with MAX_SKILLS_PER_EXPERT distinct slugs.
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="desc", body="body")
@@ -590,11 +600,11 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
     """When ``AsyncClusterLock.try_acquire`` returns a DIFFERENT owner
     (i.e. contention or Redis hiccup) the fallback path is unlocked.
     In that branch the cap check must be treated strictly — refuse the
-    write at-or-above MAX_USER_SKILLS even on an upsert, otherwise two
+    write at-or-above MAX_SKILLS_PER_EXPERT even on an upsert, otherwise two
     concurrent writers could both see N==cap and both commit."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    for i in range(MAX_USER_SKILLS):
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="old", body="old")
@@ -645,10 +655,10 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
 @pytest.mark.asyncio
 async def test_store_skill_upsert_does_not_trip_cap():
     """Overwriting an existing skill must NOT count toward the cap —
-    re-storing the same name when already at MAX_USER_SKILLS is fine."""
+    re-storing the same name when already at MAX_SKILLS_PER_EXPERT is fine."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    for i in range(MAX_USER_SKILLS):
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="old", body="old")
@@ -2370,7 +2380,7 @@ async def test_nested_skill_md_files_cannot_hide_a_root_skill():
     """A package shipping its own example SKILL.md files fills the capped,
     newest-first page; the listing must page past them to the real roots."""
     fake = _package_manager(slug="aaa-oldest")
-    for i in range(MAX_USER_SKILLS * 4 + 10):
+    for i in range(MAX_SKILLS_PER_EXPERT * 4 + 10):
         fake.files[f"/skills/aaa-oldest/references/e{i:04d}/SKILL.md"] = b"example"
     with _patch_skills_path(fake):
         skills = await _list_user_skills_from_workspace("user-1")
