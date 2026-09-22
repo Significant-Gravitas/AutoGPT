@@ -18,6 +18,7 @@ from anthropic.types import ToolParam
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from pydantic import BaseModel, SecretStr
 from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import (
     Block,
@@ -84,6 +85,7 @@ LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
+    ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
@@ -113,7 +115,7 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-def AICredentialsField() -> AICredentials:
+def AICredentialsField(*, allow_credential_free: bool = True) -> AICredentials:
     return CredentialsField(
         description="API key for the LLM provider.",
         discriminator="model",
@@ -125,9 +127,9 @@ def AICredentialsField() -> AICredentials:
         credential_free_discriminator_values={
             model.value
             for model in LLMModel
-            if model.metadata.provider == ProviderName.OLLAMA
+            if allow_credential_free and model.metadata.provider == ProviderName.OLLAMA
         },
-        default=None,
+        default=None if allow_credential_free else PydanticUndefined,
     )
 
 

@@ -649,6 +649,14 @@ class GraphModel(Graph, GraphMeta):
                     if not node.credentials_optional and (
                         field_name in block_required
                         or (
+                            discriminator_is_linked
+                            and bool(field_info.credential_free_discriminator_values)
+                            and any(
+                                field_info.requires_credentials(value)
+                                for value in field_info.discriminator_mapping or {}
+                            )
+                        )
+                        or (
                             required_discriminator_value is not None
                             and field_info.requires_credentials(
                                 required_discriminator_value

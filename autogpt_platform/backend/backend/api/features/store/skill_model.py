@@ -1,12 +1,14 @@
 """API models for marketplace skill listings.
 
 A skill listing publishes a ``SKILL.md`` — instructions and examples the
-copilot reads — rather than a runnable graph. The listing's ``slug`` is both
-its marketplace URL segment and the name the skill takes once installed, so
-the two can never drift; ``name`` is the human title shown on the card.
+copilot reads — and the files beside it, rather than a runnable graph. The
+listing's ``slug`` is both its marketplace URL segment and the name the skill
+takes once installed, so the two can never drift. ``name`` is that slug again,
+never a display string: the title on the card is :func:`skill_title`.
 """
 
 import datetime
+import re
 
 import prisma.enums
 import prisma.models
@@ -20,12 +22,19 @@ from .categories import validate_canonical_categories
 class MarketplaceSkill(pydantic.BaseModel):
     slug: str
     name: str
+    title: str
     description: str
     categories: list[str]
     required_providers: list[str]
     install_count: int
     creator: str | None = None
     creator_avatar: str | None = None
+    source_repo: str | None = pydantic.Field(
+        default=None,
+        description="GitHub repo a vendored skill was taken from, as owner/name.",
+    )
+    source_url: str | None = None
+    license: str | None = None
 
     @classmethod
     def from_db(cls, listing: prisma.models.SkillListing) -> "MarketplaceSkill":
@@ -34,12 +43,16 @@ class MarketplaceSkill(pydantic.BaseModel):
         return cls(
             slug=listing.slug,
             name=version.name,
+            title=skill_title(version.name, version.body),
             description=version.description,
             categories=list(version.categories),
             required_providers=list(version.requiredProviders),
             install_count=listing.installCount,
             creator=profile.username if profile else None,
             creator_avatar=profile.avatarUrl if profile else None,
+            source_repo=version.sourceRepo,
+            source_url=version.sourceUrl,
+            license=version.license,
         )
 
 
@@ -48,14 +61,31 @@ class MarketplaceSkillsResponse(pydantic.BaseModel):
     pagination: Pagination
 
 
+class SkillPackageFile(pydantic.BaseModel):
+    """One file beside the published ``SKILL.md``, by its path relative to the
+    skill folder. The contents are not inlined — a package runs to 20 MiB."""
+
+    path: str
+    size_bytes: int
+    # Null for an extension `mimetypes` cannot name — a `Makefile`, a `.toml`
+    # — which the viewer still serves, deciding on the bytes instead.
+    mime_type: str | None = None
+    is_executable: bool = False
+
+
 class MarketplaceSkillDetails(MarketplaceSkill):
     skill_listing_version_id: str
     body: str
     triggers: list[str]
     updated_at: datetime.datetime
+    files: list[SkillPackageFile] = []
 
     @classmethod
-    def from_db(cls, listing: prisma.models.SkillListing) -> "MarketplaceSkillDetails":
+    def from_db(
+        cls,
+        listing: prisma.models.SkillListing,
+        files: list[SkillPackageFile] | None = None,
+    ) -> "MarketplaceSkillDetails":
         version = active_version(listing)
         summary = MarketplaceSkill.from_db(listing)
         return cls(
@@ -64,6 +94,7 @@ class MarketplaceSkillDetails(MarketplaceSkill):
             body=version.body,
             triggers=list(version.triggers),
             updated_at=version.updatedAt,
+            files=files or [],
         )
 
 
@@ -77,6 +108,28 @@ class InstalledSkill(pydantic.BaseModel):
             "the install has already succeeded."
         )
     )
+
+
+# A body's title is its first heading, so anything before one rules it out.
+# ATX rules: horizontal space after the `#`, and a trailing run of `#` is a
+# closing marker rather than part of the title.
+_TITLE_HEADING_RE = re.compile(
+    r"\s*#[ \t]+(\S(?:.*?\S)?)(?:[ \t]+#+)?[ \t]*(?:\r?\n|$)"
+)
+
+
+def skill_title(name: str, body: str) -> str:
+    """The listing's display title: the author's own H1.
+
+    A skill's ``name`` is a slug, so deriving a title from it destroys the
+    author's casing — "seo-content-brief" reads back as "Seo content brief".
+    The humanised slug is only the fallback for a body that opens with prose.
+    """
+    heading = _TITLE_HEADING_RE.match(body)
+    if heading:
+        return heading.group(1)
+    words = re.sub(r"[-_]+", " ", name).strip()
+    return words[:1].upper() + words[1:] if words else name
 
 
 def active_version(
@@ -127,12 +180,20 @@ class SkillSubmission(pydantic.BaseModel):
     is_live: bool = pydantic.Field(
         description="Whether this version is the one the marketplace serves."
     )
+    files: list[SkillPackageFile] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Files beside the submitted SKILL.md, so a reviewer sees what a "
+            "package ships before approving it."
+        ),
+    )
 
     @classmethod
     def from_db(
         cls,
         version: prisma.models.SkillListingVersion,
         listing: prisma.models.SkillListing,
+        files: list[SkillPackageFile] | None = None,
     ) -> "SkillSubmission":
         return cls(
             skill_listing_version_id=version.id,
@@ -145,4 +206,5 @@ class SkillSubmission(pydantic.BaseModel):
             status=version.submissionStatus,
             review_comments=version.reviewComments,
             is_live=listing.activeVersionId == version.id,
+            files=files or [],
         )

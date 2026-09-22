@@ -77,7 +77,7 @@ class MemoryForgetSearchTool(BaseTool):
         return (
             "Search the current assistant's stored memories for a description so "
             "the user can choose which to delete. Returns candidate facts with UUIDs. "
-            "Use memory_forget_confirm with the UUIDs to actually delete them."
+            "Use tool:memory_forget_confirm with the UUIDs to actually delete them."
         )
 
     @property
@@ -171,7 +171,7 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         return MemoryForgetCandidatesResponse(
-            message=f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call memory_forget_confirm with the UUIDs.",
+            message=f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs.",
             session_id=session.session_id,
             candidates=candidates,
         )
@@ -244,7 +244,7 @@ class MemoryForgetConfirmTool(BaseTool):
 
         if not uuids:
             return ErrorResponse(
-                message="At least one UUID is required. Use memory_forget_search first.",
+                message="At least one UUID is required. Use tool:memory_forget_search first.",
                 session_id=session.session_id,
             )
 

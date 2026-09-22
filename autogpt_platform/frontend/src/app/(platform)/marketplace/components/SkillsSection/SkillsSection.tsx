@@ -41,22 +41,16 @@ export function SkillsSection({ category }: Props) {
     >
       <SectionHeader
         titleIcon={<Icon icon={BookOpen01Icon} size={30} aria-hidden />}
-        title="Otto Skills"
+        title="Skills"
         titleId={HEADING_ID}
-        subtitle="Playbooks your Otto follows — from brand voice to cold outreach. Install one and it knows how."
+        subtitle="Playbooks your experts follow — from brand voice to cold outreach. Teach them your way of working."
         action={sectionAction({ isLoggedIn, total })}
+        secondaryAction={
+          isLoggedIn
+            ? { label: "Build your own", href: "/library/skills" }
+            : undefined
+        }
       />
-      {isLoggedIn ? (
-        <div className="-mt-3 mb-6">
-          <Link
-            href="/library/skills"
-            className="text-sm font-medium text-accent transition-colors hover:text-accent/80"
-          >
-            …or teach it one of your own
-          </Link>
-        </div>
-      ) : null}
-
       {isLoading ? (
         <div
           role="status"
@@ -135,8 +129,8 @@ function EmptyShelf() {
         Nothing published yet
       </Text>
       <Text variant="body" className="max-w-md !text-zinc-600">
-        Skills from the community will show up here. In the meantime you can
-        teach your Otto one of your own.
+        Skills from the community will show up here. In the meantime, teach your
+        experts a skill of your own.
       </Text>
       <Link
         href="/library/skills"

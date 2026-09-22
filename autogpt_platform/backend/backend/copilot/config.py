@@ -56,7 +56,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
-CopilotLlmAuthProvider = Literal["platform", "codex"]
+CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
 
 
 class TransportProfile(BaseModel):
@@ -339,7 +339,9 @@ class ChatConfig(BaseSettings):
     )
     langfuse_prompt_cache_ttl: int = Field(
         default=300,
-        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+        ge=0,
+        description="How long a process may serve a cached Langfuse prompt before "
+        "re-fetching it (0 to disable caching)",
     )
 
     # Rate limiting — cost-based limits per day and per week, stored in
@@ -358,15 +360,24 @@ class ChatConfig(BaseSettings):
     #
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
+    #
+    # A negative value disables that window's cap. Self-hosted distributions
+    # (the single-container image and the unraid template) export -1 for both
+    # because the operator pays the model provider directly and, without
+    # LaunchDarkly, every account resolves to NO_TIER → BASIC multiplier and
+    # would otherwise inherit these cloud ceilings. The defaults here stay
+    # positive so a LaunchDarkly outage on cloud never removes the cap.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
-        "0 means no spend allowed (will block); there is no unlimited tier.",
+        "0 means no spend allowed (will block); a negative value disables the "
+        "daily cap (the self-hosted default).",
     )
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
         description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
-        "0 means no spend allowed (will block); there is no unlimited tier.",
+        "0 means no spend allowed (will block); a negative value disables the "
+        "weekly cap (the self-hosted default).",
     )
 
     # Cost (in credits / cents) to reset the daily rate limit using credits.
@@ -462,13 +473,30 @@ class ChatConfig(BaseSettings):
         description="Absolute cap on a tree ceiling, in microdollars ($10.00), "
         "applied after the tier-scaled fraction and the floor. The effective "
         "ceiling is min(remaining budget, max(fraction x tier daily, floor), "
-        "this cap). Checked at turn start, so overshoot is at most one turn.",
+        "this cap). Admission reads settled spend, so a tree can overshoot by "
+        "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
+        "what bounds it.",
     )
     tree_max_nodes: int = Field(
         default=8,
         ge=1,
         description="Max turns (root included) one root turn may spawn, "
         "counted per tree rather than per node so it is enforceable atomically.",
+    )
+    tree_budget_signal_enabled: bool = Field(
+        default=True,
+        description="Prepend a one-line <budget_status> block to every turn's "
+        "message, and the wrap-up checkpoint once the tree crosses "
+        "``tree_wrapup_threshold``. Off, or on a turn with no tree envelope, "
+        "the prompt is byte-identical to what it was before.",
+    )
+    tree_wrapup_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Share of a tree's ceiling at which the wrap-up checkpoint "
+        "is injected, once per tree. Below 1.0 on purpose: the instruction is "
+        "only useful while there is still budget to act on it.",
     )
     claude_agent_context_window: int = Field(
         default=200_000,
@@ -675,7 +703,10 @@ class ChatConfig(BaseSettings):
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "
         "it is needed; see backend.util.e2b_template. Any other value is used "
-        "as-is and must already exist on the team.",
+        "as-is and must already exist on the team, and it must carry what the "
+        "desktop needs (Xvfb, XFCE, x11vnc and noVNC, as E2B's desktop image "
+        "does): the screen is turned on inside this same box, so a plain "
+        "image such as 'base' makes every start_desktop fail.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries

@@ -3,6 +3,7 @@ import {
   useListExpertTemplates,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 interface Args {
@@ -29,7 +30,7 @@ export function useExpertsSection({
     {
       query: {
         enabled,
-        select: (x) => x.data as Expert[],
+        select: (x) => x.data as ExpertTemplate[],
         // The shelf keeps its cards across a chip change; search must not show a
         // previous term's cards, so it waits on the page's loading gate instead.
         placeholderData:

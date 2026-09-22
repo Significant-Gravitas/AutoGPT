@@ -9,6 +9,7 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -18,6 +19,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
@@ -241,9 +243,9 @@ export function useChatSession({
     if (chatTransports !== undefined && availableTransports.length === 0) {
       toast({
         variant: "destructive",
-        title: "Otto needs an AI connection",
+        title: "Your expert needs an AI connection",
         description:
-          "Sign in with ChatGPT under OpenAI in Settings → Integrations, or configure a chat API or local model on this server.",
+          "Connect ChatGPT or Microsoft 365 Copilot in Settings → Integrations, or configure a chat API or local model on this server.",
       });
       throw new Error("chat_transport_not_configured");
     }
@@ -256,7 +258,7 @@ export function useChatSession({
           : "Choose an AI connection",
         description: connectionsAreLoading
           ? "Wait a moment and try again."
-          : "Select the connection Otto should use before starting a new task.",
+          : "Select the connection your expert should use before starting a new task.",
       });
       throw new Error(
         connectionsAreLoading
@@ -272,7 +274,7 @@ export function useChatSession({
       toast({
         title: "AI connections changed",
         description:
-          "The next Otto task will resolve the currently available connection before it starts.",
+          "The next task will use the available connection when it starts.",
       });
     }
 
@@ -286,7 +288,7 @@ export function useChatSession({
       // user actually picks, and null means "use whatever the server says".
       if (copilotLlmAuth !== null) {
         sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
-        if (resolvedLLMAuth.authProvider === "codex") {
+        if (resolvedLLMAuth.authProvider !== "platform") {
           sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
         }
       }
@@ -314,6 +316,9 @@ export function useChatSession({
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
       setSessionId(response.data.id);
+      if (expertId) {
+        trackFunnel("expert_thread_created", { expert_id: expertId });
+      }
       queryClient.invalidateQueries({
         queryKey: SESSION_LIST_QUERY_KEY,
       });
@@ -358,12 +363,20 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
-  const sessionLlmAuthProvider: "platform" | "codex" | null =
-    sessionId && sessionQuery.data?.status === 200
-      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
-        ? "codex"
-        : "platform"
+  const storedLlmAuthProvider =
+    sessionQuery.data?.status === 200
+      ? sessionQuery.data.data.metadata?.llm_auth_provider
       : null;
+  const sessionLlmAuthProvider:
+    | "platform"
+    | "codex"
+    | "microsoft_365_copilot"
+    | null = sessionId
+    ? storedLlmAuthProvider === "codex" ||
+      storedLlmAuthProvider === "microsoft_365_copilot"
+      ? storedLlmAuthProvider
+      : "platform"
+    : null;
   const sessionLlmCredentialId =
     sessionId && sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
@@ -377,6 +390,11 @@ export function useChatSession({
   const sessionExpertId =
     sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.expert_id ?? null)
+      : null;
+
+  const sessionSentFrom =
+    sessionQuery.data?.status === 200
+      ? getSessionSentFrom(sessionQuery.data.data.metadata)
       : null;
 
   return {
@@ -405,5 +423,6 @@ export function useChatSession({
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
   };
 }

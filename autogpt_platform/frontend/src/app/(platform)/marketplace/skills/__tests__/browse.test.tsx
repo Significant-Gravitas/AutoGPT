@@ -55,6 +55,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 const brandVoice: MarketplaceSkill = {
   slug: "brand-voice-guide",
   name: "brand-voice-guide",
+  title: "Brand voice guide",
   description: "Write in a consistent brand voice.",
   categories: ["content"],
   required_providers: [],
@@ -100,7 +101,7 @@ describe("Marketplace skills browse page", () => {
     render(<SkillsBrowsePage />);
 
     expect(
-      await screen.findByRole("heading", { name: /Otto Skills/ }),
+      await screen.findByRole("heading", { name: "Skills" }),
     ).toBeDefined();
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
     expect(card.getAttribute("href")).toBe(

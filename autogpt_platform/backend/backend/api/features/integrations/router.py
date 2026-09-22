@@ -22,6 +22,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.db_accessors import experts_db
+from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -67,6 +68,7 @@ from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvi
 from backend.integrations.managed_providers.ayrshare import (
     settings_available as ayrshare_settings_available,
 )
+from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
@@ -75,6 +77,7 @@ from backend.integrations.oauth import (
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
+from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
@@ -412,6 +415,12 @@ async def callback(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
     )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="oauth",
+    )
 
     return to_meta_response(credentials)
 
@@ -745,6 +754,12 @@ async def device_auth_poll(
         logger.debug(
             f"Device auth approved for user {user_id} and provider {provider.value}"
         )
+        product_analytics.track_integration_connected(
+            user_id=user_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            method="device_code",
+        )
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -980,6 +995,12 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store credentials",
         )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="manual",
+    )
     return to_meta_response(credentials)
 
 
@@ -1232,7 +1253,7 @@ async def _execute_webhook_node_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
@@ -1240,6 +1261,14 @@ async def _execute_webhook_node_trigger(
             organization_id=org_id,
             team_id=ws_id,
             webhook_id=webhook_id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=node.graph_id,
+            graph_exec_id=graph_exec.id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1338,7 +1367,7 @@ async def _execute_webhook_preset_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
@@ -1349,6 +1378,16 @@ async def _execute_webhook_preset_trigger(
             team_id=ws_id,
             expert_id=preset.expert_id,
             webhook_id=webhook.id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=preset.graph_id,
+            graph_exec_id=graph_exec.id,
+            expert_id=preset.expert_id,
+            preset_id=preset.id,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
@@ -1736,6 +1775,20 @@ def _get_provider_oauth_handler(
     key = provider_key(provider_name)
 
     if key not in HANDLERS_BY_NAME:
+        if key in DEVICE_HANDLERS_BY_NAME:
+            # A device-code provider is a public client with no client secret,
+            # so there is no authorization-code flow to start. Point the caller
+            # at the device-auth endpoint rather than reporting "does not
+            # support OAuth". The detail is shown to end users verbatim.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Provider '{key}' connects with a device code, not an "
+                    "OAuth redirect. Connect it through the device-code flow "
+                    f"instead (API: POST /api/integrations/{key}"
+                    "/device-auth/initiate)."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",
@@ -1897,8 +1950,9 @@ async def list_providers(
     a ``description`` declared via ``ProviderBuilder.with_description(...)`` in
     the provider's ``_config.py``.
 
-    Note: The complete list of provider names is also available as a constant
-    in the generated TypeScript client via PROVIDER_NAMES.
+    Official MCP catalog entries are appended as display metadata and use the
+    generic MCP connection flow. They are not registered credential providers,
+    so PROVIDER_NAMES continues to contain only credential-provider names.
     """
     # Ensure all block modules (and therefore every provider's _config.py) are
     # imported before we read from AutoRegistry. Cached on first call.
@@ -1921,6 +1975,14 @@ async def list_providers(
             supported_auth_types=get_supported_auth_types(name),
         )
         for name in all_providers
+    ] + [
+        ProviderMetadata(
+            name=entry.name,
+            display_name=entry.display_name,
+            description=entry.description,
+            mcp_server=entry.mcp_server,
+        )
+        for entry in get_mcp_catalog()
     ]
 
 

@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Calendar03Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { getCadenceLabel } from "./helpers";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
 
@@ -26,6 +27,7 @@ export function ExpertWorkflowCard({ workflow, accent }: Props) {
         {imageUrl ? (
           <Image
             src={imageUrl}
+            unoptimized={isLocalStoreMediaUrl(imageUrl)}
             alt={`${name} preview image`}
             fill
             sizes="(min-width: 640px) 360px, 100vw"

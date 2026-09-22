@@ -1994,7 +1994,8 @@ class TestOllamaCredentials:
         # A model removed from the registry must not be mistaken for a known
         # credential-free local model.
         assert info.requires_credentials("retired-model") is True
-        assert llm.ProviderName.OLLAMA not in info.provider
+        assert llm.ProviderName.OLLAMA in info.provider
+        assert llm.LLMModel.OLLAMA_LLAMA3_3.value not in info.discriminator_mapping
 
     @pytest.mark.asyncio
     async def test_ollama_call_does_not_require_credentials(self):
@@ -2053,13 +2054,36 @@ class TestOllamaCredentials:
             new_callable=AsyncMock,
             return_value="local response",
         ) as mock_llm_call:
-            outputs = [item async for item in block.run(input_data)]
+            execution_context = ExecutionContext()
+            outputs = [
+                item
+                async for item in block.execute(
+                    input_data.model_dump(), execution_context=execution_context
+                )
+            ]
 
         assert ("response", "local response") in outputs
         mock_llm_call.assert_awaited_once()
         assert mock_llm_call.await_args is not None
         structured_input, credentials, execution_context = mock_llm_call.await_args.args
         assert credentials is None
-        assert execution_context is None
+        assert isinstance(execution_context, ExecutionContext)
         assert structured_input.credentials is None
         assert structured_input.model == llm.LLMModel.OLLAMA_LLAMA3_3
+
+
+@pytest.mark.parametrize(
+    "block_name",
+    ["StagehandObserveBlock", "StagehandActBlock", "StagehandExtractBlock"],
+)
+def test_stagehand_keeps_remote_model_credentials_required(block_name):
+    from backend.blocks.stagehand import blocks
+
+    schema = getattr(blocks, block_name).Input
+    assert "model_credentials" in schema.get_required_fields()
+    assert (
+        schema.get_field_schema("model_credentials")[
+            "credential_free_discriminator_values"
+        ]
+        == []
+    )

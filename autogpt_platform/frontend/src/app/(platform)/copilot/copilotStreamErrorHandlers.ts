@@ -2,6 +2,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
   describeProviderFailure,
+  parseProviderFailure,
   type ProviderFailure,
 } from "./providerFailure";
 
@@ -32,7 +33,7 @@ const TOAST_BY_BACKEND_CODE: Record<
   { title: string; fallbackDescription: string }
 > = {
   idle_timeout: {
-    title: "Otto stopped responding",
+    title: "Your expert stopped responding",
     fallbackDescription:
       "A tool call got stuck and the session timed out. Press Try Again to resume.",
   },
@@ -47,7 +48,7 @@ const TOAST_BY_BACKEND_CODE: Record<
       "We hit a temporary error talking to the model. Press Try Again to continue.",
   },
   circuit_breaker_empty_tool_calls: {
-    title: "Otto paused",
+    title: "Your expert paused",
     fallbackDescription:
       "The assistant made too many empty tool calls in a row and was paused. Press Try Again to continue.",
   },
@@ -57,12 +58,12 @@ const TOAST_BY_BACKEND_CODE: Record<
       "We couldn't fit this chat's history into the model after several attempts. Start a new chat or clear some history.",
   },
   sdk_stream_error: {
-    title: "Otto ran into an error",
+    title: "Your expert ran into an error",
     fallbackDescription:
       "Something went wrong while the assistant was responding. Press Try Again to retry.",
   },
   sdk_error: {
-    title: "Otto ran into an error",
+    title: "Your expert ran into an error",
     fallbackDescription:
       "The assistant couldn't complete this turn. Press Try Again to retry.",
   },
@@ -70,7 +71,7 @@ const TOAST_BY_BACKEND_CODE: Record<
 
 /** Fallback toast shown for any `[code:X]` we don't have specific copy for. */
 const GENERIC_BACKEND_TOAST = {
-  title: "Otto ran into a problem",
+  title: "Your expert ran into a problem",
   fallbackDescription:
     "The assistant stopped unexpectedly. Press Try Again to retry.",
 };
@@ -97,9 +98,53 @@ function extractErrorDetail(error: Error): string {
   return error.message;
 }
 
+/**
+ * A typed provider-failure envelope, when FastAPI's `{"detail": ...}` wraps
+ * an object instead of a string (e.g. the 429 raised for the platform usage
+ * cap). `extractErrorDetail` above only unwraps string details, so a
+ * structured refusal used to fall through to substring guessing and never
+ * reached the "switch connection" UI. Checked separately so the string path
+ * stays untouched for every other error shape.
+ */
+function extractProviderFailureDetail(error: Error): ProviderFailure | null {
+  try {
+    const parsed = JSON.parse(error.message) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "detail" in parsed &&
+      typeof (parsed as { detail: unknown }).detail === "object" &&
+      (parsed as { detail: unknown }).detail !== null
+    ) {
+      return parseProviderFailure((parsed as { detail: unknown }).detail);
+    }
+  } catch {
+    // Not JSON
+  }
+  return null;
+}
+
+/**
+ * Where a usage limit was refused. The two limits do not share an answer:
+ *
+ * - `"admission"`: the backend refused the turn before the stream opened,
+ *   which only our own budget does. The envelope came in the HTTP error body.
+ * - `"provider"`: the connection the turn ran on refused it mid-turn. The
+ *   envelope rode the live stream.
+ *
+ * Told apart by origin rather than by `authProvider` because a self-host
+ * runs its own OpenRouter or local gateway on the "platform" route, so its
+ * upstream 429 carries the same `authProvider` as our admission cap.
+ */
+export type UsageLimitOrigin = "admission" | "provider";
+
 interface HandleStreamErrorArgs {
   error: Error;
-  onRateLimit: (message: string, providerFailure?: ProviderFailure) => void;
+  onRateLimit: (
+    message: string,
+    providerFailure?: ProviderFailure,
+    origin?: UsageLimitOrigin,
+  ) => void;
   onReconnect: () => void;
   isUserStoppingRef: React.MutableRefObject<boolean>;
   /**
@@ -130,9 +175,13 @@ export function handleStreamError({
   onRateLimit,
   onReconnect,
   isUserStoppingRef,
-  providerFailure,
+  providerFailure: streamedProviderFailure,
 }: HandleStreamErrorArgs): void {
   const errorDetail = extractErrorDetail(error);
+  // The live stream's typed envelope wins when present; otherwise recover
+  // one from a structured 429/etc. body raised before streaming started.
+  const providerFailure =
+    streamedProviderFailure ?? extractProviderFailureDetail(error);
 
   // 0. The server said what went wrong, so stop guessing.
   if (providerFailure) {
@@ -142,13 +191,20 @@ export function handleStreamError({
       // text for a message the backend refused before persisting, which a
       // toast alone would lose.
       //
-      // The failure travels with it so the caller can tell the two limits
-      // apart. They are not the same event: our own credits running out is
-      // answered by upgrading a plan with us, and a linked subscription
-      // running out is answered by continuing on a different connection.
-      // Offering the first for the second asks someone to pay us because
-      // OpenAI said no.
-      onRateLimit(`${copy.title}. ${copy.description}`, providerFailure);
+      // The failure travels with it, and so does where it was refused, so
+      // the caller can tell the two limits apart. They are not the same
+      // event: our own credits running out is answered by upgrading a plan
+      // with us, and a linked subscription running out is answered by
+      // continuing on a different connection. Offering the first for the
+      // second asks someone to pay us because OpenAI said no.
+      const origin: UsageLimitOrigin = streamedProviderFailure
+        ? "provider"
+        : "admission";
+      onRateLimit(
+        `${copy.title}. ${copy.description}`,
+        providerFailure,
+        origin,
+      );
       return;
     }
     toast({

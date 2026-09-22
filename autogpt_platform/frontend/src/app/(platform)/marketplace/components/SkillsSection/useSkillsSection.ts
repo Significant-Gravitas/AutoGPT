@@ -23,7 +23,7 @@ export function useSkillsSection({ category }: Args = {}) {
 
   // An install lands under the listing's slug, so the user's own skill names
   // are what says which shelf cards are already added.
-  const installed = useListCopilotSkills({
+  const installed = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [], enabled: isLoggedIn },
   });
 

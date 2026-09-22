@@ -26,6 +26,7 @@ from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -46,6 +47,7 @@ from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
     safe_caller_name,
+    sent_from_metadata,
     unknown_target_message,
 )
 from .models import (
@@ -198,12 +200,14 @@ class HandoffToExpertTool(BaseTool):
                 _refused_transfer_message(target.name, outcome, result.refusal),
                 session,
             )
+        transferred = _transferred_response(
+            inner_session_id=inner.session_id,
+            parent_session_id=session.session_id,
+            target_name=target.name,
+        )
+        transferred.message += await build_spawn_state_note()
         return apply_delegated_expert(
-            _transferred_response(
-                inner_session_id=inner.session_id,
-                parent_session_id=session.session_id,
-                target_name=target.name,
-            ),
+            transferred,
             # Identity for the ToolChain card, so it names the new owner.
             DelegatedExpertInfo(
                 id=target.id,
@@ -236,6 +240,7 @@ class HandoffToExpertTool(BaseTool):
             tool_name="handoff_to_expert",
             spawn=SpawnRequest(may_spawn=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
         )
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:

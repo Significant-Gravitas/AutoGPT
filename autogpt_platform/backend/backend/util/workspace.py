@@ -18,6 +18,7 @@ from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
+    SHARED_ROOTS,
     WorkspaceAccessDeniedError,
     WorkspaceScope,
 )
@@ -110,7 +111,10 @@ class WorkspaceManager:
         """
         Resolve a path, defaulting to session folder if session_id is set.
 
-        Cross-session access is allowed by explicitly using /sessions/other-session-id/...
+        An absolute path into a shared root (:data:`SHARED_ROOTS`) is taken
+        as written: another session's folder, or a skill package, which every
+        session of the account shares. :meth:`_authorize_path` still applies,
+        so an expert reaches only the roots its scope grants.
 
         Args:
             path: Virtual path (e.g., "/file.txt" or "/sessions/abc123/file.txt")
@@ -118,8 +122,7 @@ class WorkspaceManager:
         Returns:
             Resolved path with session prefix if applicable
         """
-        # If path explicitly references a session folder, use it as-is
-        if path.startswith("/sessions/"):
+        if path.startswith(SHARED_ROOTS):
             return path
 
         # If we have a session context, prepend session path

@@ -2958,7 +2958,7 @@ def test_llm_block_union_is_left_intact_without_model():
 
     slots = _slots(graph)
     assert list(slots) == [
-        "aiml_api-anthropic-groq-llama_api-open_router-openai-v0_api_key_credentials"
+        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     providers, types, required = slots[list(slots)[0]]
     assert providers == {
@@ -2966,6 +2966,7 @@ def test_llm_block_union_is_left_intact_without_model():
         "anthropic",
         "groq",
         "llama_api",
+        "ollama",
         "open_router",
         "openai",
         "v0",
@@ -3199,3 +3200,20 @@ def test_autopilot_node_with_an_explicit_transport_is_valid(
     errors = GraphModel._validate_graph_get_errors(graph, for_run=True)
 
     assert errors.get(graph.nodes[0].id, {}) == {}, errors
+
+
+def test_linked_llm_model_preserves_required_legacy_credential_slot():
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with(
+        [_node("n1", AITextGeneratorBlock().id, {"prompt": "hi", "model": "llama3.3"})]
+    )
+    graph.links = [
+        Link(source_id="source", sink_id="n1", source_name="value", sink_name="model")
+    ]
+
+    slots = _slots(graph)
+    assert list(slots) == [
+        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+    ]
+    assert next(iter(slots.values()))[2] is True

@@ -8,17 +8,19 @@ from typing import Any, Optional
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
-    E2B_WORKDIR,
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
     looks_like_sdk_tool_result_path,
-    resolve_sandbox_path,
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.sandbox import make_session_path
+from backend.copilot.tools.workdir import (
+    resolve_sandbox_path_or_error,
+    save_to_workdir,
+    validate_ephemeral_path,
+)
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
@@ -93,29 +95,12 @@ async def _resolve_write_content(
     return content_text.encode("utf-8")
 
 
-def _resolve_sandbox_path(
-    path: str, session_id: str | None, param_name: str
-) -> str | ErrorResponse:
-    """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
-
-    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools.resolve_sandbox_path`
-    and wraps any ``ValueError`` into an :class:`ErrorResponse`.
-    """
-    try:
-        return resolve_sandbox_path(path)
-    except ValueError:
-        return ErrorResponse(
-            message=f"{param_name} must be within {E2B_WORKDIR}",
-            session_id=session_id,
-        )
-
-
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
     """Read *source_path* from E2B sandbox or local ephemeral directory."""
 
     sandbox = get_current_sandbox()
     if sandbox is not None:
-        remote = _resolve_sandbox_path(source_path, session_id, "source_path")
+        remote = resolve_sandbox_path_or_error(source_path, session_id, "source_path")
         if isinstance(remote, ErrorResponse):
             return remote
         try:
@@ -128,7 +113,7 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
             )
 
     # Local fallback: validate path stays within ephemeral directory.
-    validated = _validate_ephemeral_path(
+    validated = validate_ephemeral_path(
         source_path, param_name="source_path", session_id=session_id
     )
     if isinstance(validated, ErrorResponse):
@@ -146,71 +131,6 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
             message=f"Failed to read source file: {e}",
             session_id=session_id,
         )
-
-
-async def _save_to_path(
-    path: str, content: bytes, session_id: str
-) -> str | ErrorResponse:
-    """Write *content* to *path* on E2B sandbox or local ephemeral directory.
-
-    Returns the resolved path on success, or an ``ErrorResponse`` on failure.
-    """
-
-    sandbox = get_current_sandbox()
-    if sandbox is not None:
-        remote = _resolve_sandbox_path(path, session_id, "save_to_path")
-        if isinstance(remote, ErrorResponse):
-            return remote
-        try:
-            await sandbox.files.write(remote, content)
-        except Exception as exc:
-            return ErrorResponse(
-                message=f"Failed to write to sandbox: {path} ({exc})",
-                session_id=session_id,
-            )
-        return remote
-
-    validated = _validate_ephemeral_path(
-        path, param_name="save_to_path", session_id=session_id
-    )
-    if isinstance(validated, ErrorResponse):
-        return validated
-    try:
-        dir_path = os.path.dirname(validated)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        with open(validated, "wb") as f:
-            f.write(content)
-    except Exception as exc:
-        return ErrorResponse(
-            message=f"Failed to write to local path: {path} ({exc})",
-            session_id=session_id,
-        )
-    return validated
-
-
-def _validate_ephemeral_path(
-    path: str, *, param_name: str, session_id: str
-) -> ErrorResponse | str:
-    """Validate that *path* is inside the session's ephemeral directory.
-
-    Uses the session-specific directory (``make_session_path(session_id)``)
-    rather than the bare prefix, so ``/tmp/copilot-evil/...`` is rejected.
-
-    Returns the resolved real path on success, or an ``ErrorResponse`` when the
-    path escapes the session directory.
-    """
-    session_dir = os.path.realpath(make_session_path(session_id)) + os.sep
-    real = os.path.realpath(path)
-    if not real.startswith(session_dir):
-        return ErrorResponse(
-            message=(
-                f"{param_name} must be within the ephemeral working "
-                f"directory ({make_session_path(session_id)})"
-            ),
-            session_id=session_id,
-        )
-    return real
 
 
 _TEXT_MIME_PREFIXES = (
@@ -642,7 +562,7 @@ class ReadWorkspaceFileTool(BaseTool):
             cached_content: bytes | None = None
             if save_to_path:
                 cached_content = await manager.read_file_by_id(target_file_id)
-                result = await _save_to_path(save_to_path, cached_content, session_id)
+                result = await save_to_workdir(save_to_path, cached_content, session_id)
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
@@ -749,31 +669,42 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
 
-# Paths under ``/skills/`` are managed by the skills registry — the
-# ``store_skill`` / ``delete_skill`` tools enforce frontmatter validation,
-# the per-user cap, name regex, and content sanitisation. Allowing plain
-# write_workspace_file / delete_workspace_file there would bypass all of
-# that and let the model accidentally (or maliciously) corrupt the
-# registry. Reads stay open so the model can still inspect sibling
-# references inside a skill bundle.
+# Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
+# skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
+# frontmatter validation, the per-user cap, name regex, and content
+# sanitisation. Allowing plain write_workspace_file / delete_workspace_file
+# there would bypass all of that and let the model accidentally (or
+# maliciously) corrupt the registry. Reads stay open so the model can still
+# inspect sibling references inside a skill bundle.
 _SKILLS_REGISTRY_PREFIX = "skills/"
+_EXPERTS_PREFIX = "experts/"
 _SKILLS_REGISTRY_ERROR = (
-    "Path is managed by the skills registry; use store_skill / "
-    "delete_skill instead. (read_workspace_file can still read "
+    "Path is managed by the skills registry; use tool:store_skill / "
+    "tool:delete_skill instead. (read_workspace_file can still read "
     "sibling files inside a skill bundle.)"
 )
 
 
 def _path_under_skills_registry(path: str | None) -> bool:
-    """Return ``True`` when *path* normalises to a location under
-    the skills-registry folder (``/skills/...`` or ``skills/...``,
-    case-insensitive)."""
+    """Return ``True`` when *path* normalises to a location under either
+    skills-registry folder — Otto's ``/skills/...`` or an expert's
+    ``/experts/<id>/skills/...`` — case-insensitively."""
     if not path:
         return False
     # Strip leading slashes + whitespace, lower-case so case variants
     # (``Skills/foo``) cannot bypass the check.
     normalised = path.strip().lstrip("/").lower()
-    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
+    if normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills":
+        return True
+    if not normalised.startswith(_EXPERTS_PREFIX):
+        return False
+    # ``experts/<id>/skills`` and anything below it; the id is any single
+    # segment, so a deeper path under another expert folder is not caught
+    # here — nothing else lives under ``/experts/`` in the workspace.
+    rest = normalised[len(_EXPERTS_PREFIX) :].split("/", 1)
+    return len(rest) == 2 and (
+        rest[1].startswith(_SKILLS_REGISTRY_PREFIX) or rest[1] == "skills"
+    )
 
 
 class WriteWorkspaceFileTool(BaseTool):
@@ -1002,8 +933,8 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use list_workspace_files to find candidates, then "
-                    "delete_workspace_file to free space and retry — or ask "
+                    " Use tool:list_workspace_files to find candidates, then "
+                    "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
             return ErrorResponse(message=msg, session_id=session_id)

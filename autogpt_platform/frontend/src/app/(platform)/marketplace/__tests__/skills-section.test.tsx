@@ -71,6 +71,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 const brandVoice: MarketplaceSkill = {
   slug: "brand-voice-guide",
   name: "brand-voice-guide",
+  title: "Brand voice guide",
   description: "Write in a consistent brand voice.",
   categories: ["content"],
   required_providers: [],
@@ -83,8 +84,17 @@ const outreach: MarketplaceSkill = {
   ...brandVoice,
   slug: "outreach-playbook",
   name: "outreach-playbook",
+  title: "Outreach playbook",
   categories: ["sales"],
   required_providers: ["google"],
+};
+
+const seoAudit: MarketplaceSkill = {
+  ...brandVoice,
+  slug: "on-page-seo-audit",
+  name: "on-page-seo-audit",
+  title: "On-page SEO audit",
+  categories: ["marketing"],
 };
 
 const CATEGORIES = [
@@ -118,17 +128,31 @@ describe("Marketplace SkillsSection", () => {
     );
   });
 
+  test("shows a skill's title as its author cased it, acronyms intact", async () => {
+    server.use(listing([seoAudit]));
+
+    render(<MainMarkeplacePage />);
+
+    expect(
+      await screen.findByRole("link", { name: /On-page SEO audit/ }),
+    ).toBeDefined();
+    expect(screen.queryByText("On page seo audit")).toBeNull();
+  });
+
   test("shows skills as their own shelf, linked to the skill page", async () => {
     server.use(listing([brandVoice]));
 
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("Otto Skills", undefined, {
-        timeout: 10000,
-      }),
+      await screen.findByRole(
+        "heading",
+        { name: "Skills" },
+        {
+          timeout: 10000,
+        },
+      ),
     ).toBeDefined();
-    // The API returns the frontmatter name, which the seed pins to the slug.
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
     expect(card.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
@@ -140,9 +164,13 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    const skills = await screen.findByText("Otto Skills", undefined, {
-      timeout: 10000,
-    });
+    const skills = await screen.findByRole(
+      "heading",
+      { name: "Skills" },
+      {
+        timeout: 10000,
+      },
+    );
     const workflows = await screen.findByText("All AI Workflows");
     // Node.DOCUMENT_POSITION_FOLLOWING === 4: the workflows heading comes after.
     expect(skills.compareDocumentPosition(workflows) & 4).toBe(4);
@@ -163,6 +191,32 @@ describe("Marketplace SkillsSection", () => {
     expect(brand.textContent).not.toContain("Works with");
   });
 
+  test("credits the repo a vendored skill came from, and nothing for our own", async () => {
+    const coldEmail: MarketplaceSkill = {
+      ...outreach,
+      slug: "cold-email",
+      name: "cold-email",
+      title: "Cold email",
+      source_repo: "coreyhaines31/marketingskills",
+      source_url:
+        "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+      license: "MIT",
+    };
+    server.use(listing([brandVoice, coldEmail]));
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
+    const vendored = await screen.findByRole("link", { name: /Cold email/ });
+    expect(vendored.textContent).toContain(
+      "From coreyhaines31/marketingskills",
+    );
+    const own = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
+    expect(own.textContent).not.toContain("From ");
+  });
+
   test("marks a skill the user already has as Added", async () => {
     server.use(
       listing([brandVoice, outreach]),
@@ -181,6 +235,29 @@ describe("Marketplace SkillsSection", () => {
     });
     expect(brand.textContent).not.toContain("Added");
     expect(brand.textContent).toContain("View");
+  });
+
+  test("offers Build your own above the shelf's text action", async () => {
+    server.use(listing([brandVoice, outreach], 2));
+
+    render(<MainMarkeplacePage />);
+
+    const build = await screen.findByRole(
+      "link",
+      { name: "Build your own" },
+      { timeout: 10000 },
+    );
+    expect(build.getAttribute("href")).toBe("/library/skills");
+  });
+
+  test("hides Build your own from signed-out visitors", async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+    server.use(listing([brandVoice, outreach], 2));
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
+    expect(screen.queryByRole("link", { name: "Build your own" })).toBeNull();
   });
 
   test("offers no Browse all while the catalogue fits the shelf", async () => {
@@ -218,9 +295,13 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByText("Otto Skills", undefined, {
-        timeout: 10000,
-      }),
+      await screen.findByRole(
+        "heading",
+        { name: "Skills" },
+        {
+          timeout: 10000,
+        },
+      ),
     ).toBeDefined();
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
   });
@@ -248,7 +329,9 @@ describe("Marketplace SkillsSection", () => {
     await userEvent.click(await findCategoryChip("Sales"));
 
     // Without the category guard this falls through to the signed-in empty state.
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
     expect(screen.queryByTestId("skills-shelf-empty")).toBeNull();
   });
 
@@ -277,7 +360,7 @@ describe("Marketplace SkillsSection", () => {
 
     // A failure is not an answer about the category, so the shelf stays.
     expect(await screen.findByRole("button", { name: "Retry" })).toBeDefined();
-    expect(screen.getByText("Otto Skills")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Skills" })).toBeDefined();
   });
 
   test("points a signed-in user at their own skills when none are published", async () => {
@@ -299,7 +382,9 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
   });
 
   test("stays hidden and fetches nothing outside the beta", async () => {
@@ -323,7 +408,7 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    expect(screen.queryByText("Otto Skills")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
     await waitFor(() => expect(requested).toBe(false));
   });
 
@@ -334,7 +419,9 @@ describe("Marketplace SkillsSection", () => {
     render(<MainMarkeplacePage />);
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() => expect(screen.queryByText("Otto Skills")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull(),
+    );
   });
 });
 

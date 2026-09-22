@@ -284,13 +284,13 @@ export function SubSessionPendingCard({
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar
-          name={expert?.name ?? "Sub-Otto"}
+          name={expert?.name ?? "Expert"}
           avatarUrl={expert?.avatarUrl ?? null}
           color={expert?.color}
           size={28}
         />
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">
-          {expert?.name ?? "Sub-Otto"}
+          {expert?.name ?? "Expert"}
           {expert?.role && (
             <span className="ml-1.5 font-normal text-zinc-400">
               {expert.role}
