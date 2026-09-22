@@ -32,6 +32,7 @@ from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
 from .base import BaseTool
+from .expert_delegation import sent_from_metadata
 from .models import ErrorResponse, SessionMessageResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -128,10 +129,14 @@ class MessageSessionTool(BaseTool):
             )
 
         payload = _render(session, body)
+        # Every delivery path stamps the sender: the row this message becomes
+        # is what the target's thread renders as "Sent from".
+        provenance = sent_from_metadata(session)
         queued = await queue_user_message(
             session_id=target_id,
             message=payload,
             require_turn_in_flight=True,
+            metadata=provenance,
         )
         if queued.turn_in_flight:
             return SessionMessageResponse(
@@ -146,14 +151,16 @@ class MessageSessionTool(BaseTool):
         # such row — so the user's own submit-time payload (their attachments,
         # page context and model choice) would be replaced by this message's.
         if await get_chat_session_status(target.session_id) != CHAT_STATUS_IDLE:
-            await queue_user_message(session_id=target.session_id, message=payload)
+            await queue_user_message(
+                session_id=target.session_id, message=payload, metadata=provenance
+            )
             return SessionMessageResponse(
                 message=f"Queued for session {target.session_id}'s next turn.",
                 delivery="queued",
                 target_session_id=target.session_id,
             )
 
-        return await self._wake(user_id, session, target, payload)
+        return await self._wake(user_id, session, target, payload, provenance)
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -164,6 +171,7 @@ class MessageSessionTool(BaseTool):
         session: ChatSession,
         target: ChatSessionInfo,
         payload: str,
+        provenance: dict[str, Any],
     ) -> ToolResponseBase:
         """Start a turn on an idle session so the message is actually read.
 
@@ -181,7 +189,7 @@ class MessageSessionTool(BaseTool):
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=target_id,
                 message=payload,
-                message_metadata={"from_session_id": session.session_id},
+                message_metadata=provenance,
                 llm_auth_provider=target.metadata.llm_auth_provider,
                 llm_credential_id=target.metadata.llm_credential_id,
                 permissions=(
