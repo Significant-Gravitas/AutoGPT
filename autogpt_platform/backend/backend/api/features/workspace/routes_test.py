@@ -8,6 +8,7 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 from backend.api.features.workspace.routes import router
+from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import Workspace, WorkspaceFile
 from backend.data.workspace_scope import WorkspaceScope
 
@@ -1335,3 +1336,13 @@ def test_rename_file_rejects_bad_names(mock_get_workspace, mock_rename, name):
     response = client.patch("/files/f1", json={"name": name})
     assert response.status_code == 422
     mock_rename.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_reports_skill_capacity_conflict(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.side_effect = SkillLimitError("Skill limit reached (150 saved skills).")
+    response = client.patch("/files/f1", json={"name": "SKILL.md"})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Skill limit reached (150 saved skills)."
