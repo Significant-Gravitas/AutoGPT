@@ -1374,6 +1374,25 @@ class TestCompactionTargetTokens:
         assert mock_pin.call_args.kwargs["codex_route"] is True
         assert mock_pct.call_args.kwargs["codex_route"] is True
 
+    def test_codex_route_keeps_pct_trigger_for_moonshot_shaped_slug(self) -> None:
+        # ``build_sdk_env`` runs the 90% trigger on the Codex route even for a
+        # moonshot-shaped slug (it still runs on Codex infra there), so the
+        # retry target must use the same threshold, not the CLI default.
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=272_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=90,
+            ),
+        ):
+            assert (
+                _compaction_target_tokens("moonshotai/kimi-k2.6", codex_route=True)
+                == 224_800
+            )
+
     def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
         # PCT=1 on a 50K window → CLI threshold = 500 → target would be
         # negative without the floor.

@@ -1473,7 +1473,11 @@ def _compaction_target_tokens(model: str, *, codex_route: bool = False) -> int:
     window = pinned_context_window(config, model, codex_route=codex_route)
     pct = autocompact_pct(config, model, codex_route=codex_route)
     cli_buffer = 13_000  # the CLI's own summary buffer
-    if pct > 0 and not _is_moonshot_model(model):
+    # Same guard as ``build_sdk_env``: the Codex route always runs the
+    # percentage trigger (a moonshot-shaped slug there still runs on Codex
+    # infra), so the retry target must not fall back to the CLI-default
+    # threshold the subprocess is not using.
+    if pct > 0 and (codex_route or not _is_moonshot_model(model)):
         cli_threshold = min(window * pct // 100, window - cli_buffer)
     else:
         cli_threshold = window - cli_buffer
