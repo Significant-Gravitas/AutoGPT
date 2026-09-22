@@ -229,7 +229,12 @@ _TEXT_APPLICATION_TYPES = frozenset(
     tags=["store", "private"],
     responses={
         404: {"description": "Skill or expert not found"},
-        409: {"description": "Skill limit reached, or the name is one the owner saved"},
+        409: {
+            "description": (
+                "Skill limit reached, or the skill name is already used by an "
+                "owner-saved skill"
+            )
+        },
     },
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
