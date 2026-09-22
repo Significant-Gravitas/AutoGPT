@@ -53,6 +53,9 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   // While searching, span every folder so a search never has to be repeated
   // per folder — as the Files page does.
   const rootOnly = showFolders && folderId === null;
+  // One value for both the key and the request: the lint rule reads them
+  // syntactically, and a key that names less than the query does goes stale.
+  const listedFolderId = showFolders ? folderId : null;
 
   const foldersQuery = useListWorkspaceFolders({
     query: { select: okData, enabled: enabled && !isExpertOnly },
@@ -67,7 +70,7 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
         q: q ?? null,
         expertId: expertId ?? null,
         includeUserFiles: includeUserFiles ?? null,
-        folderId: showFolders ? folderId : null,
+        folderId: listedFolderId,
         rootOnly,
       },
     ] as const,
@@ -78,7 +81,7 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
         q,
         expert_id: expertId ?? undefined,
         include_user_files: includeUserFiles,
-        folder_id: showFolders ? (folderId ?? undefined) : undefined,
+        folder_id: listedFolderId ?? undefined,
         root_only: rootOnly || undefined,
       }),
     initialPageParam: 0,
