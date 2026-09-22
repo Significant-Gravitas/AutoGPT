@@ -163,14 +163,12 @@ describe("appendWithinCap", () => {
 });
 
 describe("the composer cap against the backend's own", () => {
-  // The composer's count is not the whole request: `useWorkflowImportAutoSubmit`
-  // can add a file part the composer never held, so this must stay strictly
-  // under the backend's cap rather than meet it.
+  // The workflow-import part is sent by an autosubmit carrying no composer
+  // attachments, so the two never share a request and the caps can be equal.
   it.each(["StreamChatRequest", "QueuePendingMessageRequest"])(
-    "stays under %s.file_ids maxItems",
+    "equals %s.file_ids maxItems",
     (schemaName) => {
-      const maxItems = fileIdsMaxItems(schemaName);
-      expect(maxItems).toBeGreaterThan(MAX_ATTACHMENTS);
+      expect(fileIdsMaxItems(schemaName)).toBe(MAX_ATTACHMENTS);
     },
   );
 });

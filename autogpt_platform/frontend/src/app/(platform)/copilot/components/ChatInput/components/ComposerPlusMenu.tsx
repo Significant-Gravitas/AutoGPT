@@ -25,8 +25,8 @@ interface Props {
   onUseWorkspaceFile?: () => void;
   onClearGuidedPrompt?: () => void;
   disabled?: boolean;
-  /** The message already holds `MAX_ATTACHMENTS` files: both file entries
-   *  read disabled rather than letting the composer take an 11th. */
+  /** The message already holds `MAX_ATTACHMENTS` attachments: both file
+   *  entries read disabled rather than letting the composer take another. */
   isAtCap?: boolean;
   className?: string;
 }

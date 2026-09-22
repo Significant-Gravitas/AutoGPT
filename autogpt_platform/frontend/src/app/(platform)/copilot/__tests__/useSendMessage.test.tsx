@@ -497,7 +497,7 @@ describe("useSendMessage send-time cap backstop", () => {
     });
 
     expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Too many files" }),
+      expect.objectContaining({ title: "Too many attachments" }),
     );
     expect(uploadFileDirectMock).not.toHaveBeenCalled();
     expect(sendMessage).not.toHaveBeenCalled();
@@ -515,7 +515,7 @@ describe("useSendMessage send-time cap backstop", () => {
     });
 
     expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Too many files" }),
+      expect.objectContaining({ title: "Too many attachments" }),
     );
     expect(sendMessage).not.toHaveBeenCalled();
   });
@@ -529,12 +529,12 @@ describe("useSendMessage send-time cap backstop", () => {
         "mixed",
         // Under the cap on its own, over it once the references are counted.
         Array.from({ length: 6 }, (_, i) => makeFile(`local-${i}.pdf`)),
-        makeWorkspaceRefs(5),
+        makeWorkspaceRefs(MAX_ATTACHMENTS - 5),
       );
     });
 
     expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Too many files" }),
+      expect.objectContaining({ title: "Too many attachments" }),
     );
     expect(uploadFileDirectMock).not.toHaveBeenCalled();
     expect(sendMessage).not.toHaveBeenCalled();

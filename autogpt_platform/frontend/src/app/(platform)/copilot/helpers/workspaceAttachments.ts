@@ -21,12 +21,9 @@ export type Attachment =
   | { kind: "local"; file: File }
   | ({ kind: "workspace" } & WorkspaceAttachment);
 
-/** Per-message attachment ceiling, enforced as each file is added so the
- *  composer can never build a message the send path would refuse. Stays UNDER
- *  the backend's own cap (`StreamChatRequest.file_ids`, maxItems 20) because a
- *  workflow-import part rides along outside this count — see the spec test in
- *  `__tests__/workspaceAttachments.test.ts`. */
-export const MAX_ATTACHMENTS = 10;
+// Must equal `file_ids` max_length on StreamChatRequest/QueuePendingMessageRequest
+// (chat/routes.py): every attachment, uploaded or from the workspace, is one entry.
+export const MAX_ATTACHMENTS = 20;
 
 export function workspaceFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
