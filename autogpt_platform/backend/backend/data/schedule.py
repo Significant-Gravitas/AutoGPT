@@ -2,7 +2,9 @@ from typing import Annotated
 
 from pydantic import StringConstraints, TypeAdapter
 
-ScheduleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+ScheduleName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, pattern=r"\S")
+]
 _schedule_name = TypeAdapter(ScheduleName | None)
 
 
