@@ -5,14 +5,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.bot.adapters.base import ChannelInfo
-from backend.copilot.bot.outbound import DeliveryResult
+from backend.copilot.bot.outbound import DeliveryResult, EditResult
 from backend.copilot.tools.chat_platform import (
+    EditChatPlatformMessageTool,
     ListChatPlatformChannelsTool,
     PostToChatPlatformTool,
     _any_chat_platform_configured,
 )
 from backend.copilot.tools.models import (
     ChatPlatformChannelListResponse,
+    ChatPlatformEditedResponse,
     ChatPlatformPostedResponse,
     ErrorResponse,
 )
@@ -34,6 +36,7 @@ def _bridge() -> MagicMock:
     bridge.create_thread_in_channel = AsyncMock()
     bridge.send_dm_to_user = AsyncMock()
     bridge.list_channels = AsyncMock()
+    bridge.edit_message_in_channel = AsyncMock()
     return bridge
 
 
@@ -313,6 +316,151 @@ async def test_post_unavailable_without_token():
         assert PostToChatPlatformTool().is_available is False
     with patch(f"{_PATH}._any_chat_platform_configured", return_value=True):
         assert PostToChatPlatformTool().is_available is True
+
+
+# ── EditChatPlatformMessageTool ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_edit_requires_auth(session):
+    result = await EditChatPlatformMessageTool()._execute(
+        user_id=None, session=session, channel_id="42", ref_id="100", content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "auth_required"
+
+
+@pytest.mark.asyncio
+async def test_edit_missing_channel_id(session):
+    result = await EditChatPlatformMessageTool()._execute(
+        user_id=_USER, session=session, channel_id="  ", ref_id="100", content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_channel_id"
+
+
+@pytest.mark.asyncio
+async def test_edit_missing_ref_id(session):
+    result = await EditChatPlatformMessageTool()._execute(
+        user_id=_USER, session=session, channel_id="42", ref_id="", content="hi"
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_ref_id"
+
+
+@pytest.mark.asyncio
+async def test_edit_missing_content(session):
+    result = await EditChatPlatformMessageTool()._execute(
+        user_id=_USER, session=session, channel_id="42", ref_id="100", content="   "
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_content"
+
+
+@pytest.mark.asyncio
+async def test_edit_unsupported_platform(session):
+    result = await EditChatPlatformMessageTool()._execute(
+        user_id=_USER,
+        session=session,
+        platform="myspace",
+        channel_id="42",
+        ref_id="100",
+        content="hi",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "unsupported_platform"
+
+
+@pytest.mark.asyncio
+async def test_edit_happy_path_defaults_to_discord(session):
+    bridge = _bridge()
+    bridge.edit_message_in_channel.return_value = EditResult(ok=True)
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await EditChatPlatformMessageTool()._execute(
+            user_id=_USER,
+            session=session,
+            channel_id="42",
+            ref_id="100",
+            content="updated",
+        )
+    assert isinstance(result, ChatPlatformEditedResponse)
+    assert result.platform == "discord"
+    assert result.channel_id == "42"
+    assert result.ref_id == "100"
+    call = bridge.edit_message_in_channel.await_args.kwargs
+    assert call["platform"].value == "DISCORD"
+    assert call["target"] == "channel"
+    assert call["channel_id"] == "42"
+    assert call["ref_id"] == "100"
+    assert call["content"] == "updated"
+
+
+@pytest.mark.asyncio
+async def test_edit_dm_defaults_target_for_teams(session):
+    bridge = _bridge()
+    bridge.edit_message_in_channel.return_value = EditResult(ok=True)
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await EditChatPlatformMessageTool()._execute(
+            user_id=_USER,
+            session=session,
+            platform="teams",
+            channel_id="a:chat",
+            ref_id="activity-9",
+            content="updated",
+        )
+    assert isinstance(result, ChatPlatformEditedResponse)
+    assert bridge.edit_message_in_channel.await_args.kwargs["target"] == "dm"
+
+
+@pytest.mark.asyncio
+async def test_edit_maps_not_authorized_error(session):
+    bridge = _bridge()
+    bridge.edit_message_in_channel.return_value = EditResult(
+        ok=False, error="not_authorized"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await EditChatPlatformMessageTool()._execute(
+            user_id=_USER, session=session, channel_id="999", ref_id="100", content="hi"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "not_authorized"
+
+
+@pytest.mark.asyncio
+async def test_edit_maps_message_not_found_error(session):
+    bridge = _bridge()
+    bridge.edit_message_in_channel.return_value = EditResult(
+        ok=False, error="message_not_found"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await EditChatPlatformMessageTool()._execute(
+            user_id=_USER, session=session, channel_id="42", ref_id="100", content="hi"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "message_not_found"
+    assert "deleted" in result.message
+
+
+@pytest.mark.asyncio
+async def test_edit_maps_edit_unsupported_error(session):
+    bridge = _bridge()
+    bridge.edit_message_in_channel.return_value = EditResult(
+        ok=False, error="edit_unsupported"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await EditChatPlatformMessageTool()._execute(
+            user_id=_USER, session=session, channel_id="42", ref_id="100", content="hi"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "edit_unsupported"
+
+
+@pytest.mark.asyncio
+async def test_edit_unavailable_without_token():
+    with patch(f"{_PATH}._any_chat_platform_configured", return_value=False):
+        assert EditChatPlatformMessageTool().is_available is False
+    with patch(f"{_PATH}._any_chat_platform_configured", return_value=True):
+        assert EditChatPlatformMessageTool().is_available is True
 
 
 # ── ListChatPlatformChannelsTool ───────────────────────────────────

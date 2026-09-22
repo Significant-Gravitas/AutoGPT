@@ -80,7 +80,7 @@ afterEach(() => {
   flagState.experts = false;
 });
 
-describe("AutoPilot streaming — error paths", () => {
+describe("Otto streaming — error paths", () => {
   it("surfaces an SSE error chunk to the user", async () => {
     const chunks: UIMessageChunk[] = [
       { type: "start", messageId: "msg-1" },
@@ -121,7 +121,7 @@ describe("AutoPilot streaming — error paths", () => {
     // useCopilotStream's rate-limit branch sets rateLimitMessage, which the
     // RateLimitGate translates into a Dialog with this title.
     expect(
-      await screen.findByText(/daily autopilot limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -156,7 +156,7 @@ describe("AutoPilot streaming — error paths", () => {
     });
 
     expect(
-      await screen.findByText(/daily autopilot limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -260,6 +260,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
     return {
       offer_id: "platform:deployment",
       provider_family: "autogpt",
+      auth_provider: "platform",
       display_name: "AutoGPT Platform",
       auth_method: "deployment",
       credential_id: null,
@@ -280,6 +281,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
       ...platformOffer(),
       offer_id: "codex:cred-1",
       provider_family: "openai",
+      auth_provider: "codex",
       display_name: "ChatGPT",
       auth_method: "chatgpt_oauth",
       credential_id: "cred-1",
@@ -326,7 +328,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
 
     // Our own cap, so our own dialog: the upgrade path survives ...
     expect(
-      await screen.findByText(/daily autopilot limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -353,7 +355,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
       }),
     );
     await waitFor(() =>
-      expect(screen.queryByText(/daily autopilot limit reached/i)).toBeNull(),
+      expect(screen.queryByText(/daily usage limit reached/i)).toBeNull(),
     );
   });
 
@@ -374,7 +376,7 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
     await typeAndSend("over the cap");
 
     expect(
-      await screen.findByText(/daily autopilot limit reached/i, undefined, {
+      await screen.findByText(/daily usage limit reached/i, undefined, {
         timeout: 5000,
       }),
     ).toBeDefined();
@@ -431,6 +433,6 @@ describe("AutoPilot streaming — our usage cap next to a linked subscription", 
         timeout: 5000,
       }),
     ).toBeDefined();
-    expect(screen.queryByText(/daily autopilot limit reached/i)).toBeNull();
+    expect(screen.queryByText(/daily usage limit reached/i)).toBeNull();
   });
 });

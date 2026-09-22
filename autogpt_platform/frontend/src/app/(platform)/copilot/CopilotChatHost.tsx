@@ -31,6 +31,7 @@ export function CopilotChatHost({
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -43,6 +44,7 @@ export function CopilotChatHost({
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     hasMoreMessages,
     isLoadingMore,
     loadMore,
@@ -82,6 +84,7 @@ export function CopilotChatHost({
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
+          isFinishProbing={isFinishProbing}
           isRestoringActiveSession={isRestoringActiveSession}
           restoreStatusMessage={restoreStatusMessage}
           activeStreamStartedAt={activeStreamStartedAt}
@@ -92,6 +95,7 @@ export function CopilotChatHost({
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
           isUploadingFiles={isUploadingFiles}
+          pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}

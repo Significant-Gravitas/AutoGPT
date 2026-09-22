@@ -7,7 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { useOnboardingWizardStore } from "../../store";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
-import { headline, isInsufficientDump, SILENCE_NUDGE_SECONDS } from "./helpers";
+import {
+  BRAIN_DUMP_HEADLINE,
+  isInsufficientDump,
+  SILENCE_NUDGE_SECONDS,
+} from "./helpers";
 import {
   clearRecording,
   getMetaById,
@@ -26,7 +30,6 @@ export type ScreenState =
   | "insufficient";
 
 export function useBrainDumpStep() {
-  const name = useOnboardingWizardStore((s) => s.name);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
   const recorder = useBrainDumpRecorder();
@@ -453,7 +456,7 @@ export function useBrainDumpStep() {
   }
 
   return {
-    headline: headline(name),
+    headline: BRAIN_DUMP_HEADLINE,
     screen,
     insufficientMode,
     typedText,

@@ -13,7 +13,9 @@ export interface ExpertIdentity {
   id: string;
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
   role: string | null;
+  jobTitle?: string | null;
   isArchived: boolean;
   readOnlyReason: ExpertReadOnlyReason | null;
 }
@@ -31,7 +33,7 @@ const FALLBACK_ARCHIVED_NAME = "This expert";
  *
  * Fail closed: once the roster query has SETTLED (success or error), a
  * session pointing at an expert we can't resolve is treated as archived
- * (read-only history, generic name) — never a writable plain Autopilot
+ * (read-only history, generic name) — never a writable plain Otto
  * thread. A cached identity can still supply its name after a failed
  * refetch, but is marked unavailable and read-only. Passing the settled
  * flag rather than the success flag is load-bearing: a failed roster fetch
@@ -94,7 +96,9 @@ export function useExpertMap() {
       id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatar_url ?? null,
+      color: expert.color ?? null,
       role: expert.role,
+      jobTitle: expert.job_title ?? null,
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,
     }));
@@ -109,6 +113,7 @@ export function useExpertMap() {
   const canAddressExperts = isExpertsEnabled && !expertsQuery.isError;
 
   return {
+    isExpertsEnabled,
     expertsById: isExpertsEnabled ? expertCollections.expertsById : EMPTY_MAP,
     activeExperts: canAddressExperts
       ? expertCollections.activeExperts

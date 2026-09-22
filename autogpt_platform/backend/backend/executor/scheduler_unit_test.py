@@ -8,12 +8,18 @@ backend test job (and counted by codecov), not just the integration suite.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
+from backend.api.features.experts.models import ExpertRoutine
+from backend.copilot.permissions import (
+    CAPABILITY_GATE_NAMES,
+    ROUTINE_SELF_ESCALATION_TOOLS,
+)
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
     _MAX_EXPERT_LOOKUP_RETRIES,
@@ -32,6 +38,7 @@ from backend.executor.scheduler import (
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
+    _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
@@ -43,6 +50,17 @@ from backend.util.exceptions import (
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
+
+
+@pytest.fixture(autouse=True)
+def mock_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.executor.scheduler.resolve_default_chat_route",
+        AsyncMock(return_value=("platform", None)),
+    )
+    monkeypatch.setattr(
+        "backend.executor.schedule_events.record_schedule_created", MagicMock()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +473,7 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     """The scope pre-check can race an archive/delete, after which
     ``create_chat_session`` drops the attribution and hands back a plain
     session. Dispatching there would write an expert's follow-up into
-    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    Otto memory scope, so the turn is skipped — but the schedule is
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
@@ -599,7 +617,7 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     """A follow-up fired into a chat the user already owns must not persist as
     role="user".
 
-    ``origin`` is a property of the session, so an interactive Autopilot chat
+    ``origin`` is a property of the session, so an interactive Otto chat
     stays interactive when a schedule fires into it — the confirm gate in
     ``expert_proposal`` falls back to the newest user-message sequence to prove
     a human answered the preview. A machine-authored turn landing as role="user"
@@ -1061,9 +1079,10 @@ def test_graph_args_expert_id_defaults_to_none():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_forwards_expert_id():
-    """An expert-attributed schedule must stamp its expert_id onto the
-    execution it creates, so any surface can answer "who ran this"."""
+async def test_execute_graph_forwards_expert_id_and_schedule_id():
+    """An expert-attributed schedule must stamp its expert_id and its own id
+    onto the execution it creates, so any surface can answer "who ran this"
+    and "did it run on schedule"."""
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1088,6 +1107,7 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+    assert mock_add.call_args.kwargs["schedule_id"] == "sched-1"
 
 
 @pytest.mark.asyncio
@@ -1484,32 +1504,49 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 # ---------------------------------------------------------------------------
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+class _StartupRun(NamedTuple):
+    add_job_calls: list
+    embedding_backfill: MagicMock
+    backfill_calls_at_readiness: int
+
+
+def _registered_jobs(monkeypatch, interval_hours: int) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
-    a mock APScheduler, returning the list of ``add_job`` mock calls."""
+    a mock APScheduler, recording what it registered and what it ran before
+    handing over to ``AppService.run_service``."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
     mock_scheduler = MagicMock()
+    embedding_backfill = MagicMock(return_value=None)
+    at_readiness = []
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
-        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            return_value=MagicMock(get_parked_job_ids=MagicMock(return_value=[])),
+        ),
         patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
         patch(
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", embedding_backfill),
         # super().run_service() blocks forever keeping the service alive; no-op it.
-        patch("backend.util.service.AppService.run_service", return_value=None),
+        patch(
+            "backend.util.service.AppService.run_service",
+            side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
+        ),
     ):
         Scheduler(register_system_tasks=True).run_service()
-    return mock_scheduler.add_job.call_args_list
+    return _StartupRun(
+        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+    )
 
 
 def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
@@ -1517,7 +1554,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 ):
     """The sweep must be registered as an interval job keyed off the configured
     interval setting and capped to a single concurrent instance."""
-    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
 
     matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
     assert len(matches) == 1
@@ -1531,9 +1568,38 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
-    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_embedding_backfill_does_not_delay_rpc_readiness(monkeypatch):
+    """``AppService.run_service`` starts the event loop uvicorn is scheduled
+    onto, so anything run before it keeps the RPC port closed. The backfill
+    takes minutes on a fresh stack; it must not sit on that path."""
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    assert run.backfill_calls_at_readiness == 0
+
+
+def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
+    """Dropping the startup call must not delay coverage: the six-hourly job
+    is due now, and cannot be skipped as a misfire however late it starts."""
+    before = datetime.now(timezone.utc)
+    run = _registered_jobs(monkeypatch, interval_hours=6)
+
+    jobs = [
+        c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
+    ]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.args[0] is run.embedding_backfill
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
 
 
 class TestScheduleOrgVisibility:
@@ -1590,6 +1656,10 @@ class TestScheduleOrgVisibility:
         sched, jobs, fake_job_to_info = self._scheduler_with_jobs(infos)
         with (
             patch.object(Scheduler, "_get_jobs_cached", lambda self: jobs),
+            # None of these fixture jobs are paused, so the active-only path
+            # (what get_execution_schedules actually calls unless
+            # include_paused=True) can return the same list.
+            patch.object(Scheduler, "_get_active_jobs_cached", lambda self: jobs),
             patch(
                 "backend.executor.scheduler._job_to_info",
                 side_effect=fake_job_to_info,
@@ -1904,3 +1974,203 @@ class TestMorningBriefingSchedule:
             "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
         )
+
+
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    # Two caches, not one: the default path reads the SQL-filtered
+    # _get_active_jobs_cached and only include_paused reads the unfiltered
+    # _get_jobs_cached. Patching one leaves the other on the real jobstore,
+    # which this Scheduler.__new__ instance does not have.
+    active = [j for j in jobs if j.next_run_time is not None]
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch.object(Scheduler, "_get_active_jobs_cached", return_value=active),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
+        )
+
+
+class TestRoutineTurnPermissions:
+    """What a routine's unattended turn is allowed to do.
+
+    This is the single decision the whole safety story rests on, and it is
+    made here rather than in the session, so it is worth pinning directly
+    instead of only through the set that feeds it.
+    """
+
+    @staticmethod
+    def _routine(**overrides) -> ExpertRoutine:
+        return ExpertRoutine(
+            **{
+                "id": "routine-1",
+                "title": "Sweep the queue",
+                "prompt": "Read the queue.",
+                "crons": ["0 9 * * 1-5"],
+                "source": "TEMPLATE",
+                "grants_credentials": False,
+                **overrides,
+            }
+        )
+
+    def _denied(self, routine: ExpertRoutine | None) -> set[str]:
+        return set(_routine_turn_permissions(routine).tools)
+
+    def test_a_template_routine_reaches_nothing_outside_the_platform(self):
+        denied = self._denied(self._routine())
+
+        assert "run_agent" in denied
+        assert "post_to_chat_platform" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_granting_a_template_routine_is_the_owners_call_and_it_counts(self):
+        """The grant is the whole rule at fire time. A template the owner
+        looked at and bound to their queue must actually reach it, or the
+        question they were asked meant nothing."""
+        denied = self._denied(self._routine(grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_a_routine_the_owner_dictated_is_not_muted_like_a_template(self):
+        """``create_routine`` grants an OWNER row by default, which is what
+        settles the complaint this came from: the same words typed into the
+        same chat already run with these, so muting somebody's own morning
+        briefing protected nobody. Fire time reads only the grant — provenance
+        is what decided the grant's starting value."""
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=True))
+
+        assert "run_agent" not in denied
+        assert not CAPABILITY_GATE_NAMES & denied
+
+    def test_an_owner_who_asked_for_hands_off_still_gets_hands_off(self):
+        denied = self._denied(self._routine(source="OWNER", grants_credentials=False))
+
+        assert "run_agent" in denied
+
+    @pytest.mark.parametrize(
+        "routine",
+        [
+            None,
+            _routine.__func__(),
+            _routine.__func__(source="OWNER", grants_credentials=True),
+        ],
+    )
+    def test_no_routine_turn_may_schedule_another(self, routine):
+        """An unattended turn reads pages nobody is watching it read. Without
+        this, one injected page buys standing access to the account forever —
+        a routine that can write a routine can grant itself the credentials
+        its own prompt was denied."""
+        denied = set(_routine_turn_permissions(routine).tools)
+
+        assert ROUTINE_SELF_ESCALATION_TOOLS <= denied
+
+    def test_a_routine_that_could_not_be_loaded_is_trusted_least(self):
+        """The row is gone or the lookup failed; the turn still fires, and
+        guessing that it was granted something is the wrong way to be wrong."""
+        denied = self._denied(None)
+
+        assert "run_agent" in denied
+        assert CAPABILITY_GATE_NAMES <= denied
+
+    def test_the_filter_is_always_a_denylist_never_an_empty_one(self):
+        """``effective_allowed_tools`` reads an empty ``tools`` as "everything
+        allowed", so a filter that narrowed to nothing would silently widen."""
+        for routine in (None, self._routine(), self._routine(source="OWNER")):
+            permissions = _routine_turn_permissions(routine)
+            assert permissions.tools
+            assert permissions.tools_exclude is True
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_routine_behind_the_turn():
+    """The retried job has to still be a routine's.
+
+    Without ``routine_id`` the replacement resolves no routine, so
+    ``_execute_copilot_turn`` passes ``permissions=None`` and the turn runs
+    with whatever the session allows. An ungranted routine that merely lost a
+    race to the concurrency cap would come back holding everything the mute
+    exists to withhold — and it would never be marked as having fired.
+    """
+    args = _args(cap_retry_count=0, routine_id="routine-1")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+
+    assert (
+        mock_client.add_copilot_turn_schedule.call_args.kwargs["routine_id"]
+        == "routine-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_switched_off_routine_does_not_fire_and_its_job_is_removed():
+    """Deleting a routine's jobs is best effort, so "off" has to mean
+    something at fire time too. Otherwise a job the scheduler refused to
+    delete keeps running work its owner stopped, forever."""
+    args = _args(routine_id="routine-1")
+    off = ExpertRoutine(
+        id="routine-1",
+        title="Stopped",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=False,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=off)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_not_awaited()
+    self_delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_switched_on_routine_still_fires():
+    """The guard above must not be the thing that stops every routine."""
+    args = _args(routine_id="routine-1")
+    on = ExpertRoutine(
+        id="routine-1",
+        title="Running",
+        prompt="Read it.",
+        crons=["0 9 * * 1"],
+        enabled=True,
+    )
+    schedule_turn = AsyncMock()
+    self_delete = AsyncMock()
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=on)
+    db.record_routine_fired = AsyncMock()
+    session = MagicMock(
+        session_id="session-1",
+        expert_id=None,
+        metadata=MagicMock(llm_auth_provider=None, llm_credential_id=None),
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule", self_delete),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+    ):
+        await _execute_copilot_turn(**args.model_dump())
+
+    schedule_turn.assert_awaited_once()
+    self_delete.assert_not_awaited()

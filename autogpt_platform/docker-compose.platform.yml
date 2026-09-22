@@ -29,8 +29,6 @@ x-backend-env:
   GRAPHITI_FALKORDB_PORT: "6379"
   # JWKS endpoint of the Better Auth service embedded in the frontend.
   # Containers reach it via the compose service name, not localhost.
-  # JWT_VERIFY_KEY (legacy HS256, from backend/.env.default) stays in place
-  # for the migration window while old Supabase-issued tokens circulate.
   JWT_JWKS_URL: http://frontend:3000/api/auth/jwks
   # Database connection string for Docker network
   # This cannot be constructed like in .env because we cannot interpolate values set here (DB_HOST)
@@ -188,6 +186,7 @@ services:
       - "5672:5672"
 
   rest_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -216,6 +215,7 @@ services:
       - "8006:8006"
     volumes:
       - workspace-data:/app/autogpt_platform/backend/workspaces
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -225,6 +225,7 @@ services:
         max-file: "3"
 
   executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -262,6 +263,7 @@ services:
         max-file: "3"
 
   copilot_executor:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -302,6 +304,7 @@ services:
         max-file: "3"
 
   websocket_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -335,6 +338,7 @@ services:
         max-file: "3"
 
   database_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -355,6 +359,8 @@ services:
       <<: *backend-env
     ports:
       - "8005:8005"
+    volumes:
+      - store-media-data:/app/autogpt_platform/backend/store-media
     networks:
       - app-network
     logging:
@@ -364,6 +370,7 @@ services:
         max-file: "3"
 
   scheduler_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -399,6 +406,7 @@ services:
         max-file: "3"
 
   notification_server:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
@@ -431,6 +439,7 @@ services:
         max-size: "10m"
         max-file: "3"
   platform_linking_manager:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     profiles: ["bot"]
     build:
       context: ../
@@ -502,6 +511,7 @@ services:
       AUTH_DB_SCHEMA: platform
 volumes:
   workspace-data:
+  store-media-data:
   falkordb_data:
 
 networks:

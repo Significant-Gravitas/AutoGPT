@@ -6,11 +6,7 @@ import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 // import { NodeProfilingIntegration } from "@sentry/profiling-node";
 
-const isProdOrDev = environment.isProd() || environment.isDev();
-const isCloud = environment.isCloud();
-const isDisabled = process.env.DISABLE_SENTRY === "true";
-
-const shouldEnable = !isDisabled && isProdOrDev && isCloud;
+const shouldEnable = environment.isSentryEnabled();
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",

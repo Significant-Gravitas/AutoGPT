@@ -4,7 +4,7 @@ Three groups of routes:
 
 - **Owner-only** — list linked-execution candidates, enable share with
   opt-ins, disable share.  Mirrors the ``/graphs/.../share`` shape on
-  :mod:`backend.api.features.v1` for execution sharing.
+  :mod:`backend.api.features.graph_executions.routes` for execution sharing.
 - **Public-by-token** — the public viewer reads through these
   unauthenticated routes; the share token is the bearer credential.
   Same enumeration defenses as execution sharing (strict UUID path
@@ -70,7 +70,7 @@ class EnableShareRequest(BaseModel):
     auto_share_executions: bool = False
 
 
-class ShareResponse(BaseModel):
+class ChatShareResponse(BaseModel):
     share_url: str
     share_token: str
 
@@ -107,7 +107,7 @@ async def enable_chat_sharing(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
     body: EnableShareRequest = Body(default_factory=EnableShareRequest),
-) -> ShareResponse:
+) -> ChatShareResponse:
     """Enable sharing for a chat session.
 
     Flag-gated: refuses with 403 when ``chat-sharing`` is off so a stale
@@ -136,7 +136,7 @@ async def enable_chat_sharing(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    return ShareResponse(
+    return ChatShareResponse(
         share_url=f"{base_url}/share/chat/{share_token}",
         share_token=share_token,
     )
@@ -236,4 +236,4 @@ async def download_shared_chat_file(
     file = await get_workspace_file_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="Not found")
-    return await create_file_download_response(file, inline=True)
+    return await create_file_download_response(file)

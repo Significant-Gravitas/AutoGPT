@@ -1,5 +1,6 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,6 +15,8 @@ import {
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import type { UseFormReturn } from "react-hook-form";
 import { InlineApiKeyForm } from "./InlineApiKeyForm";
+import { InlineHostScopedForm } from "./InlineHostScopedForm";
+import { InlineUserPasswordForm } from "./InlineUserPasswordForm";
 import {
   GlobeIcon,
   Key01Icon,
@@ -30,7 +33,11 @@ interface Props {
   onSelectMethod: (method: AuthMethod) => void;
   apiKeyForm: UseFormReturn<ApiKeyConnectFormValues>;
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
-  onDeviceAuthSuccess: () => void;
+  /** The host the requesting block will call, when one is in scope. */
+  hostScopedHost?: string;
+  /** A method that completes inside this view rather than through the
+   *  panel footer's Continue: device auth, host-scoped, user/password. */
+  onInlineConnectSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export const METHOD_ORDER: AuthMethod[] = [
@@ -67,8 +74,8 @@ const METHOD_COPY: Record<
     icon: UserIcon,
   },
   [AuthType.host_scoped]: {
-    label: "Host",
-    description: "Scope credentials to one host.",
+    label: "Website access",
+    description: "Paste a key or headers used only for one website.",
     icon: GlobeIcon,
   },
   [AuthType.device_code]: {
@@ -87,7 +94,8 @@ export function ConnectMethodView({
   onSelectMethod,
   apiKeyForm,
   onApiKeySubmit,
-  onDeviceAuthSuccess,
+  hostScopedHost,
+  onInlineConnectSuccess,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
     provider.supportedAuthTypes.includes(method),
@@ -204,7 +212,19 @@ export function ConnectMethodView({
                           <DeviceAuthConnectButton
                             provider={provider.id}
                             providerName={provider.name}
-                            onSuccess={onDeviceAuthSuccess}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.host_scoped ? (
+                          <InlineHostScopedForm
+                            provider={provider.id}
+                            host={hostScopedHost}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.user_password ? (
+                          <InlineUserPasswordForm
+                            provider={provider.id}
+                            providerName={provider.name}
+                            onSuccess={onInlineConnectSuccess}
                           />
                         ) : (
                           <UnsupportedNotice providerName={provider.name} />

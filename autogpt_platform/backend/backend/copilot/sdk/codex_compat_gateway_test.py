@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
-from aiohttp import ClientSession
+from aiohttp import ClientSession, web
 
+from backend.copilot.sdk import codex_compat_gateway
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     _safe_tool_name,
+    _serialize_messages,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -231,6 +233,18 @@ def _tool_result_request(
     if stream is not None:
         payload["stream"] = stream
     return payload
+
+
+def _streamed_tool_use_id(events: list[dict[str, object]]) -> str:
+    start = next(
+        event
+        for event in events
+        if event["type"] == "content_block_start"
+        and cast(dict[str, object], event["content_block"])["type"] == "tool_use"
+    )
+    call_id = cast(dict[str, object], start["content_block"])["id"]
+    assert isinstance(call_id, str)
+    return call_id
 
 
 def _tool_use_id(payload: dict[str, object]) -> str:
@@ -687,6 +701,12 @@ async def test_raw_codex_call_id_collisions_are_isolated_by_gateway_ids() -> Non
 
 @pytest.mark.asyncio
 async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() -> None:
+    """A concurrent duplicate waits for the accepted request's answer.
+
+    It used to lose the race with a 409; it now receives the same response,
+    and the invariant this test exists for -- one turn reaches the model --
+    is unchanged.
+    """
     agent_session = _FakeAgentSession(use_tool=True)
     transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
@@ -715,19 +735,10 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
                     json=continuation,
                 ),
             )
-            payloads = await asyncio.gather(
-                *(response.json() for response in responses)
-            )
+            bodies = await asyncio.gather(*(response.read() for response in responses))
 
-    assert sorted(response.status for response in responses) == [200, 409]
-    duplicate_payload = next(
-        payload
-        for response, payload in zip(responses, payloads, strict=True)
-        if response.status == 409
-    )
-    assert duplicate_payload["error"]["message"] == (
-        "This tool-result request was already accepted"
-    )
+    assert [response.status for response in responses] == [200, 200]
+    assert bodies[0] == bodies[1]
     assert len(agent_session.requests) == 1
     assert agent_session.tool_result == CodexDynamicToolResult(
         content="one result",
@@ -797,3 +808,317 @@ async def test_rejects_missing_gateway_capability() -> None:
             payload = await response.json()
         assert response.status == 401
         assert payload["error"]["type"] == "authentication_error"
+
+
+def test_serialize_messages_keeps_inline_system_turns() -> None:
+    serialized = _serialize_messages(
+        [
+            {"role": "user", "content": "hello"},
+            {
+                "role": "system",
+                "content": "<system-reminder>stay on task</system-reminder>",
+            },
+            {"role": "assistant", "content": "sure"},
+        ]
+    )
+    transcript = json.loads(serialized[serialized.index("[") :])
+
+    assert [message["role"] for message in transcript] == [
+        "user",
+        "system",
+        "assistant",
+    ]
+    assert transcript[1]["content"] == "<system-reminder>stay on task</system-reminder>"
+
+
+def test_serialize_messages_rejects_unknown_roles() -> None:
+    with pytest.raises(ValueError):
+        _serialize_messages([{"role": "tool", "content": "result"}])
+
+
+@pytest.mark.asyncio
+async def test_identical_tool_result_retry_replays_the_streamed_response() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
+
+    assert accepted.status == 200
+    assert retried.status == 200
+    assert retried_body == accepted_body
+    assert retried.headers["Content-Type"] == accepted.headers["Content-Type"]
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_identical_tool_result_retry_replays_the_json_response() -> None:
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
+
+    assert accepted.status == 200
+    assert retried.status == 200
+    assert retried_body == accepted_body
+    assert json.loads(retried_body)["id"] == json.loads(accepted_body)["id"]
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_evicted_replay_falls_back_to_the_duplicate_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_ENTRIES", 0)
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_payload = await retried.json()
+
+    assert accepted.status == 200
+    assert retried.status == 409
+    assert retried_payload["error"]["message"] == (
+        "This tool-result request was already accepted"
+    )
+
+
+@pytest.mark.asyncio
+async def test_replay_entries_are_per_conversation_and_expire() -> None:
+    # A same-fingerprint request cannot cross conversations over HTTP -- the
+    # fingerprint covers the gateway tool_use ids, which are unique per
+    # conversation -- so the scoping is asserted on the store itself.
+    gateway = CodexAnthropicGateway(
+        agent_session=_FakeAgentSession(),
+        model="gpt-5.6-terra",
+    )
+    mine = codex_compat_gateway._Conversation(id="mine")
+    theirs = codex_compat_gateway._Conversation(id="theirs")
+    replay = codex_compat_gateway._Replay(
+        status=200,
+        headers={"Content-Type": "application/json"},
+        body=b"{}",
+        streamed=False,
+        expires_at=asyncio.get_running_loop().time() + 60,
+    )
+    gateway._record_replay(mine, "fingerprint", replay)
+
+    assert gateway._take_replay(mine, "fingerprint", streamed=False) is replay
+    assert gateway._take_replay(theirs, "fingerprint", streamed=False) is None
+    assert gateway._take_replay(mine, "fingerprint", streamed=True) is None
+
+    expired = replay.model_copy(
+        update={"expires_at": asyncio.get_running_loop().time() - 1}
+    )
+    gateway._record_replay(mine, "fingerprint", expired)
+    assert gateway._take_replay(mine, "fingerprint", streamed=False) is None
+    assert "fingerprint" not in mine.replays
+
+
+@pytest.mark.asyncio
+async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
+    # The continuation applies neither `system` nor `tools`, so a recomposed
+    # system prompt is the same tool-result submission and must still replay.
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={**continuation, "system": "recomposed for the retry"},
+            )
+            retried_body = await retried.read()
+
+    assert accepted.status == 200
+    assert retried.status == 200
+    assert retried_body == accepted_body
+    assert len(agent_session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_recording_sink_drops_the_buffer_past_the_replay_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_BYTES", 8)
+    forwarded: list[bytes] = []
+
+    class _Response:
+        async def write(self, data: bytes) -> None:
+            forwarded.append(data)
+
+    sink = codex_compat_gateway._RecordingSink(cast(web.StreamResponse, _Response()))
+    await sink.write(b"12345")
+
+    assert sink.body == b"12345"
+
+    await sink.write(b"67890")
+
+    assert sink.body is None
+    assert sink._chunks == []
+    assert forwarded == [b"12345", b"67890"]
+
+
+@pytest.mark.asyncio
+async def test_a_stream_past_the_replay_cap_is_forwarded_whole_and_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_BYTES", 8)
+    agent_session = _FakeAgentSession(use_tool=True)
+    transport = _FakeTransport(agent_session)
+    async with CodexAnthropicGateway(
+        credential_lease=_lease(),
+        model="gpt-5.6-terra",
+        transport=transport,
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_events = _events(await accepted.text())
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_payload = await retried.json()
+
+    assert accepted.status == 200
+    assert [event["type"] for event in accepted_events][-1] == "message_stop"
+    assert retried.status == 409
+    assert retried_payload["error"]["message"] == (
+        "This tool-result request was already accepted"
+    )
+
+
+def test_replay_cache_evicts_the_oldest_entry_first() -> None:
+    gateway = CodexAnthropicGateway(
+        agent_session=_FakeAgentSession(),
+        model="gpt-5.6-terra",
+    )
+    conversation = codex_compat_gateway._Conversation(id="conversation")
+
+    def _entry(body: bytes) -> codex_compat_gateway._Replay:
+        return codex_compat_gateway._Replay(
+            status=200,
+            headers={},
+            body=body,
+            streamed=False,
+            expires_at=float("inf"),
+        )
+
+    for index in range(codex_compat_gateway._MAX_REPLAY_ENTRIES + 2):
+        gateway._record_replay(conversation, f"key-{index}", _entry(b"x"))
+
+    assert len(conversation.replays) == codex_compat_gateway._MAX_REPLAY_ENTRIES
+    assert "key-0" not in conversation.replays
+    assert "key-1" not in conversation.replays
+    assert f"key-{codex_compat_gateway._MAX_REPLAY_ENTRIES + 1}" in conversation.replays
+
+    gateway._record_replay(
+        conversation,
+        "oversized",
+        _entry(b"x" * (codex_compat_gateway._MAX_REPLAY_BYTES + 1)),
+    )
+    assert "oversized" not in conversation.replays

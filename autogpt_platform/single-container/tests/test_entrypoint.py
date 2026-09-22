@@ -19,6 +19,31 @@ BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "serv
 
 
 class InternalServiceTopologyTest(unittest.TestCase):
+    def test_prepares_marketplace_media_for_unprivileged_backend(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; install() { printf "%s\\n" "$*"; }; prepare_directories',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "-d -m 0750 -o autogpt -g autogpt /data/store-media",
+            result.stdout.splitlines(),
+        )
+
     def test_rpc_health_path_matches_backend(self) -> None:
         module = ast.parse(BACKEND_SERVICE_PATH.read_text(encoding="utf-8"))
         route_paths = {
@@ -137,7 +162,29 @@ class EnvironmentPolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines()[-1], "cloud")
 
-    def _configure(self, **overrides: str) -> subprocess.CompletedProcess[str]:
+    def test_disables_copilot_spend_caps_by_default(self) -> None:
+        # Self-hosted operators pay the provider directly, so the cloud
+        # daily/weekly USD caps must not apply unless explicitly configured.
+        result = self._configure(output=_COPILOT_SPEND_CAPS)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "-1 -1")
+
+    def test_preserves_operator_copilot_spend_caps(self) -> None:
+        # A blank template field arrives as an empty string and must fall
+        # back to the sentinel rather than reach Pydantic as a non-integer.
+        result = self._configure(
+            output=_COPILOT_SPEND_CAPS,
+            CHAT_DAILY_COST_LIMIT_MICRODOLLARS="2500000",
+            CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "2500000 -1")
+
+    def _configure(
+        self, *, output: str = "$BEHAVE_AS", **overrides: str
+    ) -> subprocess.CompletedProcess[str]:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
@@ -164,7 +211,7 @@ class EnvironmentPolicyTest(unittest.TestCase):
                 "pipefail",
                 "-c",
                 'source "$1"; write_nginx_public_url_config() { :; }; '
-                'configure_environment; printf "%s\\n" "$BEHAVE_AS"',
+                f'configure_environment; printf "%s\\n" "{output}"',
                 "bash",
                 str(ENTRYPOINT_PATH),
             ],
@@ -173,6 +220,11 @@ class EnvironmentPolicyTest(unittest.TestCase):
             encoding="utf-8",
             env=environment,
         )
+
+
+_COPILOT_SPEND_CAPS = (
+    "$CHAT_DAILY_COST_LIMIT_MICRODOLLARS $CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS"
+)
 
 
 class PublicOriginConfigurationTest(unittest.TestCase):

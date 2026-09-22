@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.moonshot import (
     is_moonshot_model,
+    moonshot_context_window,
     moonshot_supports_cache_control,
     override_cost_usd,
     rate_card_usd,
@@ -57,9 +58,14 @@ class TestRateCardUsd:
         assert rate_card_usd("moonshotai/kimi-k2.6") == (0.60, 2.80)
 
     def test_kimi_k3_premium_override(self) -> None:
-        # K3 is split-priced ($3/$15 per Mtok) — the override must win
-        # over the shared K2.x default.
-        assert rate_card_usd("moonshotai/kimi-k3") == (3.00, 15.00)
+        # K3 is split-priced ($1.70/$8.50 per Mtok) — the override must win
+        # over the shared K2.x default.  Sourced from the catalog entry's
+        # provider_*_usd_per_1m, which tracks OpenRouter's published price
+        # for moonshotai/kimi-k3 (/api/v1/models, re-checked 2026-09-20).
+        # It was $3/$15 until SECRT-2701: that is Moonshot AI's own
+        # first-party endpoint (and the :batch SKU), not the default route
+        # — we pin no provider, so OpenRouter picks the cheapest endpoint.
+        assert rate_card_usd("moonshotai/kimi-k3") == (1.70, 8.50)
 
     def test_future_moonshot_sku_inherits_default(self) -> None:
         # Verifies the prefix-based fallback — new SKUs don't need a code
@@ -177,3 +183,31 @@ class TestSupportsCacheControl:
     )
     def test_non_moonshot_does_not_support_cache_control(self, model) -> None:
         assert moonshot_supports_cache_control(model) is False
+
+
+class TestMoonshotContextWindow:
+    """The catalog is the only place the real Kimi window is written down."""
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("moonshotai/kimi-k2.5", 262_144),
+            ("moonshotai/kimi-k2.6", 262_144),
+            ("moonshotai/kimi-k2-thinking", 262_144),
+            ("moonshotai/kimi-k3", 1_048_576),
+        ],
+    )
+    def test_reads_the_catalog_window(self, model, expected) -> None:
+        assert moonshot_context_window(model) == expected
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k9-unreleased",
+            "anthropic/claude-sonnet-5",
+            "",
+            None,
+        ],
+    )
+    def test_none_for_unlisted_and_non_moonshot(self, model) -> None:
+        assert moonshot_context_window(model) is None

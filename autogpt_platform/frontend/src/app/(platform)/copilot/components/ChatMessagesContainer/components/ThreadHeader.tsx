@@ -1,6 +1,9 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import {
   Tooltip,
   TooltipContent,
@@ -17,11 +20,13 @@ import { useSessionActivity } from "../../WorkspaceFileCards/useSessionActivity"
 import { ExpertAvatar } from "./ExpertAvatar/ExpertAvatar";
 import { ExpertIntegrations } from "./ExpertIntegrations/ExpertIntegrations";
 
-// Autopilot's product-facing title when a session carries no expert identity.
+// Otto's product-facing title when a session carries no expert identity.
 const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
+  /** The roster has not settled yet for an expert-scoped session. */
+  isResolvingExpertIdentity?: boolean;
   readOnly: boolean;
   /** Powers the chip's file/run counters and its click-through to the
    *  session activity card. Without it the chip is a passive label. */
@@ -40,18 +45,28 @@ interface Props {
  *  underneath. On narrow viewports the gutter disappears and the chip simply
  *  overlaps the message column, which its translucency is built for. An
  *  expert session wears the expert's identity and every other session is
- *  Autopilot's, so the thread is never anonymous. Clicking the identity
+ *  Otto's, so the thread is never anonymous. Clicking the identity
  *  opens the session activity card (files, runs, schedules) on the right;
  *  the expert's integration logos sit beside it with their own popover. */
 export function ThreadHeader({
   expertIdentity,
+  isResolvingExpertIdentity = false,
   readOnly,
   sessionId = null,
   canOpenActivity = false,
   hasFloatingControls = false,
 }: Props) {
-  const name = expertIdentity?.name ?? "Autopilot";
+  // While the roster loads, the chip shows a quiet placeholder rather than
+  // Otto's identity, which would be wrong for an expert session.
+  const isResolving = isResolvingExpertIdentity && !expertIdentity;
+  const name = expertIdentity?.name ?? "Otto";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
+  const jobTitle = expertIdentity?.jobTitle;
+  const roleLabel = jobTitle || getExpertRoleLabel(role);
+  // Assistive tech gets a loading identity too, not Otto's.
+  const identityLabel = isResolving
+    ? "Loading expert"
+    : `${name}, ${roleLabel}`;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   // Only the copilot chat mounts the activity card. The builder and memory
   // panels pass a live sessionId and aren't read-only, so without the host's
@@ -89,12 +104,23 @@ export function ThreadHeader({
       <ExpertAvatar
         name={name}
         avatarUrl={expertIdentity?.avatarUrl ?? null}
-        isAutopilot={!expertIdentity}
+        color={expertIdentity?.color}
+        isAutopilot={!expertIdentity && !isResolving}
+        isLoading={isResolving}
         size="sm"
       />
-      <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
-        {name}
-      </span>
+      {isResolving ? (
+        <Skeleton className="h-3.5 w-16 rounded" />
+      ) : (
+        <span className="min-w-0 max-w-[10rem]">
+          <ExpertIdentityDetails
+            name={name}
+            role={role}
+            jobTitle={jobTitle}
+            size="compact"
+          />
+        </span>
+      )}
       {counters.map(({ icon, count, noun }) => (
         <span
           key={noun}
@@ -128,34 +154,34 @@ export function ThreadHeader({
                     type="button"
                     aria-label={
                       spokenCounts
-                        ? `${name}, ${role}. ${spokenCounts}. Open session activity`
-                        : `${name}, ${role}. Open session activity`
+                        ? `${identityLabel}. ${spokenCounts}. Open session activity`
+                        : `${identityLabel}. Open session activity`
                     }
                     onClick={() => toggleContextPanelTab("files")}
-                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-5 transition-colors hover:bg-zinc-100/80"
                   >
                     {chipContent}
                   </button>
                 ) : (
-                  // The role lives only in the tooltip, and a tooltip opens
-                  // on focus as well as hover — so even this passive chip has
-                  // to be reachable by keyboard, or read-only viewers never
-                  // get the role at all.
                   <div
                     tabIndex={0}
-                    aria-label={`${name} — ${role}`}
-                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
+                    aria-label={
+                      isResolving ? identityLabel : `${name} — ${roleLabel}`
+                    }
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-5"
                   >
                     {chipContent}
                   </div>
                 )}
               </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="bg-zinc-900 text-zinc-50 outline-none"
-              >
-                {role}
-              </TooltipContent>
+              {isResolving ? null : (
+                <TooltipContent
+                  side="bottom"
+                  className="bg-zinc-900 text-zinc-50 outline-none"
+                >
+                  {roleLabel}
+                </TooltipContent>
+              )}
             </Tooltip>
           </TooltipProvider>
           {showIntegrations && (

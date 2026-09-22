@@ -120,10 +120,10 @@ describe("Library low-credit banner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /top up/i }));
 
-    // The dialog body copy mentions Autopilot, which the banner copy does not —
+    // The dialog body copy mentions experts, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
     expect(
-      await screen.findByText(/keep your agents and Autopilot/i),
+      await screen.findByText(/keep your agents and experts/i),
     ).toBeDefined();
   });
 

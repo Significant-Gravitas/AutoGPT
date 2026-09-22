@@ -20,17 +20,22 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
-import { revealKickoffMessages } from "../../expertKickoff";
+import { hideKickoffMessages } from "../../expertKickoff";
 import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  getTurnMessages,
   parseSpecialMarkers,
 } from "./helpers";
 import {
+  isMidTurnSegmentRow,
+  splitMessagesAtDrainHints,
+  turnMessagesForRow,
+} from "./midTurnSplit";
+import {
   getLatestAssistantStatusMessage,
   isBookkeepingPart,
+  PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
@@ -39,14 +44,20 @@ import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
+import { withToolDisplayNames } from "../../helpers/toolDisplay";
 import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader } from "./components/ThreadHeader";
+import {
+  PENDING_UPLOAD_MESSAGE_ID,
+  PendingUploadMessage,
+} from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -73,6 +84,11 @@ interface Props {
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** A just-sent message whose local attachments are still uploading. It is
+   *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
+   *  so it renders as a placeholder bubble with an "Uploading files…"
+   *  status in the thinking indicator's usual spot. */
+  pendingSend?: PendingUploadSend | null;
   /** Extra bottom padding (px) applied to the scrollable message list so
    *  overlays pinned above the input area (e.g. the usage-limit card) can
    *  sit over the last message without permanently obscuring it. */
@@ -95,6 +111,9 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
+  /** The roster is still loading for an expert-scoped session, so the
+   *  header must not yet claim the thread is Otto's. */
+  isResolvingExpertIdentity?: boolean;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
@@ -106,6 +125,12 @@ interface Props {
    *  every other host (share viewer, memory and builder panels) leaves this
    *  off, whatever the persisted panel state says. */
   areFilesOpen?: boolean;
+  /** Compact thread for side panels: smaller text, tighter bubbles and
+   *  spacing. */
+  variant?: "default" | "compact";
+  /** Hosts that already name the thread (e.g. the expert chat drawer)
+   *  turn the floating identity chip off. */
+  showThreadHeader?: boolean;
 }
 
 /**
@@ -299,17 +324,22 @@ export function ChatMessagesContainer({
   onRetry,
   turnStats,
   queuedMessages,
+  pendingSend,
   bottomContentPadding,
   readOnly = false,
   filePattern,
   fileUrlBuilder,
   expertIdentity,
+  isResolvingExpertIdentity = false,
   hasFloatingControls = false,
   canOpenActivity = false,
   areFilesOpen = false,
+  variant = "default",
+  showThreadHeader = true,
 }: Props) {
+  const isCompact = variant === "compact";
   const messages = useMemo(
-    () => revealKickoffMessages(allMessages),
+    () => hideKickoffMessages(allMessages),
     [allMessages],
   );
   // Hide the container for one frame when messages first load so
@@ -329,9 +359,18 @@ export function ChatMessagesContainer({
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
 
+  // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
+  // was drained mid-stream renders as chain → follow-up bubble → chain, while
+  // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
-  const lastUserMessageID =
-    messages.findLast((message) => message.role === "user")?.id ?? null;
+  const showPendingSend = !readOnly && !!pendingSend;
+  // Read off the rendered rows: a fallback follow-up row the split drops in
+  // favour of the drain-point bubble has no element to anchor the tail on.
+  // While a send is still uploading, the placeholder is the last user row.
+  const lastUserMessageID = showPendingSend
+    ? PENDING_UPLOAD_MESSAGE_ID
+    : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -359,10 +398,19 @@ export function ChatMessagesContainer({
     if (lastMessage?.role !== "assistant") return false;
     // Ignore bookkeeping parts — none of them counts as "real" content that
     // hides the Thinking indicator. See `isBookkeepingPart` for the list.
-    const parts = lastMessage.parts.filter((p) => !isBookkeepingPart(p));
-    if (parts.length === 0) return false;
+    // A drain hint newer than the last content part is the one exception:
+    // the follow-up just landed and nothing has been produced past it, so
+    // the text or tool above it is settled and Thinking is the only sign
+    // the assistant picked the follow-up up.
+    let lastIndex = lastMessage.parts.length - 1;
+    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
+        return false;
+      lastIndex--;
+    }
+    if (lastIndex < 0) return false;
 
-    const lastPart = parts[parts.length - 1];
+    const lastPart = lastMessage.parts[lastIndex];
 
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
@@ -461,14 +509,17 @@ export function ChatMessagesContainer({
 
   return (
     <>
-      <ThreadHeader
-        expertIdentity={expertIdentity}
-        readOnly={readOnly}
-        sessionId={sessionID}
-        hasFloatingControls={hasFloatingControls}
-        canOpenActivity={canOpenActivity}
-      />
-      <ChatMinimap messages={messages} />
+      {showThreadHeader && (
+        <ThreadHeader
+          expertIdentity={expertIdentity}
+          isResolvingExpertIdentity={isResolvingExpertIdentity}
+          readOnly={readOnly}
+          sessionId={sessionID}
+          hasFloatingControls={hasFloatingControls}
+          canOpenActivity={canOpenActivity}
+        />
+      )}
+      {!isCompact && <ChatMinimap messages={messages} />}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -482,6 +533,8 @@ export function ChatMessagesContainer({
         <ConversationContent
           className={cn(
             "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            isCompact && "gap-4 px-4 pt-4",
+            !showThreadHeader && "pt-4",
             areFilesOpen && "xl:-translate-x-40",
           )}
           style={
@@ -498,12 +551,15 @@ export function ChatMessagesContainer({
               onLoadMore={onLoadMore}
             />
           )}
-          {isLoading && messages.length === 0 && !isRestoringActiveSession && (
-            <div className="flex flex-1 items-center justify-center">
-              <LoadingSpinner className="text-neutral-600" />
-            </div>
-          )}
-          {messages.map((message, messageIndex) => {
+          {isLoading &&
+            messages.length === 0 &&
+            !isRestoringActiveSession &&
+            !showPendingSend && (
+              <div className="flex flex-1 items-center justify-center">
+                <LoadingSpinner className="text-neutral-600" />
+              </div>
+            )}
+          {renderRows.map((message, rowIndex) => {
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
             // and fall through to normal rendering).
@@ -533,7 +589,7 @@ export function ChatMessagesContainer({
             }
 
             const isLastAssistant =
-              messageIndex === messages.length - 1 &&
+              rowIndex === renderRows.length - 1 &&
               message.role === "assistant";
 
             const isCurrentlyStreaming =
@@ -542,16 +598,20 @@ export function ChatMessagesContainer({
 
             const isAssistant = message.role === "assistant";
 
-            const nextMessage = messages[messageIndex + 1];
+            const nextRow = renderRows[rowIndex + 1];
+            // A segment that only runs up to a mid-turn drain is never the end
+            // of its turn — the same backend turn continues under the follow-up
+            // bubble, so the stats bar and the assistant actions belong to the
+            // last segment alone.
             const isLastInTurn =
               isAssistant &&
-              messageIndex <= messages.length - 1 &&
-              (!nextMessage || nextMessage.role === "user");
+              !isMidTurnSegmentRow(message) &&
+              (!nextRow || nextRow.role === "user");
             // Bookkeeping parts are stripped before any render/split logic so
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
             // ThinkingIndicator; data-compaction via CompactionCard.
-            const renderableParts = message.parts.filter(
+            const renderableParts = withToolDisplayNames(message.parts).filter(
               (p) => !isBookkeepingPart(p),
             );
             // Only a message that is actively streaming can have a live
@@ -603,14 +663,16 @@ export function ChatMessagesContainer({
                 className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
                 <MessageContent
-                  className={
-                    "text-[1rem] leading-relaxed " +
-                    "group-[.is-user]:rounded-3xl group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900 " +
-                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
+                  className={cn(
+                    isCompact
+                      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
-                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
-                  }
+                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
+                  )}
                 >
                   {isAssistant ? (
                     <ChainMessageParts
@@ -646,9 +708,9 @@ export function ChatMessagesContainer({
                   )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
-                      turnMessages={getTurnMessages(messages, messageIndex)}
+                      turnMessages={turnMessagesForRow(messages, message)}
                       elapsedSeconds={
-                        messageIndex === messages.length - 1
+                        rowIndex === renderRows.length - 1
                           ? frozenElapsedRef.current
                           : undefined
                       }
@@ -730,6 +792,12 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
+          {showPendingSend && pendingSend && (
+            <PendingUploadMessage
+              pendingSend={pendingSend}
+              isCompact={isCompact}
+            />
+          )}
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
@@ -771,7 +839,14 @@ export function ChatMessagesContainer({
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">
-                <MessageContent className="flex flex-col gap-1 rounded-3xl border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-[1rem] leading-relaxed text-zinc-900 opacity-60">
+                <MessageContent
+                  className={cn(
+                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    isCompact
+                      ? "rounded-xl text-sm leading-6"
+                      : "rounded-3xl text-[1rem] leading-relaxed",
+                  )}
+                >
                   <span>{msg}</span>
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Icon icon={Clock01Icon} className="size-3" />
