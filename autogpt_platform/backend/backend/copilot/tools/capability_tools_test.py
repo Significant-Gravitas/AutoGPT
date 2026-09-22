@@ -13,6 +13,7 @@ from prisma.enums import ReviewStatus
 
 from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
+from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_execution_context
@@ -40,6 +41,7 @@ from .models import (
 )
 from .resume_capability import ResumeCapabilityTool
 from .run_capability import RunCapabilityTool
+from .session_registry import session_registry
 from .skills import ParsedSkill, ReadSkillResponse
 
 USER = "user-cap-tools"
@@ -354,6 +356,22 @@ async def test_find_capability_returns_the_session_owner_s_skill(skills):
     assert "kind=skill" in result.message
     # The owner's folder, never another expert's.
     skills.assert_awaited_with(USER, "expert-1")
+
+
+async def test_the_layered_index_is_reused_while_the_skills_are_the_same(skills):
+    """Layering rebuilds BM25 over the whole corpus, so the result is kept for
+    the skill-cache window; a changed skill, or no skills, gets its own."""
+    skills.return_value = [TRIAGE]
+    session = make_session(USER)
+    first = await session_registry(USER, session)
+    second = await session_registry(USER, session)
+    assert first is second and first is not get_registry()
+    skills.return_value = [
+        ParsedSkill(name=TRIAGE.name, description="Rewritten.", body="", triggers=())
+    ]
+    assert await session_registry(USER, session) is not first
+    skills.return_value = []
+    assert await session_registry(USER, session) is get_registry()
 
 
 async def test_find_capability_kind_skill_lists_skills_only(skills):

@@ -1,6 +1,7 @@
 """Search the capability registry: integrations, blocks, MCP servers,
 platform tools and the session owner's skills behind one query."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -111,8 +112,9 @@ class FindCapabilityTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        connections = await load_connection_state(user_id)
-        index = await session_registry(user_id, session)
+        connections, index = await asyncio.gather(
+            load_connection_state(user_id), session_registry(user_id, session)
+        )
         result = index.search(
             query,
             context="graph" if context == "graph" else "direct",

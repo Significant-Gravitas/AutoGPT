@@ -8,6 +8,8 @@ builds ``<available_skills>``, so a search costs no extra storage reads.
 """
 
 import logging
+import time
+from collections import OrderedDict
 
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.models import CapabilityEntry
@@ -16,14 +18,46 @@ from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_entries, skill_name
 from backend.copilot.model import ChatSession
 
-from .skills import is_skills_feature_enabled, list_all_skills
+from .skills import SKILLS_INDEX_CACHE_TTL_S, is_skills_feature_enabled, list_all_skills
 
 logger = logging.getLogger(__name__)
+
+# Layering reuses the platform documents but BM25 re-derives its corpus
+# statistics over all of them: some 40 ms of CPU on the event loop per
+# search.  A skill list changes rarely and is itself cached for
+# ``SKILLS_INDEX_CACHE_TTL_S``, so the layered index is kept for the same
+# window, keyed by the platform index (a new one after a block reload) and
+# by what the skills say, so a rewritten skill is re-indexed at once.
+_LAYERED_MAX = 128
+_layered: OrderedDict[
+    tuple[int, int, tuple[tuple[str, str], ...]], tuple[float, CapabilityIndex]
+] = OrderedDict()
 
 
 async def session_registry(user_id: str, session: ChatSession) -> CapabilityIndex:
     """The platform index with this session's skills layered on."""
-    return get_registry().with_entries(await session_skill_entries(user_id, session))
+    return layered_index(get_registry(), await session_skill_entries(user_id, session))
+
+
+def layered_index(
+    base: CapabilityIndex, skills: list[CapabilityEntry]
+) -> CapabilityIndex:
+    """*base* with *skills* layered on, reused within the skill-cache window
+    for the same platform index and the same skills."""
+    if not skills:
+        return base
+    key = (id(base), len(base), tuple((e.id, e.description) for e in skills))
+    now = time.monotonic()
+    cached = _layered.get(key)
+    if cached is not None and cached[0] > now:
+        _layered.move_to_end(key)
+        return cached[1]
+    index = base.with_entries(skills)
+    _layered[key] = (now + SKILLS_INDEX_CACHE_TTL_S, index)
+    _layered.move_to_end(key)
+    while len(_layered) > _LAYERED_MAX:
+        _layered.popitem(last=False)
+    return index
 
 
 async def resolve_session_entry(

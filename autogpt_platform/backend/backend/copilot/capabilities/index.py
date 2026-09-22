@@ -97,7 +97,8 @@ class CapabilityIndex:
         )
         if documents is None:
             documents = [_document(e) for e in self.entries]
-        assert len(documents) == len(self.entries)
+        if len(documents) != len(self.entries):
+            raise ValueError("one document per entry")
         self._documents = list(documents)
         self._token_sets = [frozenset(doc) for doc in self._documents]
         self._bm25 = BM25Okapi(self._documents or [[""]])
