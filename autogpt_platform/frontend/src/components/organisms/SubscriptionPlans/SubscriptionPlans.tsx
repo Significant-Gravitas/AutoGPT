@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { PlanDetailsDialog } from "./components/PlanDetailsDialog";
+import { PlanDetailsDialog } from "./components/PlanDetailsDialog/PlanDetailsDialog";
 import { PlanFooter } from "./components/PlanFooter";
 import { PlanHeader } from "./components/PlanHeader";
 import { SubscriptionOffer } from "./components/SubscriptionOffer";
