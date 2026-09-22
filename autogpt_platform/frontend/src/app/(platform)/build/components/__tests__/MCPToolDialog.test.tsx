@@ -100,9 +100,8 @@ describe("MCPToolDialog credential binding", () => {
       postV2DiscoverAvailableToolsOnAnMcpServer,
       postV2InitiateOauthLoginForAnMcpServer,
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     type LoginResponse = Awaited<
       ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
     >;
@@ -233,9 +232,8 @@ describe("MCPToolDialog credential binding", () => {
       postV2DiscoverAvailableToolsOnAnMcpServer,
       postV2InitiateOauthLoginForAnMcpServer,
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
 
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
       apiResponse(401, { detail: "Authentication required" }),

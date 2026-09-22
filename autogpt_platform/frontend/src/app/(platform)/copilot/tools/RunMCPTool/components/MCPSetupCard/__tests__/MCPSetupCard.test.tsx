@@ -589,9 +589,8 @@ describe("MCPSetupCard", () => {
   it("opens the sign-in window before the initiate await and hands it over", async () => {
     const callOrder: string[] = [];
     const fakeWindow = { closed: false, close: vi.fn() };
-    const { openOAuthPopup, preOpenOAuthPopup } = await import(
-      "@/lib/oauth-popup"
-    );
+    const { openOAuthPopup, preOpenOAuthPopup } =
+      await import("@/lib/oauth-popup");
     vi.mocked(preOpenOAuthPopup).mockClear();
     vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
       callOrder.push("preOpen");
@@ -601,9 +600,8 @@ describe("MCPSetupCard", () => {
       promise: new Promise(() => {}),
       cleanup: { abort: vi.fn() },
     } as never);
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
       async () => {
         callOrder.push("initiate");
@@ -637,9 +635,8 @@ describe("MCPSetupCard", () => {
     vi.mocked(preOpenOAuthPopup).mockReturnValue(
       fakeWindow as unknown as Window,
     );
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    const { postV2InitiateOauthLoginForAnMcpServer } =
+      await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
       data: { detail: { code: "no_oauth", message: "No OAuth" } },

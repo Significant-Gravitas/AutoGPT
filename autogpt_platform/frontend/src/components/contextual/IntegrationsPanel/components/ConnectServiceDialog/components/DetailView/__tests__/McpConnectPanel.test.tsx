@@ -115,9 +115,8 @@ describe("McpConnectPanel", () => {
   // new-tab fallback — so on mobile nothing opened at all.
   describe("user activation (#14532)", () => {
     async function mockInitiateOk(record?: string[]) {
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
-      );
+      const { postV2InitiateOauthLoginForAnMcpServer } =
+        await import("@/app/api/__generated__/endpoints/mcp/mcp");
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
         async () => {
           record?.push("initiate");
@@ -143,9 +142,8 @@ describe("McpConnectPanel", () => {
     it("opens the window before the initiate await and hands it to openOAuthPopup", async () => {
       const callOrder: string[] = [];
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
+      const { openOAuthPopup, preOpenOAuthPopup } =
+        await import("@/lib/oauth-popup");
       vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
         callOrder.push("preOpen");
         return fakeWindow as unknown as Window;
@@ -182,9 +180,8 @@ describe("McpConnectPanel", () => {
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
       );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
-      );
+      const { postV2InitiateOauthLoginForAnMcpServer } =
+        await import("@/app/api/__generated__/endpoints/mcp/mcp");
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
         makeApiError(400, noOAuthDetail.detail),
       );
@@ -204,9 +201,8 @@ describe("McpConnectPanel", () => {
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
       );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
-      );
+      const { postV2InitiateOauthLoginForAnMcpServer } =
+        await import("@/app/api/__generated__/endpoints/mcp/mcp");
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
         makeApiError(500, "server exploded"),
       );
@@ -219,15 +215,13 @@ describe("McpConnectPanel", () => {
 
     it("closes the window when the panel unmounts mid-initiation", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
+      const { openOAuthPopup, preOpenOAuthPopup } =
+        await import("@/lib/oauth-popup");
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
       );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
-      );
+      const { postV2InitiateOauthLoginForAnMcpServer } =
+        await import("@/app/api/__generated__/endpoints/mcp/mcp");
       let release: (() => void) | undefined;
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
         () =>
@@ -264,9 +258,8 @@ describe("McpConnectPanel", () => {
 
     it("a double tap starts one flow, not two", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
+      const { openOAuthPopup, preOpenOAuthPopup } =
+        await import("@/lib/oauth-popup");
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
       );
