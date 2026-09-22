@@ -138,7 +138,12 @@ export function FolderTree({
                 isDisabled ? "text-zinc-300" : FOLDER_STYLE.icon,
               )}
             />
-            <Text variant="small-medium" as="span" className="truncate">
+            <Text
+              variant="small-medium"
+              as="span"
+              className="min-w-0 truncate"
+              title={row.name}
+            >
               {row.name}
             </Text>
             {row.disabledReason ? (

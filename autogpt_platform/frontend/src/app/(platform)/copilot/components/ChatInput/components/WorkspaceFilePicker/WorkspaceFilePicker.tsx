@@ -91,7 +91,7 @@ export function WorkspaceFilePicker({
                     as="span"
                     className="text-zinc-700"
                   >
-                    Only {who}&apos;s files
+                    Only {who}&rsquo;s files
                   </Text>
                 </label>
               </div>

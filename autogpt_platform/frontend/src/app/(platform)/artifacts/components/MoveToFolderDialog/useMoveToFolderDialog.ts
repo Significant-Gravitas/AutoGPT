@@ -17,11 +17,16 @@ export function useMoveToFolderDialog({ move, canMoveToRoot, onDone }: Args) {
   const { folders, moveFilesToFolder, moveFolder, isMovingFolder } =
     useArtifactsFolders();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  // Seeded once from the subject's own location, then owned by the user; a
-  // later folders refetch must not re-collapse what they opened.
-  const [expanded, setExpanded] = useState(() =>
-    initiallyExpanded(folders, move),
-  );
+  // Seeded from the subject's own location, then owned by the user; a later
+  // folders refetch must not re-collapse what they opened. The seed waits for
+  // the folders query: on a cold cache the first render has nothing to walk,
+  // and a lazy initialiser would leave the subject's own branch shut.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [isSeeded, setIsSeeded] = useState(false);
+  if (!isSeeded && folders.length > 0) {
+    setIsSeeded(true);
+    setExpanded(initiallyExpanded(folders, move));
+  }
   const [isMovingFiles, setIsMovingFiles] = useState(false);
 
   const rows = buildTreeRows({ folders, move, expanded, canMoveToRoot });

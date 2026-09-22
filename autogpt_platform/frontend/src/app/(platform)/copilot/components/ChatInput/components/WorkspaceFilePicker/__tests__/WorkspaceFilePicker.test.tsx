@@ -243,7 +243,7 @@ describe("WorkspaceFilePicker - the expert-only filter", () => {
     renderPicker({ expertId: "expert-a", expertName: "Maria" });
 
     await screen.findByText("alpha.txt");
-    expect(screen.getByLabelText("Only Maria's files")).toBeTruthy();
+    expect(screen.getByLabelText("Only Maria’s files")).toBeTruthy();
     expect(lastRequest()).toMatchObject({
       expert_id: "expert-a",
       include_user_files: false,
@@ -264,7 +264,7 @@ describe("WorkspaceFilePicker - the expert-only filter", () => {
     renderPicker({ expertId: "expert-a", expertName: "Maria" });
     await screen.findByText("alpha.txt");
 
-    fireEvent.click(screen.getByLabelText("Only Maria's files"));
+    fireEvent.click(screen.getByLabelText("Only Maria’s files"));
 
     await waitFor(() =>
       expect(lastRequest()).toMatchObject({

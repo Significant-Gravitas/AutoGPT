@@ -67,7 +67,7 @@ export function WorkspaceFolderRows({
                 e.preventDefault();
                 onOpen(folder.id);
               }}
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
             >
               <div
                 className={cn(
@@ -104,6 +104,7 @@ export function WorkspaceFolderRows({
               }}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300",
                 isSelected
                   ? "text-violet-600"
                   : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
