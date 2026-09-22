@@ -1,6 +1,8 @@
 import {
   API_KEY_HEADER_NAME,
+  CLIENT_COUNTRY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
+  VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
@@ -90,6 +92,11 @@ function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
     if (value) headers.set(name, value);
   }
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
+  // The visitor's country as the edge saw it. Sent under our own name, and
+  // only ever from the edge value: the browser's copy is not allowlisted
+  // above, so a client cannot claim a country through the proxy.
+  const country = req.headers.get(VERCEL_COUNTRY_HEADER_NAME);
+  if (country) headers.set(CLIENT_COUNTRY_HEADER_NAME, country);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }

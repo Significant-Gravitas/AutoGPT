@@ -51,10 +51,12 @@ async def create_trial_checkout(
     success_url: str,
     cancel_url: str,
     metadata: dict[str, str],
+    *,
+    country: str | None = None,
 ) -> str:
     async with subscription_checkout_lock(user_id):
         return await _create_trial_checkout(
-            user_id, offer_token, success_url, cancel_url, metadata
+            user_id, offer_token, success_url, cancel_url, metadata, country
         )
 
 
@@ -64,6 +66,7 @@ async def _create_trial_checkout(
     success_url: str,
     cancel_url: str,
     metadata: dict[str, str],
+    country: str | None,
 ) -> str:
     offer = await get_trial_offer(user_id)
     if offer is None:
@@ -74,9 +77,9 @@ async def _create_trial_checkout(
             raise TrialUnavailable("A trial has already been used for this account")
         if existing.offer.token != offer_token:
             raise TrialUnavailable("Refresh to accept the reserved trial terms")
-        return await _resume_checkout(existing)
+        return await _resume_checkout(existing, country=country)
     customer_id = await get_stripe_customer_id(user_id)
-    await _verify_eligibility(user_id, customer_id, offer)
+    await _verify_eligibility(user_id, customer_id, offer, country=country)
     accepted = await resolve_trial_price(offer)
     if accepted.token != offer_token:
         raise TrialUnavailable(
@@ -92,7 +95,7 @@ async def _create_trial_checkout(
         raise TrialUnavailable(
             "Another checkout reserved different trial terms. Refresh"
         )
-    return await _resume_checkout(trial)
+    return await _resume_checkout(trial, country=country)
 
 
 async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
@@ -123,14 +126,19 @@ async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
     )
 
 
-async def _resume_checkout(trial: TrialState) -> str:
+async def _resume_checkout(trial: TrialState, *, country: str | None = None) -> str:
     session = await _find_checkout(trial)
     if session is None or session.status == "open":
         await expire_other_subscription_checkouts(
             trial.customer_id, session.id if session else None
         )
         await _verify_eligibility(
-            trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
+            trial.user_id,
+            trial.customer_id,
+            trial.offer,
+            trial=trial,
+            session=session,
+            country=country,
         )
     if session is None:
         session = await stripe_call(
@@ -143,7 +151,7 @@ async def _resume_checkout(trial: TrialState) -> str:
             data={"stripeCheckoutSessionId": session.id},
         )
     if session.status == "expired":
-        return await _replace_expired_checkout(trial, session)
+        return await _replace_expired_checkout(trial, session, country=country)
     if session.status != "open" or not session.url:
         raise TrialUnavailable(
             "Trial checkout is complete. Refresh your billing status"
@@ -173,10 +181,18 @@ async def _find_checkout(trial: TrialState) -> stripe.checkout.Session | None:
 
 
 async def _replace_expired_checkout(
-    trial: TrialState, session: stripe.checkout.Session
+    trial: TrialState,
+    session: stripe.checkout.Session,
+    *,
+    country: str | None = None,
 ) -> str:
     await _verify_eligibility(
-        trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
+        trial.user_id,
+        trial.customer_id,
+        trial.offer,
+        trial=trial,
+        session=session,
+        country=country,
     )
     await SubscriptionTrial.prisma().update_many(
         where={
@@ -199,7 +215,7 @@ async def _replace_expired_checkout(
         raise TrialUnavailable("Trial checkout is no longer available")
     if current.checkout_attempt == trial.checkout_attempt:
         raise TrialUnavailable("Trial checkout changed. Refresh your billing status")
-    return await _resume_checkout(current)
+    return await _resume_checkout(current, country=country)
 
 
 def trial_checkout_params(trial: TrialState) -> dict:

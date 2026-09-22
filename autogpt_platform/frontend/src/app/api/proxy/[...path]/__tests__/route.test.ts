@@ -215,6 +215,41 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
   });
 
+  it("forwards the edge-observed country under the backend's header name", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { "x-vercel-ip-country": "DE" },
+    });
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("x-client-country")).toBe("DE");
+    expect(sentHeaders.get("x-vercel-ip-country")).toBeNull();
+  });
+
+  it("drops a browser-supplied country so the edge value is the only source", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { "x-client-country": "US" },
+    });
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("x-client-country")).toBeNull();
+  });
+
   it("omits Authorization header when no token is available", async () => {
     vi.mocked(getServerAuthToken).mockResolvedValueOnce(null);
     vi.mocked(fetch).mockResolvedValue(

@@ -5945,6 +5945,17 @@
         "summary": "Get Trial Status",
         "operationId": "getTrialsGetTrialStatus",
         "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "X-Client-Country",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Client-Country"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5956,6 +5967,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -5965,6 +5984,15 @@
         "operationId": "postTrialsStartTrialCheckout",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
+          {
+            "name": "X-Client-Country",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Client-Country"
+            }
+          },
           {
             "name": "x-datafast-visitor-id",
             "in": "header",

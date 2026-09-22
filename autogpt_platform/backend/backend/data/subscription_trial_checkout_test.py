@@ -153,7 +153,7 @@ async def test_pending_checkout_reuses_accepted_offer(trial, checkout_guard):
             trial.user_id, trial.offer.token, trial.success_url, trial.cancel_url, {}
         )
     assert result == "checkout"
-    resume.assert_awaited_once_with(trial)
+    resume.assert_awaited_once_with(trial, country=None)
 
 
 @pytest.mark.parametrize(
@@ -254,3 +254,58 @@ async def test_full_trial_surfaces_as_a_retryable_checkout_failure(
                 {},
             )
     resume.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_checkout_checks_eligibility_with_the_visitors_country(
+    trial, checkout_guard
+):
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(
+            checkout, "get_stripe_customer_id", AsyncMock(return_value="cus_1")
+        ),
+        patch.object(checkout, "_verify_eligibility", AsyncMock()) as verify,
+        patch.object(
+            checkout, "resolve_trial_price", AsyncMock(return_value=trial.offer)
+        ),
+        patch.object(
+            checkout, "reserve_subscription_trial", AsyncMock(return_value=trial)
+        ),
+        patch.object(
+            checkout, "_resume_checkout", AsyncMock(return_value="https://x")
+        ) as resume,
+    ):
+        await checkout.create_trial_checkout(
+            trial.user_id,
+            trial.offer.token,
+            trial.success_url,
+            trial.cancel_url,
+            {},
+            country="DE",
+        )
+    assert verify.await_args.kwargs["country"] == "DE"
+    assert resume.await_args.kwargs["country"] == "DE"
+
+
+@pytest.mark.asyncio
+async def test_resumed_checkout_rechecks_eligibility_with_the_current_country(
+    trial, checkout_guard
+):
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            checkout, "_resume_checkout", AsyncMock(return_value="https://x")
+        ) as resume,
+    ):
+        await checkout.create_trial_checkout(
+            trial.user_id,
+            trial.offer.token,
+            trial.success_url,
+            trial.cancel_url,
+            {},
+            country="FR",
+        )
+    assert resume.await_args.kwargs["country"] == "FR"

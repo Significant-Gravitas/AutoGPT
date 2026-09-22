@@ -40,10 +40,12 @@ class TrialOffer(BaseModel):
     max_active_trials: int | None = Field(default=None, ge=0, strict=True)
 
     # Omit (or null) to offer the trial everywhere. Present means allowlist:
-    # ISO 3166-1 alpha-2, matched against the *card's issuing country*, which
-    # is the only country Stripe attests to. Note "GB", not "UK" -- an unknown
-    # code simply never matches, so a typo closes the trial for that country
-    # rather than opening one by accident.
+    # ISO 3166-1 alpha-2. Checked twice with two signals -- the visitor's
+    # country before the offer is ever shown (from the edge, via the
+    # X-Client-Country header), and the card's issuing country at fulfilment,
+    # so someone who reaches the API around the edge still cannot enrol. Note
+    # "GB", not "UK" -- an unknown code simply never matches, so a typo closes
+    # the trial for that country rather than opening one by accident.
     eligible_countries: tuple[str, ...] | None = Field(default=None)
 
     @field_validator("eligible_countries", mode="after")
@@ -75,7 +77,7 @@ class TrialOffer(BaseModel):
         return self
 
     def country_allowed(self, country: str | None) -> bool:
-        """Is *country* (ISO alpha-2, e.g. a card's issuing country) offered the trial?
+        """Is *country* (ISO alpha-2) offered the trial?
 
         An unknown country fails a configured allowlist: we cannot show that
         the user is inside it, and a geo restriction that passes on missing
@@ -91,8 +93,17 @@ class TrialOffer(BaseModel):
         created_at: datetime,
         current_tier: str,
         has_subscription_history: bool,
+        country: str | None,
     ) -> bool:
+        """The one predicate behind "may this person see and start the trial".
+
+        ``country`` is required, not defaulted: every caller has to say what
+        it knows, and an offer restricted by country is hidden from anyone
+        whose country it cannot establish.
+        """
         if current_tier != "NO_TIER" or has_subscription_history:
+            return False
+        if not self.country_allowed(country):
             return False
         return created_at >= self.new_users_from or self.allow_existing_beta_users
 

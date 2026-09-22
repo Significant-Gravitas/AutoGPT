@@ -15,6 +15,7 @@ async def verify_trial_eligibility(
     *,
     trial: TrialState | None = None,
     session: stripe.checkout.Session | None = None,
+    country: str | None = None,
 ) -> None:
     user = await get_user_by_id(user_id)
     if trial and session and not _owned_checkout(trial, session):
@@ -39,6 +40,7 @@ async def verify_trial_eligibility(
         created_at=user.created_at,
         current_tier=user.subscription_tier.value,
         has_subscription_history=has_history,
+        country=country,
     ):
         raise SubscriptionCheckoutUnavailable(
             "This account is not eligible for a trial"

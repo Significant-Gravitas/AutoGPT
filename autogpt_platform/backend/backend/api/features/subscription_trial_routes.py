@@ -72,8 +72,18 @@ class TrialCheckoutResponse(BaseModel):
     url: str
 
 
+# The visitor's country, ISO 3166-1 alpha-2, set by the frontend proxy from
+# what its edge observed. The proxy never forwards a browser-supplied copy, so
+# through the product this is trustworthy; a caller who bypasses the proxy
+# can forge it, and for them the card's issuing country at fulfilment is the
+# gate that holds.
+ClientCountry = Annotated[str | None, Header(alias="X-Client-Country")]
+
+
 @router.get("")
-async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
+async def get_trial_status(
+    user_id: CurrentUser, country: ClientCountry = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if trial:
         return TrialStatusResponse(
@@ -81,6 +91,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
                 trial.status == "checkout_pending"
                 and trial.consumed_at is None
                 and (offer := await get_trial_offer(user_id)) is not None
+                and offer.country_allowed(country)
                 and await trial_seat_available(offer, trial_id=trial.id)
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
@@ -114,6 +125,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
         created_at=user.created_at,
         current_tier=user.subscription_tier.value,
         has_subscription_history=has_history,
+        country=country,
     ):
         return TrialStatusResponse()
     try:
@@ -140,6 +152,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
 async def start_trial_checkout(
     body: TrialCheckoutRequest,
     user_id: CurrentUser,
+    country: ClientCountry = None,
     x_datafast_visitor_id: Annotated[str | None, Header()] = None,
     x_datafast_session_id: Annotated[str | None, Header()] = None,
 ) -> TrialCheckoutResponse:
@@ -158,6 +171,7 @@ async def start_trial_checkout(
             success_url=f"{destination}?trial=success",
             cancel_url=f"{destination}?trial=cancelled",
             metadata=_datafast_metadata(x_datafast_visitor_id, x_datafast_session_id),
+            country=country,
         )
     except TrialUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc

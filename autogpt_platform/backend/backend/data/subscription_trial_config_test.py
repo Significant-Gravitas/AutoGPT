@@ -87,6 +87,7 @@ def test_eligibility_never_retrials_or_overwrites_paid_access(
             + timedelta(days=days_from_cutoff),
             current_tier=tier,
             has_subscription_history=has_history,
+            country=None,
         )
         is expected
     )
@@ -218,3 +219,33 @@ def test_zero_cap_is_expressible_and_distinct_from_absent():
     uncapped = trials.TrialOffer.model_validate(offer_data())
     assert paused.max_active_trials == 0
     assert uncapped.max_active_trials is None
+
+
+@pytest.mark.parametrize(
+    "countries,country,expected",
+    [
+        (None, "FR", True),  # no restriction: any country, known or not
+        (None, None, True),
+        (["US", "DE"], "US", True),
+        (["US", "DE"], "de", True),
+        (["US", "DE"], "FR", False),
+        (["US", "DE"], None, False),  # restricted + unknown = hidden
+    ],
+)
+def test_country_gates_eligibility_before_the_offer_is_shown(
+    countries, country, expected
+):
+    offer = trials.TrialOffer.model_validate(
+        {**offer_data(), "eligible_countries": countries}
+        if countries is not None
+        else offer_data()
+    )
+    assert (
+        offer.is_eligible(
+            created_at=datetime(2026, 9, 11, tzinfo=UTC),
+            current_tier="NO_TIER",
+            has_subscription_history=False,
+            country=country,
+        )
+        is expected
+    )
