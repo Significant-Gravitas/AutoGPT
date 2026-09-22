@@ -1,9 +1,10 @@
+"use client";
+
 import {
   getFieldDomId,
   useFieldAccessibilityContext,
 } from "../../field-accessibility";
 import { FieldError } from "../../base/standard/FieldError";
-("use client");
 
 import { FieldProps, getTemplate, getUiOptions, titleId } from "@rjsf/utils";
 import { Input } from "@/components/atoms/Input/Input";

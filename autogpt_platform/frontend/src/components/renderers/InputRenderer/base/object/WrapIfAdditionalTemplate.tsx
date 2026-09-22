@@ -63,13 +63,13 @@ export default function WrapIfAdditionalTemplate(
 
   const keyId = `${id}-key`;
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (e.target.value == "") {
-      onRemoveProperty();
-    } else {
-      onKeyRenameBlur(e);
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    if (e.currentTarget.value === "") {
+      e.currentTarget.value = label;
+      return;
     }
-  };
+    onKeyRenameBlur(e);
+  }
 
   const isHandleConnected = isInputConnected(nodeId, handleId);
 

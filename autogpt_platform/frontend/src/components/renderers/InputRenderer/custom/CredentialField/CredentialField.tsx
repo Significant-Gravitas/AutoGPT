@@ -12,7 +12,12 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
 import { useCredentialAvailability } from "./useCredentialAvailability";
-import { credentialNotApplicable } from "./helpers";
+import {
+  credentialNotApplicable,
+  credentialRequiredForSelection,
+  getCredentialProviderFromSchema,
+  getDiscriminatorValue,
+} from "./helpers";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -71,14 +76,13 @@ export const CredentialsField = (props: FieldProps) => {
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // Combines the schema's `required` array with the node-level toggle, which
-  // is why it is not named for the schema alone: in the builder canvas the
-  // toggle can relax a required field to optional. It must never mark a
-  // schema-optional field required — blocks declaring an optional credential
-  // (default=None) would otherwise render an unfillable star.
+  const credentialSchema = schema as BlockIOCredentialsSubSchema;
+  const selectionRequired =
+    required ||
+    credentialRequiredForSelection(hardcodedValues, credentialSchema);
   const effectiveRequired = nodeId
-    ? !credentialsOptional && required
-    : required;
+    ? !credentialsOptional && selectionRequired
+    : selectionRequired;
 
   // Nothing to ask for: the selected discriminator value maps to no provider
   // (Otto's `platform` transport), so the row is not merely unavailable —
@@ -97,6 +101,11 @@ export const CredentialsField = (props: FieldProps) => {
     selectedCredentials?.provider,
   );
   const isUnavailable = availability === "unavailable";
+  const unsupportedSelection =
+    !notApplicable &&
+    getDiscriminatorValue(hardcodedValues, credentialSchema) !== undefined &&
+    !!credentialSchema.discriminator_mapping &&
+    !getCredentialProviderFromSchema(hardcodedValues, credentialSchema);
 
   // CredentialsInput renders nothing when the provider is missing from the
   // providers map, which used to leave a bare title with no control under it.
@@ -110,7 +119,7 @@ export const CredentialsField = (props: FieldProps) => {
     return null;
   }
 
-  if (isUnavailable && !required) {
+  if (isUnavailable && !selectionRequired) {
     return null;
   }
 
@@ -144,6 +153,12 @@ export const CredentialsField = (props: FieldProps) => {
         required={isRequired}
         selectedProvider={selectedCredentials?.provider}
       />
+      {unsupportedSelection && (
+        <Text variant="small" role="alert">
+          This selection is no longer supported. Choose another model or
+          transport.
+        </Text>
+      )}
       {availability === "unavailable" && (
         <Text
           id={unavailableNoteId}

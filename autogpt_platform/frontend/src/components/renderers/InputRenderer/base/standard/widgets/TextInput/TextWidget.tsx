@@ -1,5 +1,6 @@
+"use client";
+
 import { useFieldAccessibility } from "../../../../field-accessibility";
-("use client");
 
 import { useState } from "react";
 import { WidgetProps } from "@rjsf/utils";
