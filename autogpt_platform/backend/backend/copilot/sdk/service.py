@@ -1253,6 +1253,29 @@ def _friendly_error_text(raw: str) -> str:
     return f"SDK stream error: {raw}"
 
 
+def _context_limit_without_compaction(
+    attempt: int, compaction: "CompactionTracker"
+) -> str | None:
+    """Why a first-attempt context-limit error is alarming, or None.
+
+    The CLI is meant to compact well before the ceiling.  Reaching it on
+    the first attempt with nothing landed means one of two things, and the
+    message says which: the trigger fired but no summary was ever written
+    (something answered its compaction request wrongly), or it never fired
+    at all (the pin sits past the model's real window, or the threshold is
+    above the ceiling).  Later attempts are our own retries and expected.
+    """
+    if attempt != 0 or compaction.landed_count > 0:
+        return None
+    if compaction.attempt_count > 0:
+        return (
+            f"context limit reached after {compaction.attempt_count} compaction "
+            f"attempt(s) and none landed "
+            f"({', '.join(compaction.attempt_sources)})"
+        )
+    return "context limit reached before any compaction was attempted"
+
+
 def _is_prompt_too_long(err: BaseException) -> bool:
     """Return True if *err* indicates the prompt exceeds the model's limit.
 
@@ -5870,6 +5893,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 stream_err = e
                 is_context_error = _is_prompt_too_long(e)
                 is_transient = is_transient_api_error(str(e))
+                if is_context_error:
+                    alarm = _context_limit_without_compaction(attempt, compaction)
+                    if alarm is not None:
+                        # ERROR so it reaches Sentry with the pin that
+                        # shaped the turn; the warning below is the
+                        # ordinary retry bookkeeping.
+                        logger.error("%s %s (%s)", log_prefix, alarm, context_summary)
                 logger.warning(
                     "%s Stream error (attempt %d/%d, context_error=%s, "
                     "transient=%s, events_yielded=%d): %s",

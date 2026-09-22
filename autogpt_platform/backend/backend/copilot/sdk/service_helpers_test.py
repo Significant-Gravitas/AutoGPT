@@ -27,7 +27,7 @@ from backend.util.prompt import (
 from ..model import ChatMessage, ChatSession
 from ..model_router import ResolvedModel
 from ..transcript_builder import TranscriptBuilder
-from .compaction import CompactionStats
+from .compaction import CompactionStats, CompactionTracker
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
@@ -36,6 +36,7 @@ from .service import (
     _compaction_target_tokens,
     _compress_messages,
     _compression_model,
+    _context_limit_without_compaction,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
     _is_tool_only_message,
@@ -2653,3 +2654,43 @@ class TestCompressionFailureIsReportedAsADrop:
         assert stats.dropped is True
         assert stats.messages_before == 3
         assert stats.tokens_after is None
+
+
+class TestContextLimitWithoutCompaction:
+    def test_first_attempt_with_nothing_attempted(self):
+        alarm = _context_limit_without_compaction(0, CompactionTracker())
+        assert alarm is not None
+        assert "before any compaction was attempted" in alarm
+
+    @pytest.mark.asyncio
+    async def test_first_attempt_after_a_cycle_that_did_not_land(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(tokens_before=191_536, messages_before=92),
+            after_source="no_summary_line",
+        )
+        alarm = _context_limit_without_compaction(0, tracker)
+        assert alarm is not None
+        assert "1 compaction attempt(s) and none landed" in alarm
+        assert "sdk_internal" in alarm
+
+    @pytest.mark.asyncio
+    async def test_quiet_once_a_compaction_landed(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(
+                tokens_before=191_536,
+                tokens_after=31_000,
+                messages_before=92,
+                messages_after=12,
+            ),
+            after_source="read",
+        )
+        assert _context_limit_without_compaction(0, tracker) is None
+
+    def test_quiet_on_our_own_retries(self):
+        assert _context_limit_without_compaction(1, CompactionTracker()) is None
