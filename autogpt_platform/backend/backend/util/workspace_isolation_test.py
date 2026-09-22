@@ -40,6 +40,20 @@ def storage():
         yield storage
 
 
+@pytest.fixture(autouse=True)
+def write_infrastructure():
+    """A completed ``write_file`` reaches the quota lookup, whose DatabaseManager
+    RPC has no server here and retries for ~100 × 30 s instead of failing."""
+    with (
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+    ):
+        yield
+
+
 def _expert_manager() -> WorkspaceManager:
     return WorkspaceManager("user-1", "ws-1", "expert-a", scope=SCOPE)
 
