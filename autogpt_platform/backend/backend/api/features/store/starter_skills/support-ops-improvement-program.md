@@ -18,7 +18,7 @@ the current backlog, and the last review's decisions.
 ## Run the program
 
 1. Read the dashboard in one pass — one speed, one outcome, one sentiment,
-   one cost metric: volume by channel, first-response and resolution times,
+   the cost metrics: volume by channel, first-response and resolution times,
    SLA hit rate, CSAT (with response rate), first-contact resolution (FCR),
    reopen rate, abandon rate, occupancy, customer-effort score, net promoter
    score, and cost per contact and per resolution — each with trend and
