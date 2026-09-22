@@ -9,7 +9,14 @@ from backend.copilot.config import (
     CODEX_ENGINE_CONTEXT_WINDOW,
     ChatConfig,
 )
-from backend.copilot.sdk.context_window import autocompact_pct, pinned_context_window
+from backend.copilot.sdk.context_window import (
+    CodexEngineWindow,
+    autocompact_pct,
+    cli_autocompact_threshold,
+    compaction_target_tokens,
+    pinned_context_window,
+    retry_target_tokens,
+)
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -180,3 +187,72 @@ class TestAutocompactPct:
         assert (
             autocompact_pct(cfg, "anthropic/claude-sonnet-5", codex_route=False) == 90
         )
+
+
+class TestCodexEngineWindow:
+    def test_pin_prefers_the_account_window(self):
+        cfg = _openrouter_config()
+        engine = CodexEngineWindow(
+            context_window=400_000, auto_compact_token_limit=360_000
+        )
+        assert (
+            pinned_context_window(
+                cfg, "gpt-6-astra", codex_route=True, codex_engine=engine
+            )
+            == 400_000
+        )
+        assert (
+            pinned_context_window(cfg, "gpt-6-astra", codex_route=True)
+            == CODEX_ENGINE_CONTEXT_WINDOW
+        )
+
+    def test_explicit_config_still_wins(self):
+        cfg = _openrouter_config(claude_agent_context_window=300_000)
+        engine = CodexEngineWindow(context_window=400_000)
+        assert (
+            pinned_context_window(
+                cfg, "gpt-6-astra", codex_route=True, codex_engine=engine
+            )
+            == 300_000
+        )
+
+    @pytest.mark.parametrize(
+        "window, limit, expected",
+        [
+            (272_000, 244_800, 90),
+            (400_000, 200_000, 50),
+            (400_000, 399_000, 90),  # held at the CLI's usable ceiling
+            (400_000, None, CODEX_ENGINE_AUTOCOMPACT_PCT),
+            (400_000, 400_000, CODEX_ENGINE_AUTOCOMPACT_PCT),  # not a trigger
+            (400_000, 0, CODEX_ENGINE_AUTOCOMPACT_PCT),
+        ],
+    )
+    def test_trigger_from_the_account_limit(self, window, limit, expected):
+        cfg = _openrouter_config()
+        engine = CodexEngineWindow(
+            context_window=window, auto_compact_token_limit=limit
+        )
+        assert (
+            autocompact_pct(cfg, "gpt-6-astra", codex_route=True, codex_engine=engine)
+            == expected
+        )
+
+    def test_configured_zero_still_disables(self):
+        cfg = _openrouter_config(claude_agent_autocompact_pct_override=0)
+        engine = CodexEngineWindow(
+            context_window=272_000, auto_compact_token_limit=244_800
+        )
+        assert (
+            autocompact_pct(cfg, "gpt-6-astra", codex_route=True, codex_engine=engine)
+            == 0
+        )
+
+    def test_every_budget_follows_the_account_window(self):
+        cfg = _openrouter_config()
+        engine = CodexEngineWindow(
+            context_window=400_000, auto_compact_token_limit=360_000
+        )
+        kw = {"codex_route": True, "codex_engine": engine}
+        assert cli_autocompact_threshold(cfg, "gpt-6-astra", **kw) == 360_000
+        assert compaction_target_tokens(cfg, "gpt-6-astra", **kw) == 340_000
+        assert retry_target_tokens(cfg, "gpt-6-astra", **kw) == (100_000, 5_000)

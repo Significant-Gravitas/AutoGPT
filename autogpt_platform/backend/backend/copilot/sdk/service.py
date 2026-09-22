@@ -74,6 +74,7 @@ from backend.util.settings import Settings
 
 from backend.copilot.sdk.context_window import (
     BARE_MESSAGE_TOKEN_FLOOR,
+    CodexEngineWindow,
     compaction_target_tokens,
     retry_target_tokens,
     seed_target_tokens,
@@ -1433,7 +1434,12 @@ class _StreamContext:
 _BARE_MESSAGE_TOKEN_FLOOR: int = BARE_MESSAGE_TOKEN_FLOOR
 
 
-def _compaction_target_tokens(model: str | None, *, codex_route: bool = False) -> int:
+def _compaction_target_tokens(
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
+) -> int:
     """Output budget for the copilot's own compressors on this turn.
 
     Window and pct come from the SAME resolvers that pin the subprocess
@@ -1441,19 +1447,33 @@ def _compaction_target_tokens(model: str | None, *, codex_route: bool = False) -
     from a different window than the pin is a second threshold authority
     and will either fire early forever or land over the pin.
     """
-    return compaction_target_tokens(config, model, codex_route=codex_route)
+    return compaction_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
 
 
 def _retry_target_tokens(
-    model: str | None, *, codex_route: bool = False
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
 ) -> tuple[int, int]:
     """Per-retry budgets for the no-transcript path, from the same pin."""
-    return retry_target_tokens(config, model, codex_route=codex_route)
+    return retry_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
 
 
-def _seed_target_tokens(model: str | None, *, codex_route: bool = False) -> int:
+def _seed_target_tokens(
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
+) -> int:
     """Transcript-seed budget for a turn with no CLI session, from the same pin."""
-    return seed_target_tokens(config, model, codex_route=codex_route)
+    return seed_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
 
 
 async def _reduce_context(
@@ -1465,6 +1485,7 @@ async def _reduce_context(
     attempt: int = 1,
     runtime_model: str | None = None,
     codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
 ) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
@@ -1486,7 +1507,9 @@ async def _reduce_context(
     # autocompact threshold the retry has to land under.
     target_model = runtime_model or config.thinking_standard_model
     # Token budget for the DB fallback on this attempt (no-transcript path).
-    budgets = _retry_target_tokens(target_model, codex_route=codex_route)
+    budgets = _retry_target_tokens(
+        target_model, codex_route=codex_route, codex_engine=codex_engine
+    )
     retry_target = budgets[min(max(0, attempt - 1), len(budgets) - 1)]
 
     # First retry: try compacting our transcript builder state.
@@ -1500,7 +1523,7 @@ async def _reduce_context(
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
             target_tokens=_compaction_target_tokens(
-                target_model, codex_route=codex_route
+                target_model, codex_route=codex_route, codex_engine=codex_engine
             ),
         )
         if (
@@ -5013,11 +5036,27 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
+            resolved_codex = await resolve_codex_model_route(
                 # This turn is on the SDK engine by definition.
                 "thinking",
                 tier_name,
                 credential_lease,
+            )
+            sdk_model, codex_effort, routing_source = (
+                resolved_codex.model,
+                resolved_codex.effort,
+                resolved_codex.source,
+            )
+            # The account's advertised window for this model, when it sent
+            # one: the pin and every budget derived from it follow the
+            # account rather than the engine constant.
+            codex_engine = (
+                CodexEngineWindow(
+                    context_window=resolved_codex.context_window,
+                    auto_compact_token_limit=(resolved_codex.auto_compact_token_limit),
+                )
+                if resolved_codex.context_window is not None
+                else None
             )
             if isinstance(credential_lease, CodexCredentialLease):
                 codex_gateway = CodexAnthropicGateway(
@@ -5038,6 +5077,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 model, session_id, user_id
             )
             fallback_model = _resolve_fallback_model()
+            codex_engine = None
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -5048,6 +5088,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=_resolve_env_model(sdk_model, fallback_model),
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
+            codex_engine=codex_engine,
         )
         # What this turn's subprocess was pinned to (window/trigger/flags —
         # never secrets). Without this the pin is unobservable anywhere:
@@ -5056,6 +5097,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             route="codex" if codex_gateway else config.transport.name,
             model=sdk_model,
             sdk_env=sdk_env,
+            window_source=(
+                ("account" if codex_engine else "engine-default")
+                if codex_gateway
+                else None
+            ),
         )
         logger.info(f"{log_prefix} SDK context: {context_summary}")
 
@@ -5405,7 +5451,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # One budget for the forecast and the build alike, sized from the
         # window this turn's subprocess is pinned to — never the catalog.
         pre_query_target = _compaction_target_tokens(
-            sdk_model, codex_route=is_codex_transport
+            sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
         )
         forecast = _expect_pre_query_compaction(
             session.messages,
@@ -5493,7 +5539,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 transcript_msg_count,
                 log_prefix,
                 pre_compaction_msg_count,
-                _seed_target_tokens(sdk_model, codex_route=is_codex_transport),
+                _seed_target_tokens(
+                    sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
+                ),
             )
 
         tried_compaction = False
@@ -5597,6 +5645,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     attempt=attempt,
                     runtime_model=sdk_model,
                     codex_route=is_codex_transport,
+                    codex_engine=codex_engine,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume

@@ -14,7 +14,11 @@ from urllib.parse import urlparse
 
 from backend.copilot.config import CLI_DEFAULT_CONTEXT_WINDOW, ChatConfig
 from backend.copilot.moonshot import is_moonshot_model
-from backend.copilot.sdk.context_window import autocompact_pct, pinned_context_window
+from backend.copilot.sdk.context_window import (
+    CodexEngineWindow,
+    autocompact_pct,
+    pinned_context_window,
+)
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -48,8 +52,13 @@ def build_sdk_env(
     model: str | None = None,
     codex_gateway_url: str | None = None,
     codex_gateway_token: str | None = None,
+    codex_engine: CodexEngineWindow | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
+
+    *codex_engine* is what the connected account advertises for the routed
+    model on the Codex route; the pin and trigger follow it when given
+    (see ``sdk/context_window.py``).  Callers on other routes leave it None.
 
     Four modes (checked in order):
     1. **Codex gateway** — request-scoped loopback Anthropic compatibility.
@@ -180,9 +189,12 @@ def build_sdk_env(
     # the model table, the 1M capability flags and the server-side experiment
     # branches that newer CLIs consult — without it the compaction trigger is
     # an emergent property of whichever bundled CLI we happen to ship.
-    # Each route is held to its coding engine's default window (see
-    # ``sdk/context_window.py``); the platform route keeps the 200K default.
-    window = pinned_context_window(config, model, codex_route=codex_route)
+    # Each route is held to its coding engine's window (see
+    # ``sdk/context_window.py``): what the account advertises on Codex, the
+    # engine default elsewhere; the platform route keeps the 200K default.
+    window = pinned_context_window(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
     env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
     # ...but that pin is clamped to the window the CLI *assumes* for the
@@ -220,7 +232,9 @@ def build_sdk_env(
     # which still runs on Codex infra there, not the Moonshot endpoint.
     # Operators can also set the config to 0 to disable globally.
     if codex_route or not is_moonshot_model(model):
-        pct = autocompact_pct(config, model, codex_route=codex_route)
+        pct = autocompact_pct(
+            config, model, codex_route=codex_route, codex_engine=codex_engine
+        )
         if pct > 0:
             env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(pct)
 
@@ -238,7 +252,11 @@ def build_sdk_env(
 
 
 def describe_sdk_context(
-    *, route: str, model: str | None, sdk_env: dict[str, str]
+    *,
+    route: str,
+    model: str | None,
+    sdk_env: dict[str, str],
+    window_source: str | None = None,
 ) -> str:
     """One-line summary of the context the SDK subprocess was pinned to.
 
@@ -249,7 +267,8 @@ def describe_sdk_context(
     window = sdk_env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "<unset>")
     pct = sdk_env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "<cli-default>")
     kill = "true" if "CLAUDE_CODE_DISABLE_1M_CONTEXT" in sdk_env else "false"
+    source = f" window_source={window_source}" if window_source else ""
     return (
-        f"route={route} model={model} window={window} "
+        f"route={route} model={model} window={window}{source} "
         f"trigger_pct={pct} disable_1m_context={kill}"
     )

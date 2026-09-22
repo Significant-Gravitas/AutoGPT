@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk.context_window import CodexEngineWindow
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -847,6 +848,25 @@ class TestCodexRouteContext:
         }
         defaults.update(overrides)
         return _make_config(**defaults)
+
+    def test_codex_route_pins_the_account_window(self):
+        """When the account advertises a window for the routed model, the
+        pin, the ceiling and the trigger all follow it."""
+        cfg = self._codex_config()
+        engine = CodexEngineWindow(
+            context_window=400_000, auto_compact_token_limit=200_000
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                model="gpt-6-astra", codex_engine=engine, **self._GATEWAY_KWARGS
+            )
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "400000"
+        assert result.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS") == "400000"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
 
     @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-sol"])
     def test_codex_route_pins_engine_default(self, model):
