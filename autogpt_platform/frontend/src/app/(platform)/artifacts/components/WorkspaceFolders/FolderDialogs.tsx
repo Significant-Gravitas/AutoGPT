@@ -5,7 +5,7 @@ import { useArtifactsFolders } from "../../useArtifactsFolders";
 import { MoveToFolderDialog } from "../MoveToFolderDialog/MoveToFolderDialog";
 import { DeleteFolderDialog } from "./DeleteFolderDialog";
 import { FolderFormDialog } from "./FolderFormDialog";
-import { subfolderCountOf } from "./folderTree";
+import { descendantIdsOf } from "./folderTree";
 
 interface Props {
   editing: WorkspaceFolder | null;
@@ -61,7 +61,9 @@ export function FolderDialogs({
         isOpen={deleting !== null}
         setIsOpen={(open) => !open && onDeleteClose()}
         folderName={deleting?.name ?? ""}
-        subfolderCount={deleting ? subfolderCountOf(folders, deleting.id) : 0}
+        subfolderCount={
+          deleting ? descendantIdsOf(folders, deleting.id).size : 0
+        }
         isDeleting={isDeleting}
         onConfirm={() => {
           if (!deleting) return;

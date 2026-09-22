@@ -584,6 +584,34 @@ describe("ArtifactsPage - nested folders", () => {
     expect(screen.getByText("Empty")).toBeDefined();
   });
 
+  // The delete cascades down the whole subtree, so the dialog counts every
+  // folder that goes, not the two children the folder rows summarise.
+  test("the delete dialog counts the whole subtree, not the direct children", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [],
+        offset: 0,
+        has_more: false,
+      }),
+      getListWorkspaceFoldersMockHandler({
+        folders: [
+          makeFolder({ id: "fld-1", name: "Reports", file_count: 0 }),
+          makeFolder({ id: "fld-2", name: "2026", parent_id: "fld-1" }),
+          makeFolder({ id: "fld-3", name: "Drafts", parent_id: "fld-1" }),
+          makeFolder({ id: "fld-4", name: "Q3", parent_id: "fld-2" }),
+        ],
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    await openFolderMenu();
+    fireEvent.click(await screen.findByTestId("folder-delete-menu"));
+
+    expect(await screen.findByText(/and its 3 folders\?/)).toBeDefined();
+  });
+
   test("New folder inside a folder posts parent_id and names the destination", async () => {
     resetNavigation("folder=fld-1");
     useNestedHandlers();
