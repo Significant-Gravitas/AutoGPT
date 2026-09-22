@@ -82,6 +82,127 @@ async def test_http_block_parses_structured_json_response(
     response.text.assert_not_called()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type,status,method,body,expected,output_name",
+    [
+        ("application/problem+json", 502, HttpMethod.GET, b"", "", "server_error"),
+        (
+            "application/problem+json",
+            502,
+            HttpMethod.GET,
+            b"<html>Unavailable</html>",
+            "<html>Unavailable</html>",
+            "server_error",
+        ),
+        (
+            "application/json",
+            400,
+            HttpMethod.GET,
+            b"invalid",
+            "invalid",
+            "client_error",
+        ),
+        ("application/problem+json", 200, HttpMethod.HEAD, b"", None, "response"),
+        ("application/json", 204, HttpMethod.GET, b"", None, "response"),
+        ("text/plain", 204, HttpMethod.GET, b"", None, "response"),
+        ("application/json", 205, HttpMethod.GET, b"", None, "response"),
+        ("text/plain", 200, HttpMethod.GET, b'{"ok":true}', '{"ok":true}', "response"),
+        (
+            "text/html",
+            400,
+            HttpMethod.GET,
+            b"<html>Error</html>",
+            "<html>Error</html>",
+            "client_error",
+        ),
+        ("", 200, HttpMethod.GET, b'{"ok":true}', '{"ok":true}', "response"),
+        ("application/xml", 200, HttpMethod.GET, b"<ok/>", "<ok/>", "response"),
+        (
+            "application/jsonl",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/json-seq",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/x-ndjson",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "application/json5",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            "problem+json",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            '{"ok":true}',
+            "response",
+        ),
+        (
+            " APPLICATION/VND.API+JSON ; charset=utf-8",
+            200,
+            HttpMethod.GET,
+            b'{"ok":true}',
+            {"ok": True},
+            "response",
+        ),
+        ("application/json", 200, HttpMethod.GET, b"null", None, "response"),
+        ("application/json", 200, HttpMethod.GET, b"[1,2]", [1, 2], "response"),
+    ],
+)
+@patch("backend.blocks.http.Requests")
+async def test_http_response_body_contract(
+    mock_requests_class,
+    content_type,
+    status,
+    method,
+    body,
+    expected,
+    output_name,
+):
+    raw_response = MagicMock()
+    raw_response.status = status
+    raw_response.headers = {"content-type": content_type}
+    response = Response(
+        response=raw_response,
+        url="https://api.example.com/data",
+        body=body,
+    )
+    mock_requests = AsyncMock()
+    mock_requests.request.return_value = response
+    mock_requests_class.return_value = mock_requests
+
+    outputs = [
+        output
+        async for output in SendWebRequestBlock().run(
+            SendWebRequestBlock.Input(url=response.url, method=method),
+            execution_context=make_test_context(),
+        )
+    ]
+
+    assert outputs == [(output_name, expected)]
+
+
 class TestHttpBlockWithHostScopedCredentials:
     """Test suite for HTTP block integration with HostScopedCredentials."""
 
