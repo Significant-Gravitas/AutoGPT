@@ -481,8 +481,9 @@ async def soft_delete_workspace_file(
     """
     Soft-delete a workspace file.
 
-    The path is modified to include a deletion timestamp to free up the original
-    path for new files while preserving the record for potential recovery.
+    The row keeps the path it was deleted at: the unique index over
+    ``(workspaceId, path)`` covers live rows only, so the path is free for the
+    next write and the record still says where the file was.
 
     Args:
         file_id: The file ID
@@ -496,17 +497,11 @@ async def soft_delete_workspace_file(
     if file is None:
         return None
 
-    deleted_at = datetime.now(timezone.utc)
-    # Frees the path for the next write, to microseconds: `write_file` soft-deletes
-    # the row it overwrites, so two writes in one second would collide here.
-    deleted_path = f"{file.path}__deleted__{deleted_at.timestamp():.6f}"
-
     updated = await UserWorkspaceFile.prisma().update(
         where={"id": file_id},
         data={
             "isDeleted": True,
-            "deletedAt": deleted_at,
-            "path": deleted_path,
+            "deletedAt": datetime.now(timezone.utc),
         },
     )
 
