@@ -307,7 +307,7 @@ generalise (e.g. "what's the user's email?"), or a procedure already
 covered by an existing skill — check `<available_skills>` first and
 prefer extending an existing skill via re-writing (re-run
 `tool:store_skill` with the same `name`) over creating a near-duplicate.
-The index is a finite resource (~50 slots/user); use `tool:list_skills`
+The index is a finite resource (~150 slots per expert); use `tool:list_skills`
 to inspect the current registry and `tool:delete_skill` to remove stale
 entries.
 

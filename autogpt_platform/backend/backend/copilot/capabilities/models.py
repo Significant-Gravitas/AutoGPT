@@ -2,8 +2,8 @@
 
 One :class:`CapabilityEntry` describes one thing the copilot can do: a
 platform tool, a block, an MCP server from the catalog, or (phase 2) a
-library agent.  The registry indexes entries by name, purpose and tags;
-argument schemas are fetched on demand and never indexed.
+library agent.  The registry indexes entries by name, description and
+tags; argument schemas are fetched on demand and never indexed.
 """
 
 from __future__ import annotations
@@ -18,6 +18,10 @@ CapabilityContext = Literal["direct", "graph", "both"]
 ConnectionKeyType = Literal["provider", "server_url", "host", "none"]
 
 PURPOSE_MAX_CHARS = 160
+# Bounds the index-only description: room for any real block, tool or catalog
+# text (the longest block description is under 1,000 chars), and a ceiling on
+# what a runaway one can add to the index and its memory.
+DESCRIPTION_MAX_CHARS = 4000
 
 
 class Implementation(BaseModel):
@@ -55,6 +59,11 @@ class CapabilityEntry(BaseModel):
     klass: CapabilityClass = "service"
     name: str
     purpose: str = Field(max_length=PURPOSE_MAX_CHARS)
+    # Everything the source says about the capability, for the index only:
+    # ``purpose`` is the first sentence or two of it, sized for a listing,
+    # and the sentence that names what a block does in CoPilot ("saves to
+    # workspace") is often the one clipped away.  Never listed.
+    description: str = ""
     tags: list[str] = Field(default_factory=list)
     context: CapabilityContext = "both"
     implementations: list[Implementation] = Field(default_factory=list)
@@ -90,9 +99,21 @@ class CapabilityEntry(BaseModel):
         return self.context == "both" or context == "both" or self.context == context
 
 
+def normalize_text(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> str:
+    """*text* with its whitespace collapsed and cut at *limit* on a word
+    boundary, for the index."""
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    # One past the limit, so a word that ends exactly there is kept whole.
+    cut = text[: limit + 1]
+    idx = cut.rfind(" ")
+    return (cut[:idx] if idx >= limit // 2 else cut[:limit]).rstrip()
+
+
 def clip_purpose(text: str | None, limit: int = PURPOSE_MAX_CHARS) -> str:
     """First sentence-ish of *text*, at most *limit* characters."""
-    text = " ".join((text or "").split())
+    text = normalize_text(text)
     if len(text) <= limit:
         return text
     cut = text[: limit - 1]

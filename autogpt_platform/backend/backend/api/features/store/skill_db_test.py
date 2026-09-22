@@ -209,6 +209,8 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_i
     assert stored.await_args.kwargs["name"] == listing.slug
     assert stored.await_args.kwargs["expert_id"] == expert_id
     assert stored.await_args.kwargs["body"] == "# do this\n"
+    # An install fills the platform's budget on that owner, not the owner's.
+    assert stored.await_args.kwargs["origin"] == "marketplace"
     assert result.name == listing.slug
     assert result.required_providers == ["google"]
 
