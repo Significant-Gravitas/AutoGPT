@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 import pydantic
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile, UserWorkspaceFolder
 
@@ -246,34 +247,50 @@ async def move_folder(
     """Move a folder under *parent_id*, or to the workspace root when None.
 
     Refuses a move into the folder's own subtree, which would detach that
-    subtree from the root and make it unreachable from any listing.
+    subtree from the root and make it unreachable from any listing. A
+    workspace's moves are serialized, because two of them checking at once
+    would each pass and then make the other's folder its parent.
     """
-    folder = await _get_folder_record(folder_id, workspace_id)
-    if parent_id is not None:
-        await _get_folder_record(parent_id, workspace_id)
-        if folder_id in await _ancestor_ids(workspace_id, parent_id):
-            raise FolderValidationError(
-                "A folder cannot be moved into itself or one of its subfolders"
-            )
-    if await _name_taken(workspace_id, folder.name, parent_id, folder_id):
-        raise FolderAlreadyExistsError(
-            "A folder with this name already exists in the destination"
-        )
+    async with transaction() as tx:
+        await _lock_workspace_moves(tx, workspace_id)
 
-    try:
-        updated_count = await UserWorkspaceFolder.prisma().update_many(
-            where={"id": folder_id, "isDeleted": False},
-            data={"parentId": parent_id},
-        )
-    except UniqueViolationError:
-        raise FolderAlreadyExistsError(
-            "A folder with this name already exists in the destination"
-        )
-    if updated_count == 0:
-        raise NotFoundError(f"Folder #{folder_id} not found")
+        folder = await _get_folder_record(folder_id, workspace_id)
+        if parent_id is not None:
+            await _get_folder_record(parent_id, workspace_id)
+            if folder_id in await _ancestor_ids(workspace_id, parent_id):
+                raise FolderValidationError(
+                    "A folder cannot be moved into itself or one of its subfolders"
+                )
+        if await _name_taken(workspace_id, folder.name, parent_id, folder_id):
+            raise FolderAlreadyExistsError(
+                "A folder with this name already exists in the destination"
+            )
+
+        try:
+            updated_count = await UserWorkspaceFolder.prisma(tx).update_many(
+                where={"id": folder_id, "isDeleted": False},
+                data={"parentId": parent_id},
+            )
+        except UniqueViolationError:
+            raise FolderAlreadyExistsError(
+                "A folder with this name already exists in the destination"
+            )
+        if updated_count == 0:
+            raise NotFoundError(f"Folder #{folder_id} not found")
 
     logger.info(f"Moved workspace folder {folder_id} under parent {parent_id}")
     return await get_folder(folder_id, workspace_id)
+
+
+async def _lock_workspace_moves(tx: Prisma, workspace_id: str) -> None:
+    """Hold the workspace's move lock until the transaction ends.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", workspace_id
+    )
 
 
 async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
