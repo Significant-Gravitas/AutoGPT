@@ -11,13 +11,6 @@ import { environment } from "../environment";
 import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
 import { buildLDContext } from "./helpers";
 
-// Proxied to https://events.launchdarkly.com by src/app/api/ld-events.
-const LAUNCHDARKLY_EVENTS_PATH = "/api/ld-events";
-
-// The SDK default is 2s, so every open tab posts 30 times a minute through our
-// own edge. Nothing reads flag analytics at that granularity.
-const LAUNCHDARKLY_FLUSH_INTERVAL_MS = 30_000;
-
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useAuth();
   const envEnabled = environment.areFeatureFlagsEnabled();
@@ -44,11 +37,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
-        // Analytics events go through our own origin: `events.launchdarkly.com`
-        // is on every tracker blocklist, and each rejected flush prints two
-        // console errors and is retried once by the SDK.
-        eventsUrl: LAUNCHDARKLY_EVENTS_PATH,
-        flushInterval: LAUNCHDARKLY_FLUSH_INTERVAL_MS,
       }}
     >
       {children}
