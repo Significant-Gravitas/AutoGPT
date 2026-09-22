@@ -4,9 +4,9 @@ export type SelectionModifiers = { shift?: boolean; meta?: boolean };
 
 export interface Selection {
   selected: ReadonlyMap<string, WorkspaceFileItem>;
-  /** Index in `files` of the last plainly clicked card; null after a filter
-   *  change, when the old indices no longer name the same files. */
-  anchor: number | null;
+  /** Id of the last plainly clicked file. An id, not an index, because a
+   *  refetch can reorder the list under it. */
+  anchor: string | null;
 }
 
 /**
@@ -23,16 +23,17 @@ export function applySelection(
   const file = files[index];
   if (!file) return current;
 
-  // Shift before an anchor exists has nothing to extend from, so it behaves
-  // as the plain click that establishes one.
-  if (modifiers.shift && current.anchor !== null) {
+  // Shift with no anchor in the list has nothing to extend from, so it
+  // behaves as the plain click that establishes one.
+  const anchorIndex = files.findIndex((f) => f.id === current.anchor);
+  if (modifiers.shift && anchorIndex !== -1) {
     return {
-      selected: addRange(current.selected, files, current.anchor, index),
+      selected: addRange(current.selected, files, anchorIndex, index),
       anchor: current.anchor,
     };
   }
   const selected = toggleOne(current.selected, file);
-  return { selected, anchor: modifiers.meta ? current.anchor : index };
+  return { selected, anchor: modifiers.meta ? current.anchor : file.id };
 }
 
 /**

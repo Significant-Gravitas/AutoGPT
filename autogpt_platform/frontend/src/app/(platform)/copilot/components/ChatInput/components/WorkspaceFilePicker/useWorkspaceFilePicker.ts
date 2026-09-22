@@ -73,7 +73,7 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
 
   function search(term: string) {
     setSearchTerm(term);
-    // The indices a range was taken against no longer name the same files.
+    // A range across a changed filter would span files never shown together.
     setSelection((prev) => ({ ...prev, anchor: null }));
   }
 
