@@ -28,6 +28,15 @@ async def server():
         yield server
 
 
+@pytest.fixture(autouse=True)
+def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
+    """``load_dotenv()`` above copies ``.env`` into ``os.environ``, so a developer
+    who turned on ``FORCE_ALL_FLAGS`` locally would otherwise fail every
+    flag-off test. Tests that want the switch on set it themselves."""
+    monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
 @pytest.fixture
 def test_user_id() -> str:
     """Test user ID fixture."""
@@ -46,33 +55,46 @@ def target_user_id() -> str:
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
 
 
+async def _create_user_with_loop_retry(user_data: dict) -> None:
+    """Create a user, retrying once on a transient ``Event loop is closed``.
+
+    Fire-and-forget background tasks elsewhere can leave the Prisma pool
+    bound to a now-closed test function loop. The first session-loop DB
+    call after that surfaces as ``RuntimeError: Event loop is closed``;
+    the pool re-establishes itself on the retry.
+    """
+    from backend.data.user import get_or_create_user
+    from backend.util.exceptions import DatabaseError
+
+    try:
+        await get_or_create_user(user_data)
+    except DatabaseError as e:
+        if "Event loop is closed" not in str(e):
+            raise
+        await get_or_create_user(user_data)
+
+
 @pytest.fixture
 async def setup_test_user(test_user_id):
     """Create test user in database before tests."""
-    from backend.data.user import get_or_create_user
-
-    # Create the test user in the database using JWT token format
     user_data = {
         "sub": test_user_id,
         "email": "test@example.com",
         "user_metadata": {"name": "Test User"},
     }
-    await get_or_create_user(user_data)
+    await _create_user_with_loop_retry(user_data)
     return test_user_id
 
 
 @pytest.fixture
 async def setup_admin_user(admin_user_id):
     """Create admin user in database before tests."""
-    from backend.data.user import get_or_create_user
-
-    # Create the admin user in the database using JWT token format
     user_data = {
         "sub": admin_user_id,
         "email": "test-admin@example.com",
         "user_metadata": {"name": "Test Admin"},
     }
-    await get_or_create_user(user_data)
+    await _create_user_with_loop_retry(user_data)
     return admin_user_id
 
 

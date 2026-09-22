@@ -11,9 +11,10 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/molecules/Form/Form";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { z } from "zod";
 import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const uploadAgentFormSchema = z.object({
   agentFile: z.string().min(1, "Agent file is required"),
@@ -44,7 +45,7 @@ export default function LibraryUploadAgentDialog() {
           className="h-[2.78rem] w-full md:w-[12rem]"
           size="small"
         >
-          <UploadSimpleIcon width={18} height={18} />
+          <Icon icon={Upload03Icon} width={18} height={18} />
           <span className="">Upload agent</span>
         </Button>
       </Dialog.Trigger>

@@ -1,11 +1,9 @@
 "use client";
 
+import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  useDeleteV1DeleteExecutionSchedule,
-  getGetV1ListExecutionSchedulesForAGraphQueryOptions,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
 
 export function useScheduleDetailHeader(
   agentGraphId: string,
@@ -19,11 +17,7 @@ export function useScheduleDetailHeader(
     mutation: {
       onSuccess: () => {
         toast({ title: "Schedule deleted" });
-        queryClient.invalidateQueries({
-          queryKey:
-            getGetV1ListExecutionSchedulesForAGraphQueryOptions(agentGraphId)
-              .queryKey,
-        });
+        invalidateAllScheduleQueries(queryClient, agentGraphId);
       },
       onError: (error: any) =>
         toast({

@@ -41,6 +41,9 @@ export interface DateInputProps {
   error?: string;
   id?: string;
   size?: "default" | "small";
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const DateInput = ({
@@ -56,6 +59,9 @@ export const DateInput = ({
   error,
   id,
   size = "default",
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: DateInputProps) => {
   const selected = React.useMemo(() => parseISODateString(value), [value]);
   const [open, setOpen] = React.useState(false);
@@ -80,7 +86,7 @@ export const DateInput = ({
     // Base styles matching other form components
     "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-400",
+    "placeholder:font-normal !placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Error state
@@ -116,7 +122,9 @@ export const DateInput = ({
             disabled={isDisabled}
             autoFocus={autoFocus}
             id={id}
-            {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+            aria-labelledby={ariaLabelledBy}
+            aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}

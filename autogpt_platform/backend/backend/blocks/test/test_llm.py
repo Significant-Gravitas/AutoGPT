@@ -1,4 +1,8 @@
-from typing import cast
+import asyncio
+import contextlib
+import logging
+import re
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -7,7 +11,12 @@ import openai
 import pytest
 
 import backend.blocks.llm as llm
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.llm import saturation
+from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS
+from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -28,7 +37,6 @@ class TestLLMStatsTracking:
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
-        # Test with mocked OpenAI response
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
@@ -77,18 +85,14 @@ class TestLLMStatsTracking:
         mock_response.usage = mock_usage
         mock_response.stop_reason = "end_turn"
 
-        with (
-            patch("anthropic.AsyncAnthropic") as mock_anthropic,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = ""
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic:
             mock_client = AsyncMock()
             mock_anthropic.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_response)
 
             response = await llm.llm_call(
                 credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
+                llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
             )
@@ -99,56 +103,6 @@ class TestLLMStatsTracking:
             assert response.cache_read_tokens == 100
             assert response.cache_creation_tokens == 50
             assert response.response == "Test anthropic response"
-
-    @pytest.mark.asyncio
-    async def test_anthropic_routes_through_openrouter_when_key_present(self):
-        """When open_router_api_key is set, Anthropic models route via OpenRouter."""
-        from pydantic import SecretStr
-
-        import backend.blocks.llm as llm
-        from backend.data.model import APIKeyCredentials
-
-        anthropic_creds = APIKeyCredentials(
-            id="test-anthropic-id",
-            provider="anthropic",
-            api_key=SecretStr("mock-anthropic-key"),
-            title="Mock Anthropic key",
-        )
-
-        mock_choice = MagicMock()
-        mock_choice.message.content = "routed response"
-        mock_choice.message.tool_calls = None
-
-        mock_usage = MagicMock()
-        mock_usage.prompt_tokens = 10
-        mock_usage.completion_tokens = 5
-
-        mock_response = MagicMock()
-        mock_response.choices = [mock_choice]
-        mock_response.usage = mock_usage
-
-        mock_create = AsyncMock(return_value=mock_response)
-
-        with (
-            patch("openai.AsyncOpenAI") as mock_openai,
-            patch("backend.blocks.llm.settings") as mock_settings,
-        ):
-            mock_settings.secrets.open_router_api_key = "sk-or-test-key"
-            mock_client = MagicMock()
-            mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = mock_create
-
-            await llm.llm_call(
-                credentials=anthropic_creds,
-                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-            )
-
-        # Verify OpenAI client was used (not Anthropic SDK) and model was prefixed
-        mock_openai.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["model"] == "anthropic/claude-3-haiku-20240307"
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
@@ -207,7 +161,7 @@ class TestLLMStatsTracking:
         block = llm.AITextGeneratorBlock()
 
         # Mock the underlying structured response block
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Simulate the structured block setting stats
             block.execution_stats = NodeExecutionStats(
                 input_token_count=30,
@@ -446,7 +400,7 @@ class TestLLMStatsTracking:
         # Track calls to simulate multiple chunks
         call_count = 0
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             nonlocal call_count
             call_count += 1
 
@@ -561,7 +515,7 @@ class TestLLMStatsTracking:
         block = llm.AIConversationBlock()
 
         # Mock the llm_call method
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             block.execution_stats = NodeExecutionStats(
                 input_token_count=100,
                 output_token_count=50,
@@ -604,7 +558,7 @@ class TestLLMStatsTracking:
         block = llm.AIListGeneratorBlock()
 
         # Mock the llm_call to return a structured response
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Update stats to simulate LLM call
             block.execution_stats = NodeExecutionStats(
                 input_token_count=50,
@@ -749,7 +703,7 @@ class TestAIConversationBlockValidation:
         """Empty messages but a non-empty prompt should proceed without error."""
         block = llm.AIConversationBlock()
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"response": "OK"}
 
         with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
@@ -773,7 +727,7 @@ class TestAIConversationBlockValidation:
         """Non-empty messages with no prompt should proceed without error."""
         block = llm.AIConversationBlock()
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"response": "response from conversation"}
 
         with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
@@ -884,7 +838,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a list instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Simulate LLM returning a list when it should return a string
             return {"summary": ["bullet point 1", "bullet point 2", "bullet point 3"]}
 
@@ -919,7 +873,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a list instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Check if this is the final summary call
             if "final_summary" in input_data.expected_format:
                 # Simulate LLM returning a list when it should return a string
@@ -965,7 +919,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a valid string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"summary": "This is a valid string summary"}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -995,7 +949,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a valid string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"final_summary": "This is a valid final summary string"}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -1026,7 +980,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a dict instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"summary": {"nested": "object", "with": "data"}}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -1196,113 +1150,108 @@ class TestUserErrorStatusCodeHandling:
         mock_exception.assert_not_called()
 
 
-class TestLlmModelMissing:
-    """Test that LlmModel handles provider-prefixed model names."""
+class TestLLMModelMissing:
+    """Test that LLMModel handles provider-prefixed model names."""
 
     def test_provider_prefixed_model_resolves(self):
         """Provider-prefixed model string should resolve to the correct enum member."""
         assert (
-            llm.LlmModel("anthropic/claude-sonnet-4-6")
-            == llm.LlmModel.CLAUDE_4_6_SONNET
+            llm.LLMModel("anthropic/claude-sonnet-4-6")
+            == llm.LLMModel.CLAUDE_4_6_SONNET
         )
 
     def test_bare_model_still_works(self):
         """Bare (non-prefixed) model string should still resolve correctly."""
-        assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
+        assert llm.LLMModel("claude-sonnet-4-6") == llm.LLMModel.CLAUDE_4_6_SONNET
 
     def test_invalid_prefixed_model_raises(self):
         """Unknown provider-prefixed model string should raise ValueError."""
         with pytest.raises(ValueError):
-            llm.LlmModel("invalid/nonexistent-model")
+            llm.LLMModel("invalid/nonexistent-model")
 
     def test_slash_containing_value_direct_lookup(self):
         """Enum values with '/' (e.g., OpenRouter models) should resolve via direct lookup, not _missing_."""
-        assert llm.LlmModel("google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+        assert llm.LLMModel("google/gemini-2.5-pro") == llm.LLMModel.GEMINI_2_5_PRO
 
     def test_double_prefixed_slash_model(self):
         """Double-prefixed value should still resolve by stripping first prefix."""
         assert (
-            llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+            llm.LLMModel("extra/google/gemini-2.5-pro") == llm.LLMModel.GEMINI_2_5_PRO
         )
 
 
 class TestExtractOpenRouterCost:
-    """Tests for extract_openrouter_cost — the x-total-cost header parser."""
+    """Tests for extract_openrouter_cost — reads ``response.usage.model_extra['cost']``.
 
-    def _mk_response(self, headers: dict | None):
+    OpenRouter's ``cost`` field is not a declared attribute on the OpenAI SDK's
+    ``CompletionUsage``; pydantic v2 puts unknown fields in ``model_extra`` when
+    the model is configured with ``extra='allow'``. Tests here exercise that
+    typed-access path — no duck typing.
+    """
+
+    def _mk_response(self, *, cost: Any = ...):
+        """Build a response with ``usage.model_extra['cost']`` set to ``cost``.
+
+        Pass ``cost=...`` (the default) to omit the cost key entirely.
+        """
         response = MagicMock()
-        if headers is None:
-            response._response = None
+        response.usage = MagicMock()
+        if cost is ...:
+            response.usage.model_extra = {}
         else:
-            raw = MagicMock()
-            raw.headers = headers
-            response._response = raw
+            response.usage.model_extra = {"cost": cost}
         return response
 
     def test_extracts_numeric_cost(self):
-        response = self._mk_response({"x-total-cost": "0.0042"})
-        assert llm.extract_openrouter_cost(response) == 0.0042
+        assert llm.extract_openrouter_cost(self._mk_response(cost=0.0042)) == 0.0042
 
-    def test_returns_none_when_header_missing(self):
-        response = self._mk_response({})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_extracts_string_cost(self):
+        assert llm.extract_openrouter_cost(self._mk_response(cost="0.0042")) == 0.0042
 
-    def test_returns_none_when_header_empty_string(self):
-        response = self._mk_response({"x-total-cost": ""})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_returns_none_when_cost_missing(self):
+        assert llm.extract_openrouter_cost(self._mk_response()) is None
 
-    def test_returns_none_when_header_non_numeric(self):
-        response = self._mk_response({"x-total-cost": "not-a-number"})
-        assert llm.extract_openrouter_cost(response) is None
+    def test_returns_none_when_cost_is_none(self):
+        assert llm.extract_openrouter_cost(self._mk_response(cost=None)) is None
 
-    def test_returns_none_when_no_response_attr(self):
-        response = MagicMock(spec=[])  # no _response attr
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_raw_is_none(self):
-        response = self._mk_response(None)
-        assert llm.extract_openrouter_cost(response) is None
-
-    def test_returns_none_when_raw_has_no_headers(self):
+    def test_returns_none_when_usage_missing(self):
         response = MagicMock()
-        response._response = MagicMock(spec=[])  # no headers attr
+        response.usage = None
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_model_extra_is_none(self):
+        response = MagicMock()
+        response.usage = MagicMock()
+        response.usage.model_extra = None
         assert llm.extract_openrouter_cost(response) is None
 
     def test_returns_zero_for_zero_cost(self):
         """Zero-cost is a valid value (free tier) and must not become None."""
-        response = self._mk_response({"x-total-cost": "0"})
-        assert llm.extract_openrouter_cost(response) == 0.0
+        assert llm.extract_openrouter_cost(self._mk_response(cost=0)) == 0.0
+
+    def test_returns_none_for_non_numeric(self):
+        assert (
+            llm.extract_openrouter_cost(self._mk_response(cost="not-a-number")) is None
+        )
 
     def test_returns_none_for_inf(self):
-        response = self._mk_response({"x-total-cost": "inf"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=float("inf"))) is None
 
     def test_returns_none_for_negative_inf(self):
-        response = self._mk_response({"x-total-cost": "-inf"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert (
+            llm.extract_openrouter_cost(self._mk_response(cost=float("-inf"))) is None
+        )
 
     def test_returns_none_for_nan(self):
-        response = self._mk_response({"x-total-cost": "nan"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=float("nan"))) is None
 
     def test_returns_none_for_negative_cost(self):
-        response = self._mk_response({"x-total-cost": "-0.005"})
-        assert llm.extract_openrouter_cost(response) is None
+        assert llm.extract_openrouter_cost(self._mk_response(cost=-0.005)) is None
 
 
 class TestAnthropicCacheControl:
     """Verify that llm_call attaches cache_control to the system prompt block
     and to the last tool definition when calling the Anthropic API."""
-
-    @pytest.fixture(autouse=True)
-    def disable_openrouter_routing(self):
-        """Ensure tests exercise the direct-Anthropic path by suppressing the
-        OpenRouter API key. Without this, a local .env with OPEN_ROUTER_API_KEY
-        set would silently reroute all Anthropic calls through OpenRouter,
-        bypassing the cache_control code under test."""
-        with patch("backend.blocks.llm.settings") as mock_settings:
-            mock_settings.secrets.open_router_api_key = ""
-            yield mock_settings
 
     def _make_anthropic_credentials(self) -> llm.APIKeyCredentials:
         from pydantic import SecretStr
@@ -1336,7 +1285,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "You are an assistant."},
                     {"role": "user", "content": "Hello"},
@@ -1391,7 +1340,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "System."},
                     {"role": "user", "content": "Do something"},
@@ -1429,7 +1378,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "System."},
                     {"role": "user", "content": "Hello"},
@@ -1470,7 +1419,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
             )
@@ -1505,7 +1454,7 @@ class TestAnthropicCacheControl:
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             await llm.llm_call(
                 credentials=credentials,
-                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[
                     {"role": "system", "content": "   \n\t  "},
                     {"role": "user", "content": "Hi"},
@@ -1516,3 +1465,510 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestLLMRequestTimeout:
+    """Test that llm_call enforces a hard request timeout regardless of provider."""
+
+    def test_configurable_ceiling_stays_under_the_node_cap(self):
+        # Asserted on the schema bound, not the live constant: the constant is
+        # env-derived, so checking it would pass or fail on the runner's
+        # environment instead of on the code, and would leave a misconfigured
+        # deployment unguarded. Past the node cap the node timeout fires first
+        # and replaces the provider/model error with a generic one.
+        bound = next(
+            (
+                m.le
+                for m in Config.model_fields["llm_request_timeout_seconds"].metadata
+                if getattr(m, "le", None) is not None
+            ),
+            None,
+        )
+        assert bound is not None, "llm_request_timeout_seconds lost its upper bound"
+        assert bound < DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
+        """A hanging provider call must not park the caller indefinitely."""
+        # Force a tiny timeout so the test runs quickly.
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+
+        async def hang_forever(*args, **kwargs):
+            await asyncio.sleep(60)
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=hang_forever)
+
+            with pytest.raises(TimeoutError) as exc_info:
+                await llm.llm_call(
+                    credentials=llm.TEST_CREDENTIALS,
+                    llm_model=llm.DEFAULT_LLM_MODEL,
+                    prompt=[{"role": "user", "content": "Hello"}],
+                    max_tokens=100,
+                )
+
+            msg = str(exc_info.value)
+            assert "0.2s" in msg and "exceeded" in msg
+            # The remediation hint is the user-visible half of this error.
+            assert "shorten the prompt" in msg
+
+    @pytest.mark.asyncio
+    async def test_llm_call_passes_timeout_to_openai_sdk(self):
+        """The OpenAI SDK call must receive a `timeout=` argument so it errors
+        out on its own without waiting for our outer wait_for to fire."""
+        captured_kwargs: dict[str, Any] = {}
+
+        mock_response = MagicMock()
+        mock_response.output_text = "ok"
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        async def capture(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return mock_response
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=capture)
+
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+            )
+
+        # The generation budget lands on the read phase; connect stays short so
+        # a blackholed SYN can't park a worker for the whole deadline.
+        sdk_timeout = captured_kwargs["timeout"]
+        assert isinstance(sdk_timeout, httpx.Timeout)
+        assert sdk_timeout.read == llm.LLM_REQUEST_TIMEOUT_SECONDS
+        assert sdk_timeout.connect == FAST_FAIL_TIMEOUT_SECONDS
+
+    @pytest.mark.parametrize(
+        "exc_factory",
+        [
+            pytest.param(lambda: TimeoutError("builtin"), id="builtin"),
+            pytest.param(
+                lambda: openai.APITimeoutError(
+                    request=httpx.Request("POST", "http://x")
+                ),
+                id="openai-sdk",
+            ),
+            pytest.param(
+                lambda: anthropic.APITimeoutError(
+                    request=httpx.Request("POST", "http://x")
+                ),
+                id="anthropic-sdk",
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_sdk_timeouts_also_break_the_retry_loop(self, exc_factory):
+        """The SDK timeout types do NOT subclass builtin TimeoutError, so a
+        connect/read timeout would otherwise burn the whole retry budget with a
+        retry-prompt appended — the opposite of the no-retry-on-timeout rule."""
+        calls = {"n": 0}
+
+        async def always_timeout(*args, **kwargs):
+            calls["n"] += 1
+            raise exc_factory()
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=always_timeout)
+
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=5,
+            )
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert calls["n"] == 1, f"timeout was retried {calls['n']}x instead of breaking"
+
+    async def _run_block_expecting_failure(self, side_effect, retry=3, ctx=None):
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=side_effect)
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=retry,
+            )
+            extra = {"execution_context": ctx} if ctx is not None else {}
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(
+                    input_data, credentials=llm.TEST_CREDENTIALS, **extra
+                ):
+                    pass
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _captured_logs():
+        """Attach to the module logger directly. Going through caplog's root
+        handler silently captured nothing under the app's logging config, which
+        is how a batch of assert-absence tests passed without ever running."""
+        records: list[logging.LogRecord] = []
+
+        class _Collect(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        target = llm.logger.logger
+        handler = _Collect(level=logging.DEBUG)
+        target.addHandler(handler)
+        previous = target.level
+        target.setLevel(logging.DEBUG)
+        try:
+            yield records
+        finally:
+            target.removeHandler(handler)
+            target.setLevel(previous)
+
+    @staticmethod
+    def _alerts(records):
+        # Containment, not equality: the app's log config wraps record.msg in
+        # ANSI colour codes, so an == match silently finds nothing.
+        return [r for r in records if llm.SPEND_BURNED_ALERT in r.getMessage()]
+
+    @pytest.mark.parametrize(
+        "elapsed, budget, alerts",
+        [
+            (0.5, 100, False),  # fast fail: nothing was generated
+            (89.0, 100, False),  # just under the threshold
+            (91.0, 100, True),  # just over: inference ran, provider billed
+            (100.0, 100, True),  # the full budget
+        ],
+    )
+    def test_burn_threshold_classifies_by_elapsed_fraction(
+        self, monkeypatch, elapsed, budget, alerts
+    ):
+        """The 0.9 threshold is the new business logic, so pin it either side.
+        Both degenerate budgets (0 / 3600) leave it free to be any value."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
+        with self._captured_logs() as records:
+            llm._log_timeout_outcome(
+                elapsed=elapsed,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                execution_context=None,
+                error=TimeoutError("x"),
+            )
+        assert bool(self._alerts(records)) is alerts
+
+    def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
+        """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
+        in the alert that says what went wrong."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
+        with self._captured_logs() as records:
+            llm._log_timeout_outcome(
+                elapsed=99.0,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                execution_context=None,
+                error=asyncio.TimeoutError(),
+            )
+        assert self._alerts(records)[0].json_fields["error"] == "TimeoutError()"
+
+    @pytest.mark.asyncio
+    async def test_real_cutoff_alerts_once_with_searchable_ids(self, monkeypatch):
+        """End-to-end through the seam: a provider that never answers, cut off by
+        a real (small, non-zero) budget — 2s, not 0.2s: block setup and prompt
+        compression take ~0.3s locally and longer on CI, and a budget that races
+        them means the provider mock is never entered and the test proves
+        nothing. The ids are what an on-call needs to find
+        the run that burned money — they live in json_fields, not the message, so
+        Sentry aggregates a provider incident into one issue."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 2.0)
+        provider_calls = {"n": 0}
+
+        async def never_answers(**kwargs):
+            provider_calls["n"] += 1
+            await asyncio.sleep(30)
+
+        ctx = ExecutionContext(
+            user_id="u-1",
+            graph_id="g-1",
+            graph_exec_id="ge-1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+        )
+        with self._captured_logs() as records:
+            await self._run_block_expecting_failure(never_answers, ctx=ctx)
+
+        assert provider_calls["n"] == 1, "the provider mock was never actually called"
+        alerts = self._alerts(records)
+        assert len(alerts) == 1, f"expected exactly 1 alert, got {len(alerts)}"
+        assert alerts[0].levelno == logging.ERROR, "must be ERROR so Sentry raises it"
+        fields = alerts[0].json_fields
+        assert fields["user_id"] == "u-1"
+        assert fields["graph_id"] == "g-1"
+        assert fields["graph_exec_id"] == "ge-1"
+        assert fields["node_id"] == "n-1"
+        assert fields["node_exec_id"] == "ne-1"
+        assert fields["provider"] == "openai"
+        assert fields["configured_timeout_seconds"] == 2.0
+
+    @pytest.mark.asyncio
+    async def test_ids_survive_the_run_once_delegation(self, monkeypatch):
+        """AITextGeneratorBlock reaches the structured block through run_once,
+        which forwards only what it is handed. An alert with every id None is
+        useless to the on-call it wakes."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 2.0)
+
+        async def never_answers(**kwargs):
+            await asyncio.sleep(30)
+
+        ctx = ExecutionContext(
+            user_id="u-2",
+            graph_id="g-2",
+            graph_exec_id="ge-2",
+            node_id="n-2",
+            node_exec_id="ne-2",
+        )
+        with self._captured_logs() as records:
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_openai.return_value = mock_client
+                mock_client.responses.create = AsyncMock(side_effect=never_answers)
+                block = llm.AITextGeneratorBlock()
+                input_data = llm.AITextGeneratorBlock.Input(
+                    prompt="Hello",
+                    model=llm.DEFAULT_LLM_MODEL,
+                    credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                )
+                with pytest.raises(RuntimeError):
+                    async for _ in block.run(
+                        input_data,
+                        credentials=llm.TEST_CREDENTIALS,
+                        execution_context=ctx,
+                    ):
+                        pass
+
+        alerts = self._alerts(records)
+        assert len(alerts) == 1, f"expected exactly 1 alert, got {len(alerts)}"
+        assert alerts[0].json_fields["user_id"] == "u-2"
+        assert alerts[0].json_fields["node_exec_id"] == "ne-2"
+
+    @pytest.mark.asyncio
+    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+        """A connect-phase failure burns no provider spend; paging on it during an
+        outage would bury the cutoffs that cost money. Asserts the warning is
+        actually emitted — absence alone would pass against a no-op helper."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
+
+        with self._captured_logs() as records:
+            await self._run_block_expecting_failure(
+                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+            )
+
+        assert not self._alerts(records)
+        assert [
+            r
+            for r in records
+            if r.levelno == logging.WARNING
+            and "below the mid-inference alert threshold" in r.getMessage()
+        ], "the sub-threshold branch must still say what happened"
+
+    @pytest.mark.asyncio
+    async def test_the_seam_registers_the_call_for_saturation(self):
+        """Wiring guard: the saturation warning is only as good as this. Read
+        from the real registry while the provider call is in flight."""
+        seen: dict = {}
+
+        async def observe(**kwargs):
+            seen["runs"] = [c.graph_exec_id for c in saturation._in_flight.values()]
+            seen["providers"] = [c.provider for c in saturation._in_flight.values()]
+            response = MagicMock()
+            response.output_text = '{"key": "value"}'
+            response.output = []
+            response.usage = MagicMock(input_tokens=1, output_tokens=1)
+            return response
+
+        ctx = ExecutionContext(
+            user_id="u-1",
+            graph_id="g-1",
+            graph_exec_id="ge-1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+        )
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=observe)
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                force_json_output=True,
+            )
+            async for _ in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS, execution_context=ctx
+            ):
+                pass
+
+        assert seen["runs"] == ["ge-1"], "the seam did not register the in-flight call"
+        assert seen["providers"] == ["openai"]
+        assert not saturation._in_flight, "the call must be released on the way out"
+
+    @pytest.mark.asyncio
+    async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):
+        """A timed-out llm_call must not be retried — retrying a hung request
+        wastes another full timeout window per attempt."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.05)
+
+        call_count = {"n": 0}
+
+        async def always_timeout(*args, **kwargs):
+            call_count["n"] += 1
+            await asyncio.sleep(60)
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=always_timeout)
+
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=5,  # would be 5 attempts × timeout if retry kicked in
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert (
+            call_count["n"] == 1
+        ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
+
+
+class TestLLMModelMissingHandler:
+    """``LLMModel._missing_`` resolves provider-prefixed slugs back to enum
+    members.  Used by the dry-run simulator to send an OpenRouter slug
+    (``anthropic/claude-haiku-4-5``) that OpenRouter's OpenAI-compat endpoint
+    accepts, while still validating through ``OrchestratorBlock.Input.model``
+    which is typed as ``LLMModel``."""
+
+    def test_openrouter_alias_maps_to_canonical(self) -> None:
+        # The OpenRouter slug for Haiku 4.5 drops the snapshot suffix that
+        # Anthropic's direct API uses — pure prefix strip wouldn't find it,
+        # so the alias map is required.
+        assert (
+            llm.LLMModel("anthropic/claude-haiku-4-5") is llm.LLMModel.CLAUDE_4_5_HAIKU
+        )
+        assert llm.LLMModel("anthropic/claude-opus-4-5") is llm.LLMModel.CLAUDE_4_5_OPUS
+        assert (
+            llm.LLMModel("anthropic/claude-sonnet-4-5")
+            is llm.LLMModel.CLAUDE_4_5_SONNET
+        )
+
+    def test_prefix_strip_still_works(self) -> None:
+        # 4.6/4.7 enum values already match OpenRouter's slug after prefix
+        # strip — no alias-map entry needed.
+        assert llm.LLMModel("anthropic/claude-opus-4-7") is llm.LLMModel.CLAUDE_4_7_OPUS
+        assert llm.LLMModel("anthropic/claude-opus-4-6") is llm.LLMModel.CLAUDE_4_6_OPUS
+
+    def test_unknown_slug_raises(self) -> None:
+        # Bare unknown strings still fail loudly — the alias map is an
+        # additive shortcut, not a silent catch-all.
+        with pytest.raises(ValueError):
+            llm.LLMModel("anthropic/claude-haiku-999")
+
+    def test_all_claude_snapshots_reachable_via_openrouter_slug(self) -> None:
+        """Every Claude enum value whose canonical form carries a trailing
+        ``-YYYYMMDD`` snapshot suffix must be reachable via the OpenRouter
+        ``anthropic/<base>`` slug — otherwise the dry-run simulator (and any
+        other caller passing the OpenRouter form) hits ``_missing_``'s
+        prefix-strip path with a string the enum doesn't recognise and
+        validation fails. Catches the drift class where a new snapshot-
+        dated Claude member is added without updating ``_OPENROUTER_ALIASES``.
+        """
+        # Capture the full ``claude-...`` base so the OpenRouter slug is
+        # constructed correctly: ``claude-haiku-4-5-20251001`` →
+        # ``anthropic/claude-haiku-4-5`` (NOT ``anthropic/haiku-4-5``).
+        snapshot_re = re.compile(r"^(claude-.+)-\d{8}$")
+        for member in llm.LLMModel:
+            match = snapshot_re.match(member.value)
+            if match is None:
+                continue
+            slug = f"anthropic/{match.group(1)}"
+            assert llm.LLMModel(slug) is member, (
+                f"OpenRouter alias missing for {member.value} — expected slug "
+                f"{slug!r} to resolve back to {member.name}"
+            )
+
+
+class TestClaude5ModelThreading:
+    """The Claude-5 correction only works if ``llm_call`` threads the
+    selected model into BOTH token paths: compaction (``compress_context``)
+    and budget sizing (``estimate_token_count``). These pin the wiring —
+    the estimator behavior itself is covered in ``util/prompt_test.py``."""
+
+    @pytest.mark.asyncio
+    async def test_llm_call_threads_model_into_both_token_paths(self):
+        mock_response = MagicMock()
+        mock_response.output_text = "ok"
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        compress_result = MagicMock()
+        compress_result.error = None
+        compress_result.messages = [{"role": "user", "content": "hi"}]
+
+        with (
+            patch(
+                "backend.blocks.llm.compress_context",
+                new=AsyncMock(return_value=compress_result),
+            ) as mock_compress,
+            patch(
+                "backend.blocks.llm.estimate_token_count", return_value=100
+            ) as mock_estimate,
+            patch("openai.AsyncOpenAI") as mock_openai,
+        ):
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(return_value=mock_response)
+
+            await llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "hi"}],
+                max_tokens=100,
+                compress_prompt_to_fit=True,
+            )
+
+        expected_model = llm.DEFAULT_LLM_MODEL.value
+        assert mock_compress.call_args.kwargs["model"] == expected_model
+        assert mock_estimate.call_args.kwargs["model"] == expected_model
+
+    @pytest.mark.asyncio
+    async def test_available_tokens_shrink_for_claude_5(self):
+        """Same context window, same prompt: the Claude-5 estimate must be
+        larger than the 4.6 estimate, shrinking max_tokens headroom."""
+        from backend.util.prompt import estimate_token_count
+
+        prompt = [{"role": "user", "content": "hello world " * 500}]
+        m46 = llm.LLMModel.CLAUDE_4_6_SONNET
+        m5 = llm.LLMModel.CLAUDE_5_SONNET
+        est_46 = estimate_token_count(prompt, model=m46.value)
+        est_5 = estimate_token_count(prompt, model=m5.value)
+        assert est_5 == int(est_46 * 1.5)
+        assert (m5.context_window - est_5) < (m46.context_window - est_46)

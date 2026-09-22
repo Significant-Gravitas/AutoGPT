@@ -10,7 +10,14 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from backend.copilot.context import is_allowed_local_path, is_sdk_tool_path
+from claude_agent_sdk.types import HookEvent, HookMatcher
+
+from backend.copilot.context import (
+    get_execution_context,
+    is_allowed_local_path,
+    is_sdk_tool_path,
+)
+from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .tool_adapter import (
     BLOCKED_TOOLS,
@@ -19,6 +26,7 @@ from .tool_adapter import (
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
+from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +167,7 @@ def _validate_user_isolation(
         # The "path" param is a cloud storage key (e.g. "/ASEAN/report.md")
         # where a leading "/" is normal.  Only check for ".." traversal.
         # Filesystem paths (source_path, save_to_path) are validated inside
-        # the tool itself via _validate_ephemeral_path.
+        # the tool itself via workdir.validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
             logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")
@@ -174,12 +182,20 @@ def _validate_user_isolation(
     return {}
 
 
+# Tools whose display name (block, agent, MCP tool) streams to the UI before
+# the call finishes; the bridge tags their input with a call token.
+_DISPLAY_BRIDGED_TOOLS: frozenset[str] = frozenset(
+    {"run_agent", "run_capability", "resume_capability"}
+)
+
+
 def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
+) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
     Includes security validation and observability hooks:
@@ -269,6 +285,20 @@ def create_security_hooks(
                 subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
+            if (
+                is_copilot_tool
+                and clean_name in _DISPLAY_BRIDGED_TOOLS
+                and tool_use_id is not None
+                and tool_display_bridge is not None
+            ):
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "updatedInput": tool_display_bridge.prepare_call(
+                            clean_name, tool_input, tool_use_id
+                        ),
+                    }
+                }
             return cast(SyncHookJSONOutput, {})
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
@@ -320,13 +350,41 @@ def create_security_hooks(
                         len(str(tool_response)),
                         resp_preview,
                     )
-                    stash_pending_tool_output(tool_name, tool_response)
+                    # Key by the call's input so the response adapter pops the
+                    # output for the RIGHT tool_call_id when the model fired
+                    # several same-name calls in parallel (OPEN-3158).
+                    tool_input = input_data.get("tool_input")
+                    stash_pending_tool_output(tool_name, tool_response, tool_input)
                 else:
                     logger.warning(
                         "[SDK] PostToolUse for builtin %s but tool_response is None",
                         tool_name,
                     )
 
+            # Mid-turn drain: after ANY tool finishes (MCP or built-in), pull
+            # any queued user follow-up messages and attach them to the
+            # tool_result as ``additionalContext``.  This is the
+            # protocol-legal mid-turn injection slot — Claude reads the
+            # follow-up on the next LLM round without starting a new turn.
+            # The drain helper also stashes a persist-queue copy so
+            # ``sdk/service.py`` can append a matching user row to the UI.
+            _, session = get_execution_context()
+            followup = ""
+            if session is not None and session.session_id:
+                followup = await drain_and_format_for_injection(
+                    session.session_id,
+                    log_prefix="[SDK][PostToolUse]",
+                )
+            if followup:
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": followup,
+                        }
+                    },
+                )
             return cast(SyncHookJSONOutput, {})
 
         async def post_tool_failure_hook(
@@ -419,7 +477,7 @@ def create_security_hooks(
             )
             return cast(SyncHookJSONOutput, {})
 
-        hooks: dict[str, Any] = {
+        return {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
             "PostToolUseFailure": [
@@ -429,8 +487,6 @@ def create_security_hooks(
             "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
             "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
-
-        return hooks
     except ImportError:
         # Fallback for when SDK isn't available - return empty hooks
         logger.warning("claude-agent-sdk not available, security hooks disabled")

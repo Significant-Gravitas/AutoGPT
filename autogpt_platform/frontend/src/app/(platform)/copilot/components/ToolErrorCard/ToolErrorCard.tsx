@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { WarningDiamondIcon } from "@phosphor-icons/react";
+import { AlertDiamondIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   message?: string;
@@ -24,31 +25,33 @@ export function ToolErrorCard({
   actions,
 }: Props) {
   return (
-    <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
+    <div className="space-y-3 rounded-lg bg-red-50 p-4">
       <div className="flex items-start gap-2">
-        <WarningDiamondIcon
+        <Icon
+          icon={AlertDiamondIcon}
           size={20}
-          weight="regular"
           className="mt-0.5 shrink-0 text-red-500"
         />
         <div className="flex-1 space-y-2">
           <Text variant="body-medium" className="text-red-900">
             {message || fallbackMessage}
           </Text>
-          {error && (
+          {(error || details) && (
             <details className="text-xs text-red-700">
               <summary className="cursor-pointer font-medium">
                 Technical details
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
-                {error}
-              </pre>
+              {error && (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                  {error}
+                </pre>
+              )}
+              {details && (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2">
+                  {details}
+                </pre>
+              )}
             </details>
-          )}
-          {details && (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100 p-2 text-xs text-red-700">
-              {details}
-            </pre>
           )}
         </div>
       </div>

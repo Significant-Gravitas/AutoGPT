@@ -2,9 +2,16 @@ import json
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -93,6 +100,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
     )
+    codex_temp_root: str = Field(
+        default="",
+        description="Optional tmpfs root for isolated Codex runtime homes.",
+    )
+    codex_max_active_processes: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Maximum Codex App Server children per backend process.",
+    )
+    codex_capacity_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="Maximum wait for a free Codex App Server process slot.",
+    )
+    codex_startup_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Hard timeout for starting and initializing Codex App Server.",
+    )
+    codex_control_timeout_seconds: int = Field(
+        default=60,
+        ge=5,
+        le=300,
+        description="Hard timeout for Codex account and credential operations.",
+    )
+    codex_auth_checkpoint_interval_seconds: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=5,
+        description="Interval for checkpointing Codex-managed credential rotation.",
+    )
+    codex_invocation_timeout_seconds: int = Field(
+        default=180,
+        ge=10,
+        le=3600,
+        description="Hard timeout for one native Codex invocation.",
+    )
+    codex_copilot_turn_timeout_seconds: int = Field(
+        default=21600,
+        ge=60,
+        le=21600,
+        description="Hard timeout for one native Codex expert turn.",
+    )
+    codex_copilot_tool_timeout_seconds: int = Field(
+        default=900,
+        ge=10,
+        le=3600,
+        description="Maximum wait for one dynamic tool callback during an expert turn.",
+    )
+    codex_login_timeout_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=3600,
+        description="Lifetime of one ChatGPT device-code login attempt.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -113,21 +178,39 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=300,
         description="The default timeout in seconds, for RPC client calls.",
     )
+    llm_request_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        # Literal rather than an import of DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+        # (1800): util must not import blocks. test_llm.py asserts this bound
+        # stays under that cap, whatever it is set to.
+        le=1500,
+        description=(
+            "Wall-clock cap on a single LLM provider request, covering the whole "
+            "generation (the block path is non-streaming). Raising it lengthens how "
+            "long a stalled provider holds one of `num_graph_workers` slots. "
+            "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
+            "this is the only per-call wall-clock bound."
+        ),
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
     )
+    enable_subscription_credit_grant: bool = Field(
+        default=False,
+        description=(
+            "If True, every paid Stripe subscription invoice grants AutoGPT"
+            " credits equal to invoice.amount_paid. OFF by default — there is"
+            " no product mandate for '$ paid == $ in credits', and prorated"
+            " upgrade invoices each produce a separate grant (distinct"
+            " invoice ids slip past the per-invoice idempotency key). Flip on"
+            " per environment intentionally if/when product wants that UX."
+        ),
+    )
     enable_credit: bool = Field(
         default=False,
         description="If user credit system is enabled or not",
-    )
-    enable_beta_monthly_credit: bool = Field(
-        default=True,
-        description="If beta monthly credits accounting is enabled or not",
-    )
-    num_user_credits_refill: int = Field(
-        default=1500,
-        description="Number of credits to refill for each user",
     )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
@@ -136,6 +219,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     low_balance_threshold: int = Field(
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
+    )
+    expert_weekly_credit_budget_default: int = Field(
+        default=500,
+        ge=0,
+        description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
+    expert_spend_approval_threshold_default: int = Field(
+        default=250,
+        ge=0,
+        description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
+    )
+    expert_spend_approval_window: Literal["week", "day"] = Field(
+        default="week",
+        description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -175,6 +272,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    max_inflight_copilot_turns_per_user: int = Field(
+        default=15,
+        ge=1,
+        le=1000,
+        description=(
+            "Hard cap on in-flight (running + queued) expert "
+            "chat turns per user. Once running >= "
+            "``max_running_copilot_turns_per_user`` and the queue brings the "
+            "total to this number, ``POST /chat/stream`` returns 429. "
+            "Reached from the chat HTTP route, the AutoPilotBlock, and "
+            "run_sub_session — all funnel through schedule_chat_turn / "
+            "schedule_turn and share this cap."
+        ),
+    )
+    max_running_copilot_turns_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "Soft cap on concurrently *running* expert chat "
+            "turns per user. Tasks submitted while the user is at this cap "
+            "are queued in ``CopilotTaskQueue`` (FIFO) up to "
+            "``max_inflight_copilot_turns_per_user`` total in-flight. "
+            "Must be <= the in-flight cap; default 5 keeps shared-infra "
+            "concurrency predictable while letting users batch-submit."
+        ),
+    )
 
     block_error_rate_threshold: float = Field(
         default=0.5,
@@ -193,6 +317,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
         description="Interval in hours between execution accuracy alert checks.",
+    )
+
+    # Embeddings
+    store_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description=(
+            "Embedding model used by the unified content embeddings service. "
+            "Overridable so deployments with a compatible backend (vLLM, "
+            "LiteLLM proxy, Ollama with an embedding model pulled, Azure "
+            "OpenAI, ...) can swap models without code changes. Model MUST "
+            "emit 1536-dim vectors to match the hardcoded pgvector column."
+        ),
     )
 
     model_config = SettingsConfigDict(
@@ -252,6 +388,25 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for notification service daemon to run on",
     )
 
+    platform_linking_service_port: int = Field(
+        default=8009,
+        description="The port for the platform_linking manager daemon to run on",
+    )
+
+    copilot_chat_bridge_port: int = Field(
+        default=8010,
+        description="The port for the CoPilot chat bridge (multi-platform bot) "
+        "service daemon to run on",
+    )
+
+    batch_executor_port: int = Field(
+        default=8011,
+        description="The port for the BatchExecutor subprocess to run on. "
+        "The service has no inbound RPC surface today — callers interact via "
+        "the Redis-backed pending queue — but AppService requires every "
+        "subprocess to expose /health_check on a port for supervision.",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -267,6 +422,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    trusted_frontend_origins: List[str] = Field(
+        default=[],
+        description="Extra frontend origins (in addition to frontend_base_url) "
+        "that transactional auth-email action links may point at. Entries are "
+        'full origins ("https://host[:port]") or "regex:"-prefixed patterns, '
+        "same format as backend_cors_allow_origins. Self-hosting needs nothing "
+        "here (frontend_base_url is trusted implicitly); cloud sets a tight "
+        "preview pattern instead of a blanket wildcard.",
+    )
+
+    platform_link_base_url: str = Field(
+        default="https://platform.agpt.co/link",
+        description="Base URL the bot service prepends to one-time linking "
+        "tokens when it posts them to users ({base}/{token}?platform=...). "
+        "Should point at the frontend /link page.",
     )
 
     media_gcs_bucket_name: str = Field(
@@ -290,14 +462,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    # Prefer the cluster env var so the new image can co-exist with old-image
+    # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
         default="localhost",
         description="The host for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_HOST", "RABBITMQ_HOST"),
     )
 
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_PORT", "RABBITMQ_PORT"),
     )
 
     rabbitmq_vhost: str = Field(
@@ -305,14 +481,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The vhost for the RabbitMQ server",
     )
 
+    # Same rollover pattern as rabbitmq_host; REDIS_CLUSTER_HOST must win so
+    # cache.py's RedisCluster client reaches the sharded cluster, not the
+    # pre-migration standalone Redis.
     redis_host: str = Field(
         default="localhost",
         description="The host for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_HOST", "REDIS_HOST"),
     )
 
     redis_port: int = Field(
         default=6379,
         description="The port for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_PORT", "REDIS_PORT"),
     )
 
     redis_password: str = Field(
@@ -325,9 +506,69 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Separated so each kind carries its own reputation. Marketing mail goes
+    # from MailerLite as hello@news.agpt.co and has no sender here.
+    billing_sender_email: str = Field(
+        default="AutoGPT <billing@agpt.co>",
+        description="Sender for subscription and account service messages",
+    )
+    product_sender_email: str = Field(
+        default="AutoGPT <notify@agpt.co>",
+        description="Sender for the Briefing, Alert and Verdict families",
+    )
+    ops_sender_email: str = Field(
+        default="AutoGPT Platform <platform@agpt.co>",
+        description="Sender for internal ops mail to the refunds team",
+    )
+    postmark_transactional_stream: str = Field(
+        default="outbound",
+        description=(
+            "Postmark message stream for Alerts, Briefings and account mail. "
+            "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    email_asset_base_url: str = Field(
+        default="https://platform.agpt.co/email",
+        description=(
+            "Base URL the email hero art and logo are served from. Outlook "
+            "does not render inline SVG and Gmail does not display data-URI "
+            "images, so these must be hosted files."
+        ),
+    )
+    docs_base_url: str = Field(
+        default="https://docs.agpt.co",
+        description="Documentation site linked from emails",
+    )
+    discord_invite_url: str = Field(
+        default="https://discord.gg/autogpt",
+        description="Discord invite linked from email footers",
+    )
+    admin_panel_base_url: str = Field(
+        default="https://admin.agpt.co",
+        description="Admin panel base URL, deep-linked from internal ops mail",
+    )
+
+    # MailerLite owns the onboarding tour and the monthly changelog. The
+    # backend's only job is managing who is in each audience.
+    mailerlite_onboarding_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group whose membership triggers the six-email "
+            "'Subscription Onboarding — White Glove Tour' automation"
+        ),
+    )
+    mailerlite_changelog_group_id: str = Field(
+        default="",
+        description="MailerLite group that receives the monthly changelog campaign",
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
+    )
+    marketplace_require_canonical_category: bool = Field(
+        default=False,
+        description="Hide listings without a canonical category from the marketplace's default view. Turn on only once the category backfill has run, or real listings disappear.",
     )
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,
@@ -386,6 +627,30 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between OAuth token cleanup runs (1-24 hours)",
     )
 
+    push_subscription_cleanup_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours between failed push subscription cleanup runs (1-168 hours)",
+    )
+
+    platform_link_token_cleanup_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=24,
+        description="Hours between platform link token cleanup runs (1-24 hours)",
+    )
+
+    stripe_tier_reconcile_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description=(
+            "Hours between periodic Stripe subscription-tier reconciliation "
+            "sweeps (1-168 hours)"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -398,13 +663,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
-    )
-
-    max_workspace_storage_mb: int = Field(
-        default=500,
-        ge=1,
-        le=10240,
-        description="Maximum total workspace storage per user in MB.",
     )
 
     # AutoMod configuration
@@ -457,6 +715,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    autopilot_bot_teams_allow_unverified: bool = Field(
+        default=False,
+        description="Local dev only: accept Teams activities that carry no Bot "
+        "Connector token, so the Microsoft 365 Agents Playground can drive the "
+        "bot without a Teams tenant. Ignored unless app_env is 'local' — it "
+        "disables inbound authentication and must never take effect on a "
+        "deployed environment.",
+    )
+
     execution_event_bus_name: str = Field(
         default="execution_event",
         description="Name of the event bus",
@@ -486,8 +753,30 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     external_oauth_callback_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed callback URL origins for external OAuth flows. "
-        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+        "External apps must have their callback URLs start with one of these origins.",
     )
+
+    @field_validator("trusted_frontend_origins")
+    @classmethod
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
+        """Reject unusable entries at startup rather than at send time.
+
+        These patterns are compiled per request in the auth-email route, so a
+        malformed one would otherwise boot fine and then 500 every password
+        reset and verification email.
+        """
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if not origin.startswith("regex:"):
+                continue
+            pattern = origin[len("regex:") :]
+            if not pattern:
+                raise ValueError("Invalid regex pattern: pattern cannot be empty")
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex pattern '{pattern}': {exc}") from exc
+        return v
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
@@ -561,11 +850,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
-    supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_service_role_key: str = Field(
-        default="", description="Supabase service role key"
-    )
-
     encryption_key: str = Field(default="", description="Encryption key")
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
@@ -582,9 +866,24 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The token to use for the Postmark webhook",
     )
 
+    mailerlite_api_token: str = Field(
+        default="",
+        description="MailerLite API token used to manage tour and changelog audiences",
+    )
+
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
+    )
+
+    vapid_private_key: str = Field(
+        default="", description="VAPID private key for Web Push"
+    )
+    vapid_public_key: str = Field(
+        default="", description="VAPID public key for Web Push (base64url)"
+    )
+    vapid_claim_email: str = Field(
+        default="mailto:push@agpt.co", description="VAPID contact email"
     )
 
     # OAuth server credentials for integrations
@@ -638,8 +937,81 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     medium_api_key: str = Field(default="", description="Medium API key")
     medium_author_id: str = Field(default="", description="Medium author ID")
     did_api_key: str = Field(default="", description="D-ID API Key")
-    revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
+    autopilot_bot_discord_token: str = Field(
+        default="",
+        description="Discord bot token for the CoPilot chat bridge. When set, "
+        "the bridge enables its Discord adapter.",
+    )
+    autopilot_bot_discord_client_id: str = Field(
+        default="",
+        description="Discord application client ID for the CoPilot bot. Used "
+        "to build the 'Add to server' invite URL on the Bots settings page; "
+        "the bot itself doesn't need it.",
+    )
+    autopilot_bot_discord_permissions: str = Field(
+        default="",
+        description="Discord permissions bitfield for the 'Add to server' "
+        "invite URL. Overrides the built-in default when non-empty.",
+    )
+    autopilot_bot_slack_token: str = Field(
+        default="",
+        description="Slack bot (xoxb-) token for the CoPilot chat bridge. When "
+        "set together with the signing secret, the bridge mounts its Slack "
+        "webhook adapter (Events API) on the main backend API.",
+    )
+    autopilot_bot_slack_signing_secret: str = Field(
+        default="",
+        description="Slack app signing secret — verifies inbound Slack request "
+        "signatures (HMAC-SHA256). Required alongside the token to enable the "
+        "Slack adapter.",
+    )
+    autopilot_bot_slack_client_id: str = Field(
+        default="",
+        description="Slack app OAuth client ID. Set together with the client "
+        "secret to enable the multi-workspace 'Add to Slack' install flow; each "
+        "workspace's bot token is then obtained via OAuth and stored per team.",
+    )
+    autopilot_bot_slack_client_secret: str = Field(
+        default="",
+        description="Slack app OAuth client secret — exchanged with the auth "
+        "code on the install callback for a per-workspace bot token.",
+    )
+    autopilot_bot_telegram_token: str = Field(
+        default="",
+        description="Telegram bot token (from @BotFather). Set together with "
+        "the webhook secret to mount the Telegram adapter on the main API.",
+    )
+    autopilot_bot_telegram_webhook_secret: str = Field(
+        default="",
+        description="Secret registered with Telegram's setWebhook; Telegram "
+        "echoes it in the X-Telegram-Bot-Api-Secret-Token header and inbound "
+        "updates are rejected unless it matches.",
+    )
+    autopilot_bot_telegram_username: str = Field(
+        default="",
+        description="The bot's public @username (without the @) — used to "
+        "build the t.me add-to-group link on the Bots settings page.",
+    )
+    microsoft_client_id: str = Field(
+        default="",
+        description="Entra application (client) ID, shared by Microsoft "
+        "integrations. Microsoft 365 Copilot device auth falls back to "
+        "AutoGPT's public client ID when this is empty; set it together with "
+        "the server-only client secret and tenant ID to mount the Teams bot "
+        "adapter.",
+    )
+    microsoft_client_secret: str = Field(
+        default="",
+        description="Entra client secret for the shared Microsoft app, used "
+        "by the Teams bot to mint outbound Bot Connector tokens.",
+    )
+    microsoft_tenant_id: str = Field(
+        default="",
+        description="Tenant the Entra app belongs to. Required for the Teams "
+        "bot: single-tenant bots mint tokens against their own tenant "
+        "authority, and new registrations can no longer be multi-tenant.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")
@@ -654,7 +1026,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
     ideogram_api_key: str = Field(default="", description="Ideogram API Key")
     jina_api_key: str = Field(default="", description="Jina API Key")
-    unreal_speech_api_key: str = Field(default="", description="Unreal Speech API Key")
 
     fal_api_key: str = Field(default="", description="FAL API key")
     exa_api_key: str = Field(default="", description="Exa API key")

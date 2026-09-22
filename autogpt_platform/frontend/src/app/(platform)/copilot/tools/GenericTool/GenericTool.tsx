@@ -2,24 +2,7 @@
 
 import React from "react";
 import { ToolUIPart } from "ai";
-import {
-  ArrowsClockwiseIcon,
-  CheckCircleIcon,
-  CircleDashedIcon,
-  CircleIcon,
-  FileIcon,
-  FilesIcon,
-  GearIcon,
-  GlobeIcon,
-  ListChecksIcon,
-  MagnifyingGlassIcon,
-  MonitorIcon,
-  PencilSimpleIcon,
-  RobotIcon,
-  TerminalIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -40,6 +23,25 @@ import {
   getToolCategory,
   truncate,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  CircleDashedIcon,
+  CircleIcon,
+  ComputerIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Files01Icon,
+  Globe02Icon,
+  PencilIcon,
+  ReloadIcon,
+  Robot01Icon,
+  Search01Icon,
+  Settings01Icon,
+  TerminalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: ToolUIPart;
@@ -71,9 +73,7 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
@@ -82,39 +82,31 @@ function ToolIcon({
   const iconClass = "text-green-500";
   switch (category) {
     case "bash":
-      return <TerminalIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
     case "web":
-      return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
     case "browser":
-      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
     case "file-read":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
     case "file-write":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
     case "file-delete":
-      return <TrashIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
     case "file-list":
-      return <FilesIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
     case "search":
-      return (
-        <MagnifyingGlassIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
     case "edit":
-      return (
-        <PencilSimpleIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
     case "todo":
-      return (
-        <ListChecksIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
     case "compaction":
-      return (
-        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
     case "agent":
-      return <RobotIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
     default:
-      return <GearIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
   }
 }
 
@@ -125,30 +117,30 @@ function ToolIcon({
 function AccordionIcon({ category }: { category: ToolCategory }) {
   switch (category) {
     case "bash":
-      return <TerminalIcon size={32} weight="light" />;
+      return <Icon icon={TerminalIcon} size={32} />;
     case "web":
-      return <GlobeIcon size={32} weight="light" />;
+      return <Icon icon={Globe02Icon} size={32} />;
     case "browser":
-      return <MonitorIcon size={32} weight="light" />;
+      return <Icon icon={ComputerIcon} size={32} />;
     case "file-read":
     case "file-write":
-      return <FileIcon size={32} weight="light" />;
+      return <Icon icon={FileEmpty02Icon} size={32} />;
     case "file-delete":
-      return <TrashIcon size={32} weight="light" />;
+      return <Icon icon={Delete02Icon} size={32} />;
     case "file-list":
-      return <FilesIcon size={32} weight="light" />;
+      return <Icon icon={Files01Icon} size={32} />;
     case "search":
-      return <MagnifyingGlassIcon size={32} weight="light" />;
+      return <Icon icon={Search01Icon} size={32} />;
     case "edit":
-      return <PencilSimpleIcon size={32} weight="light" />;
+      return <Icon icon={PencilIcon} size={32} />;
     case "todo":
-      return <ListChecksIcon size={32} weight="light" />;
+      return <Icon icon={CheckListIcon} size={32} />;
     case "compaction":
-      return <ArrowsClockwiseIcon size={32} weight="light" />;
+      return <Icon icon={ReloadIcon} size={32} />;
     case "agent":
-      return <RobotIcon size={32} weight="light" />;
+      return <Icon icon={Robot01Icon} size={32} />;
     default:
-      return <GearIcon size={32} weight="light" />;
+      return <Icon icon={Settings01Icon} size={32} />;
   }
 }
 
@@ -236,9 +228,39 @@ function getBashAccordionData(
       ? `Command failed (exit ${exitCode})`
       : "Command output";
 
+  // The command itself is already in the subtitle row above; surface the
+  // outcome here so scanning the closed accordion tells the reader "how it
+  // ended" at a glance.  Prefer the backend's own first line of output
+  // (stderr for failures/timeouts — that's where bash_exec writes
+  // "Timed out after Xs" and where shells emit "command not found" etc.,
+  // stdout for success) over a terse "exit N" so the reader actually sees
+  // WHY the command ended.
+  const firstNonEmptyLine = (s: string | null): string | null => {
+    if (!s) return null;
+    const line = s.split("\n").find((l) => l.trim().length > 0);
+    return line ? truncate(line.trim(), 80) : null;
+  };
+  const stderrPreview = firstNonEmptyLine(stderr);
+  const stdoutPreview = firstNonEmptyLine(stdout);
+  let description: string | undefined;
+  if (timedOut) {
+    description = stderrPreview ?? "timed out";
+  } else if (exitCode !== null && exitCode !== 0) {
+    description = stderrPreview
+      ? `status code ${exitCode} · ${stderrPreview}`
+      : `status code ${exitCode}`;
+  } else if (exitCode === 0) {
+    description = stdoutPreview ?? "completed";
+  } else {
+    // Historical sessions persisted before exit_code/timed_out were added
+    // fall through here — fall back to the command preview so the closed
+    // accordion still tells the reader what ran.
+    description = truncate(command, 80);
+  }
+
   return {
     title,
-    description: truncate(command, 80),
+    description,
     content: (
       <div className="space-y-2">
         {command && (
@@ -275,15 +297,66 @@ function getWebAccordionData(
     string,
     unknown
   >;
-  const url =
-    getStringField(inp as Record<string, unknown>, "url", "query") ??
-    "Web content";
+  const query = getStringField(inp, "query");
+  const url = getStringField(inp, "url") ?? query ?? "Web content";
 
-  // Try direct string fields first, then MCP content blocks, then raw JSON
+  const results = Array.isArray(output.results)
+    ? (output.results as Array<Record<string, unknown>>)
+    : null;
+
+  if (results) {
+    const deep = inp.deep === true;
+    const noun = deep ? "research source" : "search result";
+    const answer = getStringField(output, "answer");
+    return {
+      title: `${results.length} ${noun}${results.length === 1 ? "" : "s"}`,
+      description: query ? truncate(query, 80) : undefined,
+      content: (
+        <div className="space-y-3">
+          {answer && (
+            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+              {answer}
+            </div>
+          )}
+          {results.map((r, i) => {
+            const title = getStringField(r, "title") ?? "(untitled)";
+            const href = getStringField(r, "url") ?? "";
+            const snippet = getStringField(r, "snippet");
+            const pageAge = getStringField(r, "page_age");
+            return (
+              <div key={i} className="text-sm">
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  <span className="font-medium">{title}</span>
+                )}
+                {href && (
+                  <div className="text-xs text-slate-500">
+                    {truncate(href, 100)}
+                  </div>
+                )}
+                {snippet && <p className="mt-0.5 text-slate-700">{snippet}</p>}
+                {pageAge && (
+                  <div className="mt-0.5 text-xs text-slate-400">{pageAge}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ),
+    };
+  }
+
   let content = getStringField(output, "content", "text", "_raw");
   if (!content) content = extractMcpText(output);
   if (!content) {
-    // Fallback: render the raw JSON so the accordion isn't empty
     try {
       const raw = JSON.stringify(output, null, 2);
       if (raw !== "{}") content = raw;
@@ -297,11 +370,7 @@ function getWebAccordionData(
   const message = getStringField(output, "message");
 
   return {
-    title: statusCode
-      ? `Response (${statusCode})`
-      : url
-        ? "Web fetch"
-        : "Search results",
+    title: statusCode ? `Response (${statusCode})` : "Web fetch",
     description: truncate(url, 80),
     content: content ? (
       <ContentCodeBlock>{content}</ContentCodeBlock>
@@ -526,21 +595,21 @@ function getTodoAccordionData(input: unknown): AccordionData {
           <div key={i} className="flex items-start gap-2 text-xs">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <CheckCircleIcon
+                <Icon
+                  icon={CheckmarkCircle02Icon}
                   size={14}
-                  weight="fill"
                   className="text-green-500"
                 />
               ) : todo.status === "in_progress" ? (
-                <CircleDashedIcon
+                <Icon
+                  icon={CircleDashedIcon}
                   size={14}
-                  weight="bold"
                   className="text-blue-500"
                 />
               ) : (
-                <CircleIcon
+                <Icon
+                  icon={CircleIcon}
                   size={14}
-                  weight="regular"
                   className="text-neutral-400"
                 />
               )}
@@ -703,8 +772,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Status line: always visible so the user sees what tool ran */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}
@@ -712,7 +780,8 @@ export function GenericTool({ part }: Props) {
         />
         <MorphingTextAnimation
           text={text}
-          className={isError ? "text-red-500" : undefined}
+          animate={isStreaming}
+          className={cn("min-w-0 flex-1", isError ? "text-red-500" : undefined)}
         />
       </div>
 

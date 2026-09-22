@@ -118,6 +118,7 @@ def test_is_cacheable_path_detection():
     assert middleware.is_cacheable_path("/api/store/agents")
     assert middleware.is_cacheable_path("/docs")
     assert middleware.is_cacheable_path("/favicon.ico")
+    assert middleware.is_cacheable_path("/api/workspace/files/abc-123/preview")
 
     # Test non-cacheable paths (everything else)
     assert not middleware.is_cacheable_path("/api/auth/user")
@@ -125,6 +126,8 @@ def test_is_cacheable_path_detection():
     assert not middleware.is_cacheable_path("/api/integrations/credentials/123")
     assert not middleware.is_cacheable_path("/api/graphs/abc123/execute")
     assert not middleware.is_cacheable_path("/api/store/xyz/submissions")
+    # The wildcard only covers /preview, not the full file download.
+    assert not middleware.is_cacheable_path("/api/workspace/files/abc-123/download")
 
 
 def test_path_prefix_matching():

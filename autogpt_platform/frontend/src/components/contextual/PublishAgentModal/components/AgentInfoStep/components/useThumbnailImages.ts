@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  postV2UploadSubmissionMedia,
-  postV2GenerateSubmissionImage,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  isFileTooLarge,
+  SUBMISSION_MEDIA_MAX_SIZE_MB,
+  uploadSubmissionMediaDirect,
+} from "@/lib/direct-upload";
 
 interface UseThumbnailImagesProps {
   agentId: string | null;
@@ -26,38 +28,43 @@ export function useThumbnailImages({
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const thumbnailsContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
 
-  // Memoize the stringified version to detect actual changes
   const initialImagesKey = JSON.stringify(initialImages);
 
-  // Update images when initialImages prop changes (by value, not reference)
   useEffect(() => {
-    if (initialImages.length > 0) {
-      setImages(initialImages);
-      setSelectedImage(initialSelectedImage || initialImages[0]);
+    if (initialImages.length === 0) {
+      setImages([]);
+      setSelectedImage(null);
+      return;
     }
-  }, [initialImagesKey, initialSelectedImage]); // Use stringified key instead of array reference
 
-  // Notify parent when images change
+    const nextSelectedImage = initialSelectedImage || initialImages[0];
+    setImages([
+      nextSelectedImage,
+      ...initialImages.filter((image) => image !== nextSelectedImage),
+    ]);
+    setSelectedImage(nextSelectedImage);
+  }, [initialImagesKey, initialSelectedImage]);
+
   useEffect(() => {
     onImagesChange(images);
   }, [images, onImagesChange]);
 
   const setImagesWithValidation = (newImages: string[]) => {
-    // Remove duplicates
     const uniqueImages = Array.from(new Set(newImages));
-    // Keep only first 5 images
     const limitedImages = uniqueImages.slice(0, 5);
     setImages(limitedImages);
   };
 
   function handleRemoveImage(indexToRemove: number) {
+    const removedImage = images[indexToRemove];
     const newImages = [...images];
     newImages.splice(indexToRemove, 1);
     setImagesWithValidation(newImages);
-    if (newImages[indexToRemove] === selectedImage) {
+    if (removedImage === selectedImage) {
       setSelectedImage(newImages[0] || null);
     }
     if (newImages.length === 0) {
@@ -72,7 +79,6 @@ export function useThumbnailImages({
     input.type = "file";
     input.accept = "image/*";
 
-    // Create a promise that resolves when file is selected
     const fileSelected = new Promise<File | null>((resolve) => {
       input.onchange = (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
@@ -80,10 +86,8 @@ export function useThumbnailImages({
       };
     });
 
-    // Trigger file selection
     input.click();
 
-    // Wait for file selection
     const file = await fileSelected;
     if (!file) return;
 
@@ -100,11 +104,14 @@ export function useThumbnailImages({
   }
 
   async function uploadImage(file: File) {
+    if (
+      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
+    )
+      return;
+
+    setIsUploading(true);
     try {
-      const mediaRes = await resolveResponse(
-        postV2UploadSubmissionMedia({ file }),
-      );
-      const imageUrl = mediaRes.replace(/^"(.*)"$/, "$1");
+      const imageUrl = await uploadSubmissionMediaDirect(file);
 
       setImagesWithValidation([...images, imageUrl]);
       if (!selectedImage) {
@@ -118,6 +125,8 @@ export function useThumbnailImages({
         description: detail,
         variant: "destructive",
       });
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -149,15 +158,18 @@ export function useThumbnailImages({
 
   function handleImageSelect(imageSrc: string) {
     setSelectedImage(imageSrc);
+    setImagesWithValidation([
+      imageSrc,
+      ...images.filter((src) => src !== imageSrc),
+    ]);
   }
 
   return {
-    // State
     images,
     selectedImage,
     isGenerating,
+    isUploading,
     thumbnailsContainerRef,
-    // Handlers
     handleRemoveImage,
     handleAddImage,
     handleFileChange,

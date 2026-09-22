@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm import extract_openrouter_cost
 from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
@@ -98,14 +99,23 @@ class PerplexityBlock(Block):
             return _sanitize_perplexity_model(v)
 
         @classmethod
-        def validate_data(cls, data: BlockInput) -> str | None:
+        def validate_data(
+            cls,
+            data: BlockInput,
+            exclude_fields: set[str] | None = None,
+        ) -> str | None:
             """Sanitize the model field before JSON schema validation so that
             invalid values are replaced with the default instead of raising a
-            BlockInputError."""
+            BlockInputError.
+
+            Signature matches ``BlockSchema.validate_data`` (including the
+            optional ``exclude_fields`` kwarg added for dry-run credential
+            bypass) so Pyright doesn't flag this as an incompatible override.
+            """
             model_value = data.get("model")
             if model_value is not None:
                 data["model"] = _sanitize_perplexity_model(model_value).value
-            return super().validate_data(data)
+            return super().validate_data(data, exclude_fields=exclude_fields)
 
         system_prompt: str = SchemaField(
             title="System Prompt",
@@ -230,18 +240,34 @@ class PerplexityBlock(Block):
                         if "message" in choice and "annotations" in choice["message"]:
                             annotations = choice["message"]["annotations"]
 
-            # Update execution stats
+            # Update execution stats. ``execution_stats`` is instance state,
+            # so always reset token counters — a response without ``usage``
+            # must not leak a previous run's tokens into ``PlatformCostLog``.
+            self.execution_stats.input_token_count = 0
+            self.execution_stats.output_token_count = 0
             if response.usage:
                 self.execution_stats.input_token_count = response.usage.prompt_tokens
                 self.execution_stats.output_token_count = (
                     response.usage.completion_tokens
                 )
+            self._record_openrouter_cost(response)
 
             return {"response": response_content, "annotations": annotations or []}
 
         except Exception as e:
             logger.error(f"Error calling Perplexity: {e}")
             raise
+
+    def _record_openrouter_cost(self, response: Any) -> None:
+        """Feed OpenRouter's ``x-total-cost`` USD into execution stats for
+        the COST_USD resolver. Tag as ``cost_usd`` only when the value is
+        concrete and positive — leaving it unset on None/0 keeps the
+        billing gap observable instead of silently floored to 0.
+        """
+        cost_usd = extract_openrouter_cost(response)
+        self.execution_stats.provider_cost = cost_usd
+        if cost_usd is not None and cost_usd > 0:
+            self.execution_stats.provider_cost_type = "cost_usd"
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs

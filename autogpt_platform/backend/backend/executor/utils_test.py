@@ -2,10 +2,16 @@ from datetime import datetime, timezone
 from typing import cast
 
 import pytest
+from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -17,6 +23,18 @@ from backend.executor.utils import (
     is_credential_validation_error_message,
 )
 from backend.util.mock import MockObject
+
+
+@pytest.fixture(autouse=True)
+def mock_account_state(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "backend.executor.utils.onboarding_db.increment_onboarding_runs",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=None),
+    )
 
 
 def test_parse_execution_output():
@@ -356,6 +374,9 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = None
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = None
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
     mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
@@ -437,6 +458,13 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         preset_id=preset_id,
         parent_graph_exec_id=None,
         is_dry_run=False,
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+        trigger_source=ExecutionTrigger.MANUAL,
+        trigger_ref=None,
+        schedule_id=None,
+        webhook_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -450,6 +478,9 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec_2.organization_id = None
+    mock_graph_exec_2.expert_id = None
+    mock_graph_exec_2.team_id = None
     mock_graph_exec_2.id = "execution-id-456"
     mock_graph_exec_2.node_executions = []
     mock_graph_exec_2.status = ExecutionStatus.QUEUED
@@ -507,6 +538,9 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = None
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = None
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -561,6 +595,7 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         return_value=mock_workspace
     )
     mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+    mock_db_client.resolve_default_tenancy = mocker.AsyncMock(return_value=(None, None))
 
     mocker.patch(
         "backend.executor.utils.get_database_manager_async_client",
@@ -580,6 +615,87 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         user_id=user_id,
     )
     assert result == mock_graph_exec
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnected(
+    mocker: MockerFixture,
+):
+    """In the scheduler/executor process (no direct prisma), the born-tenanted
+    fallback must resolve tenancy through the DB-manager RPC client — NOT the
+    direct prisma client, which would fail there and silently no-op, leaving
+    scheduled executions (the primary leak source) untenanted."""
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = "org-rpc"
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = "team-rpc"
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input",
+        return_value=(mock_graph, [], {}, set()),
+    )
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = False
+
+    mock_user = User(
+        id="sched-user",
+        email="sched@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mocker.MagicMock(id="ws-id")
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+    # The RPC resolver (runs in the DB-manager process, which HAS prisma).
+    mock_rpc_resolve = mocker.AsyncMock(return_value=("org-rpc", "team-rpc"))
+    mock_db_client.resolve_default_tenancy = mock_rpc_resolve
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        return_value=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mocker.MagicMock(publish=mocker.AsyncMock()),
+    )
+
+    await add_graph_execution(graph_id="g", user_id="sched-user")
+
+    mock_rpc_resolve.assert_awaited_once_with("sched-user")
+    create_kwargs = mock_db_client.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "org-rpc"
+    assert create_kwargs["team_id"] == "team-rpc"
 
 
 # ============================================================================
@@ -609,6 +725,9 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
     }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
+    }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
 
@@ -623,8 +742,11 @@ async def test_validate_node_input_credentials_returns_nodes_to_skip(
         nodes_input_masks=None,
     )
 
-    # Node should NOT be in nodes_to_skip (runs without credentials) and not in errors
-    assert mock_node.id not in nodes_to_skip
+    # Optional-creds + missing => skip the node (don't run it with None creds)
+    # and don't record an error. This contract is relied on by the executor
+    # which would otherwise try to run a block whose credentials never
+    # arrived.
+    assert mock_node.id in nodes_to_skip
     assert mock_node.id not in errors
 
 
@@ -649,6 +771,9 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     mock_credentials_field_type = mocker.MagicMock()
     mock_block.input_schema.get_credentials_fields.return_value = {
         "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": mocker.Mock(credential_reference_only=False)
     }
     mock_block.input_schema.get_required_fields.return_value = {"credentials"}
     mock_node.block = mock_block
@@ -731,6 +856,9 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = None
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = None
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
@@ -793,6 +921,8 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
         user_id=user_id,
         inputs=inputs,
         graph_version=graph_version,
+        organization_id="org-1",
+        team_id="team-1",
     )
 
     # Verify nodes_to_skip was passed to to_graph_execution_entry
@@ -802,6 +932,77 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     # Verify workspace_id is set in the execution context
     assert "execution_context" in captured_kwargs
     assert captured_kwargs["execution_context"].workspace_id == "test-workspace-id"
+
+    # Regression: org/team must reach the RUNTIME ExecutionContext (not just
+    # the DB row) — billing and nested sub-graph runs read org from here.
+    assert captured_kwargs["execution_context"].organization_id == "org-1"
+    assert captured_kwargs["execution_context"].team_id == "team-1"
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerFixture):
+    """On resume (graph_exec_id set), a caller-supplied ExecutionContext built
+    without org/team (e.g. review-resume, admin-requeue) must be backfilled
+    from the persisted execution row so the resumed run isn't tenant-blind."""
+    from backend.data.execution import ExecutionContext, GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    # Existing row carries org/team; the resume caller's context does not.
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-resume-1"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.nodes_input_masks = {}
+    mock_graph_exec.organization_id = "org-row"
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = "team-row"
+
+    captured_kwargs: dict = {}
+
+    def capture_to_entry(**kwargs):
+        captured_kwargs.update(kwargs)
+        return mocker.MagicMock()
+
+    mock_graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_prisma.is_connected.return_value = True
+    mock_edb.get_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_get_queue.return_value = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    # Resume must backfill tenancy from the row, never re-resolve a default —
+    # re-resolving could re-tenant an existing row under a different org.
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )
+
+    # Caller-supplied context with NO org/team (the bug condition).
+    resume_ctx = ExecutionContext(user_id="test-user-id", workspace_id="ws-1")
+    assert resume_ctx.organization_id is None
+
+    await add_graph_execution(
+        graph_id="test-graph-id",
+        user_id="test-user-id",
+        graph_exec_id="exec-resume-1",
+        execution_context=resume_ctx,
+    )
+
+    assert captured_kwargs["execution_context"].organization_id == "org-row"
+    assert captured_kwargs["execution_context"].team_id == "team-row"
+    # The "CREATE path only" invariant: resume never consults the resolver.
+    mock_get_default_team.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1100,3 +1301,1647 @@ def test_non_credential_errors_are_not_matched():
     assert not is_credential_validation_error_message(
         "Block configuration says credentials are fine"
     )
+
+
+# ============================================================================
+# Tests for auto_credentials validation in _validate_node_input_credentials
+# (Fix 3: SECRT-1772 + Fix 4: Path 4)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_valid(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] When a node has auto_credentials with a valid _credentials_id
+    that exists in the store, validation should pass without errors.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "valid-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    # No regular credentials fields
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    # Has auto_credentials fields
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return valid credentials
+    mock_store = mocker.MagicMock()
+    mock_creds = mocker.MagicMock()
+    mock_creds.id = "valid-cred-id"
+    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_missing(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] When a node has auto_credentials with a _credentials_id
+    that doesn't exist for the current user, validation should report an error.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-bad-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "other-users-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    # The auto-credentials validator respects optional fields — mark the
+    # spreadsheet field as required so the missing-cred error is recorded.
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return None (cred not found for this user)
+    mock_store = mocker.MagicMock()
+    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="different-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    assert "spreadsheet" in errors[mock_node.id]
+    # Error message uses the CRED_ERR_UNKNOWN_PREFIX marker so the copilot
+    # credential-race fallback recognises it as a credentials gate failure.
+    assert (
+        errors[mock_node.id]["spreadsheet"].lower().startswith("unknown credentials #")
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_both_regular_and_auto(
+    mocker: MockerFixture,
+):
+    """
+    [SECRT-1772] A node that has BOTH regular credentials AND auto_credentials
+    should have both validated.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-both-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "credentials": {
+            "id": "regular-cred-id",
+            "provider": "github",
+            "type": "api_key",
+        },
+        "spreadsheet": {
+            "_credentials_id": "auto-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        },
+    }
+
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_credentials_meta = mocker.MagicMock()
+    mock_credentials_meta.id = "regular-cred-id"
+    mock_credentials_meta.provider = "github"
+    mock_credentials_meta.type = "api_key"
+    mock_credentials_field_type.model_validate.return_value = mock_credentials_meta
+
+    mock_block = mocker.MagicMock()
+    # Regular credentials field
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type,
+    }
+    # Auto-credentials field
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "auto_credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Mock the credentials store to return valid credentials for both
+    mock_store = mocker.MagicMock()
+    mock_regular_creds = mocker.MagicMock()
+    mock_regular_creds.id = "regular-cred-id"
+    mock_regular_creds.provider = "github"
+    mock_regular_creds.type = "api_key"
+
+    mock_auto_creds = mocker.MagicMock()
+    mock_auto_creds.id = "auto-cred-id"
+
+    def get_creds_side_effect(user_id, cred_id):
+        if cred_id == "regular-cred-id":
+            return mock_regular_creds
+        elif cred_id == "auto-cred-id":
+            return mock_auto_creds
+        return None
+
+    mock_store.get_creds_by_id = mocker.AsyncMock(side_effect=get_creds_side_effect)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    # Both should validate successfully - no errors
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_optional_missing(
+    mocker: MockerFixture,
+):
+    """When a node marks credentials optional and the auto-credential is
+    missing, validation should not record an error — the node is simply
+    marked for skip or runs without credentials."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-optional-auto-creds"
+    mock_node.credentials_optional = True
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "other-users-cred-id",
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    mock_store = mocker.MagicMock()
+    mock_store.get_creds_by_id = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=mock_store,
+    )
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="different-user",
+        nodes_input_masks=None,
+    )
+
+    # Optional auto-credential that's missing must NOT error — instead the
+    # node lands in nodes_to_skip so the executor doesn't try to run it.
+    assert mock_node.id not in errors
+    assert mock_node.id in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_uses_marker_prefix(
+    mocker: MockerFixture,
+):
+    """Auto-credential errors must use ``CRED_ERR_*`` prefixes so the copilot
+    credential-race fallback recognises them — otherwise dry runs fail
+    before the user gets a chance to re-auth."""
+    from backend.executor.utils import (
+        _validate_node_input_credentials,
+        is_credential_validation_error_message,
+    )
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-missing-auto-creds-key"
+    mock_node.credentials_optional = False
+    # Missing _credentials_id entirely — e.g. after a fork.
+    mock_node.input_default = {
+        "spreadsheet": {
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    message = errors[mock_node.id]["spreadsheet"]
+    assert is_credential_validation_error_message(message)
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_empty_string_id(
+    mocker: MockerFixture,
+):
+    """A ``_credentials_id`` set to an empty string is a corrupted state —
+    the validator must treat it like a missing credential, not silently
+    pass. Without this guard, ``if cred_id and isinstance(cred_id, str)``
+    evaluated to False and the node ran with no credentials injected."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-empty-string-cred"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": "",  # corrupted
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    assert "spreadsheet" in errors[mock_node.id]
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_skipped_when_none(
+    mocker: MockerFixture,
+):
+    """
+    When a node has auto_credentials but the field value has _credentials_id=None
+    (e.g., from upstream connection), validation should skip it without error.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-chained-auto-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {
+        "spreadsheet": {
+            "_credentials_id": None,
+            "id": "file-123",
+            "name": "test.xlsx",
+        }
+    }
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user",
+        nodes_input_masks=None,
+    )
+
+    # No error - chained data with None cred_id is valid
+    assert mock_node.id not in errors
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_optional_none_value_skips(
+    mocker: MockerFixture,
+):
+    """Sentry HIGH regression: if input_default[field_name] is explicitly
+    ``None`` (e.g. cleared by ``_reassign_ids`` on fork) and the field is
+    optional, the validator previously silently skipped the whole
+    auto-credentials block — ``has_missing_credentials`` never flipped
+    true and the node never landed in ``nodes_to_skip``. Then
+    ``_acquire_auto_credentials`` would hit ``field_data is None`` at
+    runtime and raise ``ValueError`` instead of cleanly skipping.
+
+    The validator must treat an explicitly-None value as a missing
+    credential and, for optional fields, add the node to
+    ``nodes_to_skip`` instead."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-cleared-on-fork"
+    mock_node.credentials_optional = True
+    # input_default has the field but its value was cleared to None
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    # Optional + missing → node MUST land in nodes_to_skip so the executor
+    # never enters a run that would crash in `_acquire_auto_credentials`.
+    assert mock_node.id not in errors
+    assert mock_node.id in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_field_level_optional_none_value_skips(
+    mocker: MockerFixture,
+):
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58r_37): a node with
+    ``credentials_optional=False`` (the default) but whose auto-credential
+    field is NOT in ``required_fields`` (typical — the ``spreadsheet``
+    field on Google Sheets blocks defaults to None, so pydantic marks it
+    non-required at the schema level). The per-field check correctly
+    flags ``field_is_optional=True`` via ``field_name not in
+    required_fields``, but the POST-LOOP guard used ``is_creds_optional``
+    (the node-level flag) only — so the node silently passed validation
+    and crashed at runtime inside ``_acquire_auto_credentials`` with
+    ``ValueError('No file selected')``.
+
+    Pin the contract: when ANY per-field branch decides the field is
+    optional and missing, the node must land in ``nodes_to_skip``
+    regardless of the node-level ``credentials_optional`` flag."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-field-optional-cleared"
+    # Node-level flag is False (the common case) — the field is only
+    # field-level optional because it's absent from required_fields.
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    # Field-level optional: `spreadsheet` is NOT in required_fields because
+    # its pydantic default is None.
+    mock_block.input_schema.get_required_fields.return_value = []
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_required_none_value_errors(
+    mocker: MockerFixture,
+):
+    """Sentry HIGH regression, required-field variant. If
+    ``input_default[field_name]`` is explicitly ``None`` and the field is
+    required, the validator must surface a
+    ``CRED_ERR_NOT_AVAILABLE_PREFIX`` error so the dry-run gate fires
+    before we enter `run()` — rather than silently letting the node pass
+    validation and crashing inside `_acquire_auto_credentials`."""
+    from backend.executor.utils import (
+        _validate_node_input_credentials,
+        is_credential_validation_error_message,
+    )
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-cleared-on-fork-required"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    assert "spreadsheet" in errors[mock_node.id]
+    assert is_credential_validation_error_message(errors[mock_node.id]["spreadsheet"])
+
+
+# ============================================================================
+# Tests for CredentialsFieldInfo auto_credential tag (Fix 4: Path 4)
+# ============================================================================
+
+
+def test_credentials_field_info_auto_credential_tag():
+    """
+    [Path 4] CredentialsFieldInfo should support is_auto_credential and
+    input_field_name fields for distinguishing auto from regular credentials.
+    """
+    from backend.data.model import CredentialsFieldInfo
+
+    # Regular credential should have is_auto_credential=False by default
+    regular = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+        },
+        by_alias=True,
+    )
+    assert regular.is_auto_credential is False
+    assert regular.input_field_name is None
+
+    # Auto credential should have is_auto_credential=True
+    auto = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["google"],
+            "credentials_types": ["oauth2"],
+            "is_auto_credential": True,
+            "input_field_name": "spreadsheet",
+        },
+        by_alias=True,
+    )
+    assert auto.is_auto_credential is True
+    assert auto.input_field_name == "spreadsheet"
+
+
+def test_make_node_credentials_input_map_excludes_auto_creds(
+    mocker: MockerFixture,
+):
+    """
+    [Path 4] make_node_credentials_input_map should only include regular credentials,
+    not auto_credentials (which are resolved at execution time).
+    """
+    from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+    from backend.executor.utils import make_node_credentials_input_map
+    from backend.integrations.providers import ProviderName
+
+    # Create a mock graph with aggregate_credentials_inputs that returns
+    # both regular and auto credentials
+    mock_graph = mocker.MagicMock()
+
+    regular_field_info = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["github"],
+            "credentials_types": ["api_key"],
+            "is_auto_credential": False,
+        },
+        by_alias=True,
+    )
+
+    # Mock regular_credentials_inputs property (auto_credentials are excluded)
+    mock_graph.regular_credentials_inputs = {
+        "github_creds": (regular_field_info, {("node-1", "credentials")}, True),
+    }
+
+    graph_credentials_input = {
+        "github_creds": CredentialsMetaInput(
+            id="cred-123",
+            provider=ProviderName("github"),
+            type="api_key",
+        ),
+    }
+
+    result = make_node_credentials_input_map(mock_graph, graph_credentials_input)
+
+    # Regular credentials should be mapped
+    assert "node-1" in result
+    assert "credentials" in result["node-1"]
+
+    # Auto credentials should NOT appear in the result
+    # (they would have been mapped to the kwarg_name "credentials" not "spreadsheet")
+    for node_id, fields in result.items():
+        for field_name, value in fields.items():
+            # Verify no auto-credential phantom entries
+            if isinstance(value, dict):
+                assert "_credentials_id" not in value
+
+
+# ============================================================================
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_a_run_with_two_triggers():
+    """A run is started by a schedule or a webhook, never both; recording
+    both would let the home card report the schedule and hide the webhook."""
+    with pytest.raises(ValueError, match="schedule or a webhook"):
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            schedule_id="sched-1",
+            webhook_id="hook-1",
+        )
+
+
+# Admin-bypass paywall: requeue stuck executions for users on NO_TIER must
+# not be blocked by the paywall gate (Sentry bug prediction: admin recovery
+# would otherwise raise UserPaywalledError on the original user's behalf).
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_paywall_blocks_paywalled_user(
+    mocker: MockerFixture,
+):
+    """Sanity: with ``bypass_paywall=False`` (default), a paywalled user
+    is rejected before any DB work happens."""
+    from backend.copilot.rate_limit import UserPaywalledError
+
+    mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock()
+
+    with pytest.raises(UserPaywalledError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="paywalled-user",
+        )
+
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_bypass_paywall_skips_check(
+    mocker: MockerFixture,
+):
+    """``bypass_paywall=True`` skips the paywall gate entirely — admin
+    requeue paths must succeed even when the original user is NO_TIER."""
+    paywall_mock = mocker.patch(
+        "backend.executor.utils.is_user_paywalled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    # Stub everything downstream — we only care that the gate didn't fire.
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch("backend.executor.utils.user_db")
+    mocker.patch("backend.executor.utils.graph_db")
+    mocker.patch("backend.executor.utils.workspace_db")
+    mocker.patch("backend.executor.utils.onboarding_db")
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    # Force an early sentinel error AFTER the gate so we can verify the
+    # gate was passed without simulating the whole requeue pipeline.
+    mock_edb.get_graph_execution = mocker.AsyncMock(
+        side_effect=RuntimeError("reached requeue lookup")
+    )
+
+    with pytest.raises(RuntimeError, match="reached requeue lookup"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="paywalled-user",
+            graph_exec_id="stuck-exec-id",
+            bypass_paywall=True,
+        )
+
+    paywall_mock.assert_not_called()
+
+
+# ============================================================================
+# Born-tenanted fallback: a NEW execution created without an explicit org is
+# tenanted at creation with the user's default org/team.
+# ============================================================================
+
+
+def _mock_add_graph_execution_create_path(
+    mocker: MockerFixture,
+    *,
+    org_id: object = None,
+    team_id: object = None,
+):
+    """Wire up the mocks ``add_graph_execution`` needs on the CREATE path.
+
+    Returns ``(mock_edb, mock_get_default_team)``. ``get_user_default_team`` is
+    patched at its source module (``backend.api.features.orgs.db``) because
+    ``add_graph_execution`` does a call-time local import of it; it resolves to
+    ``(org_id, team_id)``.
+    """
+    from backend.data.execution import GraphExecutionWithNodes
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.organization_id = org_id
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.team_id = team_id
+    mock_graph_exec.expert_id = None
+    mock_graph_exec.id = "exec-id"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [("node1", {"input1": "v"})], {}, set())
+
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+    mock_settings.sensitive_action_safe_mode = False
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
+
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "ws-id"
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
+
+    mock_odb = mocker.patch("backend.executor.utils.onboarding_db")
+    mock_odb.increment_onboarding_runs = mocker.AsyncMock()
+
+    mocker.patch("backend.executor.utils.get_async_execution_queue").return_value = (
+        mocker.AsyncMock()
+    )
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    ).return_value = mock_event_bus
+
+    # Overrides the autouse (None, None) default from executor/conftest.py.
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(return_value=(org_id, team_id)),
+    )
+    return mock_edb, mock_get_default_team
+
+
+def _mock_expert_personal_tenancy(
+    mocker: MockerFixture,
+    *,
+    organization_id: str = "personal-org",
+    team_id: str | None = "personal-team",
+    error: Exception | None = None,
+):
+    expert_store = mocker.MagicMock()
+    expert_store.resolve_private_expert_tenancy = mocker.AsyncMock(
+        return_value=(organization_id, team_id), side_effect=error
+    )
+    get_experts_db = mocker.patch(
+        "backend.executor.utils.get_experts_db", return_value=expert_store
+    )
+    enforce_budget = mocker.patch(
+        "backend.executor.utils._enforce_expert_run_budget",
+        new=mocker.AsyncMock(),
+    )
+    return get_experts_db, expert_store, enforce_budget
+
+
+def _mock_add_graph_execution_requeue_path(
+    mocker: MockerFixture,
+    *,
+    expert_id: str | None,
+    organization_id: str | None,
+    team_id: str | None,
+):
+    from backend.data.execution import GraphExecutionWithNodes
+
+    graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    graph_exec.id = "existing-execution"
+    graph_exec.node_executions = []
+    graph_exec.status = ExecutionStatus.QUEUED
+    graph_exec.graph_version = 1
+    graph_exec.nodes_input_masks = {}
+    graph_exec.expert_id = expert_id
+    graph_exec.organization_id = organization_id
+    graph_exec.team_id = team_id
+
+    captured: dict = {}
+
+    def capture_to_entry(**kwargs):
+        captured.update(kwargs)
+        return mocker.MagicMock()
+
+    graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    execution_store = mocker.patch("backend.executor.utils.execution_db")
+    execution_store.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    execution_store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=graph_exec
+    )
+    execution_store.update_node_execution_status_batch = mocker.AsyncMock()
+    user = mocker.MagicMock(timezone="UTC")
+    mocker.patch("backend.executor.utils.user_db").get_user_by_id = mocker.AsyncMock(
+        return_value=user
+    )
+    settings = mocker.MagicMock(
+        human_in_the_loop_safe_mode=True,
+        sensitive_action_safe_mode=False,
+    )
+    mocker.patch("backend.executor.utils.graph_db").get_graph_settings = (
+        mocker.AsyncMock(return_value=settings)
+    )
+    workspace = mocker.MagicMock(id="workspace-1")
+    mocker.patch("backend.executor.utils.workspace_db").get_or_create_workspace = (
+        mocker.AsyncMock(return_value=workspace)
+    )
+    mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
+        mocker.AsyncMock()
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    event_bus = mocker.MagicMock(publish=mocker.AsyncMock())
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=event_bus,
+    )
+    return graph_exec, execution_store, queue, captured
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_uses_authoritative_personal_tenancy(
+    mocker: MockerFixture,
+):
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "expert-owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] == "personal-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_allows_personal_tenancy_without_default_team(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="personal-org", team_id=None
+    )
+    _mock_expert_personal_tenancy(mocker, organization_id="personal-org", team_id=None)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] is None
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id is None
+    update_kwargs = mock_edb.update_graph_execution_stats.await_args.kwargs
+    assert update_kwargs["update_tenancy"] is True
+    assert update_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_nested_expert_execution_inherits_expert_and_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    parent_context = ExecutionContext(
+        user_id="expert-owner",
+        parent_execution_id="parent-execution",
+        organization_id="shared-org",
+        team_id="shared-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="expert-owner",
+        execution_context=parent_context,
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "expert-owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("expert-owner", "expert-1")
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["expert_id"] == "expert-1"
+    assert create_kwargs["organization_id"] == "personal-org"
+    assert create_kwargs["team_id"] == "personal-team"
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_autopilot_execution_keeps_explicit_tenancy(mocker: MockerFixture):
+    mock_edb, default_tenancy = _mock_add_graph_execution_create_path(mocker)
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="autopilot-user",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    default_tenancy.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["expert_id"] is None
+    assert create_kwargs["organization_id"] == "shared-org"
+    assert create_kwargs["team_id"] == "shared-team"
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_rejects_unavailable_expert_before_create(
+    mocker: MockerFixture,
+):
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _, _, enforce_budget = _mock_expert_personal_tenancy(
+        mocker, error=ExpertNotFoundError("guessed-expert")
+    )
+
+    with pytest.raises(ExpertNotFoundError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="attacker",
+            expert_id="guessed-expert",
+            organization_id="victim-org",
+            team_id="victim-team",
+        )
+
+    enforce_budget.assert_not_called()
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_rejects_missing_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.api.features.experts.experts_db import (
+        ExpertPrivateTenancyNotFoundError,
+    )
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(
+        mocker, error=ExpertPrivateTenancyNotFoundError("expert-1")
+    )
+
+    with pytest.raises(ExpertPrivateTenancyNotFoundError):
+        await add_graph_execution(graph_id="g", user_id="owner", expert_id="expert-1")
+
+    mock_edb.create_graph_execution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_keeps_persisted_expert_and_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    caller_context = ExecutionContext(
+        user_id="owner",
+        organization_id="shared-org",
+        team_id="shared-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        organization_id="shared-org",
+        team_id="shared-team",
+        execution_context=caller_context,
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("owner", "expert-1")
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_admin_bypass_still_validates_personal_tenancy(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    caller_context = ExecutionContext(
+        user_id="owner",
+        organization_id="personal-org",
+        team_id="personal-team",
+        expert_id="expert-1",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        execution_context=caller_context,
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_not_called()
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_admin_bypass_recovers_when_expert_is_gone(
+    mocker: MockerFixture,
+):
+    """Admin recovery (bypass_paywall=True) must still be able to requeue a
+    stuck expert execution whose expert was archived/deleted mid-run: tenancy
+    resolution fails, so the execution's persisted tenancy is used instead."""
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(
+        mocker, error=ExpertNotFoundError("expert-1")
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_not_called()
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id == "personal-team"
+    assert context.expert_id == "expert-1"
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_without_bypass_still_fails_when_expert_is_gone(
+    mocker: MockerFixture,
+):
+    """The tenancy fallback is admin-only: a non-admin requeue of an
+    execution whose expert vanished keeps the strict 404 behavior."""
+    from backend.api.features.experts.experts_db import ExpertNotFoundError
+
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    _mock_expert_personal_tenancy(mocker, error=ExpertNotFoundError("expert-1"))
+
+    with pytest.raises(ExpertNotFoundError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+        )
+
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_uses_current_tenancy_after_conversion(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="old-personal-org",
+        team_id="old-personal-team",
+    )
+    _, expert_store, enforce_budget = _mock_expert_personal_tenancy(
+        mocker,
+        organization_id="current-personal-org",
+        team_id="current-personal-team",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+    )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner", "expert-1"
+    )
+    enforce_budget.assert_awaited_once_with("owner", "expert-1")
+    context = captured["execution_context"]
+    assert context.organization_id == "current-personal-org"
+    assert context.team_id == "current-personal-team"
+    assert context.expert_id == "expert-1"
+    execution_store.update_graph_execution_stats.assert_awaited_once()
+    queue.publish_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_clears_legacy_team_when_personal_team_is_none(
+    mocker: MockerFixture,
+):
+    _, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="shared-org",
+        team_id="shared-team",
+    )
+    _mock_expert_personal_tenancy(mocker, organization_id="personal-org", team_id=None)
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    context = captured["execution_context"]
+    assert context.organization_id == "personal-org"
+    assert context.team_id is None
+    update_kwargs = execution_store.update_graph_execution_stats.await_args.kwargs
+    assert update_kwargs["update_tenancy"] is True
+    assert update_kwargs["organization_id"] == "personal-org"
+    assert update_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_rejects_caller_supplied_expert_swap(
+    mocker: MockerFixture,
+):
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+
+    with pytest.raises(ValueError, match="does not match"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            expert_id="expert-2",
+        )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    execution_store.update_graph_execution_stats.assert_not_called()
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expert_requeue_rejects_context_expert_swap(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    get_experts_db, _, enforce_budget = _mock_expert_personal_tenancy(mocker)
+    forged_context = ExecutionContext(user_id="owner", expert_id="expert-2")
+
+    with pytest.raises(ValueError, match="does not match"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            execution_context=forged_context,
+        )
+
+    get_experts_db.assert_not_called()
+    enforce_budget.assert_not_called()
+    execution_store.update_graph_execution_stats.assert_not_called()
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_born_tenanted_resolves_default_team(
+    mocker: MockerFixture,
+):
+    """CREATE path with no org → the row is tenanted at creation with the
+    user's default org/team."""
+    mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-x", team_id="team-x"
+    )
+
+    await add_graph_execution(graph_id="g", user_id="user-1")
+
+    mock_get_default_team.assert_awaited_once_with("user-1")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "org-x"
+    assert create_kwargs["team_id"] == "team-x"
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_no_default_team_stays_untenanted(
+    mocker: MockerFixture,
+):
+    """CREATE path when bootstrap hasn't provisioned an org → (None, None)
+    resolves, no crash, row stays untenanted."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id=None, team_id=None
+    )
+
+    result = await add_graph_execution(graph_id="g", user_id="user-1")
+
+    assert result is not None
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] is None
+    assert create_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_explicit_org_not_overridden(
+    mocker: MockerFixture,
+):
+    """CREATE path with an explicit org → the fallback does NOT fire; the
+    caller's org/team are passed through untouched."""
+    mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
+        mocker, org_id="fallback-org", team_id="fallback-team"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="user-1",
+        organization_id="explicit-org",
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "explicit-org"
+    assert create_kwargs["team_id"] == "explicit-team"
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_explicit_team_id_preserved_when_org_absent(
+    mocker: MockerFixture,
+):
+    """An explicit team_id with no org must NOT be clobbered by the default-
+    team lookup — the fallback only fires when BOTH fields are unset."""
+    mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
+        mocker, org_id="fallback-org", team_id="fallback-team"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="user-1",
+        organization_id=None,
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["team_id"] == "explicit-team"
+    assert create_kwargs["organization_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_default_team_lookup_failure_stays_untenanted(
+    mocker: MockerFixture,
+):
+    """The default-team lookup is best-effort: if it RAISES, the run is still
+    created (untenanted) rather than aborted."""
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id=None, team_id=None
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+    )
+
+    result = await add_graph_execution(graph_id="g", user_id="user-1")
+
+    assert result is not None
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] is None
+    assert create_kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
+    mocker: MockerFixture,
+):
+    """A sub-graph inheriting an untenanted parent arrives with
+    organization_id=None (AgentExecutorBlock passes
+    execution_context.organization_id) → the fallback fires and the child row
+    is born tenanted."""
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-sub", team_id="team-sub"
+    )
+    parent_ctx = ExecutionContext(
+        user_id="user-1",
+        graph_id="g",
+        graph_exec_id="child",
+        graph_version=1,
+        parent_execution_id="parent-123",
+        organization_id=None,
+        team_id=None,
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="user-1",
+        execution_context=parent_ctx,
+        organization_id=None,
+        team_id=None,
+    )
+
+    mock_get_default_team.assert_awaited_once_with("user-1")
+    create_kwargs = mock_edb.create_graph_execution.call_args.kwargs
+    assert create_kwargs["organization_id"] == "org-sub"
+    assert create_kwargs["team_id"] == "team-sub"
+    assert create_kwargs["parent_graph_exec_id"] == "parent-123"
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_records_outcome(mocker):
+    """Every caller of the shared execute path must feed
+    autogpt_graph_executions_total; before this only the legacy v1 route did."""
+    from unittest.mock import AsyncMock
+
+    from backend.executor import utils
+    from backend.util.exceptions import GraphValidationError, UserPaywalledError
+
+    def n(status):
+        return _counter("autogpt_graph_executions_total", status=status)
+
+    ok, verr, err = n("success"), n("validation_error"), n("error")
+
+    mocker.patch.object(utils, "_add_graph_execution", AsyncMock(return_value="row"))
+    assert await utils.add_graph_execution(graph_id="g", user_id="u") == "row"
+    assert n("success") == ok + 1
+
+    mocker.patch.object(
+        utils,
+        "_add_graph_execution",
+        AsyncMock(side_effect=GraphValidationError("bad", {})),
+    )
+    with pytest.raises(GraphValidationError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert n("validation_error") == verr + 1
+
+    mocker.patch.object(
+        utils, "_add_graph_execution", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+    with pytest.raises(RuntimeError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert n("error") == err + 1
+
+    # A paywall is a policy gate, not an execute outcome: nothing is counted.
+    mocker.patch.object(
+        utils, "_add_graph_execution", AsyncMock(side_effect=UserPaywalledError("pay"))
+    )
+    with pytest.raises(UserPaywalledError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert (n("success"), n("validation_error"), n("error")) == (
+        ok + 1,
+        verr + 1,
+        err + 1,
+    )
+
+
+# ============ Spend approval (SECRT-2599) ============ #
+
+
+def _spend_needed():
+    from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+    return SpendApprovalNeeded(
+        expert_id="expert-1", expert_name="Ada", spent=250, threshold=250, window="week"
+    )
+
+
+def _mock_spend_gate(mocker: MockerFixture, needed):
+    required = mocker.patch(
+        "backend.executor.utils._spend_approval_required",
+        new=mocker.AsyncMock(return_value=needed),
+    )
+    park = mocker.patch(
+        "backend.executor.utils._park_for_spend_approval", new=mocker.AsyncMock()
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    return required, park, queue
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_at_threshold_is_parked_unpublished(
+    mocker: MockerFixture,
+):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    needed = _spend_needed()
+    required, park, queue = _mock_spend_gate(mocker, needed)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    required.assert_awaited_once_with("owner", "expert-1")
+    assert result.status == ExecutionStatus.REVIEW
+    park_kwargs = park.await_args.kwargs
+    assert park_kwargs["graph_exec_id"] == "exec-id"
+    assert park_kwargs["needed"] is needed
+    mock_edb.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_execution_below_threshold_publishes(mocker: MockerFixture):
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    _, park, queue = _mock_spend_gate(mocker, None)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1"
+    )
+
+    park.assert_not_awaited()
+    assert mock_edb.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()
+    assert result.status == ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"dry_run": True},
+        {"bypass_paywall": True},
+        {"execution_context": ExecutionContext(parent_execution_id="parent-exec")},
+    ],
+    ids=["dry_run", "admin_bypass", "nested_sub_graph"],
+)
+async def test_spend_gate_skips_dry_admin_and_nested_runs(
+    mocker: MockerFixture, extra: dict
+):
+    _mock_add_graph_execution_create_path(mocker)
+    _mock_expert_personal_tenancy(mocker)
+    required, park, queue = _mock_spend_gate(mocker, _spend_needed())
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", expert_id="expert-1", **extra
+    )
+
+    required.assert_not_awaited()
+    park.assert_not_awaited()
+    queue.publish_message.assert_awaited_once()
+
+
+def _mock_parked_resume(mocker: MockerFixture, decision):
+    graph_exec, store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id="expert-1", organization_id="org", team_id="team"
+    )
+    graph_exec.status = ExecutionStatus.REVIEW
+    store.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mocker.MagicMock(status=ExecutionStatus.QUEUED)
+    )
+    _mock_expert_personal_tenancy(mocker)
+    mocker.patch(
+        "backend.executor.utils._parked_spend_decision",
+        new=mocker.AsyncMock(return_value=decision),
+    )
+    return graph_exec, store, queue
+
+
+@pytest.mark.asyncio
+async def test_parked_execution_stays_parked_while_waiting(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.WAITING)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result is graph_exec
+    store.update_graph_execution_stats.assert_not_awaited()
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_declined_execution_is_terminated_not_run(mocker: MockerFixture):
+    graph_exec, store, queue = _mock_parked_resume(mocker, ReviewStatus.REJECTED)
+
+    result = await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert result.status == ExecutionStatus.TERMINATED
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.TERMINATED
+    )
+    queue.publish_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "decision", [ReviewStatus.APPROVED, None], ids=["approved", "hitl"]
+)
+async def test_approved_or_hitl_review_resumes(mocker: MockerFixture, decision):
+    _, store, queue = _mock_parked_resume(mocker, decision)
+
+    await add_graph_execution(
+        graph_id="g", user_id="owner", graph_exec_id="existing-execution"
+    )
+
+    assert store.update_graph_execution_stats.await_args.kwargs["status"] == (
+        ExecutionStatus.QUEUED
+    )
+    queue.publish_message.assert_awaited_once()

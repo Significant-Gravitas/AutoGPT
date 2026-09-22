@@ -1,7 +1,10 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional, Union
 
-from backend.sdk import BaseModel, MediaFileType, SchemaField
+from pydantic import model_validator
+
+from backend.data.model import NodeExecutionStats
+from backend.sdk import BaseModel, Block, MediaFileType, SchemaField
 
 
 class LivecrawlTypes(str, Enum):
@@ -59,11 +62,20 @@ class SummarySettings(BaseModel):
         description="Custom query for the LLM-generated summary",
         placeholder="Main developments",
     )
-    schema: Optional[dict] = SchemaField(  # type: ignore
+    output_schema: Optional[dict] = SchemaField(
         default=None,
         description="JSON schema for structured output from summary",
         advanced=True,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_backward_compat(cls, data: Any) -> Any:
+        """Handle backward compatibility with 'schema' -> 'output_schema' rename."""
+        if isinstance(data, dict) and "schema" in data and "output_schema" not in data:
+            data = data.copy()
+            data["output_schema"] = data.pop("schema")
+        return data
 
 
 class ExtrasSettings(BaseModel):
@@ -319,7 +331,7 @@ class CostDollars(BaseModel):
 
 # Helper functions for payload processing
 def process_text_field(
-    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None]
+    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None],
 ) -> Optional[Union[bool, Dict[str, Any]]]:
     """Process text field for API payload."""
     if text is None:
@@ -355,24 +367,24 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
         content_settings["text"] = text_value
 
     # Handle highlights
-    if contents.highlights:
+    if contents.highlights is not None:
         highlights_dict: Dict[str, Any] = {
             "numSentences": contents.highlights.num_sentences,
             "highlightsPerUrl": contents.highlights.highlights_per_url,
         }
-        if contents.highlights.query:
+        if contents.highlights.query is not None:
             highlights_dict["query"] = contents.highlights.query
         content_settings["highlights"] = highlights_dict
 
-    if contents.summary:
+    if contents.summary is not None:
         summary_dict = {}
-        if contents.summary.query:
+        if contents.summary.query is not None:
             summary_dict["query"] = contents.summary.query
-        if contents.summary.schema:
-            summary_dict["schema"] = contents.summary.schema
+        if contents.summary.output_schema is not None:
+            summary_dict["schema"] = contents.summary.output_schema
         content_settings["summary"] = summary_dict
 
-    if contents.livecrawl:
+    if contents.livecrawl is not None:
         content_settings["livecrawl"] = contents.livecrawl.value
 
     if contents.livecrawl_timeout is not None:
@@ -381,14 +393,17 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
     if contents.subpages is not None:
         content_settings["subpages"] = contents.subpages
 
-    if contents.subpage_target:
+    if contents.subpage_target is not None:
         content_settings["subpageTarget"] = contents.subpage_target
 
-    if contents.extras:
+    if contents.extras is not None:
         extras_dict = {}
-        if contents.extras.links:
+        # ``links``/``image_links`` are non-optional int counts (default 0); a
+        # value of 0 means "don't request any", so it must be omitted rather
+        # than sent as ``0`` to the Exa API.
+        if contents.extras.links > 0:
             extras_dict["links"] = contents.extras.links
-        if contents.extras.image_links:
+        if contents.extras.image_links > 0:
             extras_dict["imageLinks"] = contents.extras.image_links
         content_settings["extras"] = extras_dict
 
@@ -400,7 +415,7 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
 
 
 def process_context_field(
-    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None]
+    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None],
 ) -> Optional[Union[bool, Dict[str, int]]]:
     """Process context field for API payload."""
     if context is None:
@@ -448,3 +463,65 @@ def add_optional_fields(
                 payload[api_field] = value.value
             else:
                 payload[api_field] = value
+
+
+def extract_exa_cost_usd(response: Any) -> Optional[float]:
+    """Return ``cost_dollars.total`` (USD) from an Exa SDK response, or None.
+
+    Handles dataclass/pydantic responses (``response.cost_dollars.total``),
+    dicts with camelCase keys (``response["costDollars"]["total"]``), dicts
+    with snake_case keys, and bare numeric strings. Returns None whenever the
+    shape is missing cost info — the caller then skips merge_stats.
+    """
+    if response is None:
+        return None
+
+    # Dataclass / pydantic: response.cost_dollars
+    cost_obj = getattr(response, "cost_dollars", None)
+
+    # Dict payloads: try both camelCase and snake_case
+    if cost_obj is None and isinstance(response, dict):
+        cost_obj = response.get("costDollars") or response.get("cost_dollars")
+
+    if cost_obj is None:
+        return None
+
+    # Already a scalar (code_context endpoint returns a string)
+    if isinstance(cost_obj, (int, float)):
+        return max(0.0, float(cost_obj))
+    if isinstance(cost_obj, str):
+        try:
+            return max(0.0, float(cost_obj))
+        except ValueError:
+            return None
+
+    # Nested object/dict: grab the `total` field
+    total = getattr(cost_obj, "total", None)
+    if total is None and isinstance(cost_obj, dict):
+        total = cost_obj.get("total")
+
+    if total is None:
+        return None
+
+    try:
+        return max(0.0, float(total))
+    except (TypeError, ValueError):
+        return None
+
+
+def merge_exa_cost(block: Block, response: Any) -> None:
+    """Pull ``cost_dollars.total`` off an Exa response and merge it into stats.
+
+    No-op when the response shape has no cost info (e.g. webset CRUD where
+    the SDK does not expose per-call pricing) — emission happens only when
+    Exa actually reports a USD amount.
+    """
+    cost_usd = extract_exa_cost_usd(response)
+    if cost_usd is None:
+        return
+    block.merge_stats(
+        NodeExecutionStats(
+            provider_cost=cost_usd,
+            provider_cost_type="cost_usd",
+        )
+    )

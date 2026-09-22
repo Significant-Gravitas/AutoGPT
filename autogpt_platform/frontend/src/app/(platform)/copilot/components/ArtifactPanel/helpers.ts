@@ -1,13 +1,15 @@
 import {
-  Code,
-  File,
-  FileHtml,
-  FileText,
-  Image,
-  Table,
-  VideoCamera,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+  CodeIcon,
+  File02Icon,
+  FileEmpty02Icon,
+  HtmlFile01Icon,
+  Image01Icon,
+  TableIcon,
+  UserIcon,
+  Video01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import type { ArtifactRef } from "../../store";
 
 export interface ArtifactClassification {
   type:
@@ -21,8 +23,9 @@ export interface ArtifactClassification {
     | "video"
     | "pdf"
     | "text"
-    | "download-only";
-  icon: Icon;
+    | "download-only"
+    | "expert";
+  icon: IconSvgElement;
   label: string;
   openable: boolean;
   hasSourceToggle: boolean;
@@ -35,77 +38,77 @@ const TEN_MB = 10 * 1024 * 1024;
 const KIND: Record<string, ArtifactClassification> = {
   image: {
     type: "image",
-    icon: Image,
+    icon: Image01Icon,
     label: "Image",
     openable: true,
     hasSourceToggle: false,
   },
   video: {
     type: "video",
-    icon: VideoCamera,
+    icon: Video01Icon,
     label: "Video",
     openable: true,
     hasSourceToggle: false,
   },
   pdf: {
     type: "pdf",
-    icon: FileText,
+    icon: File02Icon,
     label: "PDF",
     openable: true,
     hasSourceToggle: false,
   },
   csv: {
     type: "csv",
-    icon: Table,
+    icon: TableIcon,
     label: "Spreadsheet",
     openable: true,
     hasSourceToggle: true,
   },
   html: {
     type: "html",
-    icon: FileHtml,
+    icon: HtmlFile01Icon,
     label: "HTML",
     openable: true,
     hasSourceToggle: true,
   },
   react: {
     type: "react",
-    icon: FileHtml,
+    icon: HtmlFile01Icon,
     label: "React",
     openable: true,
     hasSourceToggle: true,
   },
   markdown: {
     type: "markdown",
-    icon: FileText,
+    icon: File02Icon,
     label: "Document",
     openable: true,
     hasSourceToggle: true,
   },
   json: {
     type: "json",
-    icon: Code,
+    icon: CodeIcon,
     label: "Data",
     openable: true,
     hasSourceToggle: true,
   },
   code: {
     type: "code",
-    icon: Code,
+    icon: CodeIcon,
     label: "Code",
     openable: true,
     hasSourceToggle: false,
   },
   text: {
     type: "text",
-    icon: FileText,
+    icon: File02Icon,
     label: "Text",
     openable: true,
     hasSourceToggle: false,
   },
   "download-only": {
     type: "download-only",
-    icon: File,
+    icon: FileEmpty02Icon,
     label: "File",
     openable: false,
     hasSourceToggle: false,
@@ -257,14 +260,48 @@ function getExtension(filename?: string): string {
   return filename.slice(lastDot).toLowerCase();
 }
 
+// Types the browser renders natively — we don't run their bytes through our
+// React/JS pipeline, so the size gate doesn't need to apply.
+const NATIVELY_RENDERED = new Set<ArtifactClassification["type"]>([
+  "image",
+  "video",
+  "pdf",
+]);
+
+const EXPERT_CLASSIFICATION: ArtifactClassification = {
+  type: "expert",
+  icon: UserIcon,
+  label: "Expert",
+  openable: true,
+  hasSourceToggle: false,
+};
+
+/** An expert ref is not a file — it skips the MIME/extension tables. */
+export function classifyArtifactRef(ref: ArtifactRef): ArtifactClassification {
+  if (ref.expert) return EXPERT_CLASSIFICATION;
+  return classifyArtifact(ref.mimeType, ref.title, ref.sizeBytes);
+}
+
 export function classifyArtifact(
   mimeType: string | null,
   filename?: string,
   sizeBytes?: number,
 ): ArtifactClassification {
-  // Size gate: >10MB is download-only regardless of type.
-  if (sizeBytes && sizeBytes > TEN_MB) return KIND["download-only"];
+  const kind = classifyByTypeOnly(mimeType, filename);
+  // Size gate: >10MB is download-only, but only for content we actually
+  // render in JS. Images, videos, and PDFs are handled natively by the
+  // browser — gating them produced "broken previews" for hi-res files
+  // (SECRT-2221).
+  if (sizeBytes && sizeBytes > TEN_MB && !NATIVELY_RENDERED.has(kind.type)) {
+    return KIND["download-only"];
+  }
+  return kind;
+}
 
+function classifyByTypeOnly(
+  mimeType: string | null,
+  filename?: string,
+): ArtifactClassification {
   const basename = getBasename(filename);
   const exactKind = EXACT_FILENAME_KIND[basename];
   if (exactKind) return KIND[exactKind];

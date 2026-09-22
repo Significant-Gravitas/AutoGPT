@@ -10,7 +10,9 @@ Post to LinkedIn using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's social media API to post content to LinkedIn. It handles text posts, images, videos, and documents, with support for scheduling and audience targeting. The block authenticates through Ayrshare's API.
+
+LinkedIn-specific features include visibility controls, comment management, and targeting by country, seniority, industry, and other demographics (requires 300+ followers in the target audience).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -19,7 +21,7 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | post | The post text (max 3,000 chars, hashtags supported with #) | str | No |
 | media_urls | Optional list of media URLs. LinkedIn supports up to 9 images, videos, or documents (PPT, PPTX, DOC, DOCX, PDF <100MB, <300 pages). | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |
@@ -51,7 +53,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Thought Leadership**: Automatically share blog posts or industry insights with a professional network.
+
+**Scheduled Content**: Queue up a week's worth of LinkedIn posts with scheduled publishing times.
+
+**Targeted Announcements**: Share company updates targeted to specific industries or seniority levels.
 <!-- END MANUAL -->
 
 ---

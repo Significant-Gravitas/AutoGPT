@@ -1,12 +1,11 @@
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useState, useCallback, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  usePostV1CreateExecutionSchedule as useCreateSchedule,
-  getGetV1ListExecutionSchedulesForAGraphQueryKey,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { trackScheduleCreatedGoal } from "@/services/analytics/activation-goals";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
 
 interface UseScheduleAgentModalCallbacks {
   onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
@@ -35,13 +34,12 @@ export function useScheduleAgentModal(
           toast({
             title: "Schedule created",
           });
+          trackScheduleCreatedGoal(
+            { id: agent.graph_id, name: agent.name },
+            "library",
+          );
           callbacks?.onCreateSchedule?.(response.data);
-          // Invalidate schedules list for this graph
-          queryClient.invalidateQueries({
-            queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
-              agent.graph_id,
-            ),
-          });
+          invalidateAllScheduleQueries(queryClient, agent.graph_id);
           // Reset form
           setScheduleName(defaultScheduleName);
           setCronExpression(agent.recommended_schedule_cron || "0 9 * * 1");

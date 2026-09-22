@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import {
   isActive,
+  isAgentScheduled,
   isFailed,
   toEndTime,
   endedAfter,
@@ -158,7 +159,7 @@ function buildSitrepFromConfig(
     };
   }
 
-  if (agent.is_scheduled || agent.recommended_schedule_cron) {
+  if (isAgentScheduled(agent)) {
     if (!isNextRunWithin(agent.next_scheduled_run, scheduledWithinMs)) {
       return null;
     }

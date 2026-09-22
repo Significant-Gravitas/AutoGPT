@@ -23,20 +23,28 @@ from backend.copilot.sdk.service import _build_query_message
 
 def _make_messages(n_pairs: int, *, current_user: str = "current") -> list[MagicMock]:
     """Build a flat list of n_pairs*2 alternating user/asst messages, plus
-    one trailing user message for the *current* turn."""
+    one trailing user message for the *current* turn.
+
+    ``sequence`` is left ``None`` so the cap-engaged sequence-based path
+    in ``_build_query_message`` (which short-circuits on ``sequence > 0``)
+    doesn't fire — these tests target the legacy index-based gap branch.
+    """
     msgs: list[MagicMock] = []
     for i in range(n_pairs):
         u = MagicMock()
         u.role = "user"
         u.content = f"user message {i}"
+        u.sequence = None
         a = MagicMock()
         a.role = "assistant"
         a.content = f"assistant response {i}"
+        a.sequence = None
         msgs.extend([u, a])
     # Current turn's user message
     cur = MagicMock()
     cur.role = "user"
     cur.content = current_user
+    cur.sequence = None
     msgs.append(cur)
     return msgs
 

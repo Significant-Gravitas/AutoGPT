@@ -15,6 +15,7 @@ from ._api import llm_api_call
 
 wolfram = (
     ProviderBuilder("wolfram")
+    .with_description("Computational knowledge engine")
     .with_api_key("WOLFRAM_APP_ID", "Wolfram Alpha App ID")
     .with_base_cost(1, BlockCostType.RUN)
     .build()

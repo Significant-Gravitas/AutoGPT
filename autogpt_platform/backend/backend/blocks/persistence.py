@@ -1,3 +1,4 @@
+import inspect
 import logging
 from typing import Any, Literal
 
@@ -26,13 +27,23 @@ def get_storage_key(key: str, scope: StorageScope, graph_id: str) -> str:
 
 
 class PersistInformationBlock(Block):
-    """Block for persisting key-value data for the current user with configurable scope"""
+    """
+    Persists a key-value pair for use across multiple runs of an agent. Use this when
+    you need memory that persists between executions, e.g. last-seen state, counters,
+    accumulated data.
+
+    Beware of read->write race conditions for parallel use of the same key.
+    """
 
     class Input(BlockSchemaInput):
         key: str = SchemaField(description="Key to store the information under")
         value: Any = SchemaField(description="Value to store")
         scope: StorageScope = SchemaField(
-            description="Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user)",
+            description=(
+                "Scope of persistence: "
+                "'within_agent' — shared across all runs of this agent; "
+                "'across_agents' — shared across all agents for this user"
+            ),
             default="within_agent",
         )
 
@@ -42,7 +53,7 @@ class PersistInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="1d055e55-a2b9-4547-8311-907d05b0304d",
-            description="Persist key-value information for the current user",
+            description=inspect.cleandoc(PersistInformationBlock.__doc__ or ""),
             categories={BlockCategory.DATA},
             input_schema=PersistInformationBlock.Input,
             output_schema=PersistInformationBlock.Output,
@@ -94,12 +105,16 @@ class PersistInformationBlock(Block):
 
 
 class RetrieveInformationBlock(Block):
-    """Block for retrieving key-value data for the current user with configurable scope"""
+    """Reads back a key-value pair previously saved by PersistInformationBlock."""
 
     class Input(BlockSchemaInput):
         key: str = SchemaField(description="Key to retrieve the information for")
         scope: StorageScope = SchemaField(
-            description="Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user)",
+            description=(
+                "Scope of persistence: "
+                "'within_agent' — shared across all runs of this agent; "
+                "'across_agents' — shared across all agents for this user"
+            ),
             default="within_agent",
         )
         default_value: Any = SchemaField(
@@ -112,7 +127,7 @@ class RetrieveInformationBlock(Block):
     def __init__(self):
         super().__init__(
             id="d8710fc9-6e29-481e-a7d5-165eb16f8471",
-            description="Retrieve key-value information for the current user",
+            description=inspect.cleandoc(RetrieveInformationBlock.__doc__ or ""),
             categories={BlockCategory.DATA},
             input_schema=RetrieveInformationBlock.Input,
             output_schema=RetrieveInformationBlock.Output,

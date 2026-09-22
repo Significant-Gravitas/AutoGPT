@@ -6,8 +6,6 @@ useDefault = true
 [allowlist]
 description = "Global allowlist"
 paths = [
-    # Template/example env files (no real secrets)
-    '''\.env\.(default|example|template)$''',
     # Lock files
     '''pnpm-lock\.yaml$''',
     '''poetry\.lock$''',
@@ -28,9 +26,17 @@ paths = [
     '''google-services\.json$''',
     '''classic/frontend/(lib|web)/''',
 ]
-# CI test-only encryption key (marked DO NOT USE IN PRODUCTION)
 regexes = [
-    '''dvziYgz0KSK8FENhju0ZYi8''',
     # LLM model name enum values falsely flagged as API keys
     '''Llama-\d.*Instruct''',
 ]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Documented local development VAPID fixture"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^autogpt_platform/backend/\.env\.default$''']
+regexes = ['''^17hBPdSdn6TR_yAgQxA0TjTcvRj3Lf6znHnASZ4rOKc$''']

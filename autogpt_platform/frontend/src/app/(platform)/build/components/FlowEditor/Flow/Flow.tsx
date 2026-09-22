@@ -1,11 +1,11 @@
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
+import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useCallback, useMemo } from "react";
+import { MouseEvent, useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useNodeStore } from "../../../stores/nodeStore";
@@ -13,6 +13,7 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { DraftRecoveryPopup } from "../../DraftRecoveryDialog/DraftRecoveryPopup";
 import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 import NewControlPanel from "../../NewControlPanel/NewControlPanel";
+import { ReadOnlyBanner } from "../../ReadOnlyBanner/ReadOnlyBanner";
 import CustomEdge from "../edges/CustomEdge";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
@@ -20,6 +21,7 @@ import { CustomControls } from "./components/CustomControl";
 import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { RunningBackground } from "./components/RunningBackground";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 import { resolveCollisions } from "./helpers/resolve-collision";
 import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
@@ -28,19 +30,22 @@ import { useFlowRealtime } from "./useFlowRealtime";
 import "@xyflow/react/dist/style.css";
 import "./flow.css";
 
+const DELETE_KEY_CODES = ["Backspace", "Delete"];
+
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
   });
 
-  const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
+  const { data: graph } = useGetV1GetSpecificGraph(
     flowID ?? "",
     {},
     {
       query: {
         select: okData,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );
@@ -58,6 +63,10 @@ export const Flow = () => {
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
+  const onNodeContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+  }, []);
 
   const onNodeDragStop = useCallback(() => {
     const currentNodes = useNodeStore.getState().nodes;
@@ -80,19 +89,18 @@ export const Flow = () => {
     isInitialLoadComplete,
     isLocked,
     setIsLocked,
+    isReadOnly,
   } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
   // Copy/paste functionality
-  useCopyPaste();
+  useCopyPaste(isReadOnly);
 
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
-
-  const isBuilderChatEnabled = useGetFlag(Flag.BUILDER_CHAT_PANEL);
 
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
@@ -106,9 +114,7 @@ export const Flow = () => {
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
-          onNodeContextMenu={(event) => {
-            event.preventDefault();
-          }}
+          onNodeContextMenu={onNodeContextMenu}
           maxZoom={2}
           minZoom={0.05}
           onDragOver={onDragOver}
@@ -116,15 +122,21 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
-          deleteKeyCode={["Backspace", "Delete"]}
+          deleteKeyCode={DELETE_KEY_CODES}
         >
           <Background />
-          <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
-          <NewControlPanel />
-          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
+          <CustomControls
+            setIsLocked={setIsLocked}
+            isLocked={isLocked}
+            isReadOnly={isReadOnly}
+          />
+          <NewControlPanel isReadOnly={isReadOnly} />
+          {isReadOnly && <ReadOnlyBanner />}
+          {!isReadOnly &&
+            (hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />)}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
-          {graph && (
+          {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
               className="right-2 top-32 p-2"
@@ -138,12 +150,9 @@ export const Flow = () => {
         executionId={flowExecutionID || undefined}
         graphId={flowID || undefined}
       />
-      {isBuilderChatEnabled && (
-        <BuilderChatPanel
-          isGraphLoaded={isInitialLoadComplete}
-          onGraphEdited={() => void refetchGraph()}
-        />
-      )}
+      <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+        <BuilderChatPanel />
+      </ErrorBoundary>
     </div>
   );
 };

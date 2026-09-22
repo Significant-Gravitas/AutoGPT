@@ -1,10 +1,3 @@
-import {
-  FileTextIcon,
-  Eye,
-  TrashIcon,
-  UploadIcon,
-  X,
-} from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
@@ -13,6 +6,14 @@ import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { Text } from "../Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import {
+  Cancel01Icon,
+  Delete02Icon,
+  EyeIcon,
+  File02Icon,
+  Upload01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function PreviewButton({
   value,
@@ -37,7 +38,7 @@ function PreviewButton({
           type="button"
           aria-label="Preview file"
         >
-          <Eye size={14} />
+          <Icon icon={EyeIcon} size={14} />
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
@@ -339,7 +340,10 @@ export function FileInput(props: Props) {
           ) : value ? (
             <div className="flex items-center gap-2">
               <div className="flex flex-1 items-center gap-2 rounded-xlarge border border-gray-300 bg-gray-50 p-2 dark:border-gray-600 dark:bg-gray-800">
-                <FileTextIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400" />
+                <Icon
+                  icon={File02Icon}
+                  className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-400"
+                />
 
                 <Text
                   variant="small-medium"
@@ -377,7 +381,7 @@ export function FileInput(props: Props) {
                 type="button"
                 aria-label="Clear file"
               >
-                <X size={14} />
+                <Icon icon={Cancel01Icon} size={14} />
               </Button>
             </div>
           ) : (
@@ -390,7 +394,7 @@ export function FileInput(props: Props) {
                 disabled={isUploading}
                 type="button"
               >
-                <UploadIcon className="mr-1.5 h-3.5 w-3.5" />
+                <Icon icon={Upload01Icon} className="mr-1.5 h-3.5 w-3.5" />
                 {`Upload ${displayName}`}
               </Button>
             </div>
@@ -431,7 +435,7 @@ export function FileInput(props: Props) {
           <div className="flex min-h-14 items-center gap-4">
             <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
               <div className="flex items-center gap-2">
-                <FileTextIcon className="h-7 w-7 text-black" />
+                <Icon icon={File02Icon} className="h-7 w-7 text-black" />
                 <div className="flex flex-col gap-0.5">
                   <span className="font-normal text-black">
                     {fileInfo
@@ -461,7 +465,7 @@ export function FileInput(props: Props) {
                   aria-label="Clear file"
                   className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 >
-                  <TrashIcon className="h-5 w-5" />
+                  <Icon icon={Delete02Icon} className="h-5 w-5" />
                 </Button>
               </div>
             </div>

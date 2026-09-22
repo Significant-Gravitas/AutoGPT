@@ -15,6 +15,7 @@ import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
+import { getSiteUrl } from "@/lib/metadata";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
@@ -25,11 +26,28 @@ const faviconPath = isDev
     ? "/favicon-local.ico"
     : "/favicon.ico";
 
+const SITE_TITLE = "AutoGPT Platform";
+const SITE_DESCRIPTION = "Your one stop shop to creating AI Agents";
+
 export const metadata: Metadata = {
-  title: "AutoGPT Platform",
-  description: "Your one stop shop to creating AI Agents",
+  metadataBase: new URL(getSiteUrl()),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: faviconPath,
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    siteName: "AutoGPT",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
 };
 

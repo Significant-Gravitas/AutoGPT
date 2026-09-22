@@ -51,7 +51,7 @@ export function ContentCardHeader({
 }) {
   return (
     <div className={cn("flex items-start justify-between gap-2", className)}>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
       {action}
     </div>
   );
@@ -151,7 +151,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "whitespace-pre-wrap rounded-lg border bg-black p-3 text-xs text-neutral-200",
+        "whitespace-pre-wrap rounded-lg border bg-neutral-100 p-3 text-xs text-neutral-800",
         className,
       )}
     >

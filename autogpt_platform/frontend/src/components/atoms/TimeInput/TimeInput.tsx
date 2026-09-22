@@ -15,6 +15,9 @@ interface TimeInputProps {
   hint?: ReactNode;
   size?: "small" | "medium";
   wrapperClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const TimeInput: React.FC<TimeInputProps> = ({
@@ -30,6 +33,9 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   hint,
   size = "medium",
   wrapperClassName,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange?.(e.target.value);
@@ -39,7 +45,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
     // Base styles
     "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-400",
+    "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     className,
@@ -71,7 +77,9 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         )}
         disabled={disabled}
         placeholder={placeholder || label}
-        {...(hideLabel && label ? { "aria-label": label } : {})}
+        aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+        aria-labelledby={ariaLabelledBy}
+        aria-describedby={ariaDescribedBy}
         id={id}
       />
     </div>

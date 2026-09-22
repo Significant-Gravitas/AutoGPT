@@ -39,6 +39,7 @@ class ProviderBuilder:
         self._default_scopes: Optional[List[str]] = None
         self._client_id_env_var: Optional[str] = None
         self._client_secret_env_var: Optional[str] = None
+        self._description: Optional[str] = None
         self._extra_config: dict = {}
 
     def with_oauth(
@@ -91,6 +92,19 @@ class ProviderBuilder:
             )
         return self
 
+    def with_managed_api_key(self) -> "ProviderBuilder":
+        """Declare api_key auth support without an env-var-backed default credential.
+
+        Use for providers whose API key is provisioned per-user by a
+        :class:`~backend.integrations.managed_credentials.ManagedCredentialProvider`
+        (e.g. Ayrshare's profile key).  Equivalent to :meth:`with_api_key` but
+        skips both the env-var lookup and the default-credential registration
+        — nothing can accidentally leak an org-level key into blocks as if it
+        were a per-user credential.
+        """
+        self._supported_auth_types.add("api_key")
+        return self
+
     def with_api_key_from_settings(
         self, settings_attr: str, title: str
     ) -> "ProviderBuilder":
@@ -140,10 +154,25 @@ class ProviderBuilder:
         return self
 
     def with_base_cost(
-        self, amount: int, cost_type: BlockCostType
+        self,
+        amount: int,
+        cost_type: BlockCostType,
+        cost_divisor: int = 1,
     ) -> "ProviderBuilder":
-        """Set base cost for all blocks using this provider."""
-        self._base_costs.append(BlockCost(cost_amount=amount, cost_type=cost_type))
+        """Set base cost for all blocks using this provider.
+
+        ``cost_divisor`` only applies to SECOND / ITEMS. TOKENS is billed via
+        the TOKEN_COST rate table (per-model pricing) and ignores the divisor.
+        Example: ``with_base_cost(1, BlockCostType.SECOND, cost_divisor=10)``
+        bills 1 credit per 10 walltime seconds.
+        """
+        self._base_costs.append(
+            BlockCost(
+                cost_amount=amount,
+                cost_type=cost_type,
+                cost_divisor=cost_divisor,
+            )
+        )
         return self
 
     def with_api_client(self, factory: Callable) -> "ProviderBuilder":
@@ -163,6 +192,31 @@ class ProviderBuilder:
         self._extra_config.update(kwargs)
         return self
 
+    def with_description(self, description: str) -> "ProviderBuilder":
+        """Set a short human-readable description for this provider.
+
+        Exposed via ``GET /integrations/providers`` so the frontend can display
+        a one-line summary next to each provider without hardcoding copy
+        (e.g. ``"Issues, PRs, repositories"`` for GitHub).
+        """
+        self._description = description
+        return self
+
+    def with_supported_auth_types(self, *types: CredentialsType) -> "ProviderBuilder":
+        """Declare which credential types this provider accepts.
+
+        Surfaced via ``GET /integrations/providers`` so the settings UI can
+        render only the relevant connection tabs (OAuth / API key / etc.) per
+        provider. ``with_oauth``, ``with_api_key``, ``with_managed_api_key``,
+        and ``with_user_password`` populate this set automatically — call this
+        method only for providers whose auth handlers/credentials live outside
+        the builder chain (e.g. legacy OAuth handlers in
+        ``backend/integrations/oauth/`` or block-level ``CredentialsMetaInput``
+        declarations).
+        """
+        self._supported_auth_types.update(types)
+        return self
+
     def build(self) -> Provider:
         """Build and register the provider configuration."""
         provider = Provider(
@@ -174,6 +228,7 @@ class ProviderBuilder:
             supported_auth_types=self._supported_auth_types,
             api_client_factory=self._api_client_factory,
             error_handler=self._error_handler,
+            description=self._description,
             **self._extra_config,
         )
 

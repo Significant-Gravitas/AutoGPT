@@ -4,14 +4,13 @@ import {
   getGetV1ListGraphExecutionsQueryKey,
   usePostV1ExecuteGraphAgent,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import {
-  getGetV1ListExecutionSchedulesForAGraphQueryOptions,
-  useDeleteV1DeleteExecutionSchedule,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -42,11 +41,7 @@ export function useSelectedScheduleActions({
 
         onDeleted?.();
 
-        queryClient.invalidateQueries({
-          queryKey: getGetV1ListExecutionSchedulesForAGraphQueryOptions(
-            agent.graph_id,
-          ).queryKey,
-        });
+        invalidateAllScheduleQueries(queryClient, agent.graph_id);
       },
       onError: (error: unknown) =>
         toast({
@@ -92,6 +87,12 @@ export function useSelectedScheduleActions({
       });
 
       const newRunID = okData(res)?.id;
+      if (newRunID) {
+        trackAgentRunGoal(
+          { id: schedule.graph_id, name: agent.name },
+          "library",
+        );
+      }
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),

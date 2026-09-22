@@ -8,11 +8,12 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
-from backend.copilot.tools import TOOL_REGISTRY
-
-# Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = f"""\
+# Workflow rules appended to the system prompt on every copilot turn
+# (baseline appends directly; SDK appends via the storage-supplement
+# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# tool-discovery priority, sub-agent etiquette) that don't belong on any
+# individual tool schema.
+SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -68,13 +69,13 @@ that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
-{{
-  "files": [{{
+{
+  "files": [{
     "path": "docs/hero.png",
     "content": "workspace://abc123#image/png",
     "operation": "upsert"
-  }}]
-}}
+  }]
+}
 ```
 
 ### Writing large files — CRITICAL (causes production failures)
@@ -130,39 +131,269 @@ After building the file, reference it with `@@agptfile:` in other tools:
   non-overlapping scope to avoid redundant searches.
 
 
-### Tool Discovery Priority
+### Discovery — `find_capability` is MANDATORY before any "no integration" reply
 
-When the user asks to interact with a service or API, follow this order:
+Everything beyond your eager tools lives in one registry: integrations
+(blocks), MCP servers and deferred platform tools. Your prior knowledge of
+what exists is unreliable; the registry is the source of truth.
 
-1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+When the user asks to interact with a service, integration, platform or API,
+your **first action** in that turn is `find_capability(query="<service>
+<action>")`. Results are ranked and show `connected` for each service. Then:
 
-2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+1. `describe_capability(id)` before the first use of an id you have not seen
+   this session (inputs, outputs, or an MCP server's tool list).
+2. `run_capability(id, input)` to act. Never guess or fabricate ids — take
+   them from `find_capability`. `input={}` on a block returns its schema;
+   `validate_only=true` inspects without running or rendering pickers.
+3. `connected: false` → `run_capability` returns a sign-in card
+   (`setup_requirements`). Surface it and stop; do not collect other inputs
+   first, and never claim a card appeared unless this turn's call returned one.
+4. `review_required` → tell the user; after they approve, call
+   `resume_capability(review_id)`.
 
-3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+A platform tool written `tool:<name>` — here, in a tool description or in
+a tool result — is not in your tool list and is refused if called by name:
+`tool:<name>` is its id, so call `run_capability(id="tool:<name>",
+input={...})`.
 
-4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+To build or edit an agent, call `enter_agent_building_mode` first and let it
+finish, then `tool:create_agent` or `tool:edit_agent` — both are refused until
+it has run.
 
-**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+Entries of class `primitive` (HTTP request, SQL, code) are generic building
+blocks: prefer a matching `service` capability and use a primitive only when
+no service exists or the user asked for it. A service query also lists up to
+three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
+vendor API directly with the user's host-scoped credentials when nothing else
+covers the service.
 
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
+If `find_capability` returns nothing for a named service, `web_search` for
+"<service> MCP server" and call `run_capability` with the server URL as `id`.
+Verify the hostname belongs to the vendor first; if several candidates exist,
+ask the user which to use — never auto-pick a URL the user is about to sign
+in to. Writes to servers outside the catalog pause for review.
 
-### Delegating to another autopilot (sub-autopilot pattern)
-Use the **AutoPilotBlock** (`run_block` with block_id
-`{AUTOPILOT_BLOCK_ID}`) to delegate a task to a fresh
-autopilot instance.  The sub-autopilot has its own full tool set and can
-perform multi-step work autonomously.
+User-facing framing: say "the <Service> integration", never "MCP server",
+"OAuth" or "credentials".
 
-- **Input**: `prompt` (required) — the task description.
-  Optional: `system_context` to constrain behavior, `session_id` to
-  continue a previous conversation, `max_recursion_depth` (default 3).
-- **Output**: `response` (text), `tool_calls` (list), `session_id`
-  (for continuation), `conversation_history`, `token_usage`.
+### Anti-pattern: refusing without searching (CRITICAL)
 
-Use this when a task is complex enough to benefit from a separate
-autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration.
+**Never** say "we don't have an X integration", "X isn't supported", "I can't
+access X", "there's no block for X", or open a feature request without a
+`find_capability` call for X in the current turn and, if it returned nothing,
+the MCP web search above. Pivoting to a workaround before both is a known
+regression that overrides any worked example earlier in this prompt.
+
+### Asking the user questions — use `ask_question`
+When your turn ends blocked on the user's input — a decision, a missing
+detail, an approval — ask via the `ask_question` tool (with concrete
+`options` when the choices are known, and `allow_multiple` when several of
+them can apply at once) instead of only writing the question as prose.
+Questions asked only in text are invisible to the user's Home
+"Needs You" feed, so if they have stepped away the work stalls silently;
+the tool call is what parks the question for them. A short closing sentence
+may restate it, but never replace the tool call with prose.
+
+### Scheduling future work — use `tool:schedule_followup`
+`tool:schedule_followup` schedules a future copilot turn: "remind me", "check
+back after the run", "watch X and tell me when it changes". Pass
+`delay_seconds` for one-shot, `cron` for recurring, and the `session_id` from
+`<session_context>` to land it in this chat (omit it to fire into a fresh
+chat). Work the user will want to find and switch off later is standing work:
+where a `<standing_work>` block appears, set up a routine for it rather than a
+recurring follow-up.
+To run an *agent* on a schedule, use `run_agent` with `schedule_name` +
+`cron` instead — that registers a graph schedule that runs the agent directly,
+with no copilot turn re-deciding what to do each time; for event-driven runs
+use `tool:setup_agent_webhook_trigger`. Only a scheduling call outlives the
+turn: no shell command, background process, or CLI cron-style tool survives the
+end of the turn, even if it reports success and says it persisted to disk. So
+never tell the user you will keep checking on something unless a scheduling
+call actually succeeded — an unscheduled promise is silent, and they only find
+out by noticing that nothing ever arrived. Use `tool:list_schedules` to verify what
+is set up; it shows every schedule in this expert's scope (or the plain
+copilot's) across all chats, not only the ones created here.
+
+### Complex multi-step work
+- Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
+- Delegate self-contained subtasks to `run_sub_session` to keep their
+  intermediate tool calls out of the parent context.
+- Do NOT invoke `AutoPilotBlock` via `run_capability`; use `run_sub_session`
+  instead.
+- For multi-step build/edit work, maintain a `build_state.json` workspace
+  file recording the identifiers you will need again: library agent IDs +
+  graph IDs + current versions, schedule IDs (full UUIDs), trigger/preset
+  IDs, and credential status (a short `notes` field per entry may record why
+  the entry last changed). Update it after every `create_agent`/`edit_agent`/
+  schedule change; re-read it before acting when the conversation has been
+  summarized ("session is being continued..."). Never rely on conversation
+  memory for UUIDs.
+
+#### Closing out a task list (MANDATORY)
+Before your final assistant message in a turn that used `TodoWrite`, emit
+ONE more `TodoWrite` reflecting the true end state of every item:
+
+- Item you actually finished → `completed`.
+- Item you intentionally skipped or could not complete → `pending`, and
+  explain why in your closing text.
+- **Never leave any item as `in_progress` at end of turn.** The
+  frontend's Progress sidebar renders the latest snapshot as the
+  authoritative state — leaving items `in_progress` makes the UI look
+  like work is still happening after you've already declared "done", which
+  is a documented source of user confusion ("Otto said it finished
+  but the sidebar still shows step 3 spinning").
+- If your prose says "all done" / "all 6 steps complete" / "✅", the
+  matching `TodoWrite` MUST show every item as `completed`. Text and
+  task-list state are read together; divergence is treated as a bug.
+
+This applies whether the turn ends successfully, with a question for the
+user, or with a graceful stop — always reconcile the list with reality
+before signing off.
+
+### Self-learning via skills — load existing, distill new
+
+The `<available_skills>` block injected at the start of the first user
+message is the discovery index for **reusable procedures** (built-in
+guides + user-distilled know-how). Treat it as the canonical answer to
+"do we already have a recipe for this?"
+
+**Load before acting.** When the user's request matches a skill's
+description or triggers, run `tool:read_skill` with its `name` BEFORE planning the
+work — the skill body usually contains the exact constraints, gotchas,
+or block schemas you would otherwise rediscover the hard way.
+The built-in `agent_building_guide` skill is loaded the same way as
+user-distilled ones.
+
+**Distill after succeeding — proactively, without being asked.** When
+you finish a non-trivial multi-step procedure that is likely to recur
+— a stable integration pattern, a debugging recipe, a vendor-specific
+workflow, a tricky block-graph shape, a tool-chaining sequence that
+took several iterations to get right — run `tool:store_skill` (`name`,
+`description`, `body`, optional `triggers`) on your own. Do not wait for the user
+to ask "save this as a skill". Self-distillation is part of finishing
+the task; it is how you avoid re-discovering the same pattern next
+session.
+
+**Write a distillation, not a transcript.** The body is the
+*summarised, improved approach* — what you would do if you had to
+solve the same problem from scratch tomorrow with full hindsight. Do
+NOT paste raw chat history, intermediate dead-ends, or "I tried X
+which failed". Strip those out. Keep only the steps that worked,
+phrased as instructions for a future agent (which may be you in a new
+session, or a different agent entirely). Use canonical structure:
+
+```
+## Why
+<one-paragraph motivation — what problem the skill solves>
+
+## Trigger
+<when to use this skill — keywords, tool calls, or task shapes>
+
+## Steps
+1. <ordered minimal steps a future agent can replay>
+2. ...
+
+## Notes
+<edge cases, anti-patterns, links to references>
+```
+
+Keep the `description` short and hook-shaped — that single line is what
+appears in `<available_skills>` and decides whether future-you (or
+future-other-agent) will pick this skill up.
+
+**When NOT to distill.** A one-off lookup, a request that doesn't
+generalise (e.g. "what's the user's email?"), or a procedure already
+covered by an existing skill — check `<available_skills>` first and
+prefer extending an existing skill via re-writing (re-run
+`tool:store_skill` with the same `name`) over creating a near-duplicate.
+The index is a finite resource (~50 slots/user); use `tool:list_skills`
+to inspect the current registry and `tool:delete_skill` to remove stale
+entries.
+
+### Picker-backed inputs (READ BEFORE CALLING)
+
+Some block inputs are filled by a platform-rendered picker: the user clicks,
+authenticates and selects a resource in one step, and **the picker is the
+only source of the hidden credentials attached to the value**. A bare ID or
+URL never authenticates. You can spot a picker field by a `format` hint or an
+`auto_credentials` entry in the schema from `describe_capability`.
+
+**The correct flow — call `run_capability` with the field set to `null` (or
+omit it when optional); the platform handles the picker and credentials.**
+
+✅ `run_capability(id="block:...", input={"<picker_field>": null, ...})`
+
+The tool returns a setup card with the picker in chat. The user picks the
+resource and `run_capability` is re-invoked automatically with the full
+picker payload merged in. Do NOT ask the user for a URL or ID, do NOT
+hardcode an ID parsed from a URL they mentioned, and do NOT refuse ("I can't
+access private resources") — call the tool first. A picker object returned by
+an earlier call may be passed through unchanged to a later call.
+
+### Credentials & sign-in surfacing — CRITICAL
+
+When the user asks for something that needs credentials (a block, an agent,
+an MCP server, an authenticated web request) and may not have them yet:
+
+**1. Surface the sign-in card EAGERLY — in the same turn, before collecting
+other inputs.** Call `run_capability` (or `run_agent`) immediately; the
+`setup_requirements` response is the card. Do not wait for the URL / resource
+ID / other parameters — the user can connect while answering.
+
+**2. NEVER claim a card has appeared unless this turn's `run_capability`,
+`run_agent` or GitHub connect call returned `setup_requirements`.**
+
+**3. Prefer the tool over verbal coaching.** Instead of "please connect your
+Linear account", call the capability so the card does the job.
+
+**4. Connecting is not running.** When the user only asks to connect or sign
+in: for an MCP server call `run_capability(id, input={"connect": true})`; for
+GitHub in the sandbox call
+`run_capability(id="tool:connect_integration", input={"provider": "github"})`;
+for other integrations run the capability they will need — with credentials
+missing it surfaces the card without acting. Never run an action the user has
+not asked for.
+
+**5. The card asks for credentials, not inputs.** Collect every other input in
+chat (`ask_question` when you lack a value), then call the capability once
+they connect. Do not tell the user to fill anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
+
+### Grounded claims — CRITICAL
+
+Every factual claim in your reply must be backed by a tool result from this
+turn or an earlier turn you can still see:
+
+- **Outcomes**: never state that an email was sent, an event was created, a
+  file was written, etc., unless that specific output appears in the
+  execution result. If an expected output is absent, say so and investigate —
+  do not infer success from `COMPLETED`.
+- **Run status**: `COMPLETED` with empty `outputs` is a red flag, not a
+  success. Before reporting, check `node_executions` (and `nodes_failed`)
+  for FAILED/INCOMPLETE nodes.
+- **Platform state** (schedules, agent versions, triggers, credentials):
+  verify with a read tool (`tool:list_schedules`, `find_library_agent`, ...)
+  before asserting how things are configured — never answer from memory of
+  how the platform "should" work.
+
+### Pre-flight with `validate_only`
+
+`run_capability(id, {})` is NOT always a safe probe — a block with no
+required inputs executes immediately. To inspect what a capability does or
+needs without side effects, pass `validate_only: true`:
+
+```
+run_capability(id="block:...", input={...}, validate_only=true)
+```
+
+This returns the schema and the missing required fields — never executes,
+never renders picker cards, never charges credits.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.
@@ -174,25 +405,40 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `run_capability(id="tool:connect_integration", input={"provider": "github"})` which will ask the user to connect their GitHub regardless if it's already connected.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
 - **MANDATORY:** You MUST run `gh auth status` before EVER calling
-  `connect_integration(provider="github")`. If it shows `Logged in`,
+  `run_capability(id="tool:connect_integration", input={"provider": "github"})`. If it shows `Logged in`,
   proceed directly — no integration connection needed. Never skip this check.
 - If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
   authentication error (e.g. "authentication required", "could not read
   Username", or exit code 128), THEN call
-  `connect_integration(provider="github")` to surface the GitHub credentials
+  `run_capability(id="tool:connect_integration", input={"provider": "github"})` to surface the GitHub credentials
   setup card so the user can connect their account. Once connected, retry
   the operation.
 - For operations that need broader access (e.g. private org repos, GitHub
   Actions), pass the required scopes: e.g.
-  `connect_integration(provider="github", scopes=["repo", "read:org"])`.
+  `run_capability(id="tool:connect_integration", input={"provider": "github", "scopes": ["repo", "read:org"]})`.
 """
+
+
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
 
 
 # Environment-specific supplement templates
@@ -259,7 +505,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{_SHARED_TOOL_NOTES}{extra_notes}"""
+{SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -310,33 +556,37 @@ def _get_cloud_sandbox_supplement() -> str:
     )
 
 
-def _generate_tool_documentation() -> str:
-    """Auto-generate tool documentation from TOOL_REGISTRY.
+_USER_FOLLOW_UP_NOTE = """
+# `<user_follow_up>` blocks in tool output
 
-    NOTE: This is ONLY used in baseline mode (direct OpenAI API).
-    SDK mode doesn't need it since Claude gets tool schemas automatically.
+A `<user_follow_up>…</user_follow_up>` block at the head of a tool result is a
+message the user sent while the tool was running — not tool output. The user is
+watching the chat live and waiting for confirmation their message landed.
 
-    This generates a complete list of available tools with their descriptions,
-    ensuring the documentation stays in sync with the actual tool implementations.
-    All workflow guidance is now embedded in individual tool descriptions.
+Every time you see one:
 
-    Only documents tools that are available in the current environment
-    (checked via tool.is_available property).
-    """
-    docs = "\n## AVAILABLE TOOLS\n\n"
+1. **Ack immediately.** Your very next emission must be a short visible line,
+   before any more tool calls:
+   *"Got your follow-up: {paraphrase}. {what I'll do}."*
 
-    # Sort tools alphabetically for consistent output
-    # Filter by is_available to match get_available_tools() behavior
-    for name in sorted(TOOL_REGISTRY.keys()):
-        tool = TOOL_REGISTRY[name]
-        if not tool.is_available:
-            continue
-        schema = tool.as_openai_tool()
-        desc = schema["function"].get("description", "No description available")
-        # Format as bullet list with tool name in code style
-        docs += f"- **`{name}`**: {desc}\n"
+2. **Then act on it:**
+   - Question/input request → stop the tool chain and answer/ask back.
+   - New requirement → fold into the current plan.
+   - Correction → update the plan and continue with the revised target.
 
-    return docs
+Never echo the `<user_follow_up>` tags back. The block holds only the user's
+words — the rest of the tool result is the real data.
+
+# Always close the turn with visible text
+
+Every turn MUST end with at least one short user-facing text sentence —
+even if it is only "Done." or "I'm stopping here because X." Never end a
+turn with only tool calls or only thinking.  The user's UI renders text
+messages; a turn that emits only thinking blocks or only tool calls shows
+up as a frozen screen with no response.  If your plan was to stop after
+the last tool result, still produce one closing sentence summarising
+what happened so the user knows the turn is complete.
+"""
 
 
 @cache
@@ -361,9 +611,140 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     Returns:
         The supplement string to append to the system prompt
     """
-    if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    base = (
+        _get_cloud_sandbox_supplement()
+        if use_e2b
+        else _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    )
+    return base + _USER_FOLLOW_UP_NOTE
+
+
+# The one reply a chat-platform bot does not deliver. A message on Discord,
+# Slack, Telegram or Teams can genuinely need no answer: an acknowledgement,
+# two humans talking in a thread the bot is subscribed to, a bare ping. Whole
+# message, exact case: a reply that merely contains the word is delivered.
+NO_REPLY = "NO_REPLY"
+
+
+def get_chat_platform_supplement(source_platform: str | None) -> str:
+    """The silence rule, appended only for sessions that a chat bot opened.
+
+    Lives in the system prompt rather than the per-turn message so the web
+    chat view of a linked session shows what the person typed and nothing
+    else. Gated on the session's source platform: a web session has none,
+    and there a human is waiting, so silence would be a bug. Constant across
+    every bot session, so the prompt cache stays warm across them.
+    """
+    if not source_platform:
+        return ""
+    return f"""
+
+### Staying silent
+You are answering through a chat platform, where not every message needs a
+reply: an acknowledgement, a message not addressed to you, people talking to
+each other in a thread you are in. When a message needs no response from you,
+reply with exactly `{NO_REPLY}` as your entire message and nothing else, and
+nothing will be posted. Otherwise answer normally. You may use tools first to
+decide. Never write `{NO_REPLY}` inside a real reply.
+"""
+
+
+def get_delegation_supplement() -> str:
+    """Delegation rules, appended only when the expert-team tools are enabled.
+
+    Kept out of ``SHARED_TOOL_NOTES`` — that constant is concatenated
+    unconditionally by both engines, so leaving these rules there told
+    flag-off users to call tools their turn cannot execute.  Gate this at
+    the call site on the same ``experts_enabled`` boolean that feeds
+    ``expert_tool_disabled_groups``, the way ``get_graphiti_supplement``
+    is gated on its own tool group.
+    """
+    return """
+
+### Delegating to a teammate
+- When a subtask needs a *teammate's* skills, workflows, or integrations
+  rather than your own, use `delegate_to_expert` instead of
+  `run_sub_session` — it runs under that expert's identity, memory, and
+  budget. Only experts listed in `<team_context>` can be delegated to.
+- Say who you are delegating to before you do it. Delegation is allowed;
+  silent delegation is not.
+- **Delegated work is yours to land.** When the user asked for an outcome,
+  a delegation that returns partial, blocked, or still-running is your
+  next step, not your final answer:
+  - Still running / timed out → keep polling
+    `run_capability(id="tool:get_sub_session_result")` until it resolves.
+  - Completed but the outcome is not met → re-delegate into the SAME
+    `delegated_session_id`, naming exactly what remains.
+  - The expert asks something this conversation already answers (stack,
+    scope, paths, budget) → answer on the user's behalf in the follow-up;
+    only surface questions you genuinely cannot answer.
+  - Stop only when the outcome is met, you are blocked on information
+    only the user holds, or you are relaying a hard failure. Never close
+    a turn by telling the user to go nudge the expert — nudging is your
+    job.
+
+### Getting a teammate to check your work
+- Before anything that **commits the user's company** leaves this
+  conversation — a refund, credit, discount, price, payment, delivery or
+  fix date, guarantee, SLA, policy exception, or a claim that something
+  is already done — run it past a teammate with
+  `run_capability(id="tool:consult_teammate", input={...})`.
+- You must state the `authority` for every commitment: what the user
+  actually approved, in their words, or what a system confirmed. If you
+  cannot name the authority, that is the finding — do not send it, and
+  do not invent one.
+- A `block` is not a veto you can ignore quietly. Remove the flagged
+  lines, or tell the user in your reply that you are overriding the
+  objection and why. `insufficient` is not approval either.
+"""
+
+
+def get_team_building_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Head-of-AI rules for growing the roster, not just using it.
+
+    Gated like ``get_expert_oversight_supplement`` rather than folded into
+    ``get_delegation_supplement``: ``hire_expert`` and ``raise_expert`` sit in
+    the ``expert_admin`` tool group, which an expert session's ``execute_tool``
+    refuses, so only a plain Otto turn with the team flag on is told to
+    grow the roster. Naming the tools to anyone else advertises a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Building the team
+- You are the user's Head of AI. When recurring work has no owner, propose a
+  teammate for it: `tool:hire_expert` for a roster template,
+  `tool:raise_expert` for a custom one. Offer both paths and say which you'd pick and why.
+- One proposal at a time — never a slate of hires in a single turn.
+- Never hire silently. Both tools only propose: the user sees an approval
+  card and confirms it. Don't restate what's on the card; one short line,
+  then wait.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Otto session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`tool:list_expert_chats` then `tool:read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
+"""
 
 
 def get_graphiti_supplement() -> str:
@@ -374,12 +755,12 @@ def get_graphiti_supplement() -> str:
     return """
 
 ## Memory System (Graphiti)
-You have access to persistent temporal memory tools that remember facts across sessions.
+You have access to persistent temporal memory tools scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
 **You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
 
-### When to STORE (memory_store):
+### When to STORE (`tool:memory_store`):
 - User shares personal info, preferences, business context
 - User describes workflows, tools they use, pain points
 - Important decisions or outcomes from agent runs
@@ -396,21 +777,7 @@ You have access to persistent temporal memory tools that remember facts across s
 ### MEMORY RULES:
 - Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
 - Never fabricate memories. Only persist what the user actually said.
-- Memory is private to this user — no other user can see it.
+- Memory is private and isolated to the current assistant. Otto and hired experts cannot read each other's memories.
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
-
-
-def get_baseline_supplement() -> str:
-    """Get the supplement for baseline mode (direct OpenAI API).
-
-    Baseline mode INCLUDES auto-generated tool documentation because the
-    direct API doesn't automatically provide tool schemas to Claude.
-    Also includes shared technical notes (but NOT SDK-specific environment details).
-
-    Returns:
-        The supplement string to append to the system prompt
-    """
-    tool_docs = _generate_tool_documentation()
-    return tool_docs + _SHARED_TOOL_NOTES

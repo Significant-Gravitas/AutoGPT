@@ -106,7 +106,7 @@ This is a shortened example of a page object for the profile page:
 
 ### Making a new Test File
 
-For tests, we use our page objects to create tests. Each test file should be in the `tests` folder and be named like `test-name.spec.ts`. A test file can contain multiple tests. Each of which shuld be related to the same conceptual function. For example, a test file for the build page could have tests for building agents, creating inputs and outputs, and connecting blocks. If the you wanted to speciifically test building agents, you could make a new test called `building-agents.spec.ts`.
+For tests, we use our page objects to create tests. Each test file should be in the `tests` folder and be named like `test-name.spec.ts`. A test file can contain multiple tests. Each of which should be related to the same conceptual function. For example, a test file for the build page could have tests for building agents, creating inputs and outputs, and connecting blocks. If you wanted to specifically test building agents, you could make a new test called `building-agents.spec.ts`.
 
 Tests can inherit from one or more page objects, have pre-actions, and have post-actions, as well as many other features. You can learn more about the different features and how to use them [here](https://playwright.dev/docs/test-actions).
 

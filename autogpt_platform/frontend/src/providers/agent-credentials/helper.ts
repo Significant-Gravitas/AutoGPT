@@ -1,12 +1,15 @@
 // --8<-- [start:CredentialsProviderNames]
 // Helper function to convert provider names to display names
-export function toDisplayName(provider: string): string {
+export function toDisplayName(provider: unknown): string {
+  if (typeof provider !== "string" || provider.length === 0) return "";
+
   // Special cases that need manual handling
   const specialCases: Record<string, string> = {
     aiml_api: "AI/ML",
     d_id: "D-ID",
     e2b: "E2B",
     llama_api: "Llama API",
+    codex: "OpenAI",
     open_router: "Open Router",
     smtp: "SMTP",
     revid: "Rev.ID",

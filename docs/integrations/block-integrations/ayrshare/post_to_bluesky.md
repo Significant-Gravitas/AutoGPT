@@ -21,7 +21,7 @@ The block authenticates through your Ayrshare credentials and sends the post dat
 |-------|-------------|------|----------|
 | post | The post text to be published (max 300 characters for Bluesky) | str | No |
 | media_urls | Optional list of media URLs to include. Bluesky supports up to 4 images or 1 video. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

@@ -1,5 +1,6 @@
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 
 import {
   ApiError,
@@ -15,8 +16,12 @@ import type { CredentialField } from "@/components/contextual/CredentialsInput/c
 
 export const useRunInputDialog = ({
   setIsOpen,
+  graphID,
+  graphVersion,
 }: {
   setIsOpen: (isOpen: boolean) => void;
+  graphID?: string;
+  graphVersion?: number | null;
 }) => {
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
@@ -40,10 +45,11 @@ export const useRunInputDialog = ({
     usePostV1ExecuteGraphAgent({
       mutation: {
         onSuccess: (response) => {
-          const { id } = response.data as GraphExecutionMeta;
+          const { id, graph_id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
+          trackAgentRunGoal({ id: graph_id }, "builder");
         },
         onError: (error) => {
           if (error instanceof ApiError && error.isGraphValidationError()) {
@@ -157,8 +163,10 @@ export const useRunInputDialog = ({
     useNodeStore.getState().cleanNodesStatuses();
 
     await executeGraph({
-      graphId: flowID ?? "",
-      graphVersion: flowVersion || null,
+      // Prefer the freshly-saved version handed in by the caller; the URL's
+      // flowVersion is updated asynchronously and may still be stale here.
+      graphId: graphID ?? flowID ?? "",
+      graphVersion: graphVersion ?? flowVersion ?? null,
       data: {
         inputs: inputValues,
         credentials_inputs: validCredentials,

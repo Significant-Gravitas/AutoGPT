@@ -1249,7 +1249,14 @@ class TestStripStaleThinkingBlocks:
         new_asst = self._asst_entry(
             "msg_new",
             [
-                {"type": "thinking", "thinking": "latest thoughts"},
+                # Anthropic-shape thinking block (has signature) — preserved
+                # on the last turn.  Signature-less variant covered by
+                # ``test_strips_signatureless_last_turn_thinking``.
+                {
+                    "type": "thinking",
+                    "thinking": "latest thoughts",
+                    "signature": "anthropic-sig",
+                },
                 {"type": "text", "text": "world"},
             ],
             uuid="a2",
@@ -1271,11 +1278,16 @@ class TestStripStaleThinkingBlocks:
         assert new_content[1]["type"] == "text"
 
     def test_preserves_last_assistant_thinking(self) -> None:
-        """The last assistant entry's thinking blocks must be preserved."""
+        """The last assistant entry's thinking blocks must be preserved
+        when they carry an Anthropic ``signature``.  Signature-less
+        blocks (e.g. from Kimi K2.6 via OpenRouter) are stripped to
+        prevent ``Invalid `signature` in `thinking` block`` errors on
+        a subsequent Anthropic-model turn — covered by
+        ``test_strips_signatureless_last_turn_thinking``."""
         entry = self._asst_entry(
             "msg_only",
             [
-                {"type": "thinking", "thinking": "must keep"},
+                {"type": "thinking", "thinking": "must keep", "signature": "sig"},
                 {"type": "text", "text": "response"},
             ],
         )
@@ -1283,6 +1295,47 @@ class TestStripStaleThinkingBlocks:
         result = strip_stale_thinking_blocks(content)
         lines = [json.loads(ln) for ln in result.strip().split("\n")]
         assert len(lines[0]["message"]["content"]) == 2
+
+    def test_strips_signatureless_last_turn_thinking(self) -> None:
+        """Cross-model fix (PR #12878): a signature-less thinking block
+        on the last assistant turn must be stripped before a subsequent
+        Anthropic-model dispatch tries to replay it."""
+        entry = self._asst_entry(
+            "msg_kimi",
+            [
+                # No signature → non-Anthropic provider
+                {"type": "thinking", "thinking": "kimi reasoning"},
+                {"type": "text", "text": "answer"},
+            ],
+        )
+        content = _make_jsonl(entry)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+        types = [b["type"] for b in lines[0]["message"]["content"]]
+        assert "thinking" not in types
+        assert "text" in types
+
+    def test_preserves_redacted_thinking_on_last_turn(self) -> None:
+        """``redacted_thinking`` blocks are signature-less by design
+        (encrypted ``data`` field instead).  Stripping them on the last
+        turn would violate Anthropic's value-identity requirement for
+        multi-turn replay.  The signature rule only applies to plain
+        ``thinking`` blocks."""
+        entry = self._asst_entry(
+            "msg_anthropic",
+            [
+                # Anthropic-emitted redacted_thinking: has ``data``,
+                # never has ``signature``.
+                {"type": "redacted_thinking", "data": "encrypted_blob"},
+                {"type": "text", "text": "response"},
+            ],
+        )
+        content = _make_jsonl(entry)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+        types = [b["type"] for b in lines[0]["message"]["content"]]
+        assert "redacted_thinking" in types
+        assert "text" in types
 
     def test_no_assistant_entries_returns_unchanged(self) -> None:
         """Transcripts with only user entries should pass through unchanged."""
@@ -1294,12 +1347,13 @@ class TestStripStaleThinkingBlocks:
         assert strip_stale_thinking_blocks("") == ""
 
     def test_multiple_turns_strips_all_but_last(self) -> None:
-        """With 3 assistant turns, only the last keeps thinking blocks."""
+        """With 3 assistant turns, only the last keeps thinking blocks
+        (and only when those blocks carry an Anthropic ``signature``)."""
         entries = [
             self._asst_entry(
                 "msg_1",
                 [
-                    {"type": "thinking", "thinking": "t1"},
+                    {"type": "thinking", "thinking": "t1", "signature": "s1"},
                     {"type": "text", "text": "a1"},
                 ],
                 uuid="a1",
@@ -1308,7 +1362,7 @@ class TestStripStaleThinkingBlocks:
             self._asst_entry(
                 "msg_2",
                 [
-                    {"type": "thinking", "thinking": "t2"},
+                    {"type": "thinking", "thinking": "t2", "signature": "s2"},
                     {"type": "text", "text": "a2"},
                 ],
                 uuid="a2",
@@ -1318,7 +1372,7 @@ class TestStripStaleThinkingBlocks:
             self._asst_entry(
                 "msg_3",
                 [
-                    {"type": "thinking", "thinking": "t3"},
+                    {"type": "thinking", "thinking": "t3", "signature": "s3"},
                     {"type": "text", "text": "a3"},
                 ],
                 uuid="a3",
@@ -1339,16 +1393,18 @@ class TestStripStaleThinkingBlocks:
         assert lines[4]["message"]["content"][0]["type"] == "thinking"
 
     def test_same_msg_id_multi_entry_turn(self) -> None:
-        """Multiple entries sharing the same message.id (same turn) are preserved."""
+        """Multiple entries sharing the same message.id (same turn) are
+        preserved when their thinking blocks carry an Anthropic
+        ``signature``."""
         entries = [
             self._asst_entry(
                 "msg_old",
-                [{"type": "thinking", "thinking": "old"}],
+                [{"type": "thinking", "thinking": "old", "signature": "old_sig"}],
                 uuid="a1",
             ),
             self._asst_entry(
                 "msg_last",
-                [{"type": "thinking", "thinking": "t_part1"}],
+                [{"type": "thinking", "thinking": "t_part1", "signature": "p1_sig"}],
                 uuid="a2",
                 parent="a1",
             ),

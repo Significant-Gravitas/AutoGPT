@@ -4,24 +4,35 @@ import logging
 import uuid
 from typing import Any
 
+from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
 from .helpers import (
     BlockPreparation,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
     prepare_block_for_execution,
 )
-from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class RunBlockTool(BaseTool):
     """Tool for executing a block and returning its outputs."""
+
+    digest_large_output = True
 
     @property
     def name(self) -> str:
@@ -30,10 +41,12 @@ class RunBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a block. IMPORTANT: Always get block_id from find_block first "
+            "Execute a block. IMPORTANT: Always get block_id from find_capability first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
-            "If review_required, use continue_run_block."
+            "Pass `validate_only: true` to inspect a block without running it "
+            "(safe pre-flight — returns schema + detected missing inputs). "
+            "If review_required, use resume_capability."
         )
 
     @property
@@ -43,11 +56,23 @@ class RunBlockTool(BaseTool):
             "properties": {
                 "block_id": {
                     "type": "string",
-                    "description": "Block ID from find_block results.",
+                    "description": "Block ID from find_capability results.",
                 },
                 "input_data": {
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
+                },
+                "validate_only": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, describe what the block would do without "
+                        "executing it or rendering any picker cards. Use this "
+                        "as a safe pre-flight for blocks with no required "
+                        "inputs (where empty input_data would otherwise "
+                        "execute immediately) or to check what a call "
+                        "_would_ need before committing."
+                    ),
+                    "default": False,
                 },
             },
             "required": ["block_id", "input_data"],
@@ -57,6 +82,30 @@ class RunBlockTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Only a credentialed execution is an integration action; schema
+        # lookups, dry runs and credential-less blocks leave no audit trail.
+        if (
+            not isinstance(result, BlockOutputResponse)
+            or not result.success
+            or result.is_dry_run
+            or not result.provider
+            or result.provider in LLM_PROVIDER_NAMES
+        ):
+            return None
+        return ActivityEventDraft(
+            category="INTEGRATION",
+            event_type="integration.action",
+            title=result.block_name,
+            provider=result.provider,
+            object_id=result.block_id,
+        )
+
     async def _execute(
         self,
         user_id: str | None,
@@ -64,6 +113,7 @@ class RunBlockTool(BaseTool):
         *,
         block_id: str = "",
         input_data: dict | None = None,
+        validate_only: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -113,6 +163,7 @@ class RunBlockTool(BaseTool):
             session=session,
             session_id=session_id,
             dry_run=dry_run,
+            validate_only=validate_only,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -134,7 +185,7 @@ class RunBlockTool(BaseTool):
                 message=(
                     f"Block '{prep.block.name}' ({block_id}) is not permitted "
                     f"by the current execution permissions. {available_hint}"
-                    "Use find_block to discover blocks that are allowed."
+                    "Use find_capability to discover blocks that are allowed."
                 ),
                 session_id=session_id,
             )
@@ -158,12 +209,19 @@ class RunBlockTool(BaseTool):
                 node_exec_id=synthetic_node_exec_id,
                 matched_credentials=prep.matched_credentials,
                 dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
-        # Show block details when required inputs are not yet provided.
-        # This is run_block's two-step UX: first call returns the schema,
-        # second call (with inputs) actually executes.
-        if not (prep.required_non_credential_keys <= prep.provided_input_keys):
+        # Show block details when required inputs are not yet provided
+        # (two-step UX: first call returns the schema, second call actually
+        # executes) or when the caller asked for introspection only via
+        # validate_only — in both cases we return BlockDetailsResponse and
+        # do not execute.
+        if validate_only or not (
+            prep.required_non_credential_keys <= prep.provided_input_keys
+        ):
             try:
                 output_schema: dict[str, Any] = prep.block.output_schema.jsonschema()
             except Exception as e:
@@ -177,24 +235,61 @@ class RunBlockTool(BaseTool):
                 )
 
             credentials_meta = list(prep.matched_credentials.values())
+            missing = sorted(
+                prep.required_non_credential_keys - prep.provided_input_keys
+            )
+            # Hide credential fields from the schema sent to the LLM — the
+            # backend resolves them automatically from the user's connected
+            # integrations, and exposing the picker shape (id/provider/type)
+            # tempts the LLM to fabricate values it cannot construct.
+            llm_input_schema = _strip_credentials_from_schema(
+                prep.input_schema, prep.credentials_fields
+            )
+            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            output_schema = _strip_presentation_annotations(output_schema)
+            if validate_only and not missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — all required inputs "
+                    f"provided, ready to run."
+                )
+            elif missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — missing required input(s): "
+                    f"{', '.join(repr(m) for m in missing)}."
+                )
+            else:
+                detail_msg = (
+                    f"Block '{prep.block.name}' details. Provide input_data "
+                    f"matching the inputs schema to execute the block. "
+                    f"Credentials are auto-resolved by the backend — do not "
+                    f"include them in input_data."
+                )
             return BlockDetailsResponse(
-                message=(
-                    f"Block '{prep.block.name}' details. "
-                    "Provide input_data matching the inputs schema to execute the block."
-                ),
+                message=detail_msg,
                 session_id=session_id,
                 block=BlockDetails(
                     id=block_id,
                     name=prep.block.name,
                     description=prep.block.description or "",
-                    inputs=prep.input_schema,
+                    inputs=llm_input_schema,
                     outputs=output_schema,
                     credentials=credentials_meta,
                 ),
                 user_authenticated=True,
             )
 
-        hitl_or_err = await check_hitl_review(prep, user_id, session_id)
+        if not dry_run:
+            spend_gate = await check_spend_approval(prep, user_id, session)
+            if spend_gate is not None:
+                return spend_gate
+
+        hitl_or_err = await check_hitl_review(
+            prep,
+            user_id,
+            session_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
         if isinstance(hitl_or_err, ToolResponseBase):
             return hitl_or_err
         synthetic_node_exec_id, input_data = hitl_or_err
@@ -208,4 +303,65 @@ class RunBlockTool(BaseTool):
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
             dry_run=dry_run,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            expert_id=session.expert_id,
         )
+
+
+# Builder-UI render hints: none of them can appear in a graph, and the copilot's
+# own block-details card reads only title/type/description/required.
+_PRESENTATION_ONLY_KEYS = frozenset(
+    {"advanced", "llm_model", "llm_model_metadata", "secret"}
+)
+
+# Keys whose sub-dicts are named by the *author*, so a field called "secret"
+# must survive even though the annotation of the same name must not.
+_SCHEMA_MAP_KEYS = frozenset(
+    {"$defs", "definitions", "patternProperties", "properties"}
+)
+
+
+def _strip_presentation_annotations(node: Any) -> Any:
+    """Return *node* with the builder-UI annotation keys removed, recursively."""
+    if isinstance(node, dict):
+        cleaned: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _PRESENTATION_ONLY_KEYS:
+                continue
+            if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
+                cleaned[key] = {
+                    name: _strip_presentation_annotations(sub)
+                    for name, sub in value.items()
+                }
+            else:
+                cleaned[key] = _strip_presentation_annotations(value)
+        return cleaned
+    if isinstance(node, list):
+        return [_strip_presentation_annotations(item) for item in node]
+    return node
+
+
+def _strip_credentials_from_schema(
+    input_schema: dict[str, Any], credentials_fields: set[str]
+) -> dict[str, Any]:
+    """Return a copy of *input_schema* without credential properties.
+
+    Credential fields are auto-resolved from the user's connected integrations;
+    leaking the picker shape (``{provider, id, type, title}``) into the
+    LLM-facing schema makes the model think it has to construct one and bail
+    out when it can't (see the Replicate "Seed Dance 2.0" copilot session).
+    """
+    if not credentials_fields:
+        return input_schema
+    cleaned = dict(input_schema)
+    properties = dict(cleaned.get("properties", {}))
+    for field in credentials_fields:
+        properties.pop(field, None)
+    cleaned["properties"] = properties
+    required = [r for r in cleaned.get("required", []) if r not in credentials_fields]
+    if required:
+        cleaned["required"] = required
+    elif "required" in cleaned:
+        del cleaned["required"]
+    return cleaned

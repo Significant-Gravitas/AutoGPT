@@ -433,7 +433,7 @@ class TestJinaEmbeddingBlockCostTracking:
 class TestUnrealTextToSpeechBlockCostTracking:
     @pytest.mark.asyncio
     async def test_merge_stats_called_with_character_count(self):
-        """provider_cost equals len(text) with type='characters'."""
+        """provider_cost = len(text) * $0.000016 with type='cost_usd'."""
         from backend.blocks.text_to_speech_block import TEST_CREDENTIALS as TTS_CREDS
         from backend.blocks.text_to_speech_block import (
             TEST_CREDENTIALS_INPUT as TTS_CREDS_INPUT,
@@ -461,12 +461,12 @@ class TestUnrealTextToSpeechBlockCostTracking:
 
         mock_merge.assert_called_once()
         stats = mock_merge.call_args[0][0]
-        assert stats.provider_cost == float(len(test_text))
-        assert stats.provider_cost_type == "characters"
+        assert stats.provider_cost == pytest.approx(len(test_text) * 0.000016)
+        assert stats.provider_cost_type == "cost_usd"
 
     @pytest.mark.asyncio
     async def test_empty_text_gives_zero_characters(self):
-        """An empty text string results in provider_cost=0.0."""
+        """An empty text string results in provider_cost=0.0 (cost_usd)."""
         from backend.blocks.text_to_speech_block import TEST_CREDENTIALS as TTS_CREDS
         from backend.blocks.text_to_speech_block import (
             TEST_CREDENTIALS_INPUT as TTS_CREDS_INPUT,
@@ -494,7 +494,7 @@ class TestUnrealTextToSpeechBlockCostTracking:
         mock_merge.assert_called_once()
         stats = mock_merge.call_args[0][0]
         assert stats.provider_cost == 0.0
-        assert stats.provider_cost_type == "characters"
+        assert stats.provider_cost_type == "cost_usd"
 
 
 # ---------------------------------------------------------------------------

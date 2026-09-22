@@ -17,9 +17,13 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+import backend.data.llm_registry
+from backend.copilot import engine_switch
+from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
@@ -28,16 +32,32 @@ from backend.util.settings import Settings
 
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
-    COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
+    get_session_lock_key,
+    start_legacy_cancel_queue_reaper,
 )
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 settings = Settings()
+
+
+def _load_catalog() -> None:
+    """Load the LLM catalog into THIS process's registry cache.
+
+    Copilot turns run in this executor, not the rest API process — without
+    this, routing cells and serve-time gating silently no-op (an empty
+    registry gates nothing by design). Fail-hard: the catalog is
+    load-bearing (blocks and billing already built from it at import), so
+    a failure here is a bug that should stop the process, not silently
+    disable gating.
+    """
+    backend.data.llm_registry.load_catalog()
+
 
 # Prometheus metrics
 active_tasks_gauge = Gauge(
@@ -84,7 +104,8 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
-        self._active_tasks_lock = threading.Lock()
+        self._active_tasks_lock_obj: threading.Lock | None = None
+        self._codex_runtime_pool_closed = False
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -93,9 +114,26 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
+        _load_catalog()
+
+        # Materialise the active-tasks lock NOW, before any worker threads
+        # exist, so subsequent multi-threaded reads of the lazy property
+        # never race on its check-then-init pattern.  ``__init__`` can't
+        # do this because ``_thread.lock`` is not picklable and the
+        # forkserver start method serialises the process object.
+        self._active_tasks_lock  # noqa: B018 — touch to materialise
+
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        start_http_server(settings.config.copilot_executor_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()
@@ -104,25 +142,49 @@ class CoPilotExecutor(AppProcess):
             time.sleep(1e5)
 
     def cleanup(self):
-        """Graceful shutdown with active execution waiting."""
-        pid = os.getpid()
-        logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
+        """Graceful shutdown — mirrors ``backend.executor.manager`` pattern.
 
-        # Signal the consumer thread to stop
+        1. Stop consumer immediately (both the Python flag that gates
+           ``_handle_run_message`` and ``channel.stop_consuming()`` at
+           the broker), so no new work enters.
+        2. Passively wait for ``active_tasks`` to drain — each turn's
+           own ``finally`` publishes its terminal state via
+           ``mark_session_completed``. When a turn exits, ``on_run_done``
+           removes it from ``active_tasks`` and releases its cluster lock.
+        3. Stop message consumer threads and disconnect their clients.
+        4. Close the process-local Codex runtime pool after turns and
+           consumers have stopped, checkpointing credentials before worker
+           teardown.
+        5. Shut down the thread-pool executor (cancels pending, leaves
+           running threads alone — process exit handles them).
+        6. Release any cluster locks still held (defensive — on_run_done's
+           finally should have already released them).
+
+        The zombie-session bug this PR targets is handled inside each
+        turn's own lifecycle by :func:`sync_fail_close_session`, NOT by
+        cleanup — so cleanup can stay as a simple "wait, then teardown"
+        and matches agent-executor's proven pattern.
+        """
+        pid = os.getpid()
+        prefix = f"[cleanup {pid}]"
+        logger.info(f"{prefix} Starting graceful shutdown...")
+
+        # 1. Stop consumer — flag AND broker-side
         try:
             self.stop_consuming.set()
             run_channel = self.run_client.get_channel()
             run_channel.connection.add_callback_threadsafe(
                 lambda: run_channel.stop_consuming()
             )
-            logger.info(f"[cleanup {pid}] Consumer has been signaled to stop")
+            logger.info(f"{prefix} Consumer has been signaled to stop")
         except Exception as e:
-            logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
+            logger.error(f"{prefix} Error stopping consumer: {e}")
 
-        # Wait for active executions to complete
+        # 2. Wait for in-flight turns to finish naturally
         if self.active_tasks:
             logger.info(
-                f"[cleanup {pid}] Waiting for {len(self.active_tasks)} active tasks to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
+                f"{prefix} Waiting for {len(self.active_tasks)} active tasks "
+                f"to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
             )
 
             start_time = time.monotonic()
@@ -137,38 +199,45 @@ class CoPilotExecutor(AppProcess):
                 if not self.active_tasks:
                     break
 
-                # Refresh cluster locks periodically
-                current_time = time.monotonic()
-                if current_time - last_refresh >= lock_refresh_interval:
+                now = time.monotonic()
+                if now - last_refresh >= lock_refresh_interval:
                     for lock in list(self._task_locks.values()):
                         try:
                             lock.refresh()
                         except Exception as e:
-                            logger.warning(
-                                f"[cleanup {pid}] Failed to refresh lock: {e}"
-                            )
-                    last_refresh = current_time
+                            logger.warning(f"{prefix} Failed to refresh lock: {e}")
+                    last_refresh = now
 
                 logger.info(
-                    f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
+                    f"{prefix} {len(self.active_tasks)} tasks still active, waiting..."
                 )
                 time.sleep(10.0)
 
-        # Stop message consumers
+            if self.active_tasks:
+                logger.warning(
+                    f"{prefix} {len(self.active_tasks)} tasks still running after "
+                    f"{GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s — process exit will "
+                    f"abandon them; RabbitMQ redelivery handles the message."
+                )
+
+        # 3. Stop message consumer threads
         if self._run_thread:
             self._stop_message_consumers(
-                self._run_thread, self.run_client, "[cleanup][run]"
+                self._run_thread, self.run_client, f"{prefix} [run]"
             )
         if self._cancel_thread:
             self._stop_message_consumers(
-                self._cancel_thread, self.cancel_client, "[cleanup][cancel]"
+                self._cancel_thread, self.cancel_client, f"{prefix} [cancel]"
             )
 
-        # Clean up worker threads (closes per-loop workspace storage sessions)
+        # 4. Checkpoint and close shared Codex runtimes before worker teardown
+        self._close_codex_runtime_pool(prefix)
+
+        # 5. Worker cleanup + executor shutdown
         if self._executor:
             from .processor import cleanup_worker
 
-            logger.info(f"[cleanup {pid}] Cleaning up workers...")
+            logger.info(f"{prefix} Cleaning up workers...")
             futures = []
             for _ in range(self._executor._max_workers):
                 futures.append(self._executor.submit(cleanup_worker))
@@ -176,22 +245,32 @@ class CoPilotExecutor(AppProcess):
                 try:
                     f.result(timeout=10)
                 except Exception as e:
-                    logger.warning(f"[cleanup {pid}] Worker cleanup error: {e}")
+                    logger.warning(f"{prefix} Worker cleanup error: {e}")
 
-            logger.info(f"[cleanup {pid}] Shutting down executor...")
+            logger.info(f"{prefix} Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # Release any remaining locks
+        # 6. Release any cluster locks still held
         for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
-                logger.info(f"[cleanup {pid}] Released lock for {session_id}")
+                logger.info(f"{prefix} Released lock for {session_id}")
             except Exception as e:
-                logger.error(
-                    f"[cleanup {pid}] Failed to release lock for {session_id}: {e}"
-                )
+                logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
-        logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+        logger.info(f"{prefix} Graceful shutdown completed")
+
+    def _close_codex_runtime_pool(self, prefix: str) -> None:
+        with self._active_tasks_lock:
+            if self._codex_runtime_pool_closed:
+                return
+            self._codex_runtime_pool_closed = True
+
+        try:
+            logger.info(f"{prefix} Closing Codex runtime pool...")
+            asyncio.run(get_codex_transport().close_runtime_pool())
+        except Exception as e:
+            logger.error(f"{prefix} Codex runtime pool cleanup error: {e}")
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -213,12 +292,16 @@ class CoPilotExecutor(AppProcess):
             return
 
         cancel_channel = self.cancel_client.get_channel()
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        cancel_queue_name = declare_pod_cancel_queue(cancel_channel, self.executor_id)
         cancel_channel.basic_consume(
-            queue=COPILOT_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info("Starting to consume cancel messages...")
+        logger.info(f"Starting to consume cancel messages on {cancel_queue_name}...")
+        start_legacy_cancel_queue_reaper(cancel_channel)
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_tasks:
             raise RuntimeError("Cancel message consumer stopped unexpectedly")
@@ -366,7 +449,7 @@ class CoPilotExecutor(AppProcess):
         # Try to acquire cluster-wide lock
         cluster_lock = ClusterLock(
             redis=redis.get_redis(),
-            key=f"copilot:session:{session_id}:lock",
+            key=get_session_lock_key(session_id),
             owner_id=self.executor_id,
             timeout=settings.config.cluster_lock_timeout,
         )
@@ -386,13 +469,12 @@ class CoPilotExecutor(AppProcess):
 
         # Execute the task
         try:
-            self._task_locks[session_id] = cluster_lock
-
             logger.info(
                 f"Acquired cluster lock for {session_id}, "
                 f"executor_id={self.executor_id}"
             )
 
+            self._task_locks[session_id] = cluster_lock
             cancel_event = threading.Event()
             future = self.executor.submit(
                 execute_copilot_turn, entry, cancel_event, cluster_lock
@@ -424,12 +506,12 @@ class CoPilotExecutor(AppProcess):
                 error_msg = str(e) or type(e).__name__
                 logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
-                # Release the cluster lock
                 if session_id in self._task_locks:
                     logger.info(f"Releasing cluster lock for {session_id}")
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
+                _maybe_dispatch_engine_switch(session_id, error_msg)
 
         future.add_done_callback(on_run_done)
 
@@ -481,6 +563,12 @@ class CoPilotExecutor(AppProcess):
     # ============ Lazy-initialized Properties ============ #
 
     @property
+    def _active_tasks_lock(self) -> threading.Lock:
+        if self._active_tasks_lock_obj is None:
+            self._active_tasks_lock_obj = threading.Lock()
+        return self._active_tasks_lock_obj
+
+    @property
     def cancel_thread(self) -> threading.Thread:
         if self._cancel_thread is None:
             self._cancel_thread = threading.Thread(
@@ -524,3 +612,123 @@ class CoPilotExecutor(AppProcess):
         if self._run_client is None:
             self._run_client = SyncRabbitMQ(create_copilot_queue_config())
         return self._run_client
+
+
+def _maybe_dispatch_engine_switch(session_id: str, error_msg: str | None) -> None:
+    """Consume a pending engine switch after the turn fully finished.
+
+    Called from the turn future's done-callback: dispatch the SDK
+    continuation only NOW — the turn thread has fully finished (fail-close
+    ran, message acked, cluster lock released, active_tasks cleaned), so
+    neither the fail-close CAS nor the RMQ same-session duplicate rejection
+    can kill the new turn.
+    """
+    switch = engine_switch.pop_switch(session_id)
+    if switch is None:
+        return
+    if error_msg is not None:
+        # Turn failed — the persisted history (and thus the derived
+        # building-mode signal) can't be trusted, so no continuation fires.
+        # Not silent: the session is idle and the user's next message
+        # re-resolves the engine.
+        logger.info(
+            f"Engine-switch continuation for {session_id} not "
+            f"dispatched — turn ended with error: {error_msg}"
+        )
+        return
+    # Dispatch on a dedicated short-lived thread: the async RabbitMQ client
+    # is @thread_cached and loop-bound, so asyncio.run() on this pool thread
+    # would reuse a client created under a previous (now-closed) event loop.
+    # A fresh thread gets a fresh loop AND a fresh thread-cached client, so
+    # nothing crosses loops.
+    threading.Thread(
+        target=_dispatch_engine_switch_continuation,
+        args=(session_id, switch),
+        name=f"engine-switch-{session_id[:8]}",
+        daemon=True,
+    ).start()
+
+
+_SWITCH_DISPATCH_ATTEMPTS = 3
+
+
+def _dispatch_engine_switch_continuation(
+    session_id: str, switch: engine_switch.SwitchRequest
+) -> None:
+    """Dispatch the SDK continuation turn after an engine switch.
+
+    Runs on its own thread with its own event loop so the thread-cached
+    async queue client is created fresh and never reused across loops.
+
+    Best-effort with bounded retry (transient queue/redis blips): if all
+    attempts fail, the session is left idle (not stranded) with a
+    user-visible marker — building mode is derived from persisted message
+    history, so the user's next message still lands on the SDK engine with
+    the guide in the prefix.
+    """
+
+    async def dispatch() -> None:
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, switch.user_id)
+        if session is None:
+            raise RuntimeError("copilot_session_not_found")
+        await schedule_turn(
+            session_id=session_id,
+            user_id=switch.user_id,
+            turn_id=str(uuid.uuid4()),
+            message=engine_switch.CONTINUATION_MESSAGE,
+            is_user_message=False,
+            # No engine is named here: the processor pins a building-mode
+            # session to the SDK from its message history, which is what made
+            # this argument redundant even while it existed.
+            organization_id=switch.organization_id,
+            team_id=switch.team_id,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+        )
+
+    for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
+        try:
+            asyncio.run(dispatch())
+            logger.info(f"Dispatched engine-switch continuation for {session_id}")
+            return
+        except Exception as switch_err:
+            logger.error(
+                f"Engine-switch continuation dispatch failed for {session_id} "
+                f"(attempt {attempt}/{_SWITCH_DISPATCH_ATTEMPTS}): {switch_err}"
+            )
+            if attempt < _SWITCH_DISPATCH_ATTEMPTS:
+                time.sleep(attempt)
+    _persist_switch_failure_marker(session_id)
+
+
+def _persist_switch_failure_marker(session_id: str) -> None:
+    """Leave a user-visible error in the session when every dispatch attempt
+    failed — the user was told building continues automatically, so a silent
+    drop would strand them on that promise. Best-effort: building mode
+    itself survives (derived from history), so their next message recovers.
+    """
+    # Lazy imports: manager must stay importable without the model chain.
+    from backend.copilot.constants import COPILOT_ERROR_PREFIX
+    from backend.copilot.model import ChatMessage, append_and_save_message
+
+    try:
+        asyncio.run(
+            append_and_save_message(
+                session_id,
+                ChatMessage(
+                    role="assistant",
+                    content=(
+                        f"{COPILOT_ERROR_PREFIX} Could not start the "
+                        "agent-building engine automatically. Building mode "
+                        "is still active — send a message to continue."
+                    ),
+                ),
+            )
+        )
+    except Exception as marker_err:
+        logger.error(
+            f"Failed to persist engine-switch failure marker for "
+            f"{session_id}: {marker_err}"
+        )

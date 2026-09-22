@@ -23,6 +23,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    overload,
 )
 
 import httpx
@@ -33,11 +34,12 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
-from backend.util.retry import conn_retry, create_retry_decorator
+from backend.util.retry import conn_retry, create_retry_decorator, stop_retry_loops
 from backend.util.settings import Config, get_service_name
 
 logger = logging.getLogger(__name__)
@@ -133,8 +135,12 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
             self.shared_event_loop.close()  # ensure held resources are released
 
-    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
-        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
+    def run_and_wait(
+        self, coro: Coroutine[Any, Any, T], timeout: float | None = None
+    ) -> T:
+        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result(
+            timeout
+        )
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
@@ -150,8 +156,21 @@ class BaseAppService(AppProcess, ABC):
         **Note:** if you override this method in a subclass, it must call
         `super().cleanup()` *at the end*!
         """
-        # Stop the shared event loop to allow resource clean-up
-        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+        # Stop the shared event loop to allow resource clean-up. The loop
+        # thread closes the loop right after run_forever() returns, so a
+        # closed loop here means that thread is already gone (loop crash or
+        # repeated cleanup) and there is nothing left to stop — scheduling
+        # onto it would raise "Event loop is closed" mid-shutdown.
+        if not self.shared_event_loop.is_closed():
+            try:
+                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+            except RuntimeError:
+                # The loop thread closed the loop between the check above and
+                # the scheduling call; equivalent to the is_closed() case.
+                logger.warning(
+                    f"[{self.service_name}] event loop closed before its stop "
+                    "could be scheduled; continuing cleanup"
+                )
 
         super().cleanup()
 
@@ -339,6 +358,21 @@ class AppService(BaseAppService, ABC):
 
             return sync_endpoint
 
+    @classmethod
+    def _register_exception_handlers(cls, app: FastAPI) -> None:
+        app.add_exception_handler(ValueError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            exceptions.NotFoundError, cls._handle_internal_http_error(404)
+        )
+        app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            UniqueViolationError, cls._handle_internal_http_error(400)
+        )
+        app.add_exception_handler(
+            exceptions.MissingConfigError, cls._handle_internal_http_error(503)
+        )
+        app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
+
     @conn_retry("FastAPI server", "Running FastAPI server")
     def __start_fastapi(self):
         logger.info(
@@ -365,6 +399,7 @@ class AppService(BaseAppService, ABC):
 
     def _self_terminate(self, signum: int, frame):
         """Pass SIGTERM to Uvicorn so it can shut down gracefully"""
+        stop_retry_loops()
         signame = signal.Signals(signum).name
         if not self._shutting_down:
             self._shutting_down = True
@@ -408,9 +443,23 @@ class AppService(BaseAppService, ABC):
                 await db.disconnect()
         ```
         """
-        # Startup - this runs before Uvicorn starts accepting connections
+        # Startup - this runs before Uvicorn starts accepting connections.
+        # Eager connect so we fail-fast if Redis is unreachable, mirroring
+        # the db.connect()/db.disconnect() pattern subclasses use below.
+        await redis_client.get_redis_async()
 
         yield
+
+        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+        # ClusterNode" warnings at interpreter shutdown. Wrapped so a wedged
+        # socket close doesn't block subclass-level db.disconnect calls.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning(
+                f"[{self.service_name}] redis_client.disconnect_async failed",
+                exc_info=True,
+            )
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
@@ -458,18 +507,7 @@ class AppService(BaseAppService, ABC):
         self.fastapi_app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self.fastapi_app.add_exception_handler(
-            ValueError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            DataError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            UniqueViolationError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            Exception, self._handle_internal_http_error(500)
-        )
+        self._register_exception_handlers(self.fastapi_app)
 
         # Start the FastAPI server in a separate thread.
         api_thread = threading.Thread(
@@ -835,15 +873,28 @@ def endpoint_to_sync(
     return cast(Callable[Concatenate[Any, P], R], _stub)
 
 
+@overload
+def endpoint_to_async(
+    func: Callable[Concatenate[Any, P], Coroutine[Any, Any, R]],
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+@overload
 def endpoint_to_async(
     func: Callable[Concatenate[Any, P], R],
-) -> Callable[Concatenate[Any, P], Awaitable[R]]:
-    """
-    The async mirror of `to_sync`.
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+def endpoint_to_async(func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    """Typed async stub for a service endpoint.
+
+    The first overload unwraps `Coroutine[Any, Any, R]` (for `async def`
+    service methods); the second keeps sync server methods returning `R`.
+    Both resolve to `Awaitable[R]` on the client.
     """
 
-    async def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+    async def _stub(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise RuntimeError("should be intercepted by __getattr__")
 
     update_wrapper(_stub, func)
-    return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
+    return _stub

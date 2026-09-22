@@ -1,8 +1,3 @@
-import {
-  FileText as FileTextIcon,
-  DownloadSimple as DownloadIcon,
-} from "@phosphor-icons/react";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { FileUIPart } from "ai";
 import {
   globalRegistry,
@@ -17,10 +12,19 @@ import {
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { filePartToArtifactRef } from "../helpers";
+import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: FileUIPart[];
   isUser?: boolean;
+  /** URL→file-ID pattern used by ``filePartToArtifactRef``.  Owner
+   *  side defaults to the workspace-file URL shape; the public viewer
+   *  passes a per-token pattern from ``lib/share/routes.ts``. */
+  filePattern?: RegExp;
+  /** Read-only mode — forwarded to ``ArtifactCard`` so clicks
+   *  download instead of trying to open a panel that isn't mounted. */
+  readOnly?: boolean;
 }
 
 function renderFileContent(file: FileUIPart): React.ReactNode | null {
@@ -41,26 +45,30 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({ files, isUser }: Props) {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+export function MessageAttachments({
+  files,
+  isUser,
+  filePattern,
+  readOnly,
+}: Props) {
   if (files.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) => {
-        if (isArtifactsEnabled) {
-          const artifactRef = filePartToArtifactRef(
-            file,
-            isUser ? "user-upload" : "agent",
+        const artifactRef = filePartToArtifactRef(
+          file,
+          isUser ? "user-upload" : "agent",
+          filePattern,
+        );
+        if (artifactRef) {
+          return (
+            <ArtifactCard
+              key={`artifact-${artifactRef.id}-${i}`}
+              artifact={artifactRef}
+              readOnly={readOnly}
+            />
           );
-          if (artifactRef) {
-            return (
-              <ArtifactCard
-                key={`artifact-${artifactRef.id}-${i}`}
-                artifact={artifactRef}
-              />
-            );
-          }
         }
         const rendered = renderFileContent(file);
         return rendered ? (
@@ -86,7 +94,7 @@ export function MessageAttachments({ files, isUser }: Props) {
                   aria-label="Download file"
                   className="ml-auto shrink-0 opacity-50 hover:opacity-100"
                 >
-                  <DownloadIcon className="h-3.5 w-3.5" />
+                  <Icon icon={Download04Icon} className="h-3.5 w-3.5" />
                 </a>
               )}
             </div>
@@ -98,7 +106,10 @@ export function MessageAttachments({ files, isUser }: Props) {
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
-                <FileTextIcon className="h-5 w-5 shrink-0 text-neutral-400" />
+                <Icon
+                  icon={File02Icon}
+                  className="h-5 w-5 shrink-0 text-neutral-400"
+                />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-zinc-800">
                     {file.filename || "file"}
@@ -115,7 +126,7 @@ export function MessageAttachments({ files, isUser }: Props) {
                   aria-label="Download file"
                   className="shrink-0 text-purple-400 hover:text-purple-600"
                 >
-                  <DownloadIcon className="h-5 w-5" />
+                  <Icon icon={Download04Icon} className="h-5 w-5" />
                 </a>
               )}
             </div>
@@ -131,13 +142,16 @@ export function MessageAttachments({ files, isUser }: Props) {
                     aria-label="Download file"
                     className="shrink-0 text-neutral-400 hover:text-neutral-600"
                   >
-                    <DownloadIcon className="h-5 w-5" />
+                    <Icon icon={Download04Icon} className="h-5 w-5" />
                   </a>
                 ) : undefined
               }
             >
               <div className="flex items-center gap-2">
-                <FileTextIcon className="h-5 w-5 shrink-0 text-neutral-400" />
+                <Icon
+                  icon={File02Icon}
+                  className="h-5 w-5 shrink-0 text-neutral-400"
+                />
                 <div className="min-w-0">
                   <ContentCardTitle>{file.filename || "file"}</ContentCardTitle>
                   <ContentCardSubtitle>

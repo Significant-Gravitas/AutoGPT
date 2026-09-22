@@ -93,9 +93,9 @@ This block triggers after a specified duration.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The Countdown Timer block pauses workflow execution for a specified duration before continuing. You can set the delay using any combination of seconds, minutes, hours, and days. When the timer completes, it outputs your specified message (or "timer finished" by default).
+The Countdown Timer block pauses workflow execution for a specified duration before continuing. You can set the delay using any combination of seconds, minutes, hours, and days. The cumulative duration (per-iteration delay × repeat count) is capped at 7 days. When the timer completes, it outputs your specified message (or "timer finished" by default).
 
-The block supports a repeat parameter, allowing the timer to fire multiple times in sequence—useful for creating periodic triggers within your workflow. The timer uses async sleep, so it doesn't block other concurrent operations in the system.
+The block supports a repeat parameter (1–1000), allowing the timer to fire multiple times in sequence—useful for creating periodic triggers within your workflow. The timer uses async sleep, so it doesn't block other concurrent operations in the system.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -107,7 +107,7 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 | minutes | Duration in minutes | int \| str | No |
 | hours | Duration in hours | int \| str | No |
 | days | Duration in days | int \| str | No |
-| repeat | Number of times to repeat the timer | int | No |
+| repeat | Number of times to repeat the timer (1–1000) | int | No |
 
 ### Outputs
 

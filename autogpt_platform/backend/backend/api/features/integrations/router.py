@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import secrets
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -14,11 +16,13 @@ from fastapi import (
     Security,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.data.db_accessors import experts_db
+from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -29,17 +33,25 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
-    UserIntegrations,
+    OAuthState,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
-from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
+from backend.integrations.codex.access import (
+    enforce_codex_access_http,
+    has_codex_access_for_discovery,
+)
+from backend.integrations.codex.login import (
+    CodexLoginFailedError,
+    CodexLoginPendingError,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -48,11 +60,27 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import ensure_managed_credentials
-from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
-from backend.integrations.providers import ProviderName
+from backend.integrations.managed_credentials import (
+    ensure_managed_credential,
+    ensure_managed_credentials,
+)
+from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
+from backend.integrations.managed_providers.ayrshare import (
+    settings_available as ayrshare_settings_available,
+)
+from backend.integrations.mcp_catalog import get_mcp_catalog
+from backend.integrations.oauth import (
+    CREDENTIALS_BY_PROVIDER,
+    DEVICE_HANDLERS_BY_NAME,
+    HANDLERS_BY_NAME,
+)
+from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
+from backend.util import product_analytics
 from backend.util.exceptions import (
+    ExpertRunPausedError,
+    GraphNotAccessibleError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -60,14 +88,38 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
-from .models import ProviderConstants, ProviderNamesResponse, get_all_provider_names
+from .codex import (
+    CODEX_LOGIN_STATE_KEY,
+    build_device_login_cancel_url,
+    build_device_login_url,
+    codex_login_coordinator,
+    revoke_codex_credentials,
+)
+from .codex import router as codex_router
+from .failure_events import CredentialFailure, report_credential_failure
+from .models import (
+    ProviderConstants,
+    ProviderMetadata,
+    ProviderNamesResponse,
+    get_all_provider_names,
+    get_provider_description,
+    get_supported_auth_types,
+)
 
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
 
 logger = logging.getLogger(__name__)
+
+# Long enough to stop a loop, short enough that a user who cancels and retries
+# is not left waiting.
+_INITIATE_COOLDOWN_SECONDS = 3
+# The throttle protects an upstream client id; it must never be the reason a
+# request hangs.
+_THROTTLE_TIMEOUT_SECONDS = 1.0
 settings = Settings()
 router = APIRouter()
+router.include_router(codex_router, prefix="/codex")
 
 creds_manager = IntegrationCredentialsManager()
 
@@ -75,6 +127,7 @@ creds_manager = IntegrationCredentialsManager()
 class LoginResponse(BaseModel):
     login_url: str
     state_token: str
+    cancel_url: str | None = None
 
 
 @router.get("/{provider}/login", summary="Initiate OAuth flow")
@@ -87,20 +140,94 @@ async def login(
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
+    credential_id: Annotated[
+        str | None,
+        Query(title="ID of existing credential to upgrade scopes for"),
+    ] = None,
 ) -> LoginResponse:
+    if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
+        return await _start_codex_login(user_id, scopes, credential_id)
+
     handler = _get_provider_oauth_handler(request, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
 
+    if credential_id:
+        requested_scopes = await _prepare_scope_upgrade(
+            user_id, provider, credential_id, requested_scopes
+        )
+
     # Generate and store a secure random state token along with the scopes
     state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id, provider, requested_scopes
+        user_id, provider, requested_scopes, credential_id=credential_id
     )
     login_url = handler.get_login_url(
         requested_scopes, state_token, code_challenge=code_challenge
     )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
+
+
+async def _start_codex_login(
+    user_id: str,
+    scopes: str,
+    credential_id: str | None,
+) -> LoginResponse:
+    if scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex sign-in does not accept OAuth scopes",
+        )
+    if credential_id:
+        await _prepare_scope_upgrade(user_id, ProviderName.CODEX, credential_id, [])
+    frontend_base_url = settings.config.frontend_base_url
+    if not frontend_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+    try:
+        login_attempt = await codex_login_coordinator.start(user_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A ChatGPT sign-in is already active",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+    except Exception as error:
+        logger.warning("Could not start Codex device login: %s", type(error).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+
+    try:
+        state_token, _ = await creds_manager.store.store_state_token(
+            user_id,
+            ProviderName.CODEX.value,
+            [],
+            expires_in_seconds=settings.config.codex_login_timeout_seconds + 60,
+            credential_id=credential_id,
+            state_metadata={CODEX_LOGIN_STATE_KEY: login_attempt.login_id},
+        )
+    except Exception:
+        with suppress(Exception):
+            await codex_login_coordinator.cancel(user_id, login_attempt.login_id)
+        raise
+
+    return LoginResponse(
+        login_url=build_device_login_url(frontend_base_url, login_attempt, state_token),
+        state_token=state_token,
+        cancel_url=build_device_login_cancel_url(login_attempt),
+    )
+
+
+MCPAuthScheme = Literal["basic", "bearer"]
 
 
 class CredentialsMetaResponse(BaseModel):
@@ -113,6 +240,10 @@ class CredentialsMetaResponse(BaseModel):
     host: str | None = Field(
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
+    )
+    mcp_auth_scheme: MCPAuthScheme | None = Field(
+        default=None,
+        description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
 
@@ -135,16 +266,27 @@ class CredentialsMetaResponse(BaseModel):
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider in (
-            ProviderName.MCP,
-            ProviderName.MCP.value,
-            "ProviderName.MCP",
-        ):
+        if _is_mcp_credential(cred):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
 
 
+def _is_mcp_credential(cred: Credentials) -> TypeGuard[OAuth2Credentials]:
+    """Whether this is an MCP credential, across the provider spellings in use."""
+    return isinstance(cred, OAuth2Credentials) and cred.provider in (
+        ProviderName.MCP,
+        ProviderName.MCP.value,
+        "ProviderName.MCP",
+    )
+
+
 def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    mcp_auth_scheme = None
+    if _is_mcp_credential(cred):
+        stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
+        if stored_scheme in get_args(MCPAuthScheme):
+            mcp_auth_scheme = stored_scheme
+
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -153,8 +295,38 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
     )
+
+
+async def _complete_codex_login(
+    user_id: str,
+    login_id: str,
+    oauth_state: OAuthState,
+) -> CredentialsMetaResponse:
+    expected_login_id = oauth_state.state_metadata.get(CODEX_LOGIN_STATE_KEY)
+    if not isinstance(expected_login_id, str) or not secrets.compare_digest(
+        login_id.encode(), expected_login_id.encode()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Codex login completion",
+        )
+    try:
+        credentials = await codex_login_coordinator.complete(user_id, login_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ChatGPT sign-in is still pending",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ChatGPT sign-in failed. Try again.",
+        ) from None
+
+    return to_meta_response(credentials)
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -168,7 +340,9 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
-    handler = _get_provider_oauth_handler(request, provider)
+
+    if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
 
     # Verify the state token
     valid_state = await creds_manager.store.verify_state_token(
@@ -176,11 +350,23 @@ async def callback(
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {user_id}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.PROVIDER_REGISTRATION_WRONG,
+            "invalid_state_token",
+            "Invalid or expired state token",
+            provider=provider.value,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
         )
+
+    if provider == ProviderName.CODEX:
+        return await _complete_codex_login(user_id, code, valid_state)
+
+    handler = _get_provider_oauth_handler(request, provider)
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -200,10 +386,15 @@ async def callback(
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
-            # For now, we'll just log the warning and continue
-            logger.warning(
+            # Stored and accepted anyway; the frontend then refuses to select it,
+            # so this is the only record that the credential is short.
+            report_credential_failure(
+                logger,
+                CredentialFailure.SCOPES_TOO_NARROW,
+                "granted_scopes_narrower",
                 f"Granted scopes {credentials.scopes} for provider {provider.value} "
-                f"do not include all requested scopes {scopes}"
+                f"do not include all requested scopes {scopes}",
+                provider=provider.value,
             )
 
     except Exception as e:
@@ -216,23 +407,402 @@ async def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    await creds_manager.create(user_id, credentials)
+    credentials = await _merge_or_create_credential(
+        user_id, provider, credentials, valid_state.credential_id
+    )
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
     )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="oauth",
+    )
 
     return to_meta_response(credentials)
+
+
+# ================================================================== #
+# Device Code Grant endpoints (RFC 8628)
+# ================================================================== #
+
+
+class DeviceAuthInitiateResponse(BaseModel):
+    # Deliberately no `device_code`: it is the secret used to poll for tokens.
+    # The browser never needs it — /device-auth/poll takes only `state_token`
+    # and reads the device code back out of server-side state.
+    state_token: str
+    user_code: str
+    verification_url: str
+    verification_url_complete: str | None = None
+    expires_in: int
+    interval: int
+
+
+class DeviceAuthPollRequest(BaseModel):
+    state_token: str
+
+
+class DeviceAuthPollResponse(BaseModel):
+    # Literal, not `str`: this is what reaches the generated OpenAPI schema and
+    # the frontend types, and the poll loop branches on exactly these values.
+    status: Literal["pending", "slow_down", "approved", "denied", "expired"]
+    credentials: CredentialsMetaResponse | None = None
+
+
+async def _throttle_upstream(
+    user_id: str, provider: ProviderName, seconds: int, scope: str, flow: str = ""
+) -> bool:
+    """Rate-limit outbound device-auth calls per user and provider.
+
+    Every initiate/poll drives a request to the provider under one hardcoded
+    public client ID shared by the whole platform, so a single account looping
+    an endpoint can get that client throttled for everyone. RFC 8628 already
+    defines the minimum gap between polls; this holds callers to it
+    server-side instead of trusting the client to.
+
+    Returns True when the caller is going too fast. Fails open, and fails open
+    *fast*: an unreachable Redis must not turn a throttle check into a hung
+    request, so the whole check is bounded.
+    """
+
+    async def _claim() -> bool:
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        # Namespaced per endpoint, and for polls per flow. Sharing one key
+        # across endpoints deadlocked the pair: a live poll loop re-claims its
+        # key every `interval` seconds with the same TTL, so it never expires
+        # and `initiate` could never claim it. Keying polls per user rather
+        # than per flow had the same shape one level down — a second
+        # concurrent flow lost every window and spun "waiting for approval"
+        # past the point the user approved. RFC 8628's interval is an
+        # obligation per device code, so that is what a poll is held to.
+        # `initiate` has no flow yet and stays per user, which is the point:
+        # it is what stops a loop minting device codes.
+        key = f"device-auth-throttle:{scope}:{user_id}:{provider_key(provider)}"
+        if flow:
+            key = f"{key}:{flow}"
+        # SET NX EX: the first caller in the window claims the key.
+        claimed = await redis.set(key, "1", ex=max(seconds, 1), nx=True)
+        return not claimed
+
+    try:
+        return await asyncio.wait_for(_claim(), timeout=_THROTTLE_TIMEOUT_SECONDS)
+    except Exception as e:
+        logger.warning(f"Device auth throttle unavailable, allowing through: {e}")
+        return False
+
+
+async def _credential_for_grant(
+    user_id: str, provider: ProviderName, credential_id: str | None
+) -> Any | None:
+    """The credential this grant produced, or None if it is not stored yet.
+
+    Used by the poll that loses the consume race. It must be *this* grant's
+    credential, not merely the provider's newest: `get_creds_by_provider`
+    filters by provider with no ordering contract, and a merged re-auth keeps
+    its original position — so a user with two Link wallets could have the
+    losing poll report the wrong one, which the connect modal then auto-wires
+    into the node. An agent authorized against an account the user did not
+    pick is a worse outcome than reporting nothing.
+
+    Only a re-auth carries a credential id. A first-time grant has none, so
+    there is nothing to match on and the caller is told to keep polling.
+    """
+    if not credential_id:
+        return None
+    try:
+        return await creds_manager.store.get_creds_by_id(user_id, credential_id)
+    except Exception as e:
+        report_credential_failure(
+            logger,
+            CredentialFailure.DEVICE_CODE_RACE,
+            "credential_unreadable",
+            f"Could not read stored credential for {provider}: {e}",
+            provider=provider_key(provider),
+        )
+        return None
+
+
+def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
+    key = provider_key(provider)
+    if key not in DEVICE_HANDLERS_BY_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No device-auth handler for provider '{key}'",
+        )
+    handler_class = DEVICE_HANDLERS_BY_NAME[key]
+    return handler_class()
+
+
+@router.post(
+    "/{provider}/device-auth/initiate",
+    summary="Initiate device code OAuth flow",
+)
+async def device_auth_initiate(
+    provider: Annotated[
+        ProviderName,
+        Path(title="The provider to initiate device auth for"),
+    ],
+    user_id: Annotated[str, Security(get_user_id)],
+    scopes: Annotated[
+        str, Query(title="Comma-separated list of authorization scopes")
+    ] = "",
+) -> DeviceAuthInitiateResponse:
+    handler = _get_device_auth_handler(provider)
+
+    # Cheapest endpoint to abuse: it takes no state token, and each call mints
+    # a device code upstream.
+    if await _throttle_upstream(
+        user_id, provider, _INITIATE_COOLDOWN_SECONDS, scope="initiate"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="A device authorization was just started. Please wait a moment.",
+        )
+
+    requested_scopes = scopes.split(",") if scopes else []
+    requested_scopes = handler.handle_default_scopes(requested_scopes)
+
+    try:
+        initiation = await handler.initiate_device_auth(requested_scopes)
+    except Exception as e:
+        # The message carries the upstream response body verbatim; keep it in
+        # the logs rather than handing it to the caller.
+        logger.error(f"Device auth initiation failed for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to initiate device auth with the provider.",
+        )
+
+    # Outlive the provider's device code by a minute. If the state token
+    # expired first the poll loop would die with "Invalid or expired state
+    # token" while the user could still legitimately approve; the extra grace
+    # also lets the final poll consume the token and report `expired` properly.
+    try:
+        state_token, _ = await creds_manager.store.store_state_token(
+            user_id=user_id,
+            provider=provider_key(provider),
+            scopes=requested_scopes,
+            expires_in_seconds=initiation.expires_in + 60,
+            state_metadata={
+                "flow_type": "device_code",
+                "device_code": initiation.device_code,
+                "interval": initiation.interval,
+                "user_code": initiation.user_code,
+            },
+        )
+    except Exception as e:
+        # The upstream device code is already issued at this point; it simply
+        # goes unused and expires on its own. Surfacing the storage error --
+        # a raw Prisma failure when the user row is missing -- would leak
+        # internals for something the caller can only retry.
+        logger.error(f"Failed to persist device auth state for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start device authorization. Please try again.",
+        )
+
+    return DeviceAuthInitiateResponse(
+        state_token=state_token,
+        user_code=initiation.user_code,
+        verification_url=initiation.verification_url,
+        verification_url_complete=initiation.verification_url_complete,
+        expires_in=initiation.expires_in,
+        interval=initiation.interval,
+    )
+
+
+@router.post(
+    "/{provider}/device-auth/poll",
+    summary="Poll device code OAuth flow for completion",
+)
+async def device_auth_poll(
+    provider: Annotated[
+        ProviderName,
+        Path(title="The provider to poll device auth for"),
+    ],
+    body: DeviceAuthPollRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> DeviceAuthPollResponse:
+    handler = _get_device_auth_handler(provider)
+
+    # Non-consuming read — state survives across many polls
+    try:
+        valid_state = await creds_manager.store.peek_state_token(
+            user_id, body.state_token, provider
+        )
+    except Exception as e:
+        # A caller with no backend User row raises a Prisma RecordNotFound
+        # here. That is the same "invalid token" outcome as far as the poll
+        # loop is concerned, and returning it as a 400 keeps the raw DB text
+        # out of the response — matching what `initiate` already does.
+        logger.error(f"Device auth poll state lookup failed for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state token",
+        )
+    if not valid_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state token",
+        )
+
+    interval = int(valid_state.state_metadata.get("interval") or 5)
+    if await _throttle_upstream(
+        user_id, provider, interval, scope="poll", flow=body.state_token
+    ):
+        # Polling faster than the provider asked for. Say so in its own
+        # vocabulary rather than spending an upstream call to be told.
+        return DeviceAuthPollResponse(status="slow_down")
+
+    device_code = valid_state.state_metadata.get("device_code")
+    if not device_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="State token is not for a device code flow",
+        )
+
+    try:
+        result = await handler.poll_for_tokens(device_code)
+    except Exception as e:
+        # As above: `poll_for_tokens` embeds the raw upstream body in its
+        # error, so log it and return something generic.
+        logger.error(f"Device auth poll failed for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Device auth poll failed against the provider.",
+        )
+
+    if result.status in ("pending", "slow_down"):
+        return DeviceAuthPollResponse(status=result.status)
+
+    # Terminal state — consume the token so it can't be reused. The consume is
+    # the serialization point: `peek` is deliberately non-consuming, so two
+    # concurrent polls can both reach here after an approval. Only the caller
+    # that actually consumes the token may store credentials; the loser would
+    # otherwise create a duplicate for the same authorization.
+    consumed = await creds_manager.store.consume_state_token(
+        user_id, body.state_token, provider
+    )
+    if consumed is None:
+        logger.debug(
+            "Device auth poll for user %s lost the race to consume the state "
+            "token; another poll already handled this terminal state",
+            user_id,
+        )
+        if result.status != "approved":
+            return DeviceAuthPollResponse(status=result.status)
+
+        # The winner stored a credential for this grant; report *that* rather
+        # than "approved" with nothing attached. A client branching on the
+        # status alone would otherwise show success, wire up nothing, and be
+        # unable to retry — the state token is gone by now.
+        stored = await _credential_for_grant(
+            user_id, provider, valid_state.credential_id
+        )
+        if stored is None:
+            # Either the winner has not finished storing, or this is a
+            # first-time grant with no id to match on. Report the approval
+            # without a credential and let the client pick it up from the
+            # refreshed credential list — `pending` would send it back to a
+            # state token the winner has already consumed, and the next poll
+            # would 400.
+            return DeviceAuthPollResponse(status="approved")
+        return DeviceAuthPollResponse(
+            status="approved", credentials=to_meta_response(stored)
+        )
+
+    if result.status == "approved" and result.credentials:
+        credentials = result.credentials
+
+        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
+            credentials.scopes = credentials.scopes[0].split(" ")
+
+        try:
+            credentials = await _merge_or_create_credential(
+                user_id, provider, credentials, valid_state.credential_id
+            )
+        except Exception:
+            # The grant is live at the provider and we could not store it, so
+            # there is no local credential to revoke it with and nothing to
+            # tell the user it exists. Restoring the state token does not help:
+            # RFC 8628 device codes are single-use, so the next poll would only
+            # ever get `expired_token`. Hand the authorization back instead.
+            try:
+                await handler.revoke_tokens(result.credentials)
+                logger.warning(
+                    "Revoked an unstorable device-auth grant for user %s and "
+                    "provider %s rather than leaving it live at the provider",
+                    user_id,
+                    provider,
+                )
+            except Exception as revoke_error:
+                logger.error(
+                    "Could not revoke an unstorable device-auth grant for user "
+                    "%s and provider %s; it remains live upstream: %s",
+                    user_id,
+                    provider,
+                    revoke_error,
+                )
+            raise
+
+        logger.debug(
+            f"Device auth approved for user {user_id} and provider {provider.value}"
+        )
+        product_analytics.track_integration_connected(
+            user_id=user_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            method="device_code",
+        )
+        return DeviceAuthPollResponse(
+            status="approved",
+            credentials=to_meta_response(credentials),
+        )
+
+    # denied / expired
+    return DeviceAuthPollResponse(status=result.status)
+
+
+# Bound the first-time sweep so a slow upstream (e.g. Ayrshare) can't hang
+# the credential-list endpoint.  On timeout we still kick off a fire-and-
+# forget sweep so provisioning eventually completes; the user just won't
+# see the managed cred until the next refresh.
+_MANAGED_PROVISION_TIMEOUT_S = 10.0
+
+
+async def _ensure_managed_credentials_bounded(user_id: str) -> None:
+    try:
+        await asyncio.wait_for(
+            ensure_managed_credentials(user_id, creds_manager.store),
+            timeout=_MANAGED_PROVISION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        report_credential_failure(
+            logger,
+            CredentialFailure.MANAGED_PROVISIONING_LATE,
+            "sweep_timeout",
+            f"Managed credential sweep exceeded {_MANAGED_PROVISION_TIMEOUT_S:.1f}s; "
+            "continuing without it — provisioning will complete in background",
+            user_id=user_id,
+        )
+        asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
 
 
 @router.get("/credentials", summary="List Credentials")
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    # Fire-and-forget: provision missing managed credentials in the background.
-    # The credential appears on the next page load; listing is never blocked.
-    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+    # Block on provisioning so managed credentials appear on the first load
+    # instead of after a refresh, but with a timeout so a slow upstream
+    # can't hang the endpoint.  `_provisioned_users` short-circuits on
+    # repeat calls.
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -247,7 +817,7 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
@@ -281,6 +851,115 @@ async def get_credential(
     return to_meta_response(credential)
 
 
+class PickerTokenResponse(BaseModel):
+    """Short-lived OAuth access token shipped to the browser for rendering a
+    provider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:
+    only the fields the client needs to initialize the picker widget. Issued
+    from the user's own stored credential so ownership and scope gating are
+    enforced by the credential lookup."""
+
+    access_token: str = Field(
+        description="OAuth access token suitable for the picker SDK call."
+    )
+    access_token_expires_at: int | None = Field(
+        default=None,
+        description="Unix timestamp at which the access token expires, if known.",
+    )
+
+
+# Allowlist of (provider, scopes) tuples that may mint picker tokens. Only
+# Drive-picker-capable scopes qualify so a caller can't use this endpoint to
+# extract a GitHub / other-provider OAuth token for unrelated purposes. If a
+# future provider integrates a hosted picker that needs a raw access token,
+# add its specific picker-relevant scopes here.
+_PICKER_TOKEN_ALLOWED_SCOPES: dict[ProviderName, frozenset[str]] = {
+    ProviderName.GOOGLE: frozenset(
+        [
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive",
+        ]
+    ),
+}
+
+
+@router.post(
+    "/{provider}/credentials/{cred_id}/picker-token",
+    summary="Issue a short-lived access token for a provider-hosted picker",
+    operation_id="postV1GetPickerToken",
+)
+async def get_picker_token(
+    provider: Annotated[
+        ProviderName, Path(title="The provider that owns the credentials")
+    ],
+    cred_id: Annotated[
+        str, Path(title="The ID of the OAuth2 credentials to mint a token from")
+    ],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PickerTokenResponse:
+    """Return the raw access token for an OAuth2 credential so the frontend
+    can initialize a provider-hosted picker (e.g. Google Drive Picker).
+
+    `GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see
+    `CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in
+    `router_test.py`). That hardening broke the Drive picker, which needs the
+    raw access token to call `google.picker.Builder.setOAuthToken(...)`. This
+    endpoint carves a narrow, explicit hole: the caller must own the
+    credential, it must be OAuth2, and the endpoint returns only the access
+    token + its expiry — nothing else about the credential. SDK-default
+    credentials are excluded for the same reason as `get_credential`.
+    """
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+
+    credential = await creds_manager.get(user_id, cred_id)
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if not provider_matches(credential.provider, provider):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if not isinstance(credential, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Picker tokens are only available for OAuth2 credentials",
+        )
+    if not credential.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential has no access token; reconnect the account",
+        )
+
+    # Gate on provider+scope: only credentials that actually grant access to
+    # a provider-hosted picker flow may mint a token through this endpoint.
+    # Prevents using this path to extract bearer tokens for unrelated OAuth
+    # integrations (e.g. GitHub) that happen to be stored under the same user.
+    allowed_scopes = _PICKER_TOKEN_ALLOWED_SCOPES.get(provider)
+    if not allowed_scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Picker tokens are not available for provider '{provider.value}'"),
+        )
+    cred_scopes = set(credential.scopes or [])
+    if cred_scopes.isdisjoint(allowed_scopes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Credential does not grant any scope eligible for the picker. "
+                "Reconnect with the appropriate scope."
+            ),
+        )
+
+    return PickerTokenResponse(
+        access_token=credential.access_token.get_secret_value(),
+        access_token_expires_at=credential.access_token_expires_at,
+    )
+
+
 @router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
 async def create_credentials(
     user_id: Annotated[str, Security(get_user_id)],
@@ -294,6 +973,19 @@ async def create_credentials(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create credentials with a reserved ID",
         )
+    if provider == ProviderName.CODEX:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex credentials must be created through ChatGPT sign-in",
+        )
+    if (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.refresh_strategy == "provider_runtime"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provider-runtime credentials cannot be created directly",
+        )
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -303,6 +995,12 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store credentials",
         )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="manual",
+    )
     return to_meta_response(credentials)
 
 
@@ -368,13 +1066,25 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
-    await creds_manager.delete(user_id, cred_id)
-
     tokens_revoked = None
-    if isinstance(creds, OAuth2Credentials):
+    if provider == ProviderName.CODEX:
+        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+    else:
+        await creds_manager.delete(user_id, cred_id)
+
+    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
+        elif (
+            device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
+        ) is not None:
+            # A device-code grant stores an OAuth2Credentials, so it reaches
+            # this branch too — but its handler lives in the other registry.
+            # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
+            # *after* the local delete had already run, leaving a live token
+            # at the provider with nothing left to revoke it with.
+            handler = device_handler()
         else:
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
@@ -400,7 +1110,29 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
-        user_id = webhook.user_id
+        # Sanity check: `provider` from URL and fetched webhook must match.
+        # Otherwise the URL provider's verifier runs instead of the webhook's
+        # own (a no-op for unsigned providers like Compass), bypassing it.
+        if webhook.provider.value.lower() != provider.value.lower():
+            logger.warning(
+                f"Webhook #{webhook_id} provider mismatch: "
+                f"registered as {webhook.provider.value}, ingress via {provider.value}"
+            )
+            # Same as the actual "webhook not found" response to conceal existence
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    # `secret` and `config` are excluded: both can hold platform- or
+    # provider-issued signing secrets, which must not reach the logs.
+    # Guarded so the dump doesn't run on every delivery when DEBUG is off.
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"Webhook #{webhook_id}: {webhook.model_dump(exclude={'secret', 'config'})}"
+        )
+
+    user_id = webhook.user_id
+    try:
         credentials = (
             await creds_manager.get(user_id, webhook.credentials_id)
             if webhook.credentials_id
@@ -409,7 +1141,23 @@ async def webhook_ingress_generic(
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    # Run provider signature verification (no-op for providers whose protocol
+    # has no signing scheme). 403 on failure; not 404 — that would leak
+    # webhook existence.
+    try:
+        await webhook_manager.verify_signature(webhook, request)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -455,6 +1203,12 @@ async def webhook_ping(
     user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
+    if webhook.user_id != user_id:
+        # Treat a webhook the caller doesn't own as if it doesn't exist, so this
+        # endpoint can't be used to enumerate webhook IDs or ping others' webhooks.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+        )
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
@@ -489,11 +1243,32 @@ async def _execute_webhook_node_trigger(
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
-        await add_graph_execution(
+        # Resource-follows-parent: the webhook is tagged with its graph's
+        # org/team at creation (and backfilled by the org migration), so
+        # triggered runs attribute there — not the owner's personal org.
+        # Untagged legacy webhooks fall back to the owner's default team.
+        if webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
             nodes_input_masks={node.id: {"payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
+            webhook_id=webhook_id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=node.graph_id,
+            graph_exec_id=graph_exec.id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -524,14 +1299,42 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
+    # A webhook only ever runs triggers owned by the webhook owner
+    if preset.user_id != webhook.user_id:
+        logger.warning(
+            f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
+            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+        )
+        return
+
+    expert_tenancy: tuple[str, str | None] | None = None
+    if preset.expert_id is not None:
+        try:
+            expert_tenancy = await experts_db().resolve_private_expert_tenancy(
+                webhook.user_id, preset.expert_id
+            )
+        except Exception:
+            logger.warning(
+                "Refusing private expert webhook preset because its tenancy "
+                "could not be validated",
+                exc_info=True,
+            )
+            return
+
+    # Read-authorization must not decide this: `None` would then also mean
+    # "not allowed to read", and the write below would silently kill a live
+    # trigger. add_graph_execution() is the authorization gate for this path.
     graph = await get_graph(
-        preset.graph_id, preset.graph_version, user_id=webhook.user_id
+        preset.graph_id,
+        preset.graph_version,
+        user_id=webhook.user_id,
+        skip_access_check=True,
     )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
             f"#{preset.graph_id} v{preset.graph_version}, "
-            "but no access to the graph itself."
+            "but the graph version does not exist."
         )
         logger.info(f"Automatically deactivating broken preset #{preset.id}")
         await update_preset(preset.user_id, preset.id, is_active=False)
@@ -550,28 +1353,279 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     try:
-        await add_graph_execution(
+        # Expert resources survive personal-org conversion: active ownership
+        # above is authoritative and the run follows the owner's current
+        # private owner scope even when legacy preset/webhook tags are stale.
+        # Non-expert resources continue to follow their stored parent scope.
+        if expert_tenancy is not None:
+            org_id, ws_id = expert_tenancy
+        elif preset.organization_id:
+            org_id, ws_id = preset.organization_id, preset.team_id
+        elif webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
             nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
+            expert_id=preset.expert_id,
+            webhook_id=webhook.id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
         )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=preset.graph_id,
+            graph_exec_id=graph_exec.id,
+            expert_id=preset.expert_id,
+            preset_id=preset.id,
+        )
+    except ExpertRunPausedError as e:
+        # Expected steady-state while the expert is paused/over budget —
+        # not an error worth a stack trace on every webhook delivery.
+        logger.info(f"Skipping triggered run for preset #{preset.id}: {e}")
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+            f"deleted graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
             preset.graph_id, webhook.user_id, webhook_id
+        )
+    except GraphNotAccessibleError as e:
+        # Permanent, unlike the transient failures below: every future
+        # delivery fails the same way while the preset still reads as Active.
+        logger.error(
+            f"Webhook #{webhook_id} preset #{preset.id} is permanently blocked: "
+            f"user #{webhook.user_id} may not execute graph "
+            f"#{preset.graph_id} v{preset.graph_version}: {e}"
         )
     except Exception:
         logger.exception(
             f"Failed to execute preset #{preset.id} via webhook #{webhook_id}"
         )
         # Continue processing - webhook should be resilient to individual failures
+
+
+# -------------------- INCREMENTAL AUTH HELPERS -------------------- #
+
+
+async def _prepare_scope_upgrade(
+    user_id: str,
+    provider: ProviderName,
+    credential_id: str,
+    requested_scopes: list[str],
+) -> list[str]:
+    """Validate an existing credential for scope upgrade and compute scopes.
+
+    For providers without native incremental auth (e.g. GitHub), returns the
+    union of existing + requested scopes.  For providers that handle merging
+    server-side (e.g. Google with ``include_granted_scopes``), returns the
+    requested scopes unchanged.
+
+    Raises HTTPException on validation failure.
+    """
+    # Platform-owned system credentials must never be upgraded — scope
+    # changes here would leak across every user that shares them.
+    if is_system_credential(credential_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="System credentials cannot be upgraded",
+        )
+
+    existing = await creds_manager.store.get_creds_by_id(user_id, credential_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credential to upgrade not found",
+        )
+    if not isinstance(existing, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only OAuth2 credentials can be upgraded",
+        )
+    if not provider_matches(existing.provider, provider.value):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential provider does not match the requested provider",
+        )
+    if existing.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Managed credentials cannot be upgraded",
+        )
+
+    # Google handles scope merging via include_granted_scopes; others need
+    # the union of existing + new scopes in the login URL.
+    if provider != ProviderName.GOOGLE:
+        requested_scopes = list(set(requested_scopes) | set(existing.scopes))
+
+    return requested_scopes
+
+
+async def _merge_or_create_credential(
+    user_id: str,
+    provider: ProviderName,
+    credentials: OAuth2Credentials,
+    credential_id: str | None,
+) -> OAuth2Credentials:
+    """Either upgrade an existing credential or create a new one.
+
+    When *credential_id* is set (explicit upgrade), merges scopes and updates
+    the existing credential.  Otherwise, checks for an implicit merge (same
+    provider + username) before falling back to creating a new credential.
+
+    Both paths enforce a scope-coverage guard: a "merge" only happens when
+    the freshly-minted token covers every scope the existing record already
+    advertises.  Without that guard a narrowed re-auth would overwrite the
+    stored ``access_token`` with a token whose grant is smaller than the
+    ``scopes`` list — the record would claim authorizations the token does
+    not grant, the credential matcher would happily route Otto tools
+    to that "more capable" credential, and the tool would fail with opaque
+    401/403s on the missing scopes ("Otto keeps picking the old
+    creds" symptom).  On a narrowing re-auth we keep the existing
+    credential intact and persist the new one alongside it instead.
+    """
+    if credential_id:
+        existing = await creds_manager.store.get_creds_by_id(user_id, credential_id)
+        # Gate the scope-coverage guard on the same defense-in-depth invariants
+        # that `_upgrade_existing_credential` enforces — provider drift, missing
+        # records, and non-OAuth2 targets must still raise via the upgrade path
+        # instead of being silently bypassed by the new-credential fallback.
+        if (
+            existing
+            and isinstance(existing, OAuth2Credentials)
+            and not existing.is_managed
+            and not is_system_credential(existing.id)
+            and provider_matches(existing.provider, credentials.provider)
+            and not set(credentials.scopes).issuperset(set(existing.scopes))
+        ):
+            # Narrowing re-auth: keep existing intact, persist new alongside.
+            # The frontend `executeOAuthFlow` has already pre-screened that
+            # the new credential covers the scopes the card asked for; the
+            # mismatch here is with the *existing* record's wider scope set,
+            # which the explicit-upgrade path tried to preserve via union.
+            await creds_manager.create(user_id, credentials)
+            return credentials
+        return await _upgrade_existing_credential(user_id, credential_id, credentials)
+
+    # Implicit merge: check for existing credential with same provider+username.
+    # Skip managed/system credentials and require a non-None username on both
+    # sides so we never accidentally merge unrelated credentials.
+    if credentials.username is None:
+        await creds_manager.create(user_id, credentials)
+        return credentials
+
+    existing_creds = await creds_manager.store.get_creds_by_provider(user_id, provider)
+    matching = next(
+        (
+            c
+            for c in existing_creds
+            if isinstance(c, OAuth2Credentials)
+            and not c.is_managed
+            and not is_system_credential(c.id)
+            and c.username is not None
+            and c.username == credentials.username
+        ),
+        None,
+    )
+    if matching:
+        # Only merge into the existing credential when the new token
+        # already covers every scope we're about to advertise on it.
+        # Without this guard we'd overwrite ``matching.access_token`` with
+        # a narrower token while storing a wider ``scopes`` list — the
+        # record would claim authorizations the token does not grant, and
+        # blocks using the lost scopes would fail with opaque 401/403s
+        # until the user hits re-auth.  On a narrowing login, keep the
+        # two credentials separate instead.
+        if set(credentials.scopes).issuperset(set(matching.scopes)):
+            return await _upgrade_existing_credential(user_id, matching.id, credentials)
+
+    await creds_manager.create(user_id, credentials)
+    return credentials
+
+
+async def _upgrade_existing_credential(
+    user_id: str,
+    existing_cred_id: str,
+    new_credentials: OAuth2Credentials,
+) -> OAuth2Credentials:
+    """Merge scopes from *new_credentials* into an existing credential."""
+    # Defense-in-depth: re-check system and provider invariants right before
+    # the write.  The login-time check in `_prepare_scope_upgrade` can go stale
+    # by the time the callback runs, and the implicit-merge path bypasses
+    # login-time validation entirely, so every write-path must enforce these
+    # on its own.
+    if is_system_credential(existing_cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="System credentials cannot be upgraded",
+        )
+    existing = await creds_manager.store.get_creds_by_id(user_id, existing_cred_id)
+    if not existing or not isinstance(existing, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential to upgrade not found",
+        )
+    if existing.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Managed credentials cannot be upgraded",
+        )
+    if not provider_matches(existing.provider, new_credentials.provider):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential provider does not match the requested provider",
+        )
+
+    if (
+        existing.username
+        and new_credentials.username
+        and existing.username != new_credentials.username
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username mismatch: authenticated as a different user",
+        )
+
+    # Operate on a copy so the caller's ``new_credentials`` object is not
+    # mutated out from under them.  Every caller today immediately discards
+    # or replaces its reference, but the implicit-merge path in
+    # ``_merge_or_create_credential`` reads ``credentials.scopes`` before
+    # calling into us — a future reader after the call would otherwise
+    # silently see the overwritten values.
+    merged = new_credentials.model_copy(deep=True)
+    merged.id = existing.id
+    merged.title = existing.title
+    merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
+    merged.metadata = {
+        **(existing.metadata or {}),
+        **(new_credentials.metadata or {}),
+    }
+    # Preserve the existing refresh_token and username if the incremental
+    # response doesn't carry them.  Providers like Google only return a
+    # refresh_token on first authorization — dropping it here would orphan
+    # the credential on the next access-token expiry, forcing the user to
+    # re-auth from scratch. Username is similarly sticky: if we've already
+    # resolved it for this credential, keep it rather than silently
+    # blanking it on an incremental upgrade.
+    if not merged.refresh_token and existing.refresh_token:
+        merged.refresh_token = existing.refresh_token
+        merged.refresh_token_expires_at = existing.refresh_token_expires_at
+    if not merged.username and existing.username:
+        merged.username = existing.username
+    await creds_manager.update(user_id, merged)
+    return merged
 
 
 # --------------------------- UTILITIES ---------------------------- #
@@ -718,18 +1772,30 @@ def _get_provider_oauth_handler(
         logger.warning(f"Failed to load blocks: {e}")
 
     # Convert provider_name to string for lookup
-    provider_key = (
-        provider_name.value if hasattr(provider_name, "value") else str(provider_name)
-    )
+    key = provider_key(provider_name)
 
-    if provider_key not in HANDLERS_BY_NAME:
+    if key not in HANDLERS_BY_NAME:
+        if key in DEVICE_HANDLERS_BY_NAME:
+            # A device-code provider is a public client with no client secret,
+            # so there is no authorization-code flow to start. Point the caller
+            # at the device-auth endpoint rather than reporting "does not
+            # support OAuth". The detail is shown to end users verbatim.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Provider '{key}' connects with a device code, not an "
+                    "OAuth redirect. Connect it through the device-code flow "
+                    f"instead (API: POST /api/integrations/{key}"
+                    "/device-auth/initiate)."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider '{provider_key}' does not support OAuth",
+            detail=f"Provider '{key}' does not support OAuth",
         )
 
     # Check if this provider has custom OAuth credentials
-    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_key)
+    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(key)
 
     if oauth_credentials and not oauth_credentials.use_secrets:
         # SDK provider with custom env vars
@@ -764,7 +1830,7 @@ def _get_provider_oauth_handler(
             },
         )
 
-    handler_class = HANDLERS_BY_NAME[provider_key]
+    handler_class = HANDLERS_BY_NAME[key]
     frontend_base_url = settings.config.frontend_base_url
 
     if not frontend_base_url:
@@ -784,12 +1850,21 @@ def _get_provider_oauth_handler(
 async def get_ayrshare_sso_url(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:
-    """
-    Generate an SSO URL for Ayrshare social media integration.
+    """Generate a JWT SSO URL so the user can link their social accounts.
 
-    Returns:
-        dict: Contains the SSO URL for Ayrshare integration
+    The per-user Ayrshare profile key is provisioned and persisted as a
+    standard ``is_managed=True`` credential by
+    :class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.
+    This endpoint only signs a short-lived JWT pointing at the Ayrshare-
+    hosted social-linking page; all profile lifecycle logic lives with the
+    managed provider.
     """
+    if not ayrshare_settings_available():
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ayrshare integration is not configured",
+        )
+
     try:
         client = AyrshareClient()
     except MissingConfigError:
@@ -798,66 +1873,62 @@ async def get_ayrshare_sso_url(
             detail="Ayrshare integration is not configured",
         )
 
-    # Ayrshare profile key is stored in the credentials store
-    # It is generated when creating a new profile, if there is no profile key,
-    # we create a new profile and store the profile key in the credentials store
-
-    user_integrations: UserIntegrations = await get_user_integrations(user_id)
-    profile_key = user_integrations.managed_credentials.ayrshare_profile_key
-
-    if not profile_key:
-        logger.debug(f"Creating new Ayrshare profile for user {user_id}")
-        try:
-            profile = await client.create_profile(
-                title=f"User {user_id}", messaging_active=True
-            )
-            profile_key = profile.profileKey
-            await creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
-        except Exception as e:
-            logger.error(f"Error creating Ayrshare profile for user {user_id}: {e}")
-            raise HTTPException(
-                status_code=HTTP_502_BAD_GATEWAY,
-                detail="Failed to create Ayrshare profile",
-            )
-    else:
-        logger.debug(f"Using existing Ayrshare profile for user {user_id}")
-
-    profile_key_str = (
-        profile_key.get_secret_value()
-        if isinstance(profile_key, SecretStr)
-        else str(profile_key)
+    # On-demand provisioning: AyrshareManagedProvider opts out of the
+    # credentials sweep (profile quota is per-user subscription-bound).  This
+    # endpoint is the only trigger that provisions a profile — one Ayrshare
+    # profile per user who actually opens the connect flow, not one per
+    # every authenticated user.
+    provisioned = await ensure_managed_credential(
+        user_id, creds_manager.store, AyrshareManagedProvider()
     )
+    if not provisioned:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
+
+    ayrshare_creds = [
+        c
+        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
+        if c.is_managed and isinstance(c, APIKeyCredentials)
+    ]
+    if not ayrshare_creds:
+        logger.error(
+            "Ayrshare credential provisioning did not produce a credential for user %s",
+            user_id,
+        )
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
+    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
 
     private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT expiry is 2880 minutes (48 hours)
+    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
     max_expiry_minutes = 2880
     try:
-        logger.debug(f"Generating Ayrshare JWT for user {user_id}")
         jwt_response = await client.generate_jwt(
             private_key=private_key,
             profile_key=profile_key_str,
+            # `allowed_social` is the set of networks the Ayrshare-hosted
+            # social-linking page will *offer* the user to connect.  Blocks
+            # exist for more platforms than are listed here; the list is
+            # deliberately narrower so the rollout can verify each network
+            # end-to-end before widening the user-visible surface.  Keep
+            # in sync with tested platforms — extend as each is verified
+            # against the block + Ayrshare's network-specific quirks.
             allowed_social=[
-                # NOTE: We are enabling platforms one at a time
-                # to speed up the development process
-                # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
                 SocialPlatform.INSTAGRAM,
                 SocialPlatform.YOUTUBE,
-                # SocialPlatform.REDDIT,
-                # SocialPlatform.TELEGRAM,
-                # SocialPlatform.GOOGLE_MY_BUSINESS,
-                # SocialPlatform.PINTEREST,
                 SocialPlatform.TIKTOK,
-                # SocialPlatform.BLUESKY,
-                # SocialPlatform.SNAPCHAT,
-                # SocialPlatform.THREADS,
             ],
             expires_in=max_expiry_minutes,
             verify=True,
         )
-    except Exception as e:
-        logger.error(f"Error generating Ayrshare JWT for user {user_id}: {e}")
+    except Exception as exc:
+        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
         raise HTTPException(
             status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
         )
@@ -867,20 +1938,52 @@ async def get_ayrshare_sso_url(
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
-@router.get("/providers", response_model=List[str])
-async def list_providers() -> List[str]:
+@router.get("/providers", response_model=List[ProviderMetadata])
+async def list_providers(
+    user_id: Annotated[str | None, Security(get_optional_user_id)],
+) -> List[ProviderMetadata]:
     """
-    Get a list of all available provider names.
+    Get metadata for every available provider.
 
-    Returns both statically defined providers (from ProviderName enum)
-    and dynamically registered providers (from SDK decorators).
+    Returns both statically defined providers (from ``ProviderName`` enum) and
+    dynamically registered providers (from SDK decorators). Each entry includes
+    a ``description`` declared via ``ProviderBuilder.with_description(...)`` in
+    the provider's ``_config.py``.
 
-    Note: The complete list of provider names is also available as a constant
-    in the generated TypeScript client via PROVIDER_NAMES.
+    Official MCP catalog entries are appended as display metadata and use the
+    generic MCP connection flow. They are not registered credential providers,
+    so PROVIDER_NAMES continues to contain only credential-provider names.
     """
-    # Get all providers at runtime
+    # Ensure all block modules (and therefore every provider's _config.py) are
+    # imported before we read from AutoRegistry. Cached on first call.
+    try:
+        from backend.blocks import load_all_blocks
+
+        load_all_blocks()
+    except Exception as e:
+        # The list still returns, one provider short — every card for a missing
+        # provider then renders as a permanent loading state, not an error.
+        logger.warning(f"Failed to load blocks for provider metadata: {e}")
+
     all_providers = get_all_provider_names()
-    return all_providers
+    if user_id is None or not await has_codex_access_for_discovery(user_id):
+        all_providers = [name for name in all_providers if name != ProviderName.CODEX]
+    return [
+        ProviderMetadata(
+            name=name,
+            description=get_provider_description(name),
+            supported_auth_types=get_supported_auth_types(name),
+        )
+        for name in all_providers
+    ] + [
+        ProviderMetadata(
+            name=entry.name,
+            display_name=entry.display_name,
+            description=entry.description,
+            mcp_server=entry.mcp_server,
+        )
+        for entry in get_mcp_catalog()
+    ]
 
 
 @router.get("/providers/system", response_model=List[str])

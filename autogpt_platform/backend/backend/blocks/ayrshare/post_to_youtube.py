@@ -3,15 +3,18 @@ from typing import Any
 
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
 class YouTubeVisibility(str, Enum):
@@ -20,6 +23,7 @@ class YouTubeVisibility(str, Enum):
     UNLISTED = "unlisted"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToYouTubeBlock(Block):
     """Block for posting to YouTube with YouTube-specific options."""
 
@@ -37,6 +41,14 @@ class PostToYouTubeBlock(Block):
             description="Required video URL. YouTube only supports 1 video per post.",
             default_factory=list,
             advanced=False,
+        )
+
+        # YouTube is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for YouTube)",
+            default=True,
+            advanced=True,
         )
 
         # YouTube-specific required options
@@ -137,16 +149,10 @@ class PostToYouTubeBlock(Block):
         self,
         input_data: "PostToYouTubeBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to YouTube with YouTube-specific validation and options."""
-
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -302,7 +308,7 @@ class PostToYouTubeBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             youtube_options=youtube_options,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

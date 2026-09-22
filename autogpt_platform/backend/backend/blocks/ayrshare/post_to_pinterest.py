@@ -1,21 +1,20 @@
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
-from ._util import (
-    BaseAyrshareInput,
-    PinterestCarouselOption,
-    create_ayrshare_client,
-    get_profile_key,
-)
+from ._cost import AYRSHARE_POST_COSTS
+from ._util import BaseAyrshareInput, PinterestCarouselOption, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToPinterestBlock(Block):
     """Block for posting to Pinterest with Pinterest-specific options."""
 
@@ -92,15 +91,10 @@ class PostToPinterestBlock(Block):
         self,
         input_data: "PostToPinterestBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to Pinterest with Pinterest-specific options."""
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -206,7 +200,7 @@ class PostToPinterestBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             pinterest_options=pinterest_options if pinterest_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

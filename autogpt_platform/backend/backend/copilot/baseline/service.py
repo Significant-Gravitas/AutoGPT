@@ -15,53 +15,136 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai import APIConnectionError
+from openai import omit as openai_omit
+from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
-from backend.copilot.config import CopilotMode
+from backend.blocks.desktop._common import workspace_volume_mounts
+from backend.copilot import engine_switch
+from backend.copilot.anthropic_rate_card import (
+    compute_anthropic_cost_usd,
+    get_max_output_tokens,
+)
+from backend.copilot.baseline.reasoning import (
+    BaselineReasoningEmitter,
+    anthropic_thinking_extra_body,
+    reasoning_extra_body,
+)
+from backend.copilot.baseline.tool_persistence import BaselineToolPersistence
+from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.expert_context import build_expert_identity_suffix
+from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.local_context_probe import (
+    compaction_target_for_window,
+    probe_local_context_window,
+)
+from backend.copilot.markers import append_error_marker
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    RoutingSource,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
 )
-from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
+from backend.copilot.model_normalize import normalize_model_for_transport
+from backend.copilot.model_router import ResolvedModel, resolve_model_route
+from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.pending_message_helpers import (
+    combine_pending_with_current,
+    drain_pending_safe,
+    persist_pending_as_user_rows,
+    persist_session_safe,
+)
+from backend.copilot.pending_messages import (
+    drain_pending_messages,
+    format_pending_as_user_message,
+)
+from backend.copilot.permissions import denied_tool_names
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    get_chat_platform_supplement,
+    get_delegation_supplement,
+    get_expert_oversight_supplement,
+    get_graphiti_supplement,
+    get_team_building_supplement,
+)
+from backend.copilot.provider_failure import classify as classify_provider_failure
+from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamModeChanged,
+    StreamProviderFailure,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
+    ToolDisplayData,
 )
 from backend.copilot.service import (
     _build_system_prompt,
-    _get_openai_client,
+    _get_main_client,
     _update_title_async,
     config,
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
-from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.tools import execute_tool, get_available_tools
+from backend.copilot.token_tracking import (
+    _extract_cache_creation_tokens,
+    persist_and_record_usage,
+)
+from backend.copilot.tool_display import tool_calls_for_provider, tool_display_context
+from backend.copilot.tools import (
+    ToolGroup,
+    execute_tool,
+    expert_tool_disabled_groups,
+    get_available_tools,
+    kickoff_turn_disabled_tools,
+    origin_disabled_tools,
+    tool_names_in_groups,
+)
+from backend.copilot.tools.e2b_sandbox import (
+    count_expert_turn,
+    get_or_create_sandbox,
+    pause_sandbox_direct,
+)
+from backend.copilot.tools.session_context import build_session_context
+from backend.copilot.tools.skills import (
+    build_skills_context,
+    build_skills_update_notice,
+)
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -70,6 +153,8 @@ from backend.copilot.transcript import (
     detect_gap,
     download_transcript,
     extract_context_messages,
+    fill_hole_between_transcript_and_gap,
+    next_uncovered_sequence,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
@@ -77,6 +162,8 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
     estimate_token_count,
@@ -91,14 +178,128 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-# Maximum number of tool-call rounds before forcing a text response.
-_MAX_TOOL_ROUNDS = 30
+
+def _pause_uncounted_box(
+    sandbox: Any, session_id: str, expert_id: str | None
+) -> asyncio.Task[Any] | None:
+    """Pause a box opened for a turn that ended before its turn was counted.
+
+    A session's box has nobody else on it, so it is paused straight away
+    (fire-and-forget, like the turn-end pause).  An expert's box may be
+    carrying another turn and this one never counted itself, so it is left
+    for the lifecycle timeout rather than paused under someone else.
+    """
+    if expert_id:
+        return None
+    task = asyncio.create_task(pause_sandbox_direct(sandbox, session_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+# Hint appended on the last tool round so the model wraps up with a summary
+# instead of issuing another tool call that gets cut off cold. The shared
+# ``tool_call_loop`` drops ``tools`` on the last iteration (see util/tool_call_loop.py),
+# so the model is forced to produce text and always finishes naturally.
+_LAST_ITERATION_HINT = (
+    "You have reached the tool-call budget for this turn. Do not call any "
+    "more tools — produce a final text response summarizing what you did, "
+    "what remains, and how the user can continue the work in the next turn."
+)
+
+# Fallback surfaced when the tool-round budget is exhausted *and* the forced-
+# text last round left the user with zero visible response.
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
+    "Reached the tool-call budget for this turn. "
+    "Send a follow-up message to continue from here."
+)
+
+# Fallback surfaced when the model finished naturally (under the budget) but
+# left the terminal round with zero visible text — the baseline equivalent
+# of the SDK's ``StreamError(code="empty_completion")``. Without this the FE
+# silently shows nothing after a long thinking-only turn on baseline-routed
+# sessions (e.g. some Kimi K2.6 cohorts).
+_NATURAL_FINISH_EMPTY_FALLBACK_TEXT = (
+    "The model returned no response for this turn. "
+    "Please try again or rephrase your request."
+)
+
+
+def _silent_finish_fallback_events(
+    notice: str | None,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Wrap a fallback notice (or ``None``) into the matching wire events.
+
+    Shared by the budget-exhausted and natural-finish-empty branches so the
+    event sequencing stays identical — only the message text differs.
+    """
+    if notice is None:
+        return [], ""
+    block_id = str(uuid.uuid4())
+    events: list[StreamBaseResponse] = [
+        StreamTextStart(id=block_id),
+        StreamTextDelta(id=block_id, delta=notice),
+        StreamTextEnd(id=block_id),
+    ]
+    return events, notice
+
+
+def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
+    """Return the fallback notice when a budget-exhausted turn produced no
+    visible text, or ``None`` when the model already summarised itself.
+
+    ``terminal_round_text`` is the text added by the *final* round only —
+    earlier-round chatter shouldn't mask a silent final round.
+    """
+    if terminal_round_text.strip():
+        return None
+    return _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+def _natural_finish_empty_notice_text(terminal_round_text: str) -> str | None:
+    """Return the fallback notice when a naturally-finishing turn produced
+    no visible text, or ``None`` when the model already summarised itself.
+    """
+    if terminal_round_text.strip():
+        return None
+    return _NATURAL_FINISH_EMPTY_FALLBACK_TEXT
+
+
+def _build_budget_exhausted_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a budget-exhausted
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.  Split out of the async generator so it's unit-
+    testable without the surrounding streaming machinery.
+    """
+    return _silent_finish_fallback_events(
+        _budget_exhausted_notice_text(terminal_round_text)
+    )
+
+
+def _build_natural_finish_empty_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a naturally-finishing
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.
+    """
+    return _silent_finish_fallback_events(
+        _natural_finish_empty_notice_text(terminal_round_text)
+    )
+
 
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
@@ -113,6 +314,44 @@ _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
 # Matches characters unsafe for filenames.
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+# OpenRouter-specific extra_body flag that embeds the real generation cost
+# into the final usage chunk. Module-level constant so we don't reallocate
+# an identical dict on every streaming call.
+_OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+
+def _extract_usage_cost(usage: CompletionUsage) -> float | None:
+    """Return the provider-reported USD cost on a streaming usage chunk.
+
+    OpenRouter piggybacks a ``cost`` field on the OpenAI-compatible usage
+    object when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we
+    read it off ``model_extra`` (the pydantic v2 container for extras) to
+    keep the access fully typed — no ``getattr``.
+
+    Returns ``None`` when the field is absent, explicitly null,
+    non-numeric, non-finite, or negative. Invalid values (including
+    present-but-null) are logged here — they indicate a provider bug
+    worth chasing; plain absences are silent so the caller can dedupe
+    the "missing cost" warning per stream.
+    """
+    extras = usage.model_extra or {}
+    if "cost" not in extras:
+        return None
+    raw = extras["cost"]
+    if raw is None:
+        logger.error("[Baseline] usage.cost is present but null")
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        logger.error("[Baseline] usage.cost is not numeric: %r", raw)
+        return None
+    if not math.isfinite(val) or val < 0:
+        logger.error("[Baseline] usage.cost is non-finite or negative: %r", val)
+        return None
+    return val
 
 
 async def _prepare_baseline_attachments(
@@ -224,17 +463,18 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(mode: CopilotMode | None) -> str:
-    """Pick the model for the baseline path based on the per-request mode.
+async def _resolve_baseline_model(
+    tier: CopilotLLMModel | None, user_id: str | None
+) -> ResolvedModel:
+    """Pick the model for the baseline path based on the per-request tier.
 
-    Only ``mode='fast'`` downgrades to the cheaper/faster model.  Any other
-    value (including ``None`` and ``'extended_thinking'``) preserves the
-    default model so that users who never select a mode don't get
-    silently moved to the cheaper tier.
+    Delegates to :func:`copilot.model_router.resolve_model_route` so the
+    ``(fast, tier)`` cell resolves LD → registry cell → env.  ``None`` tier
+    maps to ``"standard"``.  The routing source rides along so persisted
+    assistant messages can be stamped for product-intelligence segmentation.
     """
-    if mode == "fast":
-        return config.fast_model
-    return config.model
+    tier_name = "advanced" if tier == "advanced" else "standard"
+    return await resolve_model_route("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -246,17 +486,358 @@ class _BaselineStreamState:
     """
 
     model: str = ""
-    pending_events: list[StreamBaseResponse] = field(default_factory=list)
+    # Which routing layer picked ``model`` — stamped onto persisted assistant
+    # messages for product-intelligence segmentation. The baseline path only
+    # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
+    # a CLI 529-overload swap); typed as the shared RoutingSource superset.
+    routing_source: RoutingSource = "env"
+    # The connection this turn runs on, stamped onto each assistant row as
+    # it is built. Recorded per turn so a later route change cannot rewrite
+    # what already ran; see backend/copilot/segments.py.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+    # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
+    # so reasoning / text / tool events reach the SSE wire **during** the upstream
+    # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
+    # ``list`` drained per ``tool_call_loop`` iteration, so any model with
+    # extended thinking (Anthropic via OpenRouter, Moonshot, future reasoning
+    # routes) froze the UI for the entire duration of each LLM round before
+    # flushing the backlog in one burst.  The queue is single-producer (the
+    # streaming loop) / single-consumer (the outer async-gen yield loop);
+    # ``None`` is the close sentinel.
+    pending_events: asyncio.Queue[StreamBaseResponse | None] = field(
+        default_factory=asyncio.Queue
+    )
+    # Mirror of every event put on ``pending_events`` — kept for unit tests that
+    # inspect post-hoc what was emitted.  Not consumed by production code.
+    emitted_events: list[StreamBaseResponse] = field(default_factory=list)
     assistant_text: str = ""
     text_block_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     text_started: bool = False
+    reasoning_emitter: BaselineReasoningEmitter = field(init=False)
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
+    # Tracks whether we've already warned about a missing `cost` field in
+    # the usage chunk this stream, so non-OpenRouter providers don't
+    # generate one warning per streaming call.
+    cost_missing_logged: bool = False
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
+    # MUTATE in place only — ``__post_init__`` hands this list reference to
+    # ``BaselineReasoningEmitter`` so reasoning rows can be appended as
+    # deltas stream in.  Reassigning (``state.session_messages = [...]``)
+    # would silently detach the emitter from the new list.
     session_messages: list[ChatMessage] = field(default_factory=list)
+    tool_persistence: BaselineToolPersistence = field(
+        default_factory=BaselineToolPersistence
+    )
+    # Tracks how much of ``assistant_text`` has already been flushed to
+    # ``session.messages`` via mid-loop pending drains, so the ``finally``
+    # block only appends the *new* assistant text (avoiding duplication of
+    # round-1 text when round-1 entries were cleared from session_messages).
+    _flushed_assistant_text_len: int = 0
+    # Memoised system-message dict with cache_control applied.  The system
+    # prompt is static within a session, so we build it once on the first
+    # LLM round and reuse the same dict on subsequent rounds — avoiding
+    # an O(N) dict-copy of the growing ``messages`` list on every tool-call
+    # iteration.  ``None`` means "not yet computed" (or the first message
+    # wasn't a system role, so no marking applies).
+    cached_system_message: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        # Wire the reasoning emitter to ``session_messages`` so it can
+        # append ``role="reasoning"`` rows as reasoning streams in — the
+        # frontend's ``convertChatSessionToUiMessages`` relies on these
+        # rows to render the Reasoning collapse after the AI SDK's
+        # stream-end hydrate swaps in the DB-backed message list.
+        # ``render_in_ui`` is sourced from ``config.render_reasoning_in_ui``
+        # so the operator can silence the reasoning collapse globally
+        # without dropping the persisted audit trail.
+        self.reasoning_emitter = BaselineReasoningEmitter(
+            self.session_messages,
+            render_in_ui=config.render_reasoning_in_ui,
+        )
+
+
+def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
+    """Queue *event* for the live SSE wire AND mirror into ``emitted_events``.
+
+    Single helper so every streaming producer (LLM stream loop, tool executor,
+    conversation updater) posts to the same single-consumer queue.  The mirror
+    list is read-only from production code — it exists so unit tests can assert
+    on the full sequence emitted during one call.
+    """
+    state.pending_events.put_nowait(event)
+    state.emitted_events.append(event)
+
+
+def _emit_all(
+    state: "_BaselineStreamState", events: Iterable[StreamBaseResponse]
+) -> None:
+    """Queue *events* in order — convenience for emitter batches."""
+    for event in events:
+        _emit(state, event)
+
+
+def _is_anthropic_model(model: str) -> bool:
+    """Return True if *model* routes to Anthropic (native or via OpenRouter).
+
+    Examples that return True:
+      - ``anthropic/claude-sonnet-4-6`` (OpenRouter route)
+      - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
+      - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
+
+    False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
+    etc.  Moonshot is False here too even though Moonshot's
+    Anthropic-compat endpoint honours ``cache_control`` — use
+    :func:`_supports_prompt_cache_markers` for the cache-gating decision,
+    which also allows Moonshot routes.  This function stays scoped to
+    "genuinely Anthropic" so callers that need the stricter check (e.g.
+    ``anthropic-beta`` header emission) keep their existing semantics.
+    """
+    lowered = model.lower()
+    return "claude" in lowered or lowered.startswith("anthropic")
+
+
+def _supports_prompt_cache_markers(model: str) -> bool:
+    """Return True when *model* accepts Anthropic-style ``cache_control``.
+
+    Superset of :func:`_is_anthropic_model` — also allows Moonshot
+    (``moonshotai/*``), whose OpenRouter Anthropic-compat endpoint
+    honours the marker and empirically lifts cache hit rate on
+    continuation turns from near-zero (Moonshot's own automatic prefix
+    cache, which drifts readily) to the 60-95% Anthropic ballpark.
+
+    OpenAI / Grok / Gemini still 400 on ``cache_control``, so this
+    function returns False for those providers — add new vendors here
+    only after verifying their endpoint accepts the field.
+    """
+    return _is_anthropic_model(model) or is_moonshot_model(model)
+
+
+def _fresh_ephemeral_cache_control() -> dict[str, str]:
+    """Return a FRESH ephemeral ``cache_control`` dict each call.
+
+    The ``ttl`` is sourced from :attr:`ChatConfig.baseline_prompt_cache_ttl`
+    (default ``1h``) so the static prefix stays warm across many users'
+    requests in the same workspace cache.  Anthropic caches are keyed
+    per-workspace, so every copilot user reading the same system prompt
+    hits the same cached entry.
+
+    Using a shared module-level dict would let any downstream mutation
+    (e.g. the OpenAI SDK normalising fields in-place) poison every future
+    request's marker.  Construction is O(1) so the safety margin is free.
+    """
+    return {"type": "ephemeral", "ttl": config.baseline_prompt_cache_ttl}
+
+
+def _fresh_anthropic_caching_headers() -> dict[str, str]:
+    """Return a FRESH ``extra_headers`` dict requesting the Anthropic
+    prompt-caching beta.
+
+    Same reasoning as :func:`_fresh_ephemeral_cache_control`: never hand a
+    shared module-level dict to third-party SDKs.  OpenRouter auto-forwards
+    cache_control for Anthropic routes without this header, but passing it
+    makes the intent unambiguous on-wire and is a no-op for non-Anthropic
+    providers (unknown headers are dropped).
+    """
+    return {"anthropic-beta": "prompt-caching-2024-07-31"}
+
+
+def _mark_tools_with_cache_control(
+    tools: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *tools* with ``cache_control`` on the last entry.
+
+    Marking the last tool is a cache breakpoint that covers the whole tool
+    schema block as a cacheable prefix segment.  Extracted from
+    :func:`_mark_system_message_with_cache_control` so callers can precompute
+    the marked tool list once per session — the tool set is static within a
+    request and the ~43 dict-copies would otherwise run on every LLM round
+    in the tool-call loop.
+
+    **Only call this for Anthropic model routes.**  Non-Anthropic providers
+    (OpenAI, Grok, Gemini) reject the unknown ``cache_control`` field with
+    a 400 schema validation error.  Gate via :func:`_is_anthropic_model`.
+    """
+    cached: list[dict[str, Any]] = [dict(t) for t in tools]
+    if cached:
+        cached[-1] = {
+            **cached[-1],
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    return cached
+
+
+def _build_cached_system_message(
+    system_message: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a copy of *system_message* with ``cache_control`` applied.
+
+    Anthropic's cache uses prefix-match with up to 4 explicit breakpoints.
+    Combined with the last-tool marker this gives two cache segments — the
+    system block alone, and system+all-tools — so requests that share only
+    the system prefix still get a partial cache hit.
+
+    The system message is rebuilt via spread (``{**original, ...}``) so any
+    unknown fields the caller set (e.g. ``name``) survive the transformation.
+    Non-Anthropic models silently ignore the markers.
+
+    Returns the original dict (shallow-copied) unchanged when the content
+    shape is unsupported (missing / non-string / empty) — callers should
+    splice it into the message list as-is in that case.
+    """
+    sys_copy = dict(system_message)
+    sys_content = sys_copy.get("content")
+    if isinstance(sys_content, str) and sys_content:
+        sys_copy["content"] = [
+            {
+                "type": "text",
+                "text": sys_content,
+                "cache_control": _fresh_ephemeral_cache_control(),
+            }
+        ]
+    return sys_copy
+
+
+_AVAILABLE_SKILLS_BOUNDARY_RE = re.compile(
+    r"^(.*?</available_skills>\n\n)(.*)$", re.DOTALL
+)
+
+
+def _split_user_message_after_skills_block(
+    content: str,
+) -> list[dict[str, Any]] | None:
+    """Split *content* into a cacheable prefix + variable suffix at the
+    ``</available_skills>\\n\\n`` boundary.
+
+    Returns a two-block content array suitable for an Anthropic-style
+    user message — the first block carries the static skill index (any
+    server-injected blocks that precede it land in the same prefix) and
+    is tagged with ``cache_control: ephemeral`` so the prefix bytes are
+    cached PER-USER across that user's turns.  The skill index is stable
+    per-user-per-skill-version, so hits stay high until the user
+    adds/deletes a skill.
+
+    Returns ``None`` when there is no ``</available_skills>`` boundary
+    to split on (no skills configured for this user, or the block was
+    not injected) — callers then fall back to passing the message
+    string through unchanged.
+    """
+    match = _AVAILABLE_SKILLS_BOUNDARY_RE.match(content)
+    if not match:
+        return None
+    prefix, suffix = match.group(1), match.group(2)
+    # Always emit at least one block — when the suffix is empty (rare:
+    # the user typed nothing after the auto-injected skill index) drop
+    # the empty trailing block since Anthropic 400s on zero-length text.
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": prefix,
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    ]
+    if suffix:
+        blocks.append({"type": "text", "text": suffix})
+    return blocks
+
+
+def _apply_skills_cache_breakpoint(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return *messages* with a ``cache_control`` breakpoint placed
+    AFTER the ``<available_skills>`` block in the first user message
+    that carries one.
+
+    Per-user-stable bytes — the skill index + any other server-injected
+    prefix blocks — sit in their own cached prefix.  Only call this when
+    the model accepts ``cache_control`` (``_supports_prompt_cache_markers``).
+
+    When no user message carries a ``</available_skills>`` boundary the
+    list is returned as-is (with identity-preserved entries — the system
+    memoisation in :func:`_baseline_llm_caller` depends on the first
+    entry being the cached dict reference).  Only the one message that
+    needs the breakpoint is replaced with a shallow copy that carries
+    the split content blocks; siblings keep their original identity.
+    """
+    target_index: int | None = None
+    target_blocks: list[dict[str, Any]] | None = None
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str):
+            # Already a content-block list, or a non-string payload —
+            # leave alone so we don't double-mark.
+            continue
+        blocks = _split_user_message_after_skills_block(content)
+        if blocks is None:
+            continue
+        # Only the first user message carrying ``<available_skills>``
+        # is split — that's where ``inject_user_context`` writes it
+        # (first turn).  Later user turns won't have the block.
+        target_index = idx
+        target_blocks = blocks
+        break
+    if target_index is None or target_blocks is None:
+        # Nothing to mark — preserve caller's list identity AND inner
+        # dict references so a memoised system dict at messages[0]
+        # keeps its `is` identity (test_baseline_llm_caller_memoises_
+        # cached_system_message relies on this).  ``cast`` narrows
+        # Mapping → dict for Pyright without runtime conversion;
+        # entries are already dicts at runtime
+        # (built by ``_build_messages_for_llm``).
+        return cast(list[dict[str, Any]], list(messages))
+    # Targeted shallow copy: only the message that needs the breakpoint
+    # is replaced.  Other entries (including a memoised system dict)
+    # keep their original identity — same identity-preservation rule
+    # as the no-target branch above.
+    cached_messages: list[dict[str, Any]] = cast(list[dict[str, Any]], list(messages))
+    new_msg = dict(messages[target_index])
+    new_msg["content"] = target_blocks
+    cached_messages[target_index] = new_msg
+    return cached_messages
+
+
+def _prepend_skills_notice_to_current_message(
+    openai_messages: list[dict[str, Any]], notice: str
+) -> None:
+    """Prepend a ``<skills_update>`` drift notice to the current turn.
+
+    Reverse scan so the notice lands on the current turn's user message,
+    not an older one when pending messages were drained. Mutates in place
+    (mirrors the builder-context prepend just below the call site) and is
+    query-only — callers must not copy this into the persisted transcript.
+    No-op for an empty notice.
+    """
+    if not notice:
+        return
+    for msg in reversed(openai_messages):
+        if msg["role"] == "user":
+            existing = msg.get("content", "")
+            if isinstance(existing, str):
+                msg["content"] = notice + existing
+            break
+
+
+def _mark_system_message_with_cache_control(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with ``cache_control`` on the system block.
+
+    Thin wrapper around :func:`_build_cached_system_message` that preserves
+    the original list shape.  Prefer the memoised path in
+    ``_baseline_llm_caller`` (which builds the cached system dict once per
+    session) for hot-loop callers; this function is retained for call sites
+    outside the tool-call loop where per-call copying is acceptable.
+    """
+    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
+    if cached_messages and cached_messages[0].get("role") == "system":
+        cached_messages[0] = _build_cached_system_message(cached_messages[0])
+    return cached_messages
 
 
 async def _baseline_llm_caller(
@@ -269,32 +850,105 @@ async def _baseline_llm_caller(
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
     """
-    state.pending_events.append(StreamStartStep())
+    _emit(state, StreamStartStep())
     # Fresh thinking-strip state per round so a malformed unclosed
     # block in one LLM call cannot silently drop content in the next.
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
-    response = None  # initialized before try so finally block can access it
     try:
-        client = _get_openai_client()
-        typed_messages = cast(list[ChatCompletionMessageParam], messages)
-        if tools:
-            typed_tools = cast(list[ChatCompletionToolParam], tools)
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                tools=typed_tools,
-                stream=True,
-                stream_options={"include_usage": True},
+        client = _get_main_client()
+        supports_cache = _supports_prompt_cache_markers(state.model)
+        if supports_cache:
+            # Build cached system message once; splice on each round to avoid O(n) list copy.
+            if (
+                state.cached_system_message is None
+                and messages
+                and messages[0].get("role") == "system"
+            ):
+                state.cached_system_message = _build_cached_system_message(messages[0])
+            if state.cached_system_message is not None and messages:
+                final_messages = [state.cached_system_message, *messages[1:]]
+            else:
+                final_messages = messages
+            # Apply a per-user cache breakpoint AFTER the
+            # ``<available_skills>`` block in the first user message
+            # carrying one.  The skill index is stable per-user across
+            # turns (until the user adds/deletes a skill), so caching
+            # those bytes separately lifts hit rate on a prefix that
+            # the message-level boundary would otherwise re-tokenise
+            # every turn.  Anthropic caches use prefix-match with up to
+            # four explicit breakpoints; the system + tool markers
+            # already use two, leaving room for this one.
+            final_messages = _apply_skills_cache_breakpoint(final_messages)
+            extra_headers = (
+                _fresh_anthropic_caching_headers()
+                if _is_anthropic_model(state.model)
+                else None
             )
         else:
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                stream=True,
-                stream_options={"include_usage": True},
+            final_messages = messages
+            extra_headers = None
+        typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
+        # The wire format must match the endpoint ``main_client_credentials``
+        # actually dialed — ``baseline_provider`` is the shared truth for both
+        # (local → openrouter_active → anthropic). Keying on
+        # ``transport.name == "openrouter"`` would send direct-Anthropic shape
+        # to an OpenRouter endpoint in subscription mode with OR creds present,
+        # where ``transport.name`` is ``"subscription"`` but the baseline client
+        # still routes to OpenRouter.
+        baseline_provider = config.baseline_provider
+        is_openrouter_transport = baseline_provider == "openrouter"
+        extra_body: dict[str, Any] = {}
+        if baseline_provider == "local":
+            # Local backends govern their own context window at launch (e.g.
+            # OLLAMA_CONTEXT_LENGTH); Otto reads it back at runtime for
+            # compaction (see local_context_probe). Send no extra_body — skip
+            # the OpenRouter ``usage.include`` extension and reasoning params,
+            # which stricter local backends reject outright.
+            pass
+        elif is_openrouter_transport:
+            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
+            extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
+            reasoning_param = reasoning_extra_body(
+                state.model, config.claude_agent_max_thinking_tokens
             )
+            if reasoning_param:
+                extra_body.update(reasoning_param)
+        else:
+            # Direct mode (non-OR, non-local): use native Anthropic thinking param.
+            thinking_param = anthropic_thinking_extra_body(
+                state.model, config.claude_agent_max_thinking_tokens
+            )
+            if thinking_param:
+                extra_body.update(thinking_param)
+        # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
+        max_tokens_arg: int | Any = openai_omit
+        if not is_openrouter_transport and "thinking" in extra_body:
+            model_max = get_max_output_tokens(state.model)
+            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+            extra_body["thinking"]["budget_tokens"] = budget
+            max_tokens_arg = min(budget + 4096, model_max)
+        # Route through the shared providers helper so future provider
+        # work (streaming flex tier, new SDK upgrades) propagates here
+        # without a parallel migration. The pre-built ``client`` is
+        # passed through so the module-level Langfuse-wrapped client
+        # keeps its HTTP connection pool warm across turns.
+        response = await call_provider_stream(
+            client=client,
+            model=state.model,
+            messages=cast(list[dict[str, Any]], typed_messages),
+            extra_body=extra_body,
+            extra_headers=extra_headers,
+            # OR-only: Anthropic's compat endpoint 400s on stream_options; OR embeds cost via it.
+            # Local transport (``is_openrouter_transport == False``) also gets
+            # ``None`` so stricter local backends don't 400 on the extension.
+            stream_options=(
+                {"include_usage": True} if is_openrouter_transport else None
+            ),
+            tools=cast(list[dict[str, Any]] | None, list(tools)) if tools else None,
+            max_tokens=max_tokens_arg,
+        )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
@@ -306,37 +960,82 @@ async def _baseline_llm_caller(
                 if chunk.usage:
                     state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-                    # Extract cache token details when available (OpenAI /
-                    # OpenRouter include these in prompt_tokens_details).
-                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    ptd = chunk.usage.prompt_tokens_details
                     if ptd:
-                        state.turn_cache_read_tokens += (
-                            getattr(ptd, "cached_tokens", 0) or 0
-                        )
-                        # cache_creation_input_tokens is reported by some providers
-                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_read_tokens += ptd.cached_tokens or 0
                         state.turn_cache_creation_tokens += (
-                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                            _extract_cache_creation_tokens(ptd)
                         )
+                    cost = _extract_usage_cost(chunk.usage)
+                    # Rate-card recovery covers direct-Anthropic mode —
+                    # Anthropic's OpenAI-compat endpoint doesn't emit OR's
+                    # ``usage.cost`` extension, so the rate card is what
+                    # produces a cost number on that path. Local
+                    # (Ollama/vLLM) transports also lack ``usage.cost`` but
+                    # ``compute_anthropic_cost_usd`` returns None for any
+                    # non-Anthropic slug, so the recovery is a no-op for
+                    # local — skip it explicitly so the intent is clear and
+                    # we don't burn a rate-card lookup per usage chunk.
+                    direct_mode = baseline_provider == "anthropic"
+                    if cost is None and direct_mode:
+                        # Direct mode: no usage.cost field (OR extension); compute from rate card.
+                        ptd = chunk.usage.prompt_tokens_details
+                        cost = compute_anthropic_cost_usd(
+                            model=state.model,
+                            prompt_tokens=chunk.usage.prompt_tokens or 0,
+                            completion_tokens=chunk.usage.completion_tokens or 0,
+                            cache_read_tokens=(ptd.cached_tokens or 0) if ptd else 0,
+                            cache_creation_tokens=(
+                                _extract_cache_creation_tokens(ptd) if ptd else 0
+                            ),
+                            cache_ttl=config.baseline_prompt_cache_ttl,
+                        )
+                    if cost is not None:
+                        state.cost_usd = (state.cost_usd or 0.0) + cost
+                    elif (
+                        not direct_mode
+                        and "cost" not in (chunk.usage.model_extra or {})
+                        and not state.cost_missing_logged
+                    ):
+                        # OR with cost field absent — warn once so monitoring catches persistent misses.
+                        logger.warning(
+                            "[Baseline] usage chunk missing cost (model=%s, "
+                            "prompt=%s, completion=%s) — rate-limit will "
+                            "skip this call",
+                            state.model,
+                            chunk.usage.prompt_tokens,
+                            chunk.usage.completion_tokens,
+                        )
+                        state.cost_missing_logged = True
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
 
+                _emit_all(state, state.reasoning_emitter.on_delta(delta))
+
                 if delta.content:
+                    # Text and reasoning must not interleave on the wire — the
+                    # AI SDK maps distinct start/end pairs to distinct UI
+                    # parts.  Close any open reasoning block before emitting
+                    # the first text delta of this run.
+                    _emit_all(state, state.reasoning_emitter.close())
                     emit = state.thinking_stripper.process(delta.content)
                     if emit:
                         if not state.text_started:
-                            state.pending_events.append(
-                                StreamTextStart(id=state.text_block_id)
-                            )
+                            _emit(state, StreamTextStart(id=state.text_block_id))
                             state.text_started = True
                         round_text += emit
-                        state.pending_events.append(
-                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        _emit(
+                            state,
+                            StreamTextDelta(id=state.text_block_id, delta=emit),
                         )
 
                 if delta.tool_calls:
+                    # Same rule as the text branch: close any open reasoning
+                    # block before a tool_use starts so the AI SDK treats
+                    # reasoning and tool-use as distinct parts.
+                    _emit_all(state, state.reasoning_emitter.close())
                     for tc in delta.tool_calls:
                         idx = tc.index
                         if idx not in tool_calls_by_index:
@@ -361,42 +1060,31 @@ async def _baseline_llm_caller(
             except Exception:
                 pass
 
+    finally:
+        # Close open blocks on both normal and exception paths so the
+        # frontend always sees matched start/end pairs.  An exception mid
+        # ``async for chunk in response`` would otherwise leave reasoning
+        # and/or text unterminated and only ``StreamFinishStep`` emitted —
+        # the Reasoning / Text collapses would never finalise.
+        _emit_all(state, state.reasoning_emitter.close())
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
         if tail:
             if not state.text_started:
-                state.pending_events.append(StreamTextStart(id=state.text_block_id))
+                _emit(state, StreamTextStart(id=state.text_block_id))
                 state.text_started = True
             round_text += tail
-            state.pending_events.append(
-                StreamTextDelta(id=state.text_block_id, delta=tail)
-            )
-        # Close text block
+            _emit(state, StreamTextDelta(id=state.text_block_id, delta=tail))
         if state.text_started:
-            state.pending_events.append(StreamTextEnd(id=state.text_block_id))
+            _emit(state, StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
-    finally:
-        # Extract OpenRouter cost from response headers (in finally so we
-        # capture cost even when the stream errors mid-way — we already paid).
-        # Accumulate across multi-round tool-calling turns.
-        try:
-            # Access undocumented _response attribute — same pattern as
-            # extract_openrouter_cost() in blocks/llm.py.
-            cost_header = response._response.headers.get("x-total-cost")  # type: ignore[attr-defined]
-            if cost_header:
-                cost = float(cost_header)
-                if math.isfinite(cost) and cost >= 0:
-                    state.cost_usd = (state.cost_usd or 0.0) + cost
-        except (AttributeError, ValueError):
-            pass
-
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
         # Always emit StreamFinishStep to match the StreamStartStep,
         # even if an exception occurred during streaming.
-        state.pending_events.append(StreamFinishStep())
+        _emit(state, StreamFinishStep())
 
     # Convert to shared format
     llm_tool_calls = [
@@ -408,13 +1096,16 @@ async def _baseline_llm_caller(
         for tc in tool_calls_by_index.values()
     ]
 
-    return LLMLoopResponse(
+    response = LLMLoopResponse(
         response_text=round_text or None,
         tool_calls=llm_tool_calls,
         raw_response=None,  # Not needed for baseline conversation updater
         prompt_tokens=0,  # Tracked via state accumulators
         completion_tokens=0,
     )
+    if response.tool_calls:
+        _begin_baseline_tool_round(state, response)
+    return response
 
 
 async def _baseline_tool_executor(
@@ -424,10 +1115,16 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    disabled_groups: Sequence[ToolGroup],
+    disabled_tools: frozenset[str],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
+
+    ``disabled_groups`` and ``disabled_tools`` are the same values used to
+    build the turn's schema list; passing them here makes the capability and
+    kickoff gates an enforcement boundary rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -438,70 +1135,101 @@ async def _baseline_tool_executor(
     except orjson.JSONDecodeError as parse_err:
         parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
         logger.warning("[Baseline] %s", parse_error)
-        state.pending_events.append(
+        _emit(
+            state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=tool_name,
                 output=parse_error,
                 success=False,
+            ),
+        )
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=parse_error,
+                is_error=True,
             )
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=parse_error,
-            is_error=True,
-        )
 
-    state.pending_events.append(
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
+    # A dispatch of a platform tool IS a call to that tool, so everything below
+    # names the tool that runs rather than the dispatcher it arrived through.
+    # ``execute_tool`` still gets the call the model made: refusing a deferred
+    # tool named directly is a judgement about that call, not this one.
+    called_name, called_args = tool_name, tool_args
+    if dispatch := resolve_tool_dispatch(tool_name, tool_args):
+        called_name, called_args = dispatch.name, dispatch.args
+
+    _emit(
+        state,
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=called_name),
     )
-    state.pending_events.append(
+    _emit(
+        state,
         StreamToolInputAvailable(
             toolCallId=tool_call_id,
-            toolName=tool_name,
-            input=tool_args,
-        )
+            toolName=called_name,
+            input=called_args,
+        ),
     )
 
-    try:
-        result: StreamToolOutputAvailable = await execute_tool(
-            tool_name=tool_name,
-            parameters=tool_args,
-            user_id=user_id,
-            session=session,
-            tool_call_id=tool_call_id,
+    def on_display_name(name: str) -> None:
+        state.tool_persistence.set_display_name(tool_call_id, name)
+        _emit(
+            state,
+            StreamToolDisplayAvailable(
+                id=tool_call_id,
+                data=ToolDisplayData(toolCallId=tool_call_id, displayName=name),
+            ),
         )
-        state.pending_events.append(result)
+
+    try:
+        with tool_display_context(on_display_name):
+            result: StreamToolOutputAvailable = await execute_tool(
+                tool_name=tool_name,
+                parameters=tool_args,
+                user_id=user_id,
+                session=session,
+                tool_call_id=tool_call_id,
+                disabled_groups=disabled_groups,
+                disabled_tools=disabled_tools,
+            )
+        _emit(state, result)
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=tool_output,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=called_name,
+                content=tool_output,
+            )
         )
     except Exception as e:
         error_output = f"Tool execution error: {e}"
         logger.error(
             "[Baseline] Tool %s failed: %s",
-            tool_name,
+            called_name,
             error_output,
             exc_info=True,
         )
-        state.pending_events.append(
+        _emit(
+            state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
-                toolName=tool_name,
+                toolName=called_name,
                 output=error_output,
                 success=False,
-            )
+            ),
         )
-        return ToolCallResult(
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            content=error_output,
-            is_error=True,
+        return state.tool_persistence.record_result(
+            ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=called_name,
+                content=error_output,
+                is_error=True,
+            )
         )
 
 
@@ -610,9 +1338,7 @@ def _baseline_conversation_updater(
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
-    Also records structured ChatMessage entries in ``state.session_messages``
-    so the full tool-call history is persisted to the session (not just the
-    concatenated assistant text).
+    Also finishes the pending tool round for session persistence.
     """
     _mutate_openai_messages(messages, response, tool_results)
     _record_turn_to_transcript(
@@ -621,11 +1347,20 @@ def _baseline_conversation_updater(
         transcript_builder=transcript_builder,
         model=model,
     )
-    # Record structured messages for session persistence so tool calls
-    # and tool results survive across turns and mode switches.
     if state is not None and tool_results:
-        assistant_msg = ChatMessage(
+        state.tool_persistence.finish(state.session_messages)
+
+
+def _begin_baseline_tool_round(
+    state: _BaselineStreamState, response: LLMLoopResponse
+) -> None:
+    state.tool_persistence.begin(
+        ChatMessage(
             role="assistant",
+            model=state.model,
+            routing_source=state.routing_source,
+            llm_auth_provider=state.llm_auth_provider,
+            llm_credential_id=state.llm_credential_id,
             content=response.response_text or "",
             tool_calls=[
                 {
@@ -635,16 +1370,9 @@ def _baseline_conversation_updater(
                 }
                 for tc in response.tool_calls
             ],
-        )
-        state.session_messages.append(assistant_msg)
-        for tr in tool_results:
-            state.session_messages.append(
-                ChatMessage(
-                    role="tool",
-                    content=tr.content,
-                    tool_call_id=tr.tool_call_id,
-                )
-            )
+        ),
+        state.session_messages,
+    )
 
 
 async def _compress_session_messages(
@@ -663,21 +1391,32 @@ async def _compress_session_messages(
         if msg.content:
             msg_dict["content"] = msg.content
         if msg.tool_calls:
-            msg_dict["tool_calls"] = msg.tool_calls
+            msg_dict["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
         if msg.tool_call_id:
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
+    # Under the local transport the model slug isn't in the cloud model
+    # registry, so compress_context()'s default target would fall back to
+    # ~120k and never fire before the (much smaller) local window overflows.
+    # Probe the backend for its real window and target compaction at it.
+    target_tokens: int | None = None
+    if config.effective_transport == "local" and config.base_url:
+        window = await probe_local_context_window(config.base_url, model)
+        target_tokens = compaction_target_for_window(window)
+
     try:
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
-            client=_get_openai_client(),
+            client=_get_main_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
         result = await compress_context(
             messages=messages_dict,
+            target_tokens=target_tokens,
             model=model,
             client=None,
         )
@@ -701,6 +1440,22 @@ async def _compress_session_messages(
         ]
 
     return messages
+
+
+def _humanize_baseline_error(e: Exception) -> str:
+    """Map a raw streaming exception to a user-facing message.
+
+    A connection error under the local transport almost always means the
+    operator's LLM backend (Ollama/vLLM/…) isn't running — say so, instead of
+    surfacing a bare "Connection error.".
+    """
+    if isinstance(e, APIConnectionError) and config.effective_transport == "local":
+        return (
+            f"Can't reach the local LLM backend at {config.base_url}. Make sure "
+            "your model server is running — for Ollama, start it with "
+            "`ollama serve` (or check CHAT_BASE_URL)."
+        )
+    return str(e) or type(e).__name__
 
 
 def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
@@ -826,11 +1581,23 @@ async def _load_prior_transcript(
     )
 
     gap = detect_gap(restore, session_messages)
-    if gap:
-        _append_gap_to_builder(gap, transcript_builder)
+    # Hole-fill: when the cap engaged AND the windowed view starts above the
+    # transcript watermark, the sequences in between live in DB but neither
+    # the transcript nor the loaded gap.  Persisting them to the builder here
+    # (so the next-turn upload includes them) closes the loop — without this,
+    # detect_gap on every subsequent turn would re-discover the same hole.
+    hole: list[ChatMessage] = []
+    if restore.message_count > 0:
+        hole = await fill_hole_between_transcript_and_gap(
+            session_id, restore.message_count, gap
+        )
+    if hole or gap:
+        _append_gap_to_builder(hole + gap, transcript_builder)
         logger.info(
-            "[Baseline] Filled gap: loaded %d transcript msgs + %d gap msgs from DB",
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d hole msgs "
+            "+ %d gap msgs from DB",
             restore.message_count,
+            len(hole),
             len(gap),
         )
 
@@ -901,6 +1668,34 @@ async def _upload_final_transcript(
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
 
+async def _fetch_graphiti_context(
+    user_id: str,
+    session: ChatSession,
+    message: str | None,
+) -> str | None:
+    return await fetch_warm_context(
+        user_id,
+        message or "",
+        expert_id=session.expert_id,
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
+
+
 async def stream_chat_completion_baseline(
     session_id: str,
     message: str | None = None,
@@ -909,8 +1704,13 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
-    mode: CopilotMode | None = None,
+    model: CopilotLLMModel | None = None,
+    request_arrival_at: float = 0.0,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -929,38 +1729,138 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+
+    # The session row is the tenancy anchor; the turn entry's org/team only
+    # backfills sessions created before org tagging (pre-migration rows).
+    if session.organization_id is None and organization_id:
+        session.organization_id = organization_id
+        session.team_id = team_id
+
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the new turn starts from a well-formed message list.
+    prune_orphan_tool_calls(
+        session.messages, log_prefix=f"[Baseline] [{session_id[:12]}]"
+    )
+
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
     if message:
         message = strip_user_context_tags(message)
 
-    if maybe_append_user_message(session, message, is_user_message):
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
+    if maybe_append_user_message(session, message, is_user_message, message_metadata):
         if is_user_message:
             track_user_message(
                 user_id=user_id,
                 session_id=session_id,
                 message_length=len(message or ""),
+                expert_id=session.expert_id,
+                origin=session.metadata.origin,
+                surface=session.metadata.source_platform,
             )
 
-    session = await upsert_chat_session(session)
+    # Capture count *before* the pending drain so is_first_turn and the
+    # transcript staleness check are not skewed by queued messages.
+    _pre_drain_msg_count = len(session.messages)
 
-    # Select model based on the per-request mode.  'fast' downgrades to
-    # the cheaper/faster model; everything else keeps the default.
-    active_model = _resolve_baseline_model(mode)
+    # Drain any messages the user queued via POST /messages/pending
+    # while this session was idle (or during a previous turn whose
+    # mid-loop drains missed them).
+    # The drained content is appended after ``message`` so the user's submitted
+    # message remains the leading context (better UX: the user sent their primary
+    # message first, queued follow-ups second).  The already-saved user message
+    # in the DB is updated via update_message_content_by_sequence rather than
+    # inserting a new row, because routes.py has already saved the user message
+    # before the executor picks up the turn (using insert_pending_before_last +
+    # persist_session_safe would add a duplicate row at sequence N+1).
+    drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
+    if drained_at_start_pending:
+        logger.info(
+            "[Baseline] Draining %d pending message(s) at turn start for session %s",
+            len(drained_at_start_pending),
+            session_id,
+        )
+        # NOTE: combine + per-row persist both happen *after*
+        # ``inject_user_context`` below — see the comment near that
+        # call for the ordering rationale.  At this point ``message``
+        # is still the original turn-starting send.
+
+    # Select model based on the per-request tier toggle (standard / advanced).
+    # The path (fast vs extended_thinking) is already decided — we're in the
+    # baseline (fast) path; ``mode`` is accepted for logging parity only.
+    # Normalize immediately so EVERY downstream helper (E2B context,
+    # ``_compress_session_messages``, the streaming caller) sees the
+    # transport-correct slug — otherwise compaction in direct-Anthropic
+    # mode silently falls back to the non-LLM path because the OR slug
+    # would be rejected by the direct client.  Pass the baseline-side
+    # ``config`` so monkeypatch fixtures targeting this module's
+    # ``config`` symbol drive the decision.
+    resolved_route = await _resolve_baseline_model(model, user_id)
+    resolved_model = resolved_route.model
+    routing_source = resolved_route.source
+    try:
+        active_model = normalize_model_for_transport(resolved_model, config)
+    except ValueError as exc:
+        # Mirror SDK's LD-reject soft-fallback (see ``copilot.sdk.service``):
+        # a per-user LD ``copilot-model-routing`` cell can pin a non-Anthropic
+        # slug (e.g. ``moonshotai/kimi-*``) on a direct-Anthropic deployment
+        # where the baseline transport rejects it.  Fall back to the
+        # TIER-SPECIFIC config default so the request still streams instead
+        # of erroring at the user.  Re-raises the original error if the
+        # config default is also invalid (deployment-level misconfig caught
+        # by the ``model_validator`` at startup).
+        tier_default = (
+            config.fast_advanced_model
+            if model == "advanced"
+            else config.fast_standard_model
+        )
+        try:
+            active_model = normalize_model_for_transport(tier_default, config)
+        except ValueError:
+            raise exc
+        routing_source = "env"
+        logger.warning(
+            "[Baseline] [%s] LD model %r rejected for tier=%s (%s); falling "
+            "back to tier default %s",
+            session_id[:12] if session_id else "?",
+            resolved_model,
+            "advanced" if model == "advanced" else "standard",
+            exc,
+            active_model,
+        )
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
-            from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
-
+            # An expert session runs on the expert's own persistent box;
+            # everything else gets a per-session sandbox.
             e2b_sandbox = await get_or_create_sandbox(
                 session_id,
                 api_key=e2b_api_key,
                 template=config.e2b_sandbox_template,
                 timeout=config.e2b_sandbox_timeout,
                 on_timeout=config.e2b_sandbox_on_timeout,
+                volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
+                expert_id=session.expert_id,
+                user_id=user_id,
+                # Counted just before the try/finally that releases it, below:
+                # everything between here and there can still fail or be
+                # stopped, and a count with no release keeps the expert's box
+                # unpaused at every later turn end.
+                count_turn=False,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
@@ -971,7 +1871,9 @@ async def stream_chat_completion_baseline(
 
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
-    is_first_turn = len(session.messages) <= 1
+    # Use the pre-drain count so queued pending messages don't incorrectly
+    # flip is_first_turn to False on an actual first turn.
+    is_first_turn = _pre_drain_msg_count <= 1
     # Gate context fetch on both first turn AND user message so that assistant-
     # role calls (e.g. tool-result submissions) on the first turn don't trigger
     # a needless DB lookup for user understanding.
@@ -983,9 +1885,11 @@ async def stream_chat_completion_baseline(
         prompt_task = _build_system_prompt(None)
 
     # Run download + prompt build concurrently — both are independent I/O
-    # on the request critical path.
+    # on the request critical path.  Use the pre-drain count so pending
+    # messages drained at turn start don't spuriously trigger a transcript
+    # load on an actual first turn.
     transcript_download: TranscriptDownload | None = None
-    if user_id and len(session.messages) > 1:
+    if user_id and _pre_drain_msg_count > 1:
         (
             (transcript_upload_safe, transcript_download),
             (base_system_prompt, understanding),
@@ -1003,6 +1907,17 @@ async def stream_chat_completion_baseline(
 
     # Append user message to transcript after context injection below so the
     # transcript receives the prefixed message when user context is available.
+
+    # NOTE: drained pending messages are folded into the current user
+    # message's content (see the turn-start drain above), so the single
+    # ``transcript_builder.append_user`` call below (covered by the
+    # ``if message and is_user_message`` branch that appends
+    # ``user_message_for_transcript or message``) already records the
+    # combined text in the transcript. Do NOT also append drained items
+    # individually here — on the ``transcript_download is None`` path
+    # that would produce N separate pending entries plus the combined
+    # entry, duplicating the pending content in the JSONL uploaded for
+    # the next turn's ``--resume``.
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -1022,22 +1937,58 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns.  Resolved here rather than at the
+    # tool-filtering site below so the delegation rules can be gated on the
+    # same boolean — a flag-off turn must not be told to call tools its
+    # ``execute_tool`` gate will refuse.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    oversight_supplement = get_expert_oversight_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    team_building_supplement = get_team_building_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
+    chat_platform_supplement = get_chat_platform_supplement(
+        session.metadata.source_platform
+    )
+    # Append the builder-session block (graph id+name + full building guide)
+    # AFTER the shared supplements so the system prompt is byte-identical
+    # across turns of the same builder session — Claude's prompt cache keeps
+    # the ~20KB guide warm for the whole session.  Empty string for
+    # non-builder sessions keeps the cross-user cache hot.
+    builder_session_suffix = await build_builder_system_prompt_suffix(session)
+    system_prompt = (
+        base_system_prompt
+        + SHARED_TOOL_NOTES
+        + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
+        + chat_platform_supplement
+        + graphiti_supplement
+        + builder_session_suffix
+        + expert_session_suffix
+    )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Use the pre-drain count so pending messages drained at turn start
+    # don't prevent warm context injection on an actual first turn.
     # Stored here but injected into the user message (not the system prompt)
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
-    if graphiti_enabled and user_id and len(session.messages) <= 1:
-        from backend.copilot.graphiti.context import fetch_warm_context
-
-        warm_ctx = await fetch_warm_context(user_id, message or "")
+    if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
+        warm_ctx = await _fetch_graphiti_context(user_id, session, message)
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
     # This avoids re-reading the full session history from DB on every turn.
     # See extract_context_messages() in transcript.py for the shared primitive.
-    prior_context = extract_context_messages(transcript_download, session.messages)
+    prior_context = await extract_context_messages(
+        transcript_download, session.messages, session_id=session.session_id
+    )
     messages_for_context = await _compress_session_messages(
         prior_context + ([session.messages[-1]] if session.messages else []),
         model=active_model,
@@ -1055,7 +2006,7 @@ async def stream_chat_completion_baseline(
             if msg.content:
                 entry["content"] = msg.content
             if msg.tool_calls:
-                entry["tool_calls"] = msg.tool_calls
+                entry["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
             if msg.content or msg.tool_calls:
                 openai_messages.append(entry)
         elif msg.role == "tool" and msg.tool_call_id:
@@ -1074,11 +2025,54 @@ async def stream_chat_completion_baseline(
     # the very start of the message content.
     user_message_for_transcript = message
     if should_inject_user_context:
+        # Mirror the SDK path's "model knows about budget" behaviour by
+        # injecting a per-turn ``<budget_context>`` block — the baseline
+        # path has no equivalent of the SDK CLI's native
+        # ``max_budget_usd`` running-cost reminder, so this is the only
+        # signal the model gets about how much USD spend headroom the
+        # user has left.
+        budget_ctx = await build_budget_ctx(
+            user_id=user_id,
+            default_daily_cost_limit=config.daily_cost_limit_microdollars,
+            default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+        )
+        # Per-session follow-up awareness — gives the baseline model the
+        # current session_id + pending follow-up summary on its first turn
+        # so "cancel that" / "what did I schedule" works without a
+        # round-trip to ``list_schedules``.  Lands in the per-turn user
+        # message (after the last cache breakpoint) so injection does NOT
+        # bust the prefix cache.
+        session_ctx_content = ""
+        if user_id:
+            session_ctx_content = await build_session_context(
+                session_id=session_id, user_id=user_id
+            )
+        # Skill index — same content/contract as the SDK path.  Failures
+        # here MUST NOT block the turn; log and proceed with empty index.
+        skills_ctx = ""
+        try:
+            skills_ctx = await build_skills_context(
+                user_id, expert_id=session.expert_id
+            )
+        except Exception:
+            logger.exception(
+                "[skills] failed to build skills_ctx — proceeding without it"
+            )
         prefixed = await inject_user_context(
-            understanding, message or "", session_id, session.messages
+            understanding,
+            message or "",
+            session_id,
+            session.messages,
+            budget_ctx=budget_ctx,
+            session_ctx=session_ctx_content,
+            skills_ctx=skills_ctx,
+            user_id=user_id,
+            expert_id=session.expert_id,
         )
         if prefixed is not None:
-            for msg in openai_messages:
+            # Reverse scan so we update the current turn's user message, not
+            # the first (oldest) one when pending messages were drained.
+            for msg in reversed(openai_messages):
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
@@ -1086,12 +2080,63 @@ async def stream_chat_completion_baseline(
         else:
             logger.warning("[Baseline] No user message found for context injection")
 
-    # Inject Graphiti warm context into the first user message (not the
-    # system prompt) so the system prompt stays static and cacheable.
+    # Now that ``inject_user_context`` has wrapped + persisted the
+    # original turn-starting send into its row, fold pending into the
+    # model's current-turn input AND persist each pending message as
+    # its own raw-text user row.  Three things to keep in sync:
+    #
+    #  1. ``openai_messages`` (what the model sees this round) — append
+    #     each pending as a separate user entry, matching the mid-turn
+    #     drain pattern below.
+    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  3. ``session.messages`` + DB — one raw row per pending via
+    #     ``persist_pending_as_user_rows(transcript_builder=None)``.
+    #
+    # Order matters: persist must run after inject so inject targets
+    # the routes.py-saved row, not a pending row.
+    if drained_at_start_pending:
+        # Persist FIRST.  Only fold pending into the model's prompt
+        # (``message`` for transcript fallback + ``openai_messages`` for
+        # the live LLM call) when persistence succeeded — if the helper
+        # rolled back and re-queued the pending into Redis, leaving
+        # those untouched ensures the NEXT turn's drain doesn't
+        # double-combine (re-queued pending + combined-from-this-turn)
+        # into the model's context.
+        persisted_ok = await persist_pending_as_user_rows(
+            session,
+            None,
+            drained_at_start_pending,
+            log_prefix="[Baseline]",
+        )
+        if persisted_ok:
+            message = combine_pending_with_current(
+                drained_at_start_pending,
+                message,
+                request_arrival_at=request_arrival_at,
+            )
+            for pm in drained_at_start_pending:
+                openai_messages.append(format_pending_as_user_message(pm))
+
+    # Live budget, every turn — the first-turn ``<budget_context>`` above is
+    # stale from turn two onward and says nothing about the tree. After the
+    # pending fold so it lands on the message the model reads last, and never
+    # on ``user_message_for_transcript``: that would persist one stale figure
+    # per turn, the same trap the warm-context injection below names.
+    budget_status = await build_turn_budget_block(envelope, user_id)
+    if budget_status:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                msg["content"] = budget_status + str(msg.get("content") or "")
+                break
+
+    # Inject Graphiti warm context into the current turn's user message (not
+    # the system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
     # Appended AFTER user_context so <user_context> stays at the very start.
+    # Reverse scan so we update the current turn's user message, not the
+    # oldest one when pending messages were drained.
     if warm_ctx:
-        for msg in openai_messages:
+        for msg in reversed(openai_messages):
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
@@ -1099,6 +2144,48 @@ async def stream_chat_completion_baseline(
                 break
         # Do NOT append warm_ctx to user_message_for_transcript — it would
         # persist stale temporal context into the transcript for future turns.
+
+    # Inject the per-turn ``<builder_context>`` prefix when the session is
+    # bound to a graph via ``metadata.builder_graph_id``.  Runs on every
+    # user turn (not just the first) so the LLM always sees the live graph
+    # snapshot — if the user edits the graph between turns, the next turn
+    # carries the updated nodes/links. Only version + nodes + links here;
+    # the static guide + graph id live in the system prompt via
+    # ``build_builder_system_prompt_suffix`` (session-stable, prompt-cached).
+    # Prepended AFTER any <user_context>/<memory_context>/<env_context> blocks
+    # — same trust tier as those server-injected prefixes. Not persisted to
+    # the transcript: the snapshot is stale-by-definition after the turn ends.
+    if is_user_message and session.metadata.builder_graph_id:
+        builder_block = await build_builder_context_turn_prefix(session, user_id)
+        if builder_block:
+            for msg in reversed(openai_messages):
+                if msg["role"] == "user":
+                    existing = msg.get("content", "")
+                    if isinstance(existing, str):
+                        msg["content"] = builder_block + existing
+                    break
+
+    # Skill-drift notice — same query-only contract as the builder block
+    # above: prepended to the live model input, never to
+    # ``user_message_for_transcript``, so the persisted history keeps the
+    # session-start baseline the next turn diffs against. On the first
+    # turn ``inject_user_context`` just wrote a fresh index into history,
+    # so the diff is empty by construction and this is a no-op.
+    if is_user_message and user_id:
+        try:
+            skills_notice = await build_skills_update_notice(
+                user_id,
+                expert_id=session.expert_id,
+                prior_contents=[
+                    m.content or "" for m in session.messages if m.role == "user"
+                ],
+            )
+        except Exception:
+            logger.exception("[skills] failed to build skills update notice")
+            skills_notice = ""
+        _prepend_skills_notice_to_current_message(openai_messages, skills_notice)
+        # NOTE: keep the helper above in sync with _maybe_prepend_skills_update
+        # in sdk/service.py — both engines share the query-only contract.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
@@ -1110,12 +2197,26 @@ async def stream_chat_completion_baseline(
     if message and is_user_message:
         transcript_builder.append_user(content=user_message_for_transcript or message)
 
-    # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
-    attachment_hint = ""
-    image_blocks: list[dict[str, Any]] = []
     if file_ids and user_id:
         working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+
+    # Propagate execution context so tool handlers can read session-level
+    # flags. This must precede attachment resolution: the workspace manager
+    # derives the expert's file scope from the session set here.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+        envelope=envelope,
+    )
+
+    # --- File attachments (feature parity with SDK path) ---
+    attachment_hint = ""
+    image_blocks: list[dict[str, Any]] = []
+    if file_ids and user_id and working_dir:
         attachment_hint, image_blocks = await _prepare_baseline_attachments(
             file_ids, user_id, session_id, working_dir
         )
@@ -1160,22 +2261,73 @@ async def stream_chat_completion_baseline(
                         openai_messages[i]["content"] = text
                 break
 
-    tools = get_available_tools()
+    disabled_tool_groups: list[ToolGroup] = []
+    if not graphiti_enabled:
+        disabled_tool_groups.append("graphiti")
+    # ``experts_enabled`` was resolved with the system-prompt supplements
+    # above; the role split lives in the shared helper.
+    disabled_tool_groups.extend(
+        expert_tool_disabled_groups(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+    )
+    # A hire's kickoff turn is a server-sent control message, so nothing on
+    # it was asked for: narrow it to the onboarding card and nothing else.
+    # Otherwise hide what the origin gate would refuse anyway.
+    disabled_tools = (
+        kickoff_turn_disabled_tools()
+        if is_expert_kickoff_turn(session)
+        else origin_disabled_tools(session.metadata.origin)
+    )
+    tools = get_available_tools(
+        disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
+    )
 
     # --- Permission filtering ---
     if permissions is not None:
         tools = _filter_tools_by_permissions(tools, permissions)
 
-    # Propagate execution context so tool handlers can read session-level flags.
+    # run_capability reaches deferred tools by id; bound it with the same
+    # hidden set that shaped the schema list above.
     set_execution_context(
         user_id,
         session,
         sandbox=e2b_sandbox,
         sdk_cwd=working_dir,
         permissions=permissions,
+        envelope=envelope,
+        hidden_tools=(
+            tool_names_in_groups(disabled_tool_groups)
+            | disabled_tools
+            | denied_tool_names(permissions)
+        ),
     )
 
-    yield StreamStart(messageId=message_id, sessionId=session_id)
+    # Pre-mark cache_control on the last tool schema once per session.  The
+    # tool set is static within a request, so doing this here (instead of in
+    # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
+    # round of the tool-call loop.
+    #
+    # Applies to Anthropic AND Moonshot routes — OpenAI/Grok/Gemini 400
+    # on the unknown ``cache_control`` field inside tool definitions, so
+    # the gate stays narrow (see :func:`_supports_prompt_cache_markers`).
+    if _supports_prompt_cache_markers(active_model):
+        tools = cast(
+            list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
+        )
+
+    try:
+        yield StreamStart(messageId=message_id, sessionId=session_id)
+    except BaseException:
+        # Closed or cancelled while suspended on the first yield: the finally
+        # that pauses the box sits further down and would never run.
+        if e2b_sandbox is not None:
+            _pause_uncounted_box(e2b_sandbox, session_id, session.expert_id)
+        raise
+
+    if e2b_sandbox is not None:
+        # From here the finally below always runs, so the turn can be counted.
+        await count_expert_turn(session_id, session.expert_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.
@@ -1185,21 +2337,49 @@ async def stream_chat_completion_baseline(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-baseline",
-            tags=["baseline"],
+            tags=["baseline", "tool_surface:registry"],
         )
         _trace_ctx.__enter__()
     except Exception:
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
     _stream_error = False  # Track whether an error occurred during streaming
-    state = _BaselineStreamState(model=active_model)
+    state = _BaselineStreamState(
+        model=active_model,
+        routing_source=routing_source,
+        llm_auth_provider=(
+            session.metadata.llm_auth_provider if session is not None else None
+        ),
+        llm_credential_id=(
+            session.metadata.llm_credential_id if session is not None else None
+        ),
+    )
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
-    _bound_tool_executor = partial(
-        _baseline_tool_executor, state=state, user_id=user_id, session=session
-    )
+
+    # ``session`` is reassigned after each mid-turn ``persist_session_safe``
+    # call (``upsert_chat_session`` returns a fresh ``model_copy``).  Holding
+    # the object via ``partial(session=session)`` would pin tool executions
+    # to the *original* object — any post-persist ``session.successful_agent_runs``
+    # mutation from a run_agent tool call would then land on the stale copy
+    # and be lost on the final persist.  Wrap in a 1-element holder and read
+    # the current binding lazily so the executor always sees the latest session.
+    _session_holder: list[ChatSession] = [session]
+
+    async def _bound_tool_executor(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        return await _baseline_tool_executor(
+            tool_call,
+            tools,
+            state=state,
+            user_id=user_id,
+            session=_session_holder[0],
+            disabled_groups=disabled_tool_groups,
+            disabled_tools=disabled_tools,
+        )
 
     _bound_conversation_updater = partial(
         _baseline_conversation_updater,
@@ -1208,61 +2388,336 @@ async def stream_chat_completion_baseline(
         state=state,
     )
 
+    # Run the tool-call loop concurrently with the event consumer so
+    # ``StreamReasoning*`` / ``StreamText*`` deltas emitted inside
+    # ``_baseline_llm_caller`` reach the SSE wire DURING the upstream LLM
+    # stream instead of only at iteration boundaries.  Any reasoning route
+    # that streams for several minutes per round (extended thinking on
+    # Anthropic / Moonshot / future providers) would otherwise freeze the
+    # UI for the whole window before flushing the backlog in one burst.
+    loop_result_holder: list[Any] = [None]
+    loop_task: asyncio.Task[None] | None = None
+    # Length of ``state.assistant_text`` at the end of the last non-final
+    # yield — used as an anchor by the budget-exhausted fallback to check
+    # whether the *terminal* round produced any visible text, not the whole
+    # turn. Without this, earlier-round chatter would suppress a fallback
+    # that should fire.
+    text_len_before_final_round: list[int] = [0]
+
+    async def _run_tool_call_loop() -> None:
+        # Read/write the current session via ``_session_holder`` so this
+        # closure doesn't need to ``nonlocal session`` — pyright can't narrow
+        # the outer ``session: ChatSession | None`` through a nested scope,
+        # but the holder is typed non-optional after the preflight guard
+        # above.
+        try:
+            max_tool_rounds = config.agent_max_turns
+            async for loop_result in tool_call_loop(
+                messages=openai_messages,
+                tools=tools,
+                llm_call=_bound_llm_caller,
+                execute_tool=_bound_tool_executor,
+                update_conversation=_bound_conversation_updater,
+                max_iterations=max_tool_rounds,
+                last_iteration_message=_LAST_ITERATION_HINT,
+            ):
+                loop_result_holder[0] = loop_result
+                # Engine switch requested (enter_agent_building_mode): end
+                # the loop at this iteration boundary — the round's tool
+                # results are already folded into the conversation, so the
+                # tool-call rows persist and the processor's derived
+                # building-mode signal holds. The processor dispatches the
+                # SDK continuation turn after the slot is released.
+                if engine_switch.is_pending(session_id):
+                    logger.info(
+                        f"[Baseline] Engine switch pending for "
+                        f"{session_id[:12]} — ending tool loop"
+                    )
+                    break
+                # Inject any messages the user queued while the turn was
+                # running.  ``tool_call_loop`` mutates ``openai_messages``
+                # in-place, so appending here means the model sees the new
+                # messages on its next LLM call.
+                #
+                # IMPORTANT: skip when the loop has already finished (no
+                # more LLM calls are coming).  ``tool_call_loop`` yields
+                # a final ``ToolCallLoopResult`` on both paths:
+                #   - natural finish: ``finished_naturally=True``
+                #   - hit max_iterations: ``finished_naturally=False``
+                #                         and ``iterations >= max_iterations``
+                # In either case the loop is about to return on the next
+                # ``async for`` step, so draining here would silently
+                # lose the message (the user sees 202 but the model never
+                # reads the text).  Those messages stay in the buffer and
+                # get picked up at the start of the next turn.
+                is_final_yield = (
+                    loop_result.finished_naturally
+                    or loop_result.iterations >= max_tool_rounds
+                )
+                if is_final_yield:
+                    continue
+                # Non-final yield: the next round may be the last one, so
+                # record where ``assistant_text`` ends now.  If that next
+                # round hits the budget without adding any text, the outer
+                # fallback uses this anchor to detect a silent finish.
+                text_len_before_final_round[0] = len(state.assistant_text)
+                try:
+                    pending = await drain_pending_messages(session_id)
+                except Exception:
+                    logger.warning(
+                        "[Baseline] mid-loop drain_pending_messages failed for "
+                        "session %s",
+                        session_id,
+                        exc_info=True,
+                    )
+                    pending = []
+                if pending:
+                    # Flush any buffered assistant/tool messages from completed
+                    # rounds into session.messages BEFORE appending the pending
+                    # user message.  ``_baseline_conversation_updater`` only
+                    # records assistant+tool rounds into ``state.session_messages``
+                    # — they are normally batch-flushed in the finally block.
+                    # Without this in-order flush, the mid-loop pending user
+                    # message lands before the preceding round's assistant/tool
+                    # entries, producing chronologically-wrong session.messages
+                    # on persist (user interposed between an assistant tool_call
+                    # and its tool-result), which breaks OpenAI tool-call ordering
+                    # invariants on the next turn's replay.
+                    #
+                    # Also persist any assistant text from text-only rounds (rounds
+                    # with no tool calls, which ``_baseline_conversation_updater``
+                    # does NOT record in session_messages).  If we only update
+                    # ``_flushed_assistant_text_len`` without persisting the text,
+                    # that text is silently lost: the finally block only appends
+                    # assistant_text[_flushed_assistant_text_len:], so text generated
+                    # before this drain never reaches session.messages.
+                    recorded_text = "".join(
+                        m.content or ""
+                        for m in state.session_messages
+                        if m.role == "assistant"
+                    )
+                    unflushed_text = state.assistant_text[
+                        state._flushed_assistant_text_len :
+                    ]
+                    text_only_text = (
+                        unflushed_text[len(recorded_text) :]
+                        if unflushed_text.startswith(recorded_text)
+                        else unflushed_text
+                    )
+                    current_session = _session_holder[0]
+                    if text_only_text.strip():
+                        current_session.messages.append(
+                            ChatMessage(
+                                role="assistant",
+                                content=text_only_text,
+                                model=state.model,
+                                routing_source=state.routing_source,
+                                llm_auth_provider=state.llm_auth_provider,
+                                llm_credential_id=state.llm_credential_id,
+                            )
+                        )
+                    for _buffered in state.session_messages:
+                        current_session.messages.append(_buffered)
+                    state.session_messages.clear()
+                    # Record how much assistant_text has been covered by the
+                    # structured entries just flushed, so the finally block's
+                    # final-text dedup doesn't re-append rounds already persisted.
+                    state._flushed_assistant_text_len = len(state.assistant_text)
+
+                    # Persist the assistant/tool flush BEFORE the pending append
+                    # so a later pending-persist failure can roll back the
+                    # pending rows without also discarding LLM output.
+                    current_session = await persist_session_safe(
+                        current_session, "[Baseline]"
+                    )
+                    # ``upsert_chat_session`` may return a *new* ``ChatSession``
+                    # instance (e.g. when a concurrent title update has written a
+                    # newer title to Redis, it returns ``session.model_copy``).
+                    # Keep ``_session_holder`` in sync so subsequent tool rounds
+                    # executed via ``_bound_tool_executor`` see the fresh session
+                    # — any tool-side mutations on the stale object would be
+                    # discarded when the new one is persisted in the ``finally``.
+                    _session_holder[0] = current_session
+
+                    # ``format_pending_as_user_message`` embeds file attachments
+                    # and context URL/page content into the content string so
+                    # the in-session transcript is a faithful copy of what the
+                    # model actually saw.  We also mirror each push into
+                    # ``openai_messages`` so the model's next LLM round sees it.
+                    #
+                    # Pre-compute the formatted dicts once so both the openai
+                    # messages append and the content_of lookup inside the
+                    # shared helper use the same string — and so ``on_rollback``
+                    # can trim ``openai_messages`` to the recorded anchor.
+                    formatted_by_pm = {
+                        id(pm): format_pending_as_user_message(pm) for pm in pending
+                    }
+                    _openai_anchor = len(openai_messages)
+                    for pm in pending:
+                        openai_messages.append(formatted_by_pm[id(pm)])
+
+                    def _trim_openai_on_rollback(_session_anchor: int) -> None:
+                        del openai_messages[_openai_anchor:]
+
+                    await persist_pending_as_user_rows(
+                        current_session,
+                        transcript_builder,
+                        pending,
+                        log_prefix="[Baseline]",
+                        content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                        on_rollback=_trim_openai_on_rollback,
+                    )
+        finally:
+            # Always post the sentinel so the outer consumer exits — even if
+            # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own
+            # finally block has already pushed ``StreamReasoningEnd`` /
+            # ``StreamTextEnd`` / ``StreamFinishStep`` at this point, so the
+            # sentinel only terminates the consumer; it does not suppress
+            # any still-unflushed events.
+            state.pending_events.put_nowait(None)
+
+    loop_task = asyncio.create_task(_run_tool_call_loop())
     try:
-        loop_result = None
-        async for loop_result in tool_call_loop(
-            messages=openai_messages,
-            tools=tools,
-            llm_call=_bound_llm_caller,
-            execute_tool=_bound_tool_executor,
-            update_conversation=_bound_conversation_updater,
-            max_iterations=_MAX_TOOL_ROUNDS,
-        ):
-            # Drain buffered events after each iteration (real-time streaming)
-            for evt in state.pending_events:
+        while True:
+            evt = await state.pending_events.get()
+            if evt is None:
+                break
+            yield evt
+        # Sentinel received — surface any exception the inner task hit.
+        await loop_task
+        loop_result = loop_result_holder[0]
+        # Budget was reached when iterations hit the configured cap. This
+        # covers both exit paths out of ``tool_call_loop``:
+        #   - ``finished_naturally=True``: the last iteration ran with
+        #     ``tools=[]`` and the model returned text (may be empty)
+        #   - ``finished_naturally=False``: a non-compliant model still
+        #     emitted tool calls despite the empty tool list, so the loop
+        #     fell through the ``while`` guard
+        # Either way, we check the terminal round's text contribution — an
+        # empty one means the user got no explanation and we need to emit
+        # the fallback notice.
+        budget_reached = bool(
+            loop_result and loop_result.iterations >= config.agent_max_turns
+        )
+        if budget_reached:
+            if loop_result and not loop_result.finished_naturally:
+                logger.warning(
+                    "[Baseline] Hit %d-round tool budget without natural finish; "
+                    "ending turn gracefully",
+                    loop_result.iterations,
+                )
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
+                terminal_round_text
+            )
+            for evt in fallback_events:
                 yield evt
-            state.pending_events.clear()
-
-        if loop_result and not loop_result.finished_naturally:
-            limit_msg = (
-                f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
-                "without a final response."
+            state.assistant_text += fallback_text
+        elif loop_result and loop_result.finished_naturally:
+            # mirrors SDK's empty_completion surface — prevents blank bubble on thinking-only turns
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            fallback_events, fallback_text = (
+                _build_natural_finish_empty_fallback_events(terminal_round_text)
             )
-            logger.error("[Baseline] %s", limit_msg)
-            yield StreamError(
-                errorText=limit_msg,
-                code="baseline_tool_round_limit",
-            )
-
+            if fallback_events:
+                logger.warning(
+                    "[Baseline] Natural finish with empty terminal round (%d "
+                    "iterations); surfacing fallback notice",
+                    loop_result.iterations,
+                )
+            for evt in fallback_events:
+                yield evt
+            state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
-        error_msg = str(e) or type(e).__name__
+        error_msg = _humanize_baseline_error(e)
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text block.  The llm_caller's finally block
-        # already appended StreamFinishStep to pending_events, so we must
-        # insert StreamTextEnd *before* StreamFinishStep to preserve the
-        # protocol ordering:
-        #   StreamStartStep -> StreamTextStart -> ...deltas... ->
-        #   StreamTextEnd -> StreamFinishStep
-        # Appending (or yielding directly) would place it after
-        # StreamFinishStep, violating the protocol.
-        if state.text_started:
-            # Find the last StreamFinishStep and insert before it.
-            insert_pos = len(state.pending_events)
-            for i in range(len(state.pending_events) - 1, -1, -1):
-                if isinstance(state.pending_events[i], StreamFinishStep):
-                    insert_pos = i
-                    break
-            state.pending_events.insert(
-                insert_pos, StreamTextEnd(id=state.text_block_id)
-            )
-        # Drain pending events in correct order
-        for evt in state.pending_events:
-            yield evt
-        state.pending_events.clear()
-        yield StreamError(errorText=error_msg, code="baseline_error")
-        # Still persist whatever we got
+        # Drain any queued tail events (reasoning/text close + finish step)
+        # that ``_baseline_llm_caller``'s finally block pushed before the
+        # sentinel arrived — without this the frontend would be missing the
+        # matching end / finish parts for the partial round.
+        while not state.pending_events.empty():
+            evt = state.pending_events.get_nowait()
+            if evt is not None:
+                yield evt
+        failure = classify_provider_failure(
+            e,
+            auth_provider=session.metadata.llm_auth_provider if session else None,
+            credential_id=session.metadata.llm_credential_id if session else None,
+            message=error_msg,
+        )
+        # Written before the error is yielded, and deliberately not in
+        # ``finally``. The consumer breaks out of its loop the moment it sees
+        # a StreamError and closes this generator, so the tail of ``finally``
+        # -- including its session upsert -- is cut short at the first await.
+        # A marker appended there is built correctly and then thrown away.
+        #
+        # ``_session_holder[0]`` rather than ``session``: the inner task can
+        # replace the binding mid-turn, and the marker has to land on the
+        # object that is actually current.
+        _failed_session = _session_holder[0]
+        if append_error_marker(
+            _failed_session,
+            error_msg,
+            retryable=failure.retryable if failure is not None else True,
+            failure=failure.as_part() if failure is not None else None,
+        ):
+            try:
+                await upsert_chat_session(_failed_session)
+            except Exception as marker_err:
+                logger.error(
+                    "[Baseline] Failed to persist the error marker: %s", marker_err
+                )
+        if failure is not None:
+            # Before the error, so a client that acts on the envelope has it
+            # in hand by the time the turn is reported failed.
+            yield StreamProviderFailure(failure=failure.as_part())
+            yield StreamError(errorText=error_msg, code=failure.kind.value)
+        else:
+            yield StreamError(errorText=error_msg, code="baseline_error")
     finally:
+        # Cancel the inner task if we're unwinding early (client disconnect,
+        # unexpected error in the consumer) so it doesn't keep streaming
+        # tokens into a dead queue.
+        if loop_task is not None and not loop_task.done():
+            loop_task.cancel()
+            try:
+                await loop_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Re-sync the outer ``session`` binding in case the inner task
+        # reassigned it via a mid-loop ``persist_session_safe`` call.
+        session = _session_holder[0]
+
+        # In-flight tool-call announcements are only meaningful for the
+        # current turn; clear at the top of the outer finally so the next
+        # turn starts with a clean scratch buffer even if one of the
+        # awaited cleanup steps below (usage persistence, session upsert,
+        # transcript upload) raises.  The buffer is a process-local scratch
+        # set — if we leak it into the next turn the guide-read guard would
+        # observe a phantom in-flight call and skip its gate, so this must
+        # run unconditionally.
+        session.clear_inflight_tool_calls()
+        state.tool_persistence.finish(state.session_messages)
+
+        # --- Pause E2B sandbox to stop billing between turns (parity with
+        # the SDK path). Fire-and-forget: best-effort and must not block the
+        # cleanup below. An expert's box is left running while another of
+        # its turns is still active.
+        if e2b_sandbox is not None:
+            pause_task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox, session_id, expert_id=session.expert_id
+                )
+            )
+            _background_tasks.add(pause_task)
+            pause_task.add_done_callback(_background_tasks.discard)
+
+        # Pending messages are drained atomically at turn start and
+        # between tool rounds, so there's nothing to clear in finally.
+        # Any message pushed after the final drain window stays in the
+        # buffer and gets picked up at the start of the next turn.
+
         # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
             try:
@@ -1286,10 +2741,10 @@ async def stream_chat_completion_baseline(
 
         # Fallback: estimate tokens via tiktoken when the provider does
         # not honour stream_options={"include_usage": True}.
-        # Count the full message list (system + history + turn) since
-        # each API call sends the complete context window.
-        # NOTE: This estimates one round's prompt tokens. Multi-round tool-calling
-        # turns consume prompt tokens on each API call, so the total is underestimated.
+        # ``openai_messages`` is mutated in-place by tool_call_loop so it
+        # contains the full accumulated conversation (system + history + all
+        # tool-call rounds) by this point — the estimate covers the complete
+        # prompt, not just the final round.
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
         if (
@@ -1309,15 +2764,35 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-        # Persist token usage to session and record for rate limiting.
-        # When prompt_tokens_details.cached_tokens is reported, subtract
-        # them from prompt_tokens to get the uncached count so the cost
-        # breakdown stays accurate.
-        uncached_prompt = state.turn_prompt_tokens
-        if state.turn_cache_read_tokens > 0:
-            uncached_prompt = max(
-                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
+        # Safety net: recover cost from rate card if usage chunk was dropped
+        # (truncated SSE). OR mode skips recovery — OR's markup differs from
+        # raw Anthropic pricing. Local Ollama/vLLM never emit ``usage.cost``
+        # *and* have no rate card to recover from (``compute_anthropic_cost_usd``
+        # returns None for any non-Anthropic slug), so cost stays None for
+        # the whole turn — fine, since local deployments are self-hosted and
+        # ``persist_and_record_usage`` no-ops the cost-credit charge when
+        # ``cost_usd`` is None. Skip the rate-card call explicitly under
+        # local transport so the intent is clear.
+        baseline_provider = config.baseline_provider
+        if state.cost_usd is None and baseline_provider == "anthropic":
+            recovered = compute_anthropic_cost_usd(
+                model=active_model,
+                prompt_tokens=state.turn_prompt_tokens,
+                completion_tokens=state.turn_completion_tokens,
+                cache_read_tokens=state.turn_cache_read_tokens,
+                cache_creation_tokens=state.turn_cache_creation_tokens,
+                cache_ttl=config.baseline_prompt_cache_ttl,
             )
+            if recovered is not None:
+                state.cost_usd = recovered
+
+        # OAI-compat prompt_tokens includes cache buckets; subtract to keep the three buckets disjoint.
+        uncached_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
@@ -1328,6 +2803,11 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
+            provider=(
+                "open_router"
+                if baseline_provider == "openrouter"
+                else config.transport.cost_log_provider
+            ),
         )
 
         # Persist structured tool-call history (assistant + tool messages)
@@ -1338,7 +2818,11 @@ async def stream_chat_completion_baseline(
         # no tool calls, i.e. the natural finish).  Only add it if the
         # conversation updater didn't already record it as part of a
         # tool-call round (which would have empty response_text).
-        final_text = state.assistant_text
+        # Only consider assistant text produced AFTER the last mid-loop
+        # flush.  ``_flushed_assistant_text_len`` tracks the prefix already
+        # persisted via structured session_messages during mid-loop pending
+        # drains; including it here would duplicate those rounds.
+        final_text = state.assistant_text[state._flushed_assistant_text_len :]
         if state.session_messages:
             # Strip text already captured in tool-call round messages
             recorded = "".join(
@@ -1347,7 +2831,16 @@ async def stream_chat_completion_baseline(
             if final_text.startswith(recorded):
                 final_text = final_text[len(recorded) :]
         if final_text.strip():
-            session.messages.append(ChatMessage(role="assistant", content=final_text))
+            session.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=final_text,
+                    model=state.model,
+                    routing_source=state.routing_source,
+                    llm_auth_provider=state.llm_auth_provider,
+                    llm_credential_id=state.llm_credential_id,
+                )
+            )
         try:
             await upsert_chat_session(session)
         except Exception as persist_err:
@@ -1355,17 +2848,16 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-
             # Pass only the final assistant reply (after stripping tool-loop
             # chatter) so derived-finding distillation sees the substantive
             # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
+                _enqueue_graphiti_turn(
                     user_id,
+                    session,
                     session_id,
                     message,
-                    assistant_msg=final_text if state else "",
+                    final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -1385,11 +2877,15 @@ async def stream_chat_completion_baseline(
                 )
 
         if user_id and should_upload_transcript(user_id, transcript_upload_safe):
+            # Watermark = the next uncovered DB sequence (= max non-reasoning
+            # sequence + 1).  Stays accurate on cap-engaged sessions because
+            # the loaded window always includes the most-recent rows; the
+            # max(sequence) is the last assistant just appended this turn.
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
                 transcript_builder=transcript_builder,
-                session_msg_count=len(session.messages),
+                session_msg_count=next_uncovered_sequence(session.messages),
             )
 
         # Clean up the ephemeral working directory used for file attachments.
@@ -1402,13 +2898,42 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
-        # Report uncached prompt tokens to match what was billed — cached tokens
-        # are excluded so the frontend display is consistent with cost_usd.
-        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
+        # Report uncached prompt tokens to match what was billed — both
+        # cache_read and cache_creation are excluded so the three
+        # buckets emitted on ``StreamUsage`` are disjoint and the
+        # frontend can sum them without double-counting cache writes.
+        billed_prompt = max(
+            0,
+            state.turn_prompt_tokens
+            - state.turn_cache_read_tokens
+            - state.turn_cache_creation_tokens,
+        )
         yield StreamUsage(
             prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
             total_tokens=billed_prompt + state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
+    for event in _engine_switch_finish_events(session_id):
+        yield event
     yield StreamFinish()
+
+
+def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
+    """Terminal events for a turn that registered an engine switch.
+
+    Emitted right before StreamFinish so the frontend learns the engine
+    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
+    exactly once, at the turn boundary where the baseline loop stopped.
+    There is no mode picker to flip any more — the client uses this only to
+    widen its post-finish refetch window, since a switch takes longer to
+    settle.
+    """
+    if not engine_switch.is_pending(session_id):
+        return []
+    return [
+        StreamModeChanged(mode="extended_thinking"),
+        StreamStatus(message="Switching engines for agent building…"),
+    ]

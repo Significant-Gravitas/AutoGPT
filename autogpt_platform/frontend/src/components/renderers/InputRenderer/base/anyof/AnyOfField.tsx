@@ -1,3 +1,4 @@
+import { useFieldAccessibilityContext } from "../../field-accessibility";
 import { FieldProps, getUiOptions, getWidget } from "@rjsf/utils";
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import isEmpty from "lodash/isEmpty";
@@ -23,6 +24,7 @@ export const AnyOfField = (props: FieldProps) => {
     field_id,
   } = useAnyOfField(props);
 
+  const accessibility = useFieldAccessibilityContext(field_id);
   const isInputBroken = useNodeStore((state) => state.isInputBroken);
 
   const parentCustomFieldId = findCustomFieldId(schema);
@@ -70,7 +72,12 @@ export const AnyOfField = (props: FieldProps) => {
 
   const selector = (
     <Widget
-      id={field_id}
+      id={`${field_id}-variant`}
+      aria-describedby={
+        [accessibility?.descriptionId, accessibility?.errorId]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       name={`${props.name}${schema.oneOf ? "__oneof_select" : "__anyof_select"}`}
       schema={{ type: "number", default: 0 }}
       onChange={handleOptionChange}

@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
   Conversation,
@@ -18,54 +19,129 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import { hideKickoffMessages } from "../../expertKickoff";
 import {
-  buildRenderSegments,
-  getTurnMessages,
-  type MessagePart,
-  type RenderSegment,
+  getLastCompactionCallId,
+  getLatestCompactionPhase,
+  getLatestCompactionStats,
   parseSpecialMarkers,
-  splitReasoningAndResponse,
 } from "./helpers";
+import {
+  isMidTurnSegmentRow,
+  splitMessagesAtDrainHints,
+  turnMessagesForRow,
+} from "./midTurnSplit";
+import {
+  getLatestAssistantStatusMessage,
+  isBookkeepingPart,
+  PENDING_DRAINED_PART_TYPE,
+} from "../../messageParts";
+import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import type { ExpertIdentity } from "../../useExpertMap";
+import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
+import { WorkCard } from "../WorkCard/WorkCard";
+import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { ChainMessageParts } from "./components/ChainMessageParts";
+import { withToolDisplayNames } from "../../helpers/toolDisplay";
 import { CopyButton } from "./components/CopyButton";
-import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
+import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
-import { ReasoningCollapse } from "./components/ReasoningCollapse";
+import { QueueBadge } from "./components/QueueBadge";
+import { ThreadHeader } from "./components/ThreadHeader";
+import {
+  PENDING_UPLOAD_MESSAGE_ID,
+  PendingUploadMessage,
+} from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { UserMessageClamp } from "./components/UserMessageClamp";
+import { SentFromBadge } from "./components/SentFromBadge";
+import { getVisibleUserMessageParts } from "./userMessageParts";
+import {
+  getSentFromMetadata,
+  isSessionOpeningMessage,
+  type SentFrom,
+} from "../../sentFrom";
+import type { PendingUploadSend } from "../../copilotStreamStore";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  isRestoringActiveSession?: boolean;
+  restoreStatusMessage?: string | null;
+  /** ISO start time of the active backend turn. Seeds the elapsed-time
+   *  counter so restored turns show honest age instead of counting from
+   *  zero on every fresh mount. */
+  activeStreamStartedAt?: string | null;
   sessionID?: string | null;
+  /** Session-level lifecycle: ``"idle" | "queued" | "running"``.
+   *  The Queued badge anchors on the latest user message iff this is
+   *  ``"queued"``. */
+  sessionChatStatus?: string;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
-}
-
-function renderSegments(
-  segments: RenderSegment[],
-  messageID: string,
-  onRetry?: () => void,
-): React.ReactNode[] {
-  return segments.map((seg, segIdx) => {
-    if (seg.kind === "collapsed-group") {
-      return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
-    }
-    return (
-      <MessagePartRenderer
-        key={`${messageID}-${seg.index}`}
-        part={seg.part}
-        messageID={messageID}
-        partIndex={seg.index}
-        onRetry={onRetry}
-      />
-    );
-  });
+  turnStats?: TurnStatsMap;
+  /** Pending queued messages waiting to be injected, shown at the end of chat. */
+  queuedMessages?: string[];
+  /** A just-sent message whose local attachments are still uploading. It is
+   *  not in `messages` yet (the SDK only pushes it once `sendMessage` runs),
+   *  so it renders as a placeholder bubble with an "Uploading files…"
+   *  status in the thinking indicator's usual spot. */
+  pendingSend?: PendingUploadSend | null;
+  /** Extra bottom padding (px) applied to the scrollable message list so
+   *  overlays pinned above the input area (e.g. the usage-limit card) can
+   *  sit over the last message without permanently obscuring it. */
+  bottomContentPadding?: number;
+  /** Public-viewer mode: render messages exactly as the owner sees them,
+   *  but hide every interactive affordance that depends on auth — feedback
+   *  buttons, TTS, queue/streaming indicators, load-more, retry, pending-
+   *  review banners, queued-message strip.  Anonymous viewers of a shared
+   *  chat get the rich renderer without any controls that would 401. */
+  readOnly?: boolean;
+  /** URL→file-ID matcher used to decide whether a ``FileUIPart`` becomes
+   *  an ArtifactCard.  Owner side defaults to the workspace-file URL
+   *  shape; the public viewer passes a per-token pattern so its file
+   *  URLs match without loosening the default. */
+  filePattern?: RegExp;
+  /** Override the URL emitted when rewriting ``workspace://`` references
+   *  in markdown prose AND when building inline artifact source URLs.
+   *  The public viewer passes a token-aware builder. */
+  fileUrlBuilder?: (fileId: string) => string;
+  /** Expert identity for expert-scoped sessions: drives the thread header
+   *  and the assistant avatar/name. Null/undefined = default header. */
+  expertIdentity?: ExpertIdentity | null;
+  /** The roster is still loading for an expert-scoped session, so the
+   *  header must not yet claim the thread is Otto's. */
+  isResolvingExpertIdentity?: boolean;
+  /** Where this thread's opening task came from (session-level delegation
+   *  metadata). Shown on the row that opened the thread (DB sequence 0) when
+   *  that row carries no provenance of its own. */
+  sessionSentFrom?: SentFrom | null;
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports (see ThreadHeader). */
+  hasFloatingControls?: boolean;
+  /** Set by the host that mounts the session activity card, so the thread
+   *  chip only becomes clickable where that card exists. */
+  canOpenActivity?: boolean;
+  /** The host's floating workspace-files card is open, so the column
+   *  slides aside for it. Only the copilot chat mounts that card;
+   *  every other host (share viewer, memory and builder panels) leaves this
+   *  off, whatever the persisted panel state says. */
+  areFilesOpen?: boolean;
+  /** Compact thread for side panels: smaller text, tighter bubbles and
+   *  spacing. */
+  variant?: "default" | "compact";
+  /** Hosts that already name the thread (e.g. the expert chat drawer)
+   *  turn the floating identity chip off. */
+  showThreadHeader?: boolean;
 }
 
 /**
@@ -244,17 +320,40 @@ export function LoadMoreSentinel({
 }
 
 export function ChatMessagesContainer({
-  messages,
+  messages: allMessages,
   status,
   error,
   isLoading,
+  isRestoringActiveSession,
+  restoreStatusMessage,
+  activeStreamStartedAt,
   sessionID,
+  sessionChatStatus,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
   onRetry,
-  historicalDurations,
+  turnStats,
+  queuedMessages,
+  pendingSend,
+  bottomContentPadding,
+  readOnly = false,
+  filePattern,
+  fileUrlBuilder,
+  expertIdentity,
+  isResolvingExpertIdentity = false,
+  sessionSentFrom = null,
+  hasFloatingControls = false,
+  canOpenActivity = false,
+  areFilesOpen = false,
+  variant = "default",
+  showThreadHeader = true,
 }: Props) {
+  const isCompact = variant === "compact";
+  const messages = useMemo(
+    () => hideKickoffMessages(allMessages),
+    [allMessages],
+  );
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -272,18 +371,73 @@ export function ChatMessagesContainer({
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
 
+  // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
+  // was drained mid-stream renders as chain → follow-up bubble → chain, while
+  // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  const renderRows = splitMessagesAtDrainHints(messages);
   const lastMessage = messages[messages.length - 1];
+  const showPendingSend = !readOnly && !!pendingSend;
+  // Read off the rendered rows: a fallback follow-up row the split drops in
+  // favour of the drain-point bubble has no element to anchor the tail on.
+  // While a send is still uploading, the placeholder is the last user row.
+  const lastUserMessageID = showPendingSend
+    ? PENDING_UPLOAD_MESSAGE_ID
+    : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
+
+  // The backend appends a persisted error marker to ``session.messages`` AND
+  // yields a ``StreamError`` SSE event on final-failure paths. Both surface
+  // the same error string — the marker becomes an in-line ErrorCard bubble,
+  // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
+  // the same error twice. Suppress the trailing banner whenever the last
+  // assistant message already carries the marker.
+  const lastAssistantHasErrorMarker = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      for (let j = msg.parts.length - 1; j >= 0; j--) {
+        const part = msg.parts[j];
+        if (part.type !== "text") continue;
+        const { markerType } = parseSpecialMarkers(part.text);
+        return markerType === "error" || markerType === "retryable_error";
+      }
+      return false;
+    }
+    return false;
+  }, [messages]);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    const parts = lastMessage.parts;
-    if (parts.length === 0) return false;
+    // Ignore bookkeeping parts — none of them counts as "real" content that
+    // hides the Thinking indicator. See `isBookkeepingPart` for the list.
+    // A drain hint newer than the last content part is the one exception:
+    // the follow-up just landed and nothing has been produced past it, so
+    // the text or tool above it is settled and Thinking is the only sign
+    // the assistant picked the follow-up up.
+    let lastIndex = lastMessage.parts.length - 1;
+    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
+        return false;
+      lastIndex--;
+    }
+    if (lastIndex < 0) return false;
 
-    const lastPart = parts[parts.length - 1];
+    const lastPart = lastMessage.parts[lastIndex];
 
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
+
+    // Reasoning chunks stream before the final text — while they have
+    // rendered content, the "Thinking..." indicator should give way to the
+    // reasoning view (e.g. Perplexity deep research streams minutes of
+    // reasoning before any answer text).
+    if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
+      return true;
+
+    // step-start is a turn boundary emitted right before the next tool or
+    // text chunk. Treat it as inflight so the bubble transitions straight
+    // into the next part without flashing back to "Thinking...".
+    if (lastPart.type === "step-start") return true;
 
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
@@ -296,11 +450,58 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  const showThinking =
-    status === "submitted" || (status === "streaming" && !hasInflight);
-
+  // Surface the latest `data-status` message from the live assistant when
+  // the Thinking indicator is up — but only if it wasn't invalidated by a
+  // more recent content part (in which case the model has moved on and the
+  // status is stale).
+  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // A live compaction narrates itself via CompactionCard — the generic
+  // Thinking indicator must not stack a second spinner and timer under it.
+  // The `rebuilding` phase arrives after the tool row has already closed,
+  // so `hasInflight` alone cannot cover that window.
+  const liveCompactionPhase =
+    isActivelyStreaming && lastMessage?.role === "assistant"
+      ? getLatestCompactionPhase(lastMessage.parts)
+      : null;
+
+  // Suppressed during active-session restore so the ThinkingIndicator and
+  // the "Retrieving latest messages" spinner can't both render — the
+  // restore spinner wins until real content arrives (see the
+  // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
+  const showThinking =
+    !isRestoringActiveSession &&
+    liveCompactionPhase === null &&
+    (status === "submitted" || (status === "streaming" && !hasInflight));
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    activeStreamStartedAt,
+  );
+  const indicator = (
+    <ThinkingIndicator
+      active={showThinking}
+      elapsedSeconds={elapsedSeconds}
+      statusMessage={latestStatusMessage}
+    />
+  );
+  // Public viewers of a shared chat never see a live turn, so the indicator
+  // stays out of the transcript for them wherever it would render.
+  const showIndicator = !readOnly && showThinking;
+  const [showRestoreFallback, setShowRestoreFallback] = useState(false);
+  useEffect(() => {
+    if (!isRestoringActiveSession) {
+      setShowRestoreFallback(false);
+      return;
+    }
+    const timer = setTimeout(
+      () => setShowRestoreFallback(true),
+      RESTORE_STALL_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [isRestoringActiveSession]);
+  const { elapsedSeconds: restoreElapsedSeconds } =
+    useElapsedTimer(showRestoreFallback);
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -319,178 +520,379 @@ export function ChatMessagesContainer({
   });
 
   return (
-    <Conversation
-      key={sessionID ?? "new"}
-      resize={settled ? "smooth" : "instant"}
-      className={
-        "min-h-0 flex-1 " +
-        (hideForScroll
-          ? "opacity-0"
-          : "opacity-100 transition-opacity duration-100 ease-out")
-      }
-    >
-      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
-        {hasMoreMessages && onLoadMore && (
-          <LoadMoreSentinel
-            hasMore={hasMoreMessages}
-            isLoading={!!isLoadingMore}
-            messageCount={messages.length}
-            onLoadMore={onLoadMore}
-          />
-        )}
-        {isLoading && messages.length === 0 && (
-          <div className="flex flex-1 items-center justify-center">
-            <LoadingSpinner className="text-neutral-600" />
-          </div>
-        )}
-        {messages.map((message, messageIndex) => {
-          const isLastAssistant =
-            messageIndex === messages.length - 1 &&
-            message.role === "assistant";
+    <>
+      {showThreadHeader && (
+        <ThreadHeader
+          expertIdentity={expertIdentity}
+          isResolvingExpertIdentity={isResolvingExpertIdentity}
+          readOnly={readOnly}
+          sessionId={sessionID}
+          hasFloatingControls={hasFloatingControls}
+          canOpenActivity={canOpenActivity}
+        />
+      )}
+      {!isCompact && <ChatMinimap messages={messages} />}
+      <Conversation
+        key={sessionID ?? "new"}
+        resize="instant"
+        className={
+          "min-h-0 flex-1 " +
+          (hideForScroll
+            ? "opacity-0"
+            : "opacity-100 transition-opacity duration-100 ease-out")
+        }
+      >
+        <ConversationContent
+          className={cn(
+            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            isCompact && "gap-4 px-4 pt-4",
+            !showThreadHeader && "pt-4",
+            areFilesOpen && "xl:-translate-x-40",
+          )}
+          style={
+            bottomContentPadding
+              ? { paddingBottom: bottomContentPadding + 24 }
+              : undefined
+          }
+        >
+          {!readOnly && hasMoreMessages && onLoadMore && (
+            <LoadMoreSentinel
+              hasMore={hasMoreMessages}
+              isLoading={!!isLoadingMore}
+              messageCount={messages.length}
+              onLoadMore={onLoadMore}
+            />
+          )}
+          {isLoading &&
+            messages.length === 0 &&
+            !isRestoringActiveSession &&
+            !showPendingSend && (
+              <div className="flex flex-1 items-center justify-center">
+                <LoadingSpinner className="text-neutral-600" />
+              </div>
+            )}
+          {renderRows.map((message, rowIndex) => {
+            // A run-post rides structured metadata — render a compact WorkCard
+            // instead of the raw markdown wall (legacy posts have no metadata
+            // and fall through to normal rendering).
+            const runMetadata = getWorkRunMetadata(message.metadata);
+            if (runMetadata) {
+              const preview = toPreview(
+                message.parts
+                  .filter(
+                    (p): p is Extract<typeof p, { type: "text" }> =>
+                      p.type === "text",
+                  )
+                  .map((p) => p.text)
+                  .join(" "),
+              );
+              return (
+                <Message
+                  from={message.role}
+                  key={message.id}
+                  data-message-id={message.id}
+                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                >
+                  <MessageContent className="group-[.is-assistant]:bg-transparent">
+                    <WorkCard metadata={runMetadata} preview={preview} />
+                  </MessageContent>
+                </Message>
+              );
+            }
 
-          const isCurrentlyStreaming =
-            isLastAssistant &&
-            (status === "streaming" || status === "submitted");
+            const isLastAssistant =
+              rowIndex === renderRows.length - 1 &&
+              message.role === "assistant";
 
-          const isAssistant = message.role === "assistant";
+            const isCurrentlyStreaming =
+              isLastAssistant &&
+              (status === "streaming" || status === "submitted");
 
-          const nextMessage = messages[messageIndex + 1];
-          const isLastInTurn =
-            isAssistant &&
-            messageIndex <= messages.length - 1 &&
-            (!nextMessage || nextMessage.role === "user");
-          const textParts = message.parts.filter(
-            (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
-          );
-          const lastTextPart = textParts[textParts.length - 1];
-          const markerType =
-            lastTextPart !== undefined
-              ? parseSpecialMarkers(lastTextPart.text).markerType
+            const isAssistant = message.role === "assistant";
+
+            const nextRow = renderRows[rowIndex + 1];
+            // A segment that only runs up to a mid-turn drain is never the end
+            // of its turn — the same backend turn continues under the follow-up
+            // bubble, so the stats bar and the assistant actions belong to the
+            // last segment alone.
+            const isLastInTurn =
+              isAssistant &&
+              !isMidTurnSegmentRow(message) &&
+              (!nextRow || nextRow.role === "user");
+            // Bookkeeping parts are stripped before any render/split logic so
+            // they never reach the user UI, and so one landing between two
+            // tool calls can't split a chain. data-status surfaces via
+            // ThinkingIndicator; data-compaction via CompactionCard.
+            const renderableParts = withToolDisplayNames(
+              message.role === "user"
+                ? getVisibleUserMessageParts(message.parts)
+                : message.parts,
+            ).filter((p) => !isBookkeepingPart(p));
+            // Only a message that is actively streaming can have a live
+            // compaction phase — a stopped or failed turn must not leave an
+            // eternal progress bar. Replayed/settled messages never carry
+            // `data-compaction` parts, so they derive null either way.
+            const compactionPhase = isCurrentlyStreaming
+              ? getLatestCompactionPhase(message.parts)
               : null;
-          const hasErrorMarker =
-            markerType === "error" || markerType === "retryable_error";
-          const showActions =
-            isLastInTurn &&
-            !isCurrentlyStreaming &&
-            textParts.length > 0 &&
-            !hasErrorMarker;
+            // The phase belongs to the LAST compaction row only; earlier
+            // (settled) rows in the same message stay settled.
+            const liveCompactionCallId =
+              compactionPhase !== null
+                ? getLastCompactionCallId(message.parts)
+                : null;
+            // Stats streamed on the `data-compaction` parts pace the live
+            // progress curve while the tool row is still open (its own
+            // output stats only exist once it closes).
+            const liveCompactionStats =
+              compactionPhase !== null
+                ? getLatestCompactionStats(message.parts)
+                : undefined;
+            const textParts = renderableParts.filter(
+              (p): p is Extract<typeof p, { type: "text" }> =>
+                p.type === "text",
+            );
+            const lastTextPart = textParts[textParts.length - 1];
+            const markerType =
+              lastTextPart !== undefined
+                ? parseSpecialMarkers(lastTextPart.text).markerType
+                : null;
+            const hasErrorMarker =
+              markerType === "error" || markerType === "retryable_error";
+            const showActions =
+              isLastInTurn &&
+              !isCurrentlyStreaming &&
+              textParts.length > 0 &&
+              !hasErrorMarker;
 
-          const fileParts = message.parts.filter(
-            (p): p is FileUIPart => p.type === "file",
-          );
+            const fileParts = renderableParts.filter(
+              (p): p is FileUIPart => p.type === "file",
+            );
 
-          // For finalized assistant messages, split into reasoning + response.
-          // During streaming, show everything normally with tool collapsing.
-          const isFinalized =
-            message.role === "assistant" && !isCurrentlyStreaming;
-          const { reasoning, response } = isFinalized
-            ? splitReasoningAndResponse(message.parts)
-            : { reasoning: [] as MessagePart[], response: message.parts };
-          const hasReasoning = reasoning.length > 0;
+            const sentFrom = readOnly
+              ? null
+              : (getSentFromMetadata(message.metadata) ??
+                (isSessionOpeningMessage(message) ? sessionSentFrom : null));
 
-          // Note: when interactive tools are pinned from reasoning into response,
-          // this index approximates their position (used only for React keys).
-          const responseStartIndex = message.parts.length - response.length;
-          const responseSegments =
-            message.role === "assistant"
-              ? buildRenderSegments(response, responseStartIndex)
-              : null;
-          const reasoningSegments = hasReasoning
-            ? buildRenderSegments(reasoning, 0)
-            : null;
-
-          return (
-            <Message from={message.role} key={message.id}>
-              <MessageContent
-                className={
-                  "text-[1rem] leading-relaxed " +
-                  "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
-                  "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
-                  "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
-                }
+            return (
+              <Message
+                from={message.role}
+                key={message.id}
+                data-message-id={message.id}
+                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
-                {hasReasoning && reasoningSegments && (
-                  <ReasoningCollapse>
-                    {renderSegments(reasoningSegments, message.id)}
-                  </ReasoningCollapse>
-                )}
-                {responseSegments
-                  ? renderSegments(
-                      responseSegments,
-                      message.id,
-                      isLastAssistant ? onRetry : undefined,
-                    )
-                  : message.parts.map((part, i) => (
-                      <MessagePartRenderer
-                        key={`${message.id}-${i}`}
-                        part={part}
-                        messageID={message.id}
-                        partIndex={i}
-                        onRetry={isLastAssistant ? onRetry : undefined}
-                      />
-                    ))}
-                {isLastInTurn && !isCurrentlyStreaming && (
-                  <TurnStatsBar
-                    turnMessages={getTurnMessages(messages, messageIndex)}
-                    elapsedSeconds={
-                      messageIndex === messages.length - 1
-                        ? frozenElapsedRef.current
-                        : undefined
+                <MessageContent
+                  className={cn(
+                    isCompact
+                      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
+                    // Chain hover pills use negative margins that the base
+                    // overflow-hidden would clip.
+                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
+                  )}
+                >
+                  {isAssistant ? (
+                    <ChainMessageParts
+                      parts={renderableParts}
+                      messageID={message.id}
+                      isCurrentlyStreaming={isCurrentlyStreaming}
+                      onRetry={isLastAssistant ? onRetry : undefined}
+                      fileUrlBuilder={fileUrlBuilder}
+                      readOnly={readOnly}
+                      compactionPhase={compactionPhase}
+                      liveCompactionCallId={liveCompactionCallId}
+                      liveCompactionStats={liveCompactionStats}
+                    />
+                  ) : (
+                    <UserMessageClamp
+                      trailing={
+                        sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null
+                      }
+                    >
+                      {renderableParts.map((part, i) => (
+                        <MessagePartRenderer
+                          key={`${message.id}-${i}`}
+                          part={part}
+                          messageID={message.id}
+                          partIndex={i}
+                          fileUrlBuilder={fileUrlBuilder}
+                          readOnly={readOnly}
+                          compactionPhase={compactionPhase}
+                          liveCompactionCallId={liveCompactionCallId}
+                          liveCompactionStats={liveCompactionStats}
+                          isCurrentlyStreaming={isCurrentlyStreaming}
+                        />
+                      ))}
+                    </UserMessageClamp>
+                  )}
+                  {isLastInTurn && !isCurrentlyStreaming && (
+                    <TurnStatsBar
+                      turnMessages={turnMessagesForRow(messages, message)}
+                      elapsedSeconds={
+                        rowIndex === renderRows.length - 1
+                          ? frozenElapsedRef.current
+                          : undefined
+                      }
+                      stats={turnStats?.get(message.id)}
+                    />
+                  )}
+                  {isLastAssistant && showIndicator && indicator}
+                </MessageContent>
+                {!readOnly &&
+                  message.role === "user" &&
+                  sessionChatStatus === "queued" &&
+                  (() => {
+                    const stats = turnStats?.get(message.id);
+                    if (!stats?.isLatestUserMessage) {
+                      return null;
                     }
-                    durationMs={historicalDurations?.get(message.id)}
+                    return (
+                      <MessageActions
+                        className="mt-1 items-center justify-end gap-1.5"
+                        data-testid="queue-status-row"
+                      >
+                        <QueueBadge sessionID={sessionID ?? null} />
+                      </MessageActions>
+                    );
+                  })()}
+                {message.role === "user" && textParts.length > 0 && (
+                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    {(() => {
+                      const createdAt = turnStats?.get(message.id)?.createdAt;
+                      if (!createdAt) return null;
+                      const date = new Date(createdAt);
+                      if (Number.isNaN(date.getTime())) return null;
+                      return (
+                        <span className="text-[11px] tabular-nums text-neutral-500">
+                          {date.toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      );
+                    })()}
+                    <CopyButton
+                      text={textParts.map((p) => p.text).join("\n")}
+                    />
+                  </MessageActions>
+                )}
+                {fileParts.length > 0 && (
+                  <MessageAttachments
+                    files={fileParts}
+                    isUser={message.role === "user"}
+                    filePattern={filePattern}
+                    readOnly={readOnly}
                   />
                 )}
-                {isLastAssistant && showThinking && (
-                  <ThinkingIndicator
-                    active={showThinking}
-                    elapsedSeconds={elapsedSeconds}
+                {!readOnly && showActions && (
+                  <AssistantMessageActions
+                    message={message}
+                    sessionID={sessionID ?? null}
+                    className={cn(
+                      !isLastAssistant &&
+                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                    )}
                   />
+                )}
+                {readOnly && showActions && (
+                  <MessageActions
+                    className={cn(
+                      "mt-1 items-center justify-start gap-2",
+                      !isLastAssistant &&
+                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                    )}
+                  >
+                    <CopyButton
+                      text={textParts.map((p) => p.text).join("\n")}
+                    />
+                  </MessageActions>
+                )}
+              </Message>
+            );
+          })}
+          {showPendingSend && pendingSend && (
+            <PendingUploadMessage
+              pendingSend={pendingSend}
+              isCompact={isCompact}
+            />
+          )}
+          {showIndicator && lastMessage?.role !== "assistant" && (
+            <Message
+              from="assistant"
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+            >
+              <MessageContent className="text-[1rem] leading-relaxed">
+                {indicator}
+              </MessageContent>
+            </Message>
+          )}
+          {!readOnly && isRestoringActiveSession && (
+            <Message from="assistant">
+              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+                {showRestoreFallback ? (
+                  <div className="flex flex-col gap-1 text-sm text-slate-500">
+                    <ThinkingIndicator
+                      active
+                      elapsedSeconds={restoreElapsedSeconds}
+                      statusMessage={
+                        restoreStatusMessage ?? "Reconnecting to live stream..."
+                      }
+                    />
+                    <span className="pl-6 text-xs text-slate-400">
+                      Still syncing the latest progress.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                    <span>Retrieving latest messages</span>
+                  </div>
                 )}
               </MessageContent>
-              {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
-                </MessageActions>
-              )}
-              {fileParts.length > 0 && (
-                <MessageAttachments
-                  files={fileParts}
-                  isUser={message.role === "user"}
-                />
-              )}
-              {showActions && (
-                <AssistantMessageActions
-                  message={message}
-                  sessionID={sessionID ?? null}
-                />
-              )}
             </Message>
-          );
-        })}
-        {showThinking && lastMessage?.role !== "assistant" && (
-          <Message from="assistant">
-            <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator
-                active={showThinking}
-                elapsedSeconds={elapsedSeconds}
-              />
-            </MessageContent>
-          </Message>
-        )}
-        {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
-        {error && (
-          <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            <summary className="cursor-pointer font-medium">
-              The assistant encountered an error. Please try sending your
-              message again.
-            </summary>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-              {error instanceof Error ? error.message : String(error)}
-            </pre>
-          </details>
-        )}
-      </ConversationContent>
-      <ConversationScrollButton />
-    </Conversation>
+          )}
+          {!readOnly && graphExecId && (
+            <CopilotPendingReviews graphExecId={graphExecId} />
+          )}
+          {!readOnly &&
+            queuedMessages?.map((msg, idx) => (
+              <Message key={idx} from="user">
+                <MessageContent
+                  className={cn(
+                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    isCompact
+                      ? "rounded-xl text-sm leading-6"
+                      : "rounded-3xl text-[1rem] leading-relaxed",
+                  )}
+                >
+                  <span>{msg}</span>
+                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <Icon icon={Clock01Icon} className="size-3" />
+                    Queued
+                  </span>
+                </MessageContent>
+              </Message>
+            ))}
+          {!readOnly && error && !lastAssistantHasErrorMarker && (
+            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+              <summary className="cursor-pointer font-medium">
+                The assistant encountered an error. Please try sending your
+                message again.
+              </summary>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+                {error instanceof Error ? error.message : String(error)}
+              </pre>
+            </details>
+          )}
+          <TailSpacer
+            messageID={lastUserMessageID}
+            bottomInset={bottomContentPadding ?? 0}
+          />
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
+    </>
   );
 }

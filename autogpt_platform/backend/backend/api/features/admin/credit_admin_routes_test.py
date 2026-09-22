@@ -220,6 +220,7 @@ def test_get_user_history_with_filters(
         page_size=10,
         search="test@example.com",
         transaction_filter=prisma.enums.CreditTransactionType.TOP_UP,
+        include_inactive=False,
     )
 
     # Snapshot test the response
@@ -313,3 +314,150 @@ def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
     # Test users_history endpoint
     response = client.get("/admin/users_history")
     assert response.status_code == 403
+
+    # Test new export endpoints
+    response = client.get(
+        "/admin/transactions/export",
+        params={"start": "2026-01-01T00:00:00", "end": "2026-01-31T00:00:00"},
+    )
+    assert response.status_code == 403
+    response = client.get(
+        "/admin/copilot-usage/export",
+        params={"start": "2026-01-01T00:00:00", "end": "2026-01-31T00:00:00"},
+    )
+    assert response.status_code == 403
+
+
+def test_export_credit_transactions_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_export = AsyncMock(
+        return_value=[
+            UserTransaction(
+                user_id="user-1",
+                user_email="user1@example.com",
+                amount=1000,
+                running_balance=2500,
+                reason="Initial grant",
+                admin_email="admin@example.com",
+                transaction_type=prisma.enums.CreditTransactionType.GRANT,
+            ),
+            UserTransaction(
+                user_id="user-2",
+                user_email="user2@example.com",
+                amount=-50,
+                running_balance=4500,
+                reason="",
+                transaction_type=prisma.enums.CreditTransactionType.USAGE,
+            ),
+        ]
+    )
+    mocker.patch(
+        "backend.api.features.admin.credit_admin_routes.admin_export_user_history",
+        mock_export,
+    )
+
+    response = client.get(
+        "/admin/transactions/export",
+        params={
+            "start": "2026-01-01T00:00:00",
+            "end": "2026-01-31T00:00:00",
+            "transaction_type": "GRANT",
+            "user_id": "user-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_rows"] == 2
+    assert body["window_days"] == 30
+    assert body["max_window_days"] == 90
+    assert body["transactions"][0]["user_email"] == "user1@example.com"
+
+    call_kwargs = mock_export.call_args.kwargs
+    assert call_kwargs["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
+    assert call_kwargs["user_id"] == "user-1"
+
+
+def test_export_credit_transactions_window_too_wide_returns_400(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.admin.credit_admin_routes.admin_export_user_history",
+        AsyncMock(side_effect=ValueError("Export window must be <= 90 days")),
+    )
+    response = client.get(
+        "/admin/transactions/export",
+        params={
+            "start": "2025-01-01T00:00:00",
+            "end": "2026-01-01T00:00:00",
+        },
+    )
+    assert response.status_code == 400
+    assert "90 days" in response.json()["detail"]
+
+
+def test_export_credit_transactions_missing_window_is_400() -> None:
+    response = client.get("/admin/transactions/export")
+    assert response.status_code == 400
+
+
+def test_export_copilot_weekly_usage_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from datetime import datetime, timezone
+
+    from backend.data.platform_cost import CopilotWeeklyUsageRow
+
+    rows = [
+        CopilotWeeklyUsageRow(
+            user_id="user-1",
+            user_email="user1@example.com",
+            week_start=datetime(2026, 1, 5, tzinfo=timezone.utc),
+            week_end=datetime(2026, 1, 12, tzinfo=timezone.utc),
+            copilot_cost_microdollars=2_500_000,
+            tier="PRO",
+            weekly_limit_microdollars=25_000_000,
+            percent_used=10.0,
+        ),
+    ]
+    mock_export = AsyncMock(return_value=rows)
+    mocker.patch(
+        "backend.api.features.admin.credit_admin_routes.get_copilot_weekly_usage_for_export",
+        mock_export,
+    )
+
+    response = client.get(
+        "/admin/copilot-usage/export",
+        params={
+            "start": "2026-01-01T00:00:00",
+            "end": "2026-01-31T00:00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_rows"] == 1
+    assert body["max_window_days"] == 90
+    row = body["rows"][0]
+    assert row["user_id"] == "user-1"
+    assert row["tier"] == "PRO"
+    assert row["weekly_limit_microdollars"] == 25_000_000
+    assert row["percent_used"] == 10.0
+
+
+def test_export_copilot_weekly_usage_window_too_wide_returns_400(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.admin.credit_admin_routes.get_copilot_weekly_usage_for_export",
+        AsyncMock(side_effect=ValueError("Export window must be <= 90 days")),
+    )
+    response = client.get(
+        "/admin/copilot-usage/export",
+        params={
+            "start": "2025-01-01T00:00:00",
+            "end": "2026-01-01T00:00:00",
+        },
+    )
+    assert response.status_code == 400

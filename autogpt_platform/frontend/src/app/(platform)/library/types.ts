@@ -1,9 +1,9 @@
-import type { Icon } from "@phosphor-icons/react";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface LibraryTab {
   id: string;
   title: string;
-  icon: Icon;
+  icon: IconSvgElement;
 }
 
 /** Agent execution status — drives StatusBadge visuals & filtering. */
@@ -41,6 +41,7 @@ export interface FleetSummary {
   listening: number;
   scheduled: number;
   idle: number;
+  /** Total spend for the current calendar month, in cents. */
   monthlySpend: number;
 }
 

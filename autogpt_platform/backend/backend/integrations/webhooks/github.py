@@ -8,6 +8,7 @@ from strenum import StrEnum
 from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.request import Requests, Response
 
 from ._base import BaseWebhooksManager
@@ -29,17 +30,11 @@ class GithubWebhooksManager(BaseWebhooksManager):
     GITHUB_API_DEFAULT_HEADERS = {"Accept": "application/vnd.github.v3+json"}
 
     @classmethod
-    async def validate_payload(
+    async def verify_signature(
         cls,
         webhook: integrations.Webhook,
         request: Request,
-        credentials: Credentials | None,
-    ) -> tuple[dict, str]:
-        if not (event_type := request.headers.get("X-GitHub-Event")):
-            raise HTTPException(
-                status_code=400, detail="X-GitHub-Event header is missing!"
-            )
-
+    ) -> None:
         if not (signature_header := request.headers.get("X-Hub-Signature-256")):
             raise HTTPException(
                 status_code=403, detail="X-Hub-Signature-256 header is missing!"
@@ -54,6 +49,18 @@ class GithubWebhooksManager(BaseWebhooksManager):
         if not hmac.compare_digest(expected_signature, signature_header):
             raise HTTPException(
                 status_code=403, detail="Request signatures didn't match!"
+            )
+
+    @classmethod
+    async def validate_payload(
+        cls,
+        webhook: integrations.Webhook,
+        request: Request,
+        credentials: Credentials | None,
+    ) -> tuple[dict, str]:
+        if not (event_type := request.headers.get("X-GitHub-Event")):
+            raise HTTPException(
+                status_code=400, detail="X-GitHub-Event header is missing!"
             )
 
         payload = await request.json()
@@ -113,7 +120,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
             },
         }
 
-        response = await Requests().post(
+        response = await Requests(raise_for_status=False).post(
             f"{self.GITHUB_API_URL}/repos/{resource}/hooks",
             headers=headers,
             json=webhook_data,
@@ -121,13 +128,19 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if response.status != 201:
             error_msg = extract_github_error_msg(response)
-            if "not found" in error_msg.lower():
-                error_msg = (
-                    f"{error_msg} "
-                    "(Make sure the GitHub account or API key has 'repo' or "
-                    f"webhook create permissions to '{resource}')"
+            if response.status == 404:
+                raise NotFoundError(
+                    f"GitHub repository '{resource}' was not found, or the "
+                    "selected account doesn't have access to it: "
+                    f"{error_msg}"
                 )
-            raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
+            if response.status in (401, 403):
+                raise NotAuthorizedError(
+                    "The selected GitHub account isn't allowed to create "
+                    f"webhooks on '{resource}' — admin access to the repository "
+                    f"is required: {error_msg}"
+                )
+            raise ValueError(f"GitHub returned error: {error_msg}")
 
         resp = response.json()
         webhook_id = resp["id"]

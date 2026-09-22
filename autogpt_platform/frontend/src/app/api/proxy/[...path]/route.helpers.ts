@@ -1,11 +1,75 @@
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function isWorkspaceDownloadRequest(path: string[]): boolean {
-  return (
-    path.length == 5 &&
+  // api/workspace/files/{id}/download
+  if (
+    path.length === 5 &&
     path[0] === "api" &&
     path[1] === "workspace" &&
     path[2] === "files" &&
-    path[path.length - 1] === "download"
-  );
+    UUID_RE.test(path[3]) &&
+    path[4] === "download"
+  ) {
+    return true;
+  }
+
+  // api/public/shared/{token}/files/{id}/download
+  if (
+    path.length === 7 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    UUID_RE.test(path[3]) &&
+    path[4] === "files" &&
+    UUID_RE.test(path[5]) &&
+    path[6] === "download"
+  ) {
+    return true;
+  }
+
+  // api/public/shared/chats/{token}/files/{id}/download
+  if (
+    path.length === 8 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    path[3] === "chats" &&
+    UUID_RE.test(path[4]) &&
+    path[5] === "files" &&
+    UUID_RE.test(path[6]) &&
+    path[7] === "download"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function getSafeDownloadContentDisposition(
+  contentDisposition: string | null,
+): string {
+  if (!contentDisposition) return "attachment";
+
+  const parametersStart = contentDisposition.indexOf(";");
+  return parametersStart === -1
+    ? "attachment"
+    : `attachment${contentDisposition.slice(parametersStart)}`;
+}
+
+export function buildSafeWorkspaceDownloadHeaders(
+  contentType: string | null,
+  contentDisposition: string | null,
+  contentLength: number,
+): Record<string, string> {
+  return {
+    "Content-Type": contentType || "application/octet-stream",
+    "Content-Length": String(contentLength),
+    "Content-Disposition":
+      getSafeDownloadContentDisposition(contentDisposition),
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+  };
 }
 
 export function isRedirectStatus(status: number): boolean {
@@ -105,4 +169,71 @@ export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
   }
 
   return null;
+}
+
+// A backend that stays silent this long AFTER receiving the full request is
+// stalled — legitimate work answers with headers well within this, while
+// legitimately slow transfers (big uploads) spend their time in the upload
+// phase, which this timeout deliberately excludes.
+export const RESPONSE_START_TIMEOUT_MS = 30_000;
+export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
+
+export function getResponseStartTimeoutMs(
+  path: string[],
+  method: string,
+): number {
+  const isCodexCredentialControl =
+    path.length >= 5 &&
+    path.slice(0, 4).join("/") === "api/integrations/codex/credentials" &&
+    ((method === "DELETE" && path.length === 5) ||
+      (method === "GET" &&
+        path.length === 6 &&
+        (path[5] === "account" || path[5] === "rate-limits")));
+  if (
+    (method === "GET" && path.join("/") === "api/integrations/codex/login") ||
+    isCodexCredentialControl
+  ) {
+    return CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS;
+  }
+  return RESPONSE_START_TIMEOUT_MS;
+}
+
+export function watchResponseStart(
+  requestBody: ReadableStream | null,
+  timeoutMs: number = RESPONSE_START_TIMEOUT_MS,
+) {
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  function arm() {
+    timer = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException(
+            "Backend sent no response within " +
+              `${timeoutMs}ms of receiving the request`,
+            "TimeoutError",
+          ),
+        ),
+      timeoutMs,
+    );
+  }
+
+  // With a body, the clock starts only once the upload has been fully read
+  // (TransformStream flush); without one there is no upload phase, so it
+  // starts immediately.
+  let body: ReadableStream | undefined;
+  if (requestBody) {
+    body = requestBody.pipeThrough(new TransformStream({ flush: arm }));
+  } else {
+    arm();
+  }
+
+  return {
+    body,
+    signal: abort.signal,
+    // Call when the backend starts responding (or errors): from that point
+    // only the overall fetch ceiling applies.
+    clear: () => clearTimeout(timer),
+  };
 }

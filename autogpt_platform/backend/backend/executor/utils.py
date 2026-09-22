@@ -1,15 +1,19 @@
 import asyncio
 import logging
+import math
 import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast
 
+from prisma.enums import ReviewStatus
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -19,20 +23,33 @@ from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
+from backend.data.block_preflight_estimates import get_preflight_estimate
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
+from backend.data.db_accessors import experts_db as get_experts_db
+from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    ExecutionTrigger,
     GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    CredentialsMetaInput,
+    GraphInput,
+    NodeExecutionStats,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.integrations.credentials_store import is_system_credential
+from backend.monitoring.instrumentation import record_graph_execution
+from backend.util import product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -40,6 +57,8 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
     NotFoundError,
@@ -116,22 +135,35 @@ def block_usage_cost(
     input_data: BlockInput,
     data_size: float = 0,
     run_time: float = 0,
+    stats: NodeExecutionStats | None = None,
+    use_preflight_estimate: bool = True,
 ) -> tuple[int, BlockInput]:
-    """
-    Calculate the cost of using a block based on the input data and the block type.
+    """Calculate the credit charge for a block invocation.
 
-    Args:
-        block: Block object
-        input_data: Input data for the block
-        data_size: Size of the input data in bytes
-        run_time: Execution time of the block in seconds
+    Two calling contexts:
+      - Pre-flight (no stats): charge the fixed floor / historical-average
+        estimate. SECOND/ITEMS/COST_USD types fall back to 0 only when no
+        estimate is registered for the block in `block_preflight_estimates.json`.
+      - Post-flight (stats populated): dynamic types consume the captured
+        stats to compute the actual charge.
 
-    Returns:
-        Tuple of cost amount and cost filter
+    For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
+    "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
+    cost_divisor=10`` under SECOND means "1 credit per 10 seconds".
+
+    ``use_preflight_estimate`` (default True) enables the historical-average
+    pre-flight charge for SECOND/ITEMS/COST_USD types. Callers that have NO
+    post-flight reconciliation step (e.g. the direct block-execute API
+    endpoints, which bypass the executor manager) MUST pass False — otherwise
+    the estimate becomes the final charge and users are over- or undercharged
+    relative to their actual run cost. The executor pre-flight path keeps the
+    default since reconciliation always follows there.
     """
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return 0, {}
+
+    is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
         if not _is_cost_filter_match(block_cost.cost_filter, input_data):
@@ -140,19 +172,125 @@ def block_usage_cost(
         if block_cost.cost_type == BlockCostType.RUN:
             return block_cost.cost_amount, block_cost.cost_filter
 
-        if block_cost.cost_type == BlockCostType.SECOND:
-            return (
-                int(run_time * block_cost.cost_amount),
-                block_cost.cost_filter,
-            )
-
         if block_cost.cost_type == BlockCostType.BYTE:
             return (
                 int(data_size * block_cost.cost_amount),
                 block_cost.cost_filter,
             )
 
+        if block_cost.cost_type == BlockCostType.SECOND:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            # Ceil so partial divisor-units still bill — avoids 0-credit leaks
+            # on sub-divisor runs (e.g. 1s on a `1cr / 3s` block).
+            seconds = _coerce_seconds(run_time, stats)
+            credits = (
+                math.ceil(seconds / block_cost.cost_divisor) * block_cost.cost_amount
+                if seconds > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.ITEMS:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            # Ceil so partial buckets still bill — avoids 0-credit leaks on
+            # single-item returns under a >1 divisor (e.g. Apollo 1cr/2-items).
+            items = _coerce_items(stats)
+            credits = (
+                math.ceil(items / block_cost.cost_divisor) * block_cost.cost_amount
+                if items > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.COST_USD:
+            if is_preflight:
+                return get_preflight_estimate(block.id), block_cost.cost_filter
+            usd = _coerce_usd(stats)
+            return (
+                max(0, math.ceil(usd * block_cost.cost_amount)),
+                block_cost.cost_filter,
+            )
+
+        if block_cost.cost_type == BlockCostType.TOKENS:
+            return (
+                compute_token_credits(input_data, stats),
+                block_cost.cost_filter,
+            )
+
     return 0, {}
+
+
+async def charge_for_direct_block_execution(
+    user_id: str,
+    block: Block,
+    input_data: BlockInput,
+    *,
+    source: Literal["internal", "external"],
+) -> None:
+    """Pre-flight charge for a direct block-execute API call.
+
+    Shared by both ``POST /api/blocks/{id}/execute`` (internal UI) and
+    ``POST /api/v1/blocks/{id}/execute`` (external API key) so the two
+    routes stay in lock-step on cost calculation, transaction metadata,
+    and 402 mapping. ``source`` is recorded in the credit-history
+    ``reason`` so transactions remain attributable to the originating
+    surface.
+
+    Dynamic-cost blocks (TOKENS / COST_USD / SECOND / ITEMS) are NOT charged
+    on this code path — they return 0 from ``block_usage_cost`` because we
+    pass ``use_preflight_estimate=False``. The estimate path is only safe
+    when post-flight reconciliation follows (executor/manager.py); the
+    direct block-execute API endpoints bypass the manager and have no
+    reconciliation step, so charging the estimate would lock in an
+    incorrect amount with no chance to settle the delta.
+    """
+    cost, cost_filter = block_usage_cost(
+        block, input_data, use_preflight_estimate=False
+    )
+    if cost <= 0:
+        return
+    credit_model = await get_user_credit_model(user_id)
+    await credit_model.spend_credits(
+        user_id=user_id,
+        cost=cost,
+        metadata=UsageTransactionMetadata(
+            block_id=block.id,
+            block=block.name,
+            input=cost_filter,
+            reason=f"Direct {source} block execution of {block.name}",
+        ),
+    )
+
+
+def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
+    if run_time > 0:
+        return run_time
+    if stats and stats.walltime > 0:
+        return stats.walltime
+    return 0.0
+
+
+def _coerce_items(stats: NodeExecutionStats | None) -> int:
+    if not stats or stats.provider_cost is None:
+        return 0
+    # provider_cost is a raw item count only when explicitly typed 'items';
+    # a None type likely means USD (resolve_tracking defaults), so reject it
+    # here to avoid misreading a fractional dollar amount as an item count.
+    if stats.provider_cost_type != "items":
+        return 0
+    return max(0, int(stats.provider_cost))
+
+
+def _coerce_usd(stats: NodeExecutionStats | None) -> float:
+    if not stats or stats.provider_cost is None:
+        return 0.0
+    # provider_cost is billable only when tagged as cost_usd — otherwise it
+    # encodes a non-dollar quantity (e.g. items) that would wildly over-bill.
+    if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
+        return 0.0
+    return max(0.0, float(stats.provider_cost))
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
@@ -331,18 +469,40 @@ async def _validate_node_input_credentials(
 
         # Find any fields of type CredentialsMetaInput
         credentials_fields = block.input_schema.get_credentials_fields()
-        if not credentials_fields:
+        auto_credentials_fields = block.input_schema.get_auto_credentials_fields()
+        if not credentials_fields and not auto_credentials_fields:
             continue
 
         # Track if any credential field is missing for this node
         has_missing_credentials = False
 
+        # Local helper: mark the node as skippable when a per-field branch
+        # decides the field is optional-and-missing. We add to
+        # `nodes_to_skip` here rather than relying on the post-loop
+        # guard — that guard only fires when the NODE-level
+        # ``is_creds_optional`` is True. For auto-credential fields the
+        # optionality is usually field-level (``field_name not in
+        # required_fields`` because the schema default is None), so
+        # deferring would let the node silently pass validation and then
+        # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
+        # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
+        # field) to avoid redefining the closure each inner-loop
+        # iteration — see Cursor thread PRRT_kwDOJKSTjM58sEDe.
+        def _mark_optional_skip() -> None:
+            nonlocal has_missing_credentials
+            has_missing_credentials = True
+            nodes_to_skip.add(node.id)
+
         # A credential field is optional if the node metadata says so, or if
         # the block schema declares a default for the field.
         required_fields = block.input_schema.get_required_fields()
         is_creds_optional = node.credentials_optional
+        credentials_fields_info = block.input_schema.get_credentials_fields_info()
 
         for field_name, credentials_meta_type in credentials_fields.items():
+            reference_only = credentials_fields_info[
+                field_name
+            ].credential_reference_only
             field_is_optional = is_creds_optional or field_name not in required_fields
             try:
                 # Check nodes_input_masks first, then input_default
@@ -365,6 +525,8 @@ async def _validate_node_input_credentials(
                 if field_value is None or (
                     isinstance(field_value, dict) and not field_value.get("id")
                 ):
+                    if reference_only:
+                        continue
                     has_missing_credentials = True
                     # If credential field is optional, skip instead of error
                     if field_is_optional:
@@ -415,17 +577,127 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
                 continue
 
-        # If node has optional credentials and any are missing, allow running without.
-        # The executor will pass credentials=None to the block's run().
+        # Validate auto-credentials (GoogleDriveFileField-based)
+        # These have _credentials_id embedded in the file field data
+        if auto_credentials_fields:
+            for _kwarg_name, info in auto_credentials_fields.items():
+                field_name = info["field_name"]
+                field_is_optional = (
+                    is_creds_optional or field_name not in required_fields
+                )
+                # Check input_default and nodes_input_masks for the field value
+                field_value = node.input_default.get(field_name)
+                if nodes_input_masks and node.id in nodes_input_masks:
+                    field_value = nodes_input_masks[node.id].get(
+                        field_name, field_value
+                    )
+
+                if field_value is None:
+                    # Sentry HIGH: an explicitly-None value (e.g. cleared by
+                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # credentials were there and are now gone. Treat as
+                    # missing so optional fields hit `nodes_to_skip` and
+                    # required fields surface a clean re-auth message —
+                    # don't silently fall through to `_acquire_auto_credentials`
+                    # which would then crash with ValueError at runtime.
+                    # NOTE: this branch only fires when the key is
+                    # explicitly `None`. If the field is absent from
+                    # `input_default` altogether (chained from upstream
+                    # via `input_links`), `.get()` also returns None — but
+                    # that path is handled at execute time by
+                    # `_acquire_auto_credentials` skipping fields not in
+                    # `input_data`. To keep this validator from over-reaching
+                    # in that case, callers set the field explicitly to
+                    # `None` only for the cleared-fork scenario.
+                    field_is_explicitly_none = field_name in node.input_default or (
+                        nodes_input_masks
+                        and node.id in nodes_input_masks
+                        and field_name in nodes_input_masks[node.id]
+                    )
+                    if not field_is_explicitly_none:
+                        continue
+                    if field_is_optional:
+                        _mark_optional_skip()
+                        continue
+                    has_missing_credentials = True
+                    credential_errors[node.id][field_name] = (
+                        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} no file selected "
+                        "for this field. Please select a file via the "
+                        "picker to authenticate."
+                    )
+                    continue
+
+                if field_value and isinstance(field_value, dict):
+                    if "_credentials_id" not in field_value:
+                        # Key removed (e.g., on fork) — needs re-auth. Use the
+                        # CRED_ERR_NOT_AVAILABLE_PREFIX marker so the copilot
+                        # credential-race fallback recognises this as a
+                        # credentials gate failure.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} authentication "
+                            "missing for the selected file. Please re-select "
+                            "the file to authenticate with your own account."
+                        )
+                        continue
+                    cred_id = field_value.get("_credentials_id")
+                    if cred_id is None:
+                        # Explicitly None means the value is being chained in
+                        # at execution time from an upstream block — skip.
+                        continue
+                    if not isinstance(cred_id, str) or not cred_id.strip():
+                        # Non-string or empty string is a corrupted state —
+                        # treat it like a missing credential so the user
+                        # re-authenticates rather than silently running with
+                        # no creds.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} credential id "
+                            "on the selected file is empty or invalid. "
+                            "Please re-select the file."
+                        )
+                        continue
+                    try:
+                        creds_store = get_integration_credentials_store()
+                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                    except Exception as e:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        continue
+                    if not creds:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+
+        # If node has optional credentials and any are missing, skip the
+        # node so the executor doesn't try to execute it with None creds.
+        # The per-field loops above deliberately didn't record an error for
+        # the optional case — the "will be marked for skip after loop"
+        # contract lives here.
         if (
             has_missing_credentials
             and is_creds_optional
             and node.id not in credential_errors
         ):
             logger.info(
-                f"Node #{node.id}: optional credentials not configured, "
-                "running without"
+                f"Node #{node.id}: optional credentials not configured, skipping"
             )
+            nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
 
@@ -446,8 +718,9 @@ def make_node_credentials_input_map(
     """
     result: dict[str, dict[str, JsonValue]] = {}
 
-    # Get aggregated credentials fields for the graph
-    graph_cred_inputs = graph.aggregate_credentials_inputs()
+    # Only map regular credentials (not auto_credentials, which are resolved
+    # at execution time from _credentials_id in file field data)
+    graph_cred_inputs = graph.regular_credentials_inputs
 
     for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items
@@ -486,9 +759,10 @@ async def validate_graph_with_credentials(
     )
 
     # Get credential input/availability/validation errors and nodes to skip
-    node_credential_input_errors, nodes_to_skip = (
-        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
-    )
+    (
+        node_credential_input_errors,
+        nodes_to_skip,
+    ) = await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     # Merge credential errors with structural errors
     for node_id, field_errors in node_credential_input_errors.items():
@@ -670,14 +944,15 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input, nodes_to_skip = (
-        await _construct_starting_node_execution_input(
-            graph=graph,
-            user_id=user_id,
-            graph_inputs=graph_inputs,
-            nodes_input_masks=nodes_input_masks,
-            dry_run=dry_run,
-        )
+    (
+        starting_nodes_input,
+        nodes_to_skip,
+    ) = await _construct_starting_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=graph_inputs,
+        nodes_input_masks=nodes_input_masks,
+        dry_run=dry_run,
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
@@ -705,7 +980,9 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue"
+# ``_v2`` suffix marks the classic→quorum rollover; old-image consumers
+# drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
+GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
@@ -714,7 +991,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
+# Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
+# ExecutionManager pod, so RabbitMQ round-robined each cancel to a single
+# arbitrary pod. Old-image pods keep draining it through a rollout; each new pod
+# deletes it once none is left, so no operator step is needed on any install.
+LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants
 # Agent executions can run for up to 1 day, so we need a graceful shutdown period
@@ -735,27 +1016,26 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # x-consumer-timeout (1 week)
+            # Quorum (not classic mirrored) for leader election + stronger
+            # replication across RabbitMQ 4.x cluster nodes.
+            "x-queue-type": "quorum",
+            # x-consumer-timeout (24h)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions
             # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming connection,
+    # and declared by the consumer itself through ``declare_broadcast_queue``.
+    # A queue in this config is declared by every holder, publishers included,
+    # which is how one queue came to serve the whole fleet.
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
 
 
@@ -904,6 +1184,56 @@ async def stop_graph_execution(
     )
 
 
+async def _enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
+    if prisma.is_connected():
+        await experts_scheduling.enforce_expert_run_budget(user_id, expert_id)
+    else:
+        await get_database_manager_async_client().enforce_expert_run_budget(
+            user_id, expert_id
+        )
+
+
+async def _resolve_expert_execution_tenancy(
+    user_id: str, expert_id: str
+) -> tuple[str, str | None]:
+    return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+
+
+async def _enforce_expert_credential_scope(
+    user_id: str,
+    expert_id: str,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]],
+) -> None:
+    """Reject a run that would use credentials this expert was not granted.
+
+    The gate lives here rather than at each caller because every expert-attributed
+    run funnels through ``add_graph_execution`` — schedules, webhook triggers and
+    copilot tool runs alike. Enforcing at creation also means a revoke takes effect
+    on the next run instead of only on newly created schedules.
+
+    System credentials (platform LLM keys) carry no grant and are always allowed;
+    filtering them would stop every expert from running an LLM block.
+    """
+    if not graph_credentials_inputs:
+        return
+    allowed = set(
+        await get_experts_db().expert_allowed_credential_ids(user_id, expert_id)
+    )
+    denied = sorted(
+        {
+            meta.id
+            for meta in graph_credentials_inputs.values()
+            if not is_system_credential(meta.id) and meta.id not in allowed
+        }
+    )
+    if denied:
+        raise ValueError(
+            f"Expert #{expert_id} has not been given access to credentials "
+            f"{', '.join(denied)}. Grant them on the expert's page to let it "
+            f"run this workflow."
+        )
+
+
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
@@ -915,9 +1245,85 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+    trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
+    trigger_ref: Optional[str] = None,
+) -> GraphExecutionWithNodes:
+    """Add a graph execution to the queue, recording the outcome.
+
+    Thin wrapper over :func:`_add_graph_execution` so that every caller of
+    this shared path, not only the legacy v1 route, feeds
+    ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
+    not an execute outcome, and is not counted.
+    """
+    try:
+        result = await _add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            execution_context=execution_context,
+            graph_exec_id=graph_exec_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
+            bypass_paywall=bypass_paywall,
+            trigger=trigger,
+            trigger_ref=trigger_ref,
+        )
+    except GraphValidationError:
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        raise
+    except UserPaywalledError:
+        raise
+    except Exception:
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        raise
+    record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+    return result
+
+
+async def _add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: Optional[GraphInput] = None,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+    trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
+    trigger_ref: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
+
+    Supports two modes:
+    1. CREATE mode (graph_exec_id=None): Validates, creates new DB entry, and queues
+    2. REQUEUE mode (graph_exec_id provided): Fetches existing execution and re-queues it
 
     Args:
         graph_id: The ID of the graph to execute.
@@ -928,14 +1334,58 @@ async def add_graph_execution(
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
+        expert_id: Expert attribution — set when the run was started by/for a
+            hired expert (schedule or trigger). Expert-attributed executions
+            are validated here. Only owner-only PRIVATE experts are supported;
+            they run in the owner's personal organization and default team.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
+        bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
+            recovery paths (requeueing stuck executions on behalf of a user
+            who may be on NO_TIER) — never for user-initiated runs.
+        trigger: How the run was started. Persisted on the execution row and
+            used to decide which activation event (if any) to emit. Ignored
+            in REQUEUE mode, where the original row is authoritative.
+        trigger_ref: Identifier of what started the run for that trigger
+            (schedule id, webhook id, chat session id, API key id, UI surface).
     Returns:
-        GraphExecutionEntry: The entry for the graph execution.
+        GraphExecutionWithNodes: The execution entry.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.
+        UserPaywalledError: If the user is on NO_TIER and ``ENABLE_PLATFORM_PAYMENT``
+            is on for them, **unless** ``bypass_paywall=True``. Raised here
+            so every entry point — HTTP routes, scheduled cron, webhook
+            triggers, external API, internal copilot tools — gets the same
+            gate without each having to remember a route-level dependency.
+        Exception: Tier-lookup errors propagate as-is. The HTTP routes that
+            call into ``add_graph_execution`` already wrap with
+            ``enforce_payment_paywall`` upstream (which maps lookup failure
+            to 503), so by the time we get here those callers have a fresh
+            check. Background callers (scheduled jobs, webhook handlers,
+            copilot tool runs) catch the exception in their own retry
+            framework — failing now is preferable to silently giving a
+            paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
+    if not bypass_paywall and await is_user_paywalled(user_id):
+        raise UserPaywalledError("A subscription is required to run agents.")
+
+    is_new_execution = graph_exec_id is None
+    context_expert_id = execution_context.expert_id if execution_context else None
+    if expert_id is not None and context_expert_id not in (None, expert_id):
+        raise ValueError(
+            f"Expert #{expert_id} does not match execution context expert "
+            f"#{context_expert_id}"
+        )
+    if expert_id is None:
+        expert_id = context_expert_id
+
     if prisma.is_connected():
         edb = execution_db
         udb = user_db
@@ -957,6 +1407,57 @@ async def add_graph_execution(
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
+        # The persisted row is authoritative on resume. A caller cannot turn
+        # an Otto run into an expert run or swap one expert for another.
+        if expert_id is not None and expert_id != graph_exec.expert_id:
+            raise ValueError(
+                f"Expert scope does not match graph execution #{graph_exec.id}"
+            )
+        expert_id = graph_exec.expert_id
+
+        # A resumed expert execution respects the pause/budget gate too;
+        # bypass_paywall marks admin recovery, which stays exempt.
+        if expert_id:
+            try:
+                organization_id, team_id = await _resolve_expert_execution_tenancy(
+                    user_id, expert_id
+                )
+                graph_exec.organization_id = organization_id
+                graph_exec.team_id = team_id
+            except (ExpertNotFoundError, ExpertPrivateTenancyNotFoundError):
+                # Admin recovery must be able to requeue a stuck run even
+                # after its expert was archived/deleted mid-flight — fall
+                # back to the execution's persisted tenancy instead of
+                # 404ing. User-initiated requeues keep the strict check.
+                # The locals must be set explicitly: the expert branch of the
+                # ExecutionContext builder below trusts them verbatim.
+                if not bypass_paywall:
+                    raise
+                organization_id = graph_exec.organization_id
+                team_id = graph_exec.team_id
+            if not bypass_paywall:
+                await _enforce_expert_run_budget(user_id, expert_id)
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                decision = await _parked_spend_decision(
+                    user_id, expert_id, graph_exec.id
+                )
+                if decision == ReviewStatus.WAITING:
+                    return graph_exec
+                if decision == ReviewStatus.REJECTED:
+                    await edb.update_node_execution_status_batch(
+                        [ne.node_exec_id for ne in graph_exec.node_executions],
+                        ExecutionStatus.TERMINATED,
+                    )
+                    await edb.update_graph_execution_stats(
+                        graph_exec_id=graph_exec.id,
+                        status=ExecutionStatus.TERMINATED,
+                        stats=GraphExecutionStats(
+                            error="Additional spending declined by the user"
+                        ),
+                    )
+                    graph_exec.status = ExecutionStatus.TERMINATED
+                    return graph_exec
+
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
         # For resumed executions, nodes_to_skip was already determined at creation time
@@ -965,6 +1466,15 @@ async def add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        if expert_id:
+            organization_id, team_id = await _resolve_expert_execution_tenancy(
+                user_id, expert_id
+            )
+            await _enforce_expert_run_budget(user_id, expert_id)
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, graph_credentials_inputs
+            )
+
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
@@ -975,18 +1485,54 @@ async def add_graph_execution(
             dry_run = True
 
         # Create new execution
-        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
-            await validate_and_construct_node_execution_input(
-                graph_id=graph_id,
-                user_id=user_id,
-                graph_inputs=inputs or {},
-                graph_version=graph_version,
-                graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_masks=nodes_input_masks,
-                is_sub_graph=parent_exec_id is not None,
-                dry_run=dry_run,
-            )
+        (
+            graph,
+            starting_nodes_input,
+            compiled_nodes_input_masks,
+            nodes_to_skip,
+        ) = await validate_and_construct_node_execution_input(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_inputs=inputs or {},
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            is_sub_graph=parent_exec_id is not None,
+            dry_run=dry_run,
         )
+
+        # Tenant a NEW execution at creation: several callers arrive with a
+        # falsy organization_id — legacy schedules (empty organizationId),
+        # sub-graphs inheriting an untenanted parent's ExecutionContext (see
+        # AgentExecutorBlock), or any caller that omits tenancy. Resolve the
+        # user's default org/team so create_graph_execution gets a non-null
+        # value and the ExecutionContext built below inherits it.
+        #
+        # CREATE path only — resume/requeue backfills org/team from the
+        # persisted row (the graph_exec_id branch above and the
+        # execution_context backfill below), so re-resolving here would risk
+        # re-tenanting an existing row under a different org.
+        #
+        # Only resolve when NEITHER field was supplied — never overwrite an
+        # explicit team_id. resolve_default_tenancy is best-effort: an
+        # unresolvable org or a raised lookup yields (None, None) and the row
+        # is created untenanted rather than crashing the run.
+        if not organization_id and not team_id:
+            from backend.api.features.orgs.db import resolve_default_tenancy
+
+            # add_graph_execution runs in both the API server (direct prisma)
+            # and the scheduler/executor (no prisma — DB access via the RPC
+            # client). Dispatch the resolver the same way every other DB dep in
+            # this function does, or it silently no-ops in the scheduler
+            # process — exactly where scheduled executions are created.
+            resolve = (
+                resolve_default_tenancy
+                if prisma.is_connected()
+                else get_database_manager_async_client().resolve_default_tenancy
+            )
+            default_org_id, default_team_id = await resolve(user_id)
+            if default_org_id:
+                organization_id, team_id = default_org_id, default_team_id
 
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
@@ -999,6 +1545,13 @@ async def add_graph_execution(
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
             is_dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            trigger_source=trigger,
+            trigger_ref=trigger_ref,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         logger.info(
@@ -1006,10 +1559,31 @@ async def add_graph_execution(
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
+        # Spend approval (SECRT-2599): once the expert has reached her
+        # threshold the run is held, unpublished, until the user approves it.
+        # Nested runs were gated with their parent; admin requeues are exempt.
+        if expert_id and not dry_run and parent_exec_id is None and not bypass_paywall:
+            if needed := await _spend_approval_required(user_id, expert_id):
+                await _park_for_spend_approval(
+                    user_id=user_id,
+                    graph_exec_id=graph_exec.id,
+                    graph_id=graph_id,
+                    graph_version=graph_exec.graph_version,
+                    needed=needed,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+                graph_exec.status = ExecutionStatus.REVIEW
+                return graph_exec
+
     # Generate execution context if it's not provided
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_exec.graph_version,
+        )
         workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
@@ -1028,8 +1602,45 @@ async def add_graph_execution(
             ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
-            # Workspace (enables workspace:// file resolution in blocks)
+            # File-storage workspace (UserWorkspace) — enables
+            # workspace:// file resolution in blocks. Distinct from the
+            # org/team tenancy ``team_id`` field on ExecutionContext.
             workspace_id=workspace.id,
+            # Org/team tenancy — the runtime context is what billing and
+            # nested sub-graph runs read. On the create path the explicit
+            # params are authoritative; on resume/requeue (params unset)
+            # recover them from the persisted execution row so the run
+            # doesn't silently fall back to user-only scope.
+            organization_id=(
+                organization_id
+                if expert_id
+                else organization_id or graph_exec.organization_id
+            ),
+            team_id=team_id if expert_id else team_id or graph_exec.team_id,
+            # Same recovery rule as org/team: explicit param on create,
+            # persisted row on resume/requeue.
+            expert_id=expert_id or graph_exec.expert_id,
+        )
+    elif expert_id:
+        # Expert tenancy is authoritative even for caller-supplied contexts.
+        # This prevents a stale or forged org/team from steering expert work
+        # into a shared organization.
+        execution_context = execution_context.model_copy(
+            update={
+                "organization_id": organization_id,
+                "team_id": team_id,
+                "expert_id": expert_id,
+            }
+        )
+    elif execution_context.organization_id is None and graph_exec.organization_id:
+        # A caller-supplied context (e.g. review-resume, admin-requeue) may
+        # be built before org/team are known. Backfill from the persisted
+        # row so billing and sub-graph runs aren't tenant-blind on resume.
+        execution_context = execution_context.model_copy(
+            update={
+                "organization_id": graph_exec.organization_id,
+                "team_id": graph_exec.team_id,
+            }
         )
 
     try:
@@ -1042,9 +1653,17 @@ async def add_graph_execution(
 
         # Update execution status to QUEUED BEFORE publishing to prevent race condition
         # where two concurrent requests could both publish the same execution
+        # A stuck run persisted without tenancy (nullable organizationId)
+        # must still be recoverable: update_graph_execution_stats raises
+        # when update_tenancy=True with no organization_id, which would
+        # fail the whole requeue — the exact case the admin fallback serves.
+        persist_tenancy = expert_id is not None and organization_id is not None
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,
+            update_tenancy=persist_tenancy,
+            organization_id=organization_id if persist_tenancy else None,
+            team_id=team_id if persist_tenancy else None,
         )
 
         # Verify the status update succeeded (prevents duplicate queueing in race conditions)
@@ -1103,7 +1722,35 @@ async def add_graph_execution(
     except Exception as e:
         logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
 
+    if is_new_execution:
+        product_analytics.track_agent_run_started(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            trigger=trigger,
+            trigger_ref=trigger_ref,
+            expert_id=expert_id,
+            preset_id=preset_id,
+            is_dry_run=dry_run,
+        )
+
     return graph_exec
+
+
+async def _spend_approval_required(user_id: str, expert_id: str):
+    return await spend_approval_db().spend_approval_required(user_id, expert_id)
+
+
+async def _park_for_spend_approval(**kwargs) -> None:
+    await spend_approval_db().park_execution_for_spend_approval(**kwargs)
+
+
+async def _parked_spend_decision(
+    user_id: str, expert_id: str, graph_exec_id: str
+) -> ReviewStatus | None:
+    return await spend_approval_db().parked_spend_decision(
+        user_id, expert_id, graph_exec_id
+    )
 
 
 # ============ Execution Output Helpers ============ #

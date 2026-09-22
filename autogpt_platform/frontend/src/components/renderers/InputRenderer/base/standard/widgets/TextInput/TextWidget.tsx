@@ -1,4 +1,5 @@
-"use client";
+import { useFieldAccessibility } from "../../../../field-accessibility";
+("use client");
 
 import { useState } from "react";
 import { WidgetProps } from "@rjsf/utils";
@@ -14,12 +15,19 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "./TextInputExpanderModal";
+import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
   const { size, uiType } = registry.formContext;
+  const accessibility = useFieldAccessibility(
+    props.id,
+    schema.title || props.label,
+    registry.formContext,
+    props["aria-describedby"],
+  );
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -45,12 +53,20 @@ export default function TextWidget(props: WidgetProps) {
     [InputType.NUMBER]: {
       htmlType: "number",
       placeholder: "Enter number value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
+      },
     },
     [InputType.INTEGER]: {
-      htmlType: "account",
+      htmlType: "number",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        if (v === "") return undefined;
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.trunc(n) : undefined;
+      },
     },
   };
 
@@ -61,6 +77,11 @@ export default function TextWidget(props: WidgetProps) {
   };
 
   const config = (mapped && inputConfig[mapped]) || defaultConfig;
+
+  const displayValue =
+    typeof props.value === "number" && !Number.isFinite(props.value)
+      ? ""
+      : (props.value ?? "");
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -91,13 +112,13 @@ export default function TextWidget(props: WidgetProps) {
   if (uiType === BlockUIType.NOTE) {
     return (
       <Input
-        id={props.id}
+        {...accessibility}
         hideLabel={true}
         type={"textarea"}
         label={schema.title || props.label || "Note"}
         size="small"
         wrapperClassName="mb-0"
-        value={props.value ?? ""}
+        value={displayValue}
         className="!h-[230px] resize-none rounded-none border-none bg-transparent p-0 placeholder:text-black/60 focus:ring-0"
         onChange={handleChange}
         placeholder={"Write your note here..."}
@@ -111,13 +132,13 @@ export default function TextWidget(props: WidgetProps) {
     <>
       <div className="nodrag relative flex items-center gap-2">
         <Input
-          id={props.id}
+          {...accessibility}
           hideLabel={true}
           type={config.htmlType as any}
           label={schema.title || props.label || ""}
           size={inputSize as any}
           wrapperClassName="mb-0 flex-1"
-          value={props.value ?? ""}
+          value={displayValue}
           onChange={handleChange}
           placeholder={placeholder || config.placeholder}
           required={props.required}
@@ -133,8 +154,9 @@ export default function TextWidget(props: WidgetProps) {
                 onClick={handleModalOpen}
                 type="button"
                 className="p-1"
+                aria-label="Expand input"
               >
-                <ArrowsOutIcon className="size-4" />
+                <Icon icon={ArrowExpandIcon} className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Expand input</TooltipContent>
@@ -148,7 +170,7 @@ export default function TextWidget(props: WidgetProps) {
         onSave={handleModalSave}
         title={schema.title || "Edit value"}
         description={schema.description || ""}
-        defaultValue={props.value ?? ""}
+        defaultValue={displayValue}
         placeholder={placeholder || config.placeholder}
       />
     </>

@@ -32,12 +32,14 @@ interface AlertProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof alertVariants> {
   children: React.ReactNode;
+  /** Override the default variant icon (e.g. a domain-specific icon). */
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant = "default", children, ...props }, ref) => {
+  ({ className, variant = "default", icon, children, ...props }, ref) => {
     const currentVariant = variant || "default";
-    const IconComponent = variantIcons[currentVariant];
+    const IconComponent = icon ?? variantIcons[currentVariant];
 
     return (
       <div

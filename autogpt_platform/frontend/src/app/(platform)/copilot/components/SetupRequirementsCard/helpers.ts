@@ -1,0 +1,456 @@
+import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
+import type { RJSFSchema } from "@rjsf/utils";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api/types";
+
+// Used as a filter below, so it has to be total: a type missing here is
+// silently unconnectable from the card. `CREDENTIALS_TYPES` is checked against
+// `CredentialsType` at build time, so a new type cannot go missing quietly.
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(CREDENTIALS_TYPES);
+
+export function coerceCredentialFields(rawMissingCredentials: unknown): {
+  credentialFields: CredentialField[];
+  requiredCredentials: Set<string>;
+} {
+  const missing =
+    rawMissingCredentials && typeof rawMissingCredentials === "object"
+      ? (rawMissingCredentials as Record<string, unknown>)
+      : {};
+
+  const credentialFields: CredentialField[] = [];
+  const requiredCredentials = new Set<string>();
+
+  Object.entries(missing).forEach(([key, value]) => {
+    if (!value || typeof value !== "object") return;
+    const cred = value as Record<string, unknown>;
+
+    const provider =
+      typeof cred.provider === "string" ? cred.provider.trim() : "";
+    if (!provider) return;
+
+    const types =
+      Array.isArray(cred.types) && cred.types.length > 0 ? cred.types : [];
+
+    const credentialTypes = types
+      .map((t) => (typeof t === "string" ? t.trim() : ""))
+      .filter((t) => VALID_CREDENTIAL_TYPES.has(t));
+
+    if (credentialTypes.length === 0) return;
+
+    const scopes = Array.isArray(cred.scopes)
+      ? cred.scopes.filter((s): s is string => typeof s === "string")
+      : undefined;
+
+    const discriminator =
+      typeof cred.discriminator === "string" ? cred.discriminator : undefined;
+    const discriminatorValues = Array.isArray(cred.discriminator_values)
+      ? cred.discriminator_values.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : undefined;
+
+    const schema: Record<string, unknown> = {
+      type: "object" as const,
+      properties: {},
+      credentials_provider: [provider],
+      credentials_types: credentialTypes,
+      credentials_scopes: scopes,
+    };
+
+    if (discriminator) {
+      schema.discriminator = discriminator;
+    }
+    if (discriminatorValues && discriminatorValues.length > 0) {
+      schema.discriminator_values = discriminatorValues;
+    }
+    const expertGrant = coerceExpertGrant(cred.expert_grant);
+    if (expertGrant) {
+      schema.expert_grant = expertGrant;
+    }
+
+    credentialFields.push([key, schema]);
+    requiredCredentials.add(key);
+  });
+
+  return { credentialFields, requiredCredentials };
+}
+
+/** Which expert a missing credential is for, and which of the account's
+ *  credentials could be granted to it instead of connecting a new one. Only
+ *  present on cards raised from an expert chat. */
+export interface ExpertGrant {
+  expertId: string;
+  credentials: { id: string; title: string; type: string }[];
+}
+
+/** Reads the wire `expert_grant` block. A candidate needs an id; an untitled
+ *  one is labelled by its id, and a missing type falls back to `api_key`. */
+export function coerceExpertGrant(raw: unknown): ExpertGrant | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const grant = raw as Record<string, unknown>;
+  if (typeof grant.expert_id !== "string" || !grant.expert_id) return undefined;
+  const credentials = Array.isArray(grant.credentials)
+    ? grant.credentials.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const cred = entry as Record<string, unknown>;
+        if (typeof cred.id !== "string" || !cred.id) return [];
+        return [
+          {
+            id: cred.id,
+            title: typeof cred.title === "string" ? cred.title : cred.id,
+            type: typeof cred.type === "string" ? cred.type : "api_key",
+          },
+        ];
+      })
+    : [];
+  return { expertId: grant.expert_id, credentials };
+}
+
+/**
+ * Extract the unique provider slugs the card is asking the user to connect.
+ *
+ * Used by the session-scoped connected-providers store to decide whether a
+ * later card in the same chat can self-dismiss because the user has already
+ * connected every provider it requires.
+ */
+export function getRequestedProviders(
+  credentialFields: CredentialField[],
+): string[] {
+  const providers = new Set<string>();
+  for (const [, schema] of credentialFields) {
+    const provs = (schema as { credentials_provider?: unknown })
+      .credentials_provider;
+    if (!Array.isArray(provs)) continue;
+    for (const p of provs) {
+      if (typeof p === "string" && p) providers.add(p);
+    }
+  }
+  return [...providers];
+}
+
+/**
+ * Build a sibling-inputs dict from the missing_credentials discriminator values.
+ *
+ * When the backend resolves credentials for host-scoped blocks (e.g.
+ * SendAuthenticatedWebRequestBlock), it adds the target URL to
+ * `discriminator_values`.  The credential modal uses `siblingInputs`
+ * to extract the host and prefill the "Host Pattern" field.
+ */
+export function buildSiblingInputsFromCredentials(
+  rawMissingCredentials: unknown,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!rawMissingCredentials || typeof rawMissingCredentials !== "object")
+    return result;
+
+  const missing = rawMissingCredentials as Record<string, unknown>;
+  for (const value of Object.values(missing)) {
+    if (!value || typeof value !== "object") continue;
+    const cred = value as Record<string, unknown>;
+
+    const discriminator =
+      typeof cred.discriminator === "string" ? cred.discriminator : null;
+    const discriminatorValues = Array.isArray(cred.discriminator_values)
+      ? cred.discriminator_values.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : [];
+
+    if (discriminator && discriminatorValues.length > 0) {
+      result[discriminator] = discriminatorValues[0];
+    }
+  }
+
+  return result;
+}
+
+export interface ExpectedInput {
+  name: string;
+  title: string;
+  type: string;
+  description?: string;
+  required: boolean;
+  advanced: boolean;
+  value?: unknown;
+  // Any additional JSON-schema fields (format, json_schema_extra entries,
+  // custom widget configs, etc.) are preserved verbatim so the generic
+  // custom-field dispatch on the frontend can read them.
+  [key: string]: unknown;
+}
+
+const RESERVED_EXPECTED_INPUT_KEYS = new Set([
+  "name",
+  "title",
+  "type",
+  "description",
+  "required",
+  "advanced",
+  "value",
+]);
+
+export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
+  if (!Array.isArray(rawInputs)) return [];
+  const results: ExpectedInput[] = [];
+
+  rawInputs.forEach((value, index) => {
+    if (!value || typeof value !== "object") return;
+    const input = value as Record<string, unknown>;
+
+    const name =
+      typeof input.name === "string" && input.name.trim()
+        ? input.name.trim()
+        : `input-${index}`;
+    const title =
+      typeof input.title === "string" && input.title.trim()
+        ? input.title.trim()
+        : name;
+    const type = typeof input.type === "string" ? input.type : "unknown";
+    const description =
+      typeof input.description === "string" && input.description.trim()
+        ? input.description.trim()
+        : undefined;
+    const required = Boolean(input.required);
+    const advanced = Boolean(input.advanced);
+
+    const item: ExpectedInput = { name, title, type, required, advanced };
+    if (description) item.description = description;
+    if (input.value !== undefined && input.value !== null) {
+      item.value = input.value;
+    }
+    for (const [key, value] of Object.entries(input)) {
+      if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
+      if (value === undefined) continue;
+      item[key] = value;
+    }
+    results.push(item);
+  });
+
+  return results;
+}
+
+/**
+ * Build an RJSF schema from expected inputs so they can be rendered
+ * as a dynamic form via FormRenderer (used in "edit" mode).
+ *
+ * When ``showAdvanced`` is false (default), fields marked ``advanced``
+ * are excluded — matching the builder behaviour.
+ */
+export function buildExpectedInputsSchema(
+  expectedInputs: ExpectedInput[],
+  showAdvanced = false,
+): RJSFSchema | null {
+  const visible = showAdvanced
+    ? expectedInputs
+    : expectedInputs.filter((i) => !i.advanced);
+
+  if (visible.length === 0) return null;
+
+  const TYPE_MAP: Record<string, string> = {
+    string: "string",
+    str: "string",
+    text: "string",
+    number: "number",
+    int: "integer",
+    integer: "integer",
+    float: "number",
+    boolean: "boolean",
+    bool: "boolean",
+  };
+
+  const properties: Record<string, Record<string, unknown>> = {};
+  const required: string[] = [];
+
+  for (const input of visible) {
+    const prop: Record<string, unknown> = {
+      type: TYPE_MAP[input.type.toLowerCase()] ?? "string",
+      title: input.title,
+    };
+    if (input.description) prop.description = input.description;
+    if (input.value !== undefined) prop.default = input.value;
+    for (const [key, value] of Object.entries(input)) {
+      if (RESERVED_EXPECTED_INPUT_KEYS.has(key)) continue;
+      if (value === undefined) continue;
+      prop[key] = value;
+    }
+    properties[input.name] = prop;
+    if (input.required) required.push(input.name);
+  }
+
+  return {
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
+export function extractInitialValues(
+  expectedInputs: ExpectedInput[],
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const input of expectedInputs) {
+    if (input.value !== undefined && input.value !== null) {
+      values[input.name] = input.value;
+    }
+  }
+  return values;
+}
+
+export function mergeInputValues(
+  initialValues: Record<string, unknown>,
+  prev: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...initialValues };
+  for (const [key, value] of Object.entries(prev)) {
+    if (value !== undefined && value !== null && value !== "") {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+export function checkAllCredentialsComplete(
+  requiredCredentials: Set<string>,
+  inputCredentials: Record<string, unknown>,
+): boolean {
+  return [...requiredCredentials].every((key) => !!inputCredentials[key]);
+}
+
+export function getRequiredInputNames(
+  expectedInputs: ExpectedInput[],
+): string[] {
+  return expectedInputs
+    .filter((i) => i.required && !i.advanced)
+    .map((i) => i.name);
+}
+
+export function checkAllInputsComplete(
+  expectedInputs: ExpectedInput[],
+  inputValues: Record<string, unknown>,
+): boolean {
+  if (expectedInputs.length === 0) return true;
+  const requiredNames = getRequiredInputNames(expectedInputs);
+  return requiredNames.every((name) => {
+    const v = inputValues[name];
+    return v !== undefined && v !== null && v !== "";
+  });
+}
+
+/**
+ * True while a credential the provider just refused is still the one selected.
+ *
+ * The row is kept on file, so the picker re-selects it on mount; without this
+ * the card would report ready and the chat would re-run into the same 401.
+ */
+export function isRejectedCredentialSelected(
+  rejection: CredentialRejection | null | undefined,
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): boolean {
+  const rejectedId = rejection?.credential_id;
+  if (!rejectedId) return false;
+  return Object.values(inputCredentials).some(
+    (credential) => credential?.id === rejectedId,
+  );
+}
+
+/** `{provider: credentialId}` for every credential chosen on the card. */
+export function buildCredentialSelections(
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+): Record<string, string> {
+  const selections: Record<string, string> = {};
+  for (const credential of Object.values(inputCredentials)) {
+    if (credential?.id && credential.provider) {
+      selections[credential.provider] = credential.id;
+    }
+  }
+  return selections;
+}
+
+/**
+ * Tell the backend which accounts were chosen, before the reply that re-runs
+ * the tool. The tools use exactly these for the rest of the chat; without them
+ * they would match on their own and could run on a different account.
+ *
+ * Failure is swallowed on purpose: with nothing recorded the backend asks
+ * again rather than guessing, so the worst case is a second card.
+ */
+export async function reportCredentialPicks(
+  sessionID: string | null,
+  inputCredentials: Record<
+    string,
+    { id?: string; provider?: string } | undefined
+  >,
+): Promise<void> {
+  const selections = buildCredentialSelections(inputCredentials);
+  if (!sessionID || Object.keys(selections).length === 0) return;
+  try {
+    await putV2RecordCredentialPicksForThisChat(sessionID, { selections });
+  } catch {
+    // See above.
+  }
+}
+
+export function checkCanRun(
+  needsCredentials: boolean,
+  isAllCredentialsComplete: boolean,
+  isAllInputsComplete: boolean,
+): boolean {
+  return (!needsCredentials || isAllCredentialsComplete) && isAllInputsComplete;
+}
+
+export function buildRunMessage(
+  needsCredentials: boolean,
+  needsInputs: boolean,
+  inputValues: Record<string, unknown>,
+  retryInstruction?: string,
+): string {
+  const parts: string[] = [];
+  if (needsCredentials) {
+    parts.push("I've configured the required credentials.");
+  }
+
+  if (needsInputs) {
+    const nonEmpty = Object.fromEntries(
+      Object.entries(inputValues).filter(
+        ([, v]) => v !== undefined && v !== null && v !== "",
+      ),
+    );
+    parts.push(`Run with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`);
+  } else {
+    parts.push(retryInstruction ?? "Please re-run this step now.");
+  }
+
+  return parts.join(" ");
+}
+
+/**
+ * Message variant for "preview" mode (run_agent): graph inputs are defined
+ * inside the graph and not editable from the chat, so the message just
+ * confirms credential setup and asks the agent to proceed.
+ */
+export function buildPreviewRunMessage(needsCredentials: boolean): string {
+  return needsCredentials
+    ? "I've configured the required credentials. Please check if everything is ready and proceed with running the agent."
+    : "Please proceed with running the agent.";
+}
+
+/**
+ * Message variant for "trigger" mode (setup_agent_webhook_trigger): the chosen
+ * credential IDs are carried back so the webhook is registered under the
+ * account the user explicitly picked, rather than auto-matched on resume.
+ */
+export function buildTriggerSetupMessage(
+  inputCredentials: Record<string, { id?: string } | undefined>,
+): string {
+  const selected: Record<string, string> = {};
+  for (const [field, cred] of Object.entries(inputCredentials)) {
+    if (cred?.id) selected[field] = cred.id;
+  }
+  return (
+    "I've selected the credentials to use. Call setup_agent_webhook_trigger " +
+    `with credentials=${JSON.stringify(selected)} to finish setting up the trigger.`
+  );
+}

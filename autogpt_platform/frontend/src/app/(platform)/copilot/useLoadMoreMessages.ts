@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   extractToolOutputsFromRaw,
+  type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 
 interface UseLoadMoreMessagesArgs {
@@ -82,19 +83,21 @@ export function useLoadMoreMessages({
   // are matched across inter-page boundaries.
   // Include initial page tool outputs so older paged pages can match
   // tool calls whose outputs landed in the initial page.
-  const pagedMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
-    useMemo(() => {
-      if (!sessionId || pagedRawMessages.length === 0) return [];
-      const extraToolOutputs =
-        initialPageRawMessages.length > 0
-          ? extractToolOutputsFromRaw(initialPageRawMessages)
-          : undefined;
-      return convertChatSessionMessagesToUiMessages(
-        sessionId,
-        pagedRawMessages,
-        { isComplete: true, extraToolOutputs },
-      ).messages;
-    }, [sessionId, pagedRawMessages, initialPageRawMessages]);
+  const { messages: pagedMessages, stats: pagedTurnStats } = useMemo((): {
+    messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    stats: TurnStatsMap;
+  } => {
+    if (!sessionId || pagedRawMessages.length === 0)
+      return { messages: [], stats: new Map() };
+    const extraToolOutputs =
+      initialPageRawMessages.length > 0
+        ? extractToolOutputsFromRaw(initialPageRawMessages)
+        : undefined;
+    return convertChatSessionMessagesToUiMessages(sessionId, pagedRawMessages, {
+      isComplete: true,
+      extraToolOutputs,
+    });
+  }, [sessionId, pagedRawMessages, initialPageRawMessages]);
 
   async function loadMore() {
     if (!sessionId || !hasMore || isLoadingMoreRef.current) return;
@@ -159,5 +162,11 @@ export function useLoadMoreMessages({
     }
   }
 
-  return { pagedMessages, hasMore, isLoadingMore, loadMore };
+  return {
+    pagedMessages,
+    pagedTurnStats,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  };
 }

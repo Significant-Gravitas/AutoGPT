@@ -10,7 +10,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockType,
 )
-from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    ExecutionTrigger,
+    NodesInputMasks,
+)
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -22,6 +27,11 @@ _logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
+    # Coordination block: waits on a child graph's full execution. The child
+    # has its own per-node wall-clock caps, so applying the parent's leaf-
+    # block cap here would false-positive on legitimately long sub-agent runs.
+    execution_timeout_seconds: int | None = None
+
     class Input(BlockSchemaInput):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
@@ -95,6 +105,10 @@ class AgentExecutorBlock(Block):
                 update={"parent_execution_id": graph_exec_id},
             ),
             dry_run=execution_context.dry_run,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
+            trigger=ExecutionTrigger.SUBGRAPH,
+            trigger_ref=graph_exec_id,
         )
 
         logger = execution_utils.LogMetadata(
@@ -171,7 +185,10 @@ class AgentExecutorBlock(Block):
                 )
                 self.merge_stats(
                     NodeExecutionStats(
-                        extra_cost=event.stats.cost if event.stats else 0,
+                        # Sub-graph already debited each of its own nodes; we
+                        # roll up its total so graph_stats.cost reflects the
+                        # full sub-graph spend.
+                        reconciled_cost_delta=(event.stats.cost if event.stats else 0),
                         extra_steps=event.stats.node_exec_count if event.stats else 0,
                     )
                 )

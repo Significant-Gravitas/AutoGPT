@@ -4,21 +4,24 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.blocks._base import BlockSchemaInput
-from backend.data.model import SchemaField, UserIntegrations
+from backend.data.model import CredentialsMetaInput, SchemaField
 from backend.integrations.ayrshare import AyrshareClient
-from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import MissingConfigError
 
-
-async def get_profile_key(user_id: str):
-    user_integrations: UserIntegrations = (
-        await get_database_manager_async_client().get_user_integrations(user_id)
-    )
-    return user_integrations.managed_credentials.ayrshare_profile_key
+from ._config import ayrshare
 
 
 class BaseAyrshareInput(BlockSchemaInput):
     """Base input model for Ayrshare social media posts with common fields."""
+
+    credentials: CredentialsMetaInput = ayrshare.credentials_field(
+        description=(
+            "Ayrshare profile credential. AutoGPT provisions this managed "
+            "credential automatically — the user does not create it. After "
+            "it's in place, the user links each social account via the "
+            "Ayrshare SSO popup in the Builder."
+        ),
+    )
 
     post: str = SchemaField(
         description="The post text to be published", default="", advanced=False
@@ -29,7 +32,9 @@ class BaseAyrshareInput(BlockSchemaInput):
         advanced=False,
     )
     is_video: bool = SchemaField(
-        description="Whether the media is a video", default=False, advanced=True
+        description="Whether the media is a video. Set to True when uploading a video so billing applies the video tier.",
+        default=False,
+        advanced=True,
     )
     schedule_date: Optional[datetime] = SchemaField(
         description="UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ)",

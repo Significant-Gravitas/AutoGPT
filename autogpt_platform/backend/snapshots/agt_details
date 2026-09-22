@@ -30,6 +30,7 @@
   ],
   "last_updated": "2023-01-01T00:00:00",
   "recommended_schedule_cron": null,
+  "owning_org_id": null,
   "active_version_id": "test-version-id",
   "has_approved_version": true,
   "changelog": null

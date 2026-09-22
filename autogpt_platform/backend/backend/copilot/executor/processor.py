@@ -5,21 +5,46 @@ in a thread-local context, following the graph executor pattern.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import subprocess
 import threading
 import time
+from contextlib import AsyncExitStack
+from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.config import ChatConfig, CopilotMode
-from backend.copilot.response_model import StreamError
+from backend.copilot.config import ChatConfig
+from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.expert_context import (
+    EXPERT_SESSION_MISSING_MESSAGE,
+    EXPERT_SESSION_TEMPORARY_MESSAGE,
+    ExpertSessionUnavailableError,
+)
+from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.tools.agent_browser import close_browser_daemon
+from backend.copilot.trial_cost_context import trial_cost_context
+from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import CodexCredentialIntegrityError
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.microsoft_365_copilot.service import (
+    stream_chat_completion_microsoft_365,
+)
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+)
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
@@ -27,64 +52,165 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
+    from backend.copilot.tree import TurnEnvelope
+
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
 
+SHUTDOWN_ERROR_MESSAGE = (
+    "Copilot executor shut down before this turn finished. Please retry."
+)
+
+# Max time execute() blocks after requesting async turn cancellation. The worker
+# waits for normal cleanup so late stream writes do not race the manager, but it
+# must still escape to the sync fail-close safety net if cleanup wedges.
+_CANCEL_GRACE_SECONDS = 5.0
+
+# How long to wait before logging again that a cancelled turn is still draining.
+_CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
+
+# Max time the sync safety net itself spends on a single Redis CAS. Without
+# this bound the whole point of ``sync_fail_close_session`` is defeated —
+# ``mark_session_completed`` would hang on the same broken Redis that caused
+# the original failure. On timeout we give up silently; worst case the
+# session stays ``running`` until the stale-session watchdog reaps it, but
+# at least the pool worker thread isn't blocked forever.
+_FAIL_CLOSE_REDIS_TIMEOUT = 10.0
+_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS = 5.0
+
+
+# Module-level symbol preserved for backward-compat with callers that import
+# ``sync_fail_close_session``; the real implementation now lives on
+# ``CoPilotProcessor`` so it can reuse ``self.execution_loop`` (same
+# pattern as ``backend.executor.manager``'s ``node_execution_loop`` bridge
+# at :meth:`ExecutionProcessor.on_graph_execution`).
+
+
+def sync_fail_close_session(
+    session_id: str,
+    log: "CoPilotLogMetadata | TruncatedLogger",
+    execution_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """Synchronously mark *session_id* as failed from the pool worker thread.
+
+    Submits the CAS coroutine to the long-lived *execution_loop* via
+    ``run_coroutine_threadsafe`` — the same shape agent-executor uses at
+    :meth:`backend.executor.manager.ExecutionProcessor.on_graph_execution`
+    to reach its ``node_execution_loop`` from the pool worker. Reusing the
+    persistent loop means:
+
+    * no fresh TCP connection per turn (the ``@thread_cached``
+      ``AsyncRedis`` on the execution thread stays bound to the same loop
+      and is reused across every turn);
+    * no loop-teardown overhead;
+    * no ``clear_cache()`` gymnastics to dodge the "loop is closed" pitfall.
+
+    ``mark_session_completed`` is an atomic CAS on ``status == "running"``,
+    so when the async path already wrote a terminal state the sync call is
+    a cheap no-op. The inner ``asyncio.wait_for`` bounds the Redis call so
+    a wedged Redis can't hang the safety net for the full redis-py default
+    TCP timeout; the outer ``.result(timeout=...)`` is a belt-and-braces
+    upper bound for the cross-thread wait.
+    """
+
+    async def _bounded() -> None:
+        await asyncio.wait_for(
+            stream_registry.mark_session_completed(
+                session_id, error_message=SHUTDOWN_ERROR_MESSAGE
+            ),
+            timeout=_FAIL_CLOSE_REDIS_TIMEOUT,
+        )
+
+    coro = _bounded()
+    try:
+        future = asyncio.run_coroutine_threadsafe(coro, execution_loop)
+    except RuntimeError as e:
+        coro.close()
+        # execution_loop is closed — happens if cleanup() already ran the
+        # per-worker teardown. Nothing we can do; let the stale-session
+        # watchdog reap it.
+        log.warning(f"sync fail-close skipped (execution_loop closed): {e}")
+        return
+    try:
+        future.result(timeout=_FAIL_CLOSE_REDIS_TIMEOUT + 2)
+    except concurrent.futures.TimeoutError:
+        log.warning(
+            f"sync fail-close timed out after {_FAIL_CLOSE_REDIS_TIMEOUT}s "
+            f"(session={session_id})"
+        )
+        future.cancel()
+    except Exception as e:
+        log.warning(f"sync fail-close mark_session_completed failed: {e}")
+
+
+def taint_for_source_platform(
+    envelope: "TurnEnvelope | None", session: "ChatSession"
+) -> "TurnEnvelope | None":
+    """Mark a turn tainted when its prompt came from a chat platform.
+
+    Those prompts are authored off-platform by someone who need not be the
+    account owner, so anything the turn spawns must inherit the bit. Taint
+    only ever rises, and a turn with no envelope stays that way rather than
+    having one invented for it.
+    """
+    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
+
+
 # ============ Mode Routing ============ #
-
-
-async def resolve_effective_mode(
-    mode: CopilotMode | None,
-    user_id: str | None,
-) -> CopilotMode | None:
-    """Strip ``mode`` when the user is not entitled to the toggle.
-
-    The UI gates the mode toggle behind ``CHAT_MODE_OPTION``; the
-    processor enforces the same gate server-side so an authenticated
-    user cannot bypass the flag by crafting a request directly.
-    """
-    if mode is None:
-        return None
-    allowed = await is_feature_enabled(
-        Flag.CHAT_MODE_OPTION,
-        user_id or "anonymous",
-        default=False,
-    )
-    if not allowed:
-        logger.info(f"Ignoring mode={mode} — CHAT_MODE_OPTION is disabled for user")
-        return None
-    return mode
-
-
-async def resolve_use_sdk_for_mode(
-    mode: CopilotMode | None,
-    user_id: str | None,
-    *,
-    use_claude_code_subscription: bool,
-    config_default: bool,
-) -> bool:
-    """Pick the SDK vs baseline path for a single turn.
-
-    Per-request ``mode`` wins whenever it is set (after the
-    ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
-    falls back to the Claude Code subscription override, then the
-    ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
-    """
-    if mode == "fast":
-        return False
-    if mode == "extended_thinking":
-        return True
-    return use_claude_code_subscription or await is_feature_enabled(
-        Flag.COPILOT_SDK,
-        user_id or "anonymous",
-        default=config_default,
-    )
 
 
 # ============ Module Entry Points ============ #
 
 # Thread-local storage for processor instances
 _tls = threading.local()
+
+
+async def _building_mode_forces_sdk(session_id: str) -> bool:
+    """True when the session's history shows it entered agent-building mode.
+
+    Building-mode sessions are pinned to the SDK engine (guide-in-prompt +
+    in-turn restart live there) regardless of the requested mode — derived
+    from message history, so it survives stale frontend mode pickers.
+    ``get_chat_session`` is Redis-cached: one cache hit, not a DB round-trip.
+    """
+    # Lazy imports: pulling these at module level drags the full tools/model
+    # chain into processor import, which reconfigures logging at import time
+    # and breaks caplog in tests.
+    from backend.copilot.model import get_chat_session
+    from backend.copilot.tools.helpers import session_entered_building_mode
+
+    session = await get_chat_session(session_id)
+    return session is not None and session_entered_building_mode(session)
+
+
+async def _normalize_private_expert_session_tenancy(
+    session: "ChatSession",
+) -> "ChatSession":
+    if session.expert_id is None:
+        return session
+
+    from backend.copilot.model import upsert_chat_session
+    from backend.data.db_accessors import experts_db
+
+    try:
+        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
+            session.user_id, session.expert_id
+        )
+    except ExpertNotFoundError as e:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
+    except ExpertPrivateTenancyNotFoundError as e:
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    if (session.organization_id, session.team_id) == (organization_id, team_id):
+        return session
+
+    session.organization_id = organization_id
+    session.team_id = team_id
+    session.credentials = {}
+    return await upsert_chat_session(session, persist_tenancy=True)
 
 
 def execute_copilot_turn(
@@ -179,7 +305,7 @@ class CoPilotProcessor:
         )
         self._prewarm_cli(cli_path=cli_path or None)
 
-        logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
+        logger.info(f"Worker {self.tid} started")
 
     def _prewarm_cli(self, cli_path: str | None = None) -> None:
         """Run the Claude Code CLI binary once to warm OS page caches.
@@ -198,7 +324,13 @@ class CoPilotProcessor:
                     SubprocessCLITransport,
                 )
 
-                cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+                # _find_bundled_cli is an instance method that never touches
+                # self (pure __file__-based lookup) — safe to call unbound.
+                finder = cast(
+                    Callable[[object], str | None],
+                    SubprocessCLITransport._find_bundled_cli,
+                )
+                cli_path = finder(None)
             if cli_path:
                 result = subprocess.run(
                     [cli_path, "-v"],
@@ -206,15 +338,13 @@ class CoPilotProcessor:
                     timeout=10,
                 )
                 if result.returncode == 0:
-                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
+                    logger.info(f"CLI pre-warm done: {cli_path}")
                 else:
                     logger.warning(
-                        "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
-                        result.returncode,  # type: ignore[reportCallIssue]
-                        cli_path,
+                        f"CLI pre-warm failed (rc={result.returncode}): {cli_path}"
                     )
         except Exception as e:
-            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
+            logger.debug(f"CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -222,6 +352,10 @@ class CoPilotProcessor:
         Shuts down the workspace storage instance that belongs to this
         worker's event loop, ensuring ``aiohttp.ClientSession.close()``
         runs on the same loop that created the session.
+
+        Sub-AutoPilots are enqueued on the copilot_execution queue, so
+        rolling deploys survive via RabbitMQ redelivery — no bespoke
+        shutdown notifier needed.
         """
         coro = shutdown_workspace_storage()
         try:
@@ -230,14 +364,12 @@ class CoPilotProcessor:
         except Exception as e:
             coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
-            logger.warning(
-                f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
-            )
+            logger.warning(f"Worker {self.tid} cleanup error: {error_msg}")
 
         # Stop the event loop
         self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
         self.execution_thread.join(timeout=5)
-        logger.info(f"[CoPilotExecutor] Worker {self.tid} cleaned up")
+        logger.info(f"Worker {self.tid} cleaned up")
 
     @error_logged(swallow=False)
     def execute(
@@ -248,12 +380,12 @@ class CoPilotProcessor:
     ):
         """Execute a CoPilot turn.
 
-        Runs the async logic in the worker's event loop and handles errors.
-
-        Args:
-            entry: The turn payload containing session and message info
-            cancel: Threading event to signal cancellation
-            cluster_lock: Distributed lock to prevent duplicate execution
+        Thin wrapper around :meth:`_execute`. The ``try/finally`` here
+        guarantees :func:`sync_fail_close_session` runs on every exit
+        path — normal completion or exception.
+        ``mark_session_completed`` is an atomic CAS on
+        ``status == "running"``, so when the async path already wrote a
+        terminal state the sync call is a cheap no-op.
         """
         log = CoPilotLogMetadata(
             logging.getLogger(__name__),
@@ -261,33 +393,114 @@ class CoPilotProcessor:
             user_id=entry.user_id,
         )
         log.info("Starting execution")
-
         start_time = time.monotonic()
+        try:
+            self._execute(entry, cancel, cluster_lock, log)
+        finally:
+            sync_fail_close_session(entry.session_id, log, self.execution_loop)
+            elapsed = time.monotonic() - start_time
+            log.info(f"Execution completed in {elapsed:.2f}s")
 
-        # Run the async execution in our event loop
+    def _execute(
+        self,
+        entry: CoPilotExecutionEntry,
+        cancel: threading.Event,
+        cluster_lock: ClusterLock,
+        log: CoPilotLogMetadata,
+    ):
+        """Submit the async turn to ``self.execution_loop`` and drive it.
+
+        Handles the sync/async boundary (cancel-event checks, cluster-lock
+        refresh, bounded waits) without any Redis-state cleanup logic —
+        that lives in :func:`sync_fail_close_session` which the outer
+        :meth:`execute` always invokes on exit.
+        """
+        task_ready: concurrent.futures.Future[asyncio.Task] = (
+            concurrent.futures.Future()
+        )
+
+        async def run_async_turn():
+            task = asyncio.current_task()
+            if task is not None and not task_ready.done():
+                task_ready.set_result(task)
+            return await self._execute_async(entry, cancel, cluster_lock, log)
+
         future = asyncio.run_coroutine_threadsafe(
-            self._execute_async(entry, cancel, cluster_lock, log),
+            run_async_turn(),
             self.execution_loop,
         )
 
-        # Wait for completion, checking cancel periodically
-        while not future.done():
+        cancel_requested = False
+        cancel_started_at: float | None = None
+        last_cancel_log_at: float | None = None
+
+        def request_cancel() -> None:
+            nonlocal cancel_requested, cancel_started_at, last_cancel_log_at
+            log.info("Cancellation requested")
+            try:
+                task = task_ready.result(timeout=0)
+            except concurrent.futures.TimeoutError:
+                # Sub-millisecond race: ``run_coroutine_threadsafe`` returned
+                # before ``run_async_turn`` actually started, so
+                # ``task_ready.set_result`` has not run yet.  ``future.cancel``
+                # on a ``concurrent.futures.Future`` whose underlying task may
+                # already be picked up by the loop is best-effort — frequently
+                # a no-op.  The slow path is intentional: ``cancel.is_set()``
+                # is polled inside ``_execute_async`` and the bounded
+                # ``_CANCEL_GRACE_SECONDS`` drain below force-cancels and falls
+                # through to ``sync_fail_close_session``, so the worst-case
+                # observable behaviour is "cancel takes ~5s in this rare race"
+                # rather than a stuck session.
+                future.cancel()
+            else:
+                self.execution_loop.call_soon_threadsafe(task.cancel)
+            cancel_requested = True
+            cancel_started_at = time.monotonic()
+            last_cancel_log_at = cancel_started_at
+
+        def log_cancel_wait() -> None:
+            nonlocal last_cancel_log_at
+            if cancel_started_at is None or last_cancel_log_at is None:
+                return
+            now = time.monotonic()
+            if now - last_cancel_log_at < _CANCEL_DRAIN_LOG_INTERVAL_SECONDS:
+                return
+            elapsed = now - cancel_started_at
+            log.warning(f"Waiting for cancelled turn to drain ({elapsed:.1f}s elapsed)")
+            last_cancel_log_at = now
+
+        def cancel_drain_timed_out() -> bool:
+            if cancel_started_at is None:
+                return False
+            elapsed = time.monotonic() - cancel_started_at
+            if elapsed < _CANCEL_GRACE_SECONDS:
+                return False
+            log.warning(
+                f"Cancelled turn did not drain within {_CANCEL_GRACE_SECONDS:.1f}s; "
+                "falling through to sync fail-close"
+            )
+            future.cancel()
+            return True
+
+        # Wait for completion, checking cancel periodically. A cancellation
+        # request waits for normal async cleanup, but remains bounded so the
+        # worker does not refresh the per-session lock forever on a wedged turn.
+        while True:
             try:
                 future.result(timeout=1.0)
-            except asyncio.TimeoutError:
-                if cancel.is_set():
-                    log.info("Cancellation requested")
-                    future.cancel()
-                    break
-                # Refresh cluster lock to maintain ownership
+                return
+            except concurrent.futures.CancelledError:
+                if cancel_requested or cancel.is_set():
+                    return
+                raise
+            except concurrent.futures.TimeoutError:
+                if cancel.is_set() and not cancel_requested:
+                    request_cancel()
+                elif cancel_requested and cancel_started_at is not None:
+                    if cancel_drain_timed_out():
+                        return
+                    log_cancel_wait()
                 cluster_lock.refresh()
-
-        if not future.cancelled():
-            # Get result to propagate any exceptions
-            future.result()
-
-        elapsed = time.monotonic() - start_time
-        log.info(f"Execution completed in {elapsed:.2f}s")
 
     async def _execute_async(
         self,
@@ -310,69 +523,230 @@ class CoPilotProcessor:
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
+        credential_lease = None
+        cost_context_stack = AsyncExitStack()
 
         try:
-            # Choose service based on LaunchDarkly flag.
-            # Claude Code subscription forces SDK mode (CLI subprocess auth).
-            config = ChatConfig()
+            from backend.copilot.model import get_chat_session
 
-            if config.test_mode:
-                stream_fn = stream_chat_completion_dummy
-                log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
-                effective_mode = None
+            # Executor picked the turn up — replace the route's "Message
+            # received…" status while feature-flag resolution and service
+            # setup run.
+            try:
+                await stream_registry.publish_chunk(
+                    entry.turn_id,
+                    StreamStatus(message="Setting up your environment…"),
+                    session_id=entry.session_id,
+                )
+            except Exception:
+                log.warning("Failed to publish setup status chunk")
+
+            session = await get_chat_session(entry.session_id, entry.user_id)
+            if session is None:
+                raise RuntimeError("copilot_session_not_found")
+            if (
+                session.metadata.llm_auth_provider != entry.llm_auth_provider
+                or session.metadata.llm_credential_id != entry.llm_credential_id
+            ):
+                raise RuntimeError("codex_session_route_mismatch")
+
+            session = await _normalize_private_expert_session_tenancy(session)
+
+            if entry.llm_auth_provider == "codex":
+                from backend.integrations.codex.access import enforce_codex_access
+                from backend.integrations.codex.credential_codec import (
+                    bundle_from_credentials,
+                )
+                from backend.integrations.codex.transport import (
+                    CodexCredentialBusyError,
+                    get_codex_transport,
+                )
+
+                if entry.user_id is None:
+                    raise RuntimeError("codex_user_required")
+                codex_user_id = entry.user_id
+                await enforce_codex_access(codex_user_id)
+                if entry.llm_credential_id is None:
+                    raise RuntimeError("codex_credential_required")
+                try:
+                    credential_lease = (
+                        await get_codex_transport().acquire_runtime_lease(
+                            codex_user_id,
+                            entry.llm_credential_id,
+                            lock_timeout_seconds=(
+                                _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS
+                            ),
+                        )
+                    )
+                except CodexCredentialBusyError:
+                    # Re-raised as-is rather than flattened into a bare
+                    # RuntimeError. HTTP turns run concurrently, but a brief
+                    # rotating-token refresh or legacy-credential migration
+                    # can still contend; preserving the type gives that
+                    # retryable condition a useful message.
+                    raise
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    raise RuntimeError("codex_credential_not_found") from None
+                try:
+                    credentials = credential_lease.credentials
+                    if credentials.type != "oauth2":
+                        raise RuntimeError("codex_credential_not_found")
+                    bundle_from_credentials(credentials)
+                except asyncio.CancelledError:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    raise
+                except Exception:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    raise RuntimeError("codex_credential_not_found") from None
+                stream_fn = sdk_service.stream_chat_completion_sdk
+                log.info("Using Claude SDK with Codex subscription transport")
+            elif entry.llm_auth_provider == "microsoft_365_copilot":
+                if entry.user_id is None:
+                    raise RuntimeError("microsoft_365_copilot_user_required")
+                if entry.llm_credential_id is None:
+                    raise RuntimeError("microsoft_365_copilot_credential_required")
+                try:
+                    credential_lease = (
+                        await IntegrationCredentialsManager().acquire_lease(
+                            entry.user_id,
+                            entry.llm_credential_id,
+                        )
+                    )
+                    credentials = credential_lease.credentials
+                    required_scopes = set(
+                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
+                    )
+                    if (
+                        not isinstance(credentials, OAuth2Credentials)
+                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
+                        or not required_scopes.issubset(credentials.scopes)
+                    ):
+                        raise ValueError("invalid Microsoft 365 Copilot credential")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    # Only a missing or unusable credential is "not found";
+                    # a refresh failure or lock contention on a valid account
+                    # keeps its own cause so it is not reported as missing.
+                    code = (
+                        "microsoft_365_copilot_credential_not_found"
+                        if isinstance(error, ValueError)
+                        else "microsoft_365_copilot_credential_unavailable"
+                    )
+                    raise RuntimeError(code) from error
+                stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
+                log.info("Using Microsoft 365 Copilot Chat API transport")
             else:
-                # Enforce server-side feature-flag gate so unauthorised
-                # users cannot force a mode by crafting the request.
-                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
-                use_sdk = await resolve_use_sdk_for_mode(
-                    effective_mode,
-                    entry.user_id,
-                    use_claude_code_subscription=config.use_claude_code_subscription,
-                    config_default=config.use_claude_agent_sdk,
-                )
-                stream_fn = (
-                    sdk_service.stream_chat_completion_sdk
-                    if use_sdk
-                    else stream_chat_completion_baseline
-                )
-                log.info(
-                    f"Using {'SDK' if use_sdk else 'baseline'} service "
-                    f"(mode={effective_mode or 'default'})"
-                )
+                if entry.llm_credential_id is not None:
+                    raise RuntimeError("codex_session_route_mismatch")
+                # Choose service based on LaunchDarkly flag.
+                # Claude Code subscription forces SDK mode (CLI subprocess auth).
+                config = ChatConfig()
+
+                if config.test_mode:
+                    stream_fn = stream_chat_completion_dummy
+                    log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                else:
+                    use_sdk = await resolve_use_sdk(
+                        entry.user_id,
+                        use_claude_code_subscription=(
+                            config.use_claude_code_subscription
+                        ),
+                        config_default=config.use_claude_agent_sdk,
+                        thinking_available=config.thinking_available,
+                    )
+                    # Building-mode sessions are pinned to the SDK engine
+                    # (guide-in-prompt + in-turn restart live there). Derived
+                    # from message history. get_chat_session is Redis-cached,
+                    # so this is one cache hit, not a DB round-trip.
+                    if not use_sdk and config.thinking_available:
+                        if await _building_mode_forces_sdk(entry.session_id):
+                            use_sdk = True
+                            log.info(
+                                "Forcing SDK engine: session is in agent building mode"
+                            )
+                    stream_fn = (
+                        sdk_service.stream_chat_completion_sdk
+                        if use_sdk
+                        else stream_chat_completion_baseline
+                    )
+                    log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+
+            await cost_context_stack.enter_async_context(
+                trial_cost_context(entry.user_id)
+            )
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
-            # publishing (shared with collect_copilot_response).
+            # publishing so subscribers on the session Redis stream
+            # (e.g. wait_for_session_result, SSE clients) receive the
+            # same events as they are produced.
+            envelope = taint_for_source_platform(entry.envelope, session)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=entry.message or None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
-                mode=effective_mode,
+                message_metadata=entry.message_metadata,
                 model=entry.model,
+                permissions=entry.permissions,
+                envelope=envelope,
+                request_arrival_at=entry.request_arrival_at,
+                organization_id=(
+                    session.organization_id
+                    if session.expert_id is not None
+                    else entry.organization_id
+                ),
+                team_id=(
+                    session.team_id if session.expert_id is not None else entry.team_id
+                ),
+                credential_lease=credential_lease,
+                session=session,
             )
-            async for chunk in stream_registry.stream_and_publish(
+            # Surround the driver stream with a silence watchdog so the
+            # FE shows escalating ``StreamStatus`` messages during long
+            # silent gaps (deep thinking, slow tool execution, inter-tool
+            # gaps) instead of looping the generic "Thinking…" phrases.
+            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
-                stream=raw_stream,
-            ):
-                if cancel.is_set():
-                    log.info("Cancel requested, breaking stream")
-                    break
+                stream=heartbeat_stream,
+            )
+            # Explicit aclose() on early exit: ``async for … break`` does
+            # not close the generator, so GeneratorExit would never reach
+            # stream_chat_completion_sdk, leaving its stream lock held
+            # until GC eventually runs.
+            try:
+                async for chunk in published_stream:
+                    if cancel.is_set():
+                        log.info("Cancel requested, breaking stream")
+                        break
 
-                # Capture StreamError so mark_session_completed receives
-                # the error message (stream_and_publish yields but does
-                # not publish StreamError — that's done by mark_session_completed).
-                if isinstance(chunk, StreamError):
-                    error_msg = chunk.errorText
-                    break
+                    # Capture StreamError so mark_session_completed receives
+                    # the error message (stream_and_publish yields but does
+                    # not publish StreamError — that's done by mark_session_completed).
+                    if isinstance(chunk, StreamError):
+                        error_msg = chunk.errorText
+                        break
 
-                current_time = time.monotonic()
-                if current_time - last_refresh >= refresh_interval:
-                    cluster_lock.refresh()
-                    last_refresh = current_time
+                    current_time = time.monotonic()
+                    if current_time - last_refresh >= refresh_interval:
+                        cluster_lock.refresh()
+                        last_refresh = current_time
+            finally:
+                await published_stream.aclose()
 
             # Stream loop completed
             if cancel.is_set():
@@ -392,8 +766,27 @@ class CoPilotProcessor:
             if not error_msg and cancel.is_set():
                 error_msg = "Operation cancelled"
             try:
-                await stream_registry.mark_session_completed(
-                    entry.session_id, error_message=error_msg
-                )
-            except Exception as mark_err:
-                log.error(f"Failed to mark session completed: {mark_err}")
+                if credential_lease is not None:
+                    try:
+                        await credential_lease.release()
+                    except CodexCredentialIntegrityError as release_err:
+                        error_msg = error_msg or "codex_credential_checkpoint_failed"
+                        log.error(
+                            f"Failed to checkpoint Codex credential: {release_err}"
+                        )
+                    except Exception as release_err:
+                        log.error(f"Failed to release chat credential: {release_err}")
+            finally:
+                try:
+                    await stream_registry.mark_session_completed(
+                        entry.session_id, error_message=error_msg
+                    )
+                except Exception as mark_err:
+                    log.error(f"Failed to mark session completed: {mark_err}")
+                finally:
+                    await cost_context_stack.aclose()
+                    # A browser turn leaves a Chromium tree on this pod that
+                    # nothing else ever stops; state is already persisted, so
+                    # the next turn restores it wherever it lands.
+                    if await close_browser_daemon(entry.session_id):
+                        log.info("Browser daemon teardown attempted for this turn")

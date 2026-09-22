@@ -105,10 +105,13 @@ class UnrealTextToSpeechBlock(Block):
             input_data.text,
             input_data.voice_id,
         )
+        # Unreal Speech: $16 / 1M chars = $0.000016/char. Emit USD so the
+        # COST_USD resolver (150 cr/$ via BLOCK_COSTS) bills proportionally
+        # instead of the old flat 5 cr.
         self.merge_stats(
             NodeExecutionStats(
-                provider_cost=float(len(input_data.text)),
-                provider_cost_type="characters",
+                provider_cost=len(input_data.text) * 0.000016,
+                provider_cost_type="cost_usd",
             )
         )
         yield "mp3_url", api_response["OutputUri"]

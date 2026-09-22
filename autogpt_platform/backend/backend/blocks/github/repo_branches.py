@@ -1,3 +1,4 @@
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -11,7 +12,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -29,16 +30,31 @@ class GithubListBranchesBlock(Block):
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
-        per_page: int = SchemaField(
-            description="Number of branches to return per page (max 100)",
-            default=30,
+        limit: int = SchemaField(
+            description="Maximum number of branches to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        per_page: Optional[int] = SchemaField(
+            description="[Legacy] Number of branches to return per page (max 100). "
+            "If set (or `page` is set), `limit` is ignored.",
+            default=None,
             ge=1,
             le=100,
+            advanced=True,
         )
-        page: int = SchemaField(
-            description="Page number for pagination",
-            default=1,
+        page: Optional[int] = SchemaField(
+            description="[Legacy] Page number for pagination. "
+            "If set (or `per_page` is set), `limit` is ignored.",
+            default=None,
             ge=1,
+            advanced=True,
+        )
+        protected: Literal["all", "protected", "unprotected"] = SchemaField(
+            description="Only include branches that are (un)protected",
+            default="all",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -64,8 +80,6 @@ class GithubListBranchesBlock(Block):
             output_schema=GithubListBranchesBlock.Output,
             test_input={
                 "repo_url": "https://github.com/owner/repo",
-                "per_page": 30,
-                "page": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -99,14 +113,24 @@ class GithubListBranchesBlock(Block):
 
     @staticmethod
     async def list_branches(
-        credentials: GithubCredentials, repo_url: str, per_page: int, page: int
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.BranchItem]:
         api = get_api(credentials)
+        repo_url = input_data.repo_url
         branches_url = repo_url + "/branches"
-        response = await api.get(
-            branches_url, params={"per_page": str(per_page), "page": str(page)}
+        params: dict[str, str] = {}
+        if input_data.protected != "all":
+            params["protected"] = str(input_data.protected == "protected").lower()
+
+        # Legacy page-based fetching takes precedence over `limit` if used
+        if input_data.per_page is not None or input_data.page is not None:
+            limit = input_data.per_page or 30
+            start_page = input_data.page or 1
+        else:
+            limit, start_page = input_data.limit, 1
+        data = await get_paginated(
+            api, branches_url, limit=limit, params=params, start_page=start_page
         )
-        data = response.json()
         repo_path = github_repo_path(repo_url)
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
             {
@@ -125,12 +149,7 @@ class GithubListBranchesBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            branches = await self.list_branches(
-                credentials,
-                input_data.repo_url,
-                input_data.per_page,
-                input_data.page,
-            )
+            branches = await self.list_branches(credentials, input_data)
             yield "branches", branches
             for branch in branches:
                 yield "branch", branch

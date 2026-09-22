@@ -1,7 +1,15 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Generator,
+    Generic,
+    Optional,
+    TypeVar,
+)
 
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
@@ -11,11 +19,23 @@ from backend.data import redis_client as redis
 from backend.util import json
 from backend.util.settings import Settings
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as AsyncRedis
+
 logger = logging.getLogger(__name__)
 config = Settings().config
 
 
 M = TypeVar("M", bound=BaseModel)
+
+
+def _assert_no_wildcard(channel_key: str) -> None:
+    """Sharded pub/sub has no pattern-subscribe; fail fast on wildcards."""
+    if "*" in channel_key:
+        raise ValueError(
+            f"channel_key {channel_key!r} contains a wildcard; sharded pub/sub "
+            "(SSUBSCRIBE) requires exact channel names."
+        )
 
 
 class BaseRedisEventBus(Generic[M], ABC):
@@ -71,8 +91,8 @@ class BaseRedisEventBus(Generic[M], ABC):
         return message, channel_name
 
     def _deserialize_message(self, msg: Any, channel_key: str) -> M | None:
-        message_type = "pmessage" if "*" in channel_key else "message"
-        if msg["type"] != message_type:
+        # Accept sharded (smessage) and classic (message/pmessage) deliveries.
+        if msg["type"] not in ("smessage", "message", "pmessage"):
             return None
         try:
             logger.debug(f"[{channel_key}] Consuming an event from Redis {msg['data']}")
@@ -80,12 +100,8 @@ class BaseRedisEventBus(Generic[M], ABC):
         except Exception as e:
             logger.error(f"Failed to parse event result from Redis {msg} {e}")
 
-    def _get_pubsub_channel(
-        self, connection: redis.Redis | redis.AsyncRedis, channel_key: str
-    ) -> tuple[PubSub | AsyncPubSub, str]:
-        full_channel_name = f"{self.event_bus_name}/{channel_key}"
-        pubsub = connection.pubsub()
-        return pubsub, full_channel_name
+    def _build_channel_name(self, channel_key: str) -> str:
+        return f"{self.event_bus_name}/{channel_key}"
 
 
 class _EventPayloadWrapper(BaseModel, Generic[M]):
@@ -98,88 +114,97 @@ class _EventPayloadWrapper(BaseModel, Generic[M]):
 
 
 class RedisEventBus(BaseRedisEventBus[M], ABC):
-    @property
-    def connection(self) -> redis.Redis:
-        return redis.get_redis()
-
     def publish_event(self, event: M, channel_key: str):
-        """
-        Publish an event to Redis. Gracefully handles connection failures
-        by logging the error instead of raising exceptions.
-        """
+        """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
+        _assert_no_wildcard(channel_key)
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
-            self.connection.publish(full_channel_name, message)
+            cluster = redis.get_redis()
+            cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(
-                f"Failed to publish event to Redis channel {channel_key}. "
-                "Event bus operation will continue without Redis connectivity."
-            )
+            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
-        pubsub, full_channel_name = self._get_pubsub_channel(
-            self.connection, channel_key
-        )
-        assert isinstance(pubsub, PubSub)
+        _assert_no_wildcard(channel_key)
+        full_channel_name = self._build_channel_name(channel_key)
 
-        if "*" in channel_key:
-            pubsub.psubscribe(full_channel_name)
-        else:
-            pubsub.subscribe(full_channel_name)
-
-        for message in pubsub.listen():
-            if event := self._deserialize_message(message, channel_key):
-                yield event
+        cluster = redis.get_redis()
+        pubsub: PubSub = cluster.pubsub()
+        try:
+            pubsub.ssubscribe(full_channel_name)
+            for message in pubsub.listen():
+                if event := self._deserialize_message(message, channel_key):
+                    yield event
+        finally:
+            try:
+                pubsub.sunsubscribe(full_channel_name)
+            except Exception:
+                logger.warning(
+                    "Failed to SUNSUBSCRIBE from %s", full_channel_name, exc_info=True
+                )
+            try:
+                pubsub.close()
+            except Exception:
+                logger.warning(
+                    "Failed to close sharded pubsub for %s",
+                    full_channel_name,
+                    exc_info=True,
+                )
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
-    def __init__(self):
-        self._pubsub: AsyncPubSub | None = None
-
-    @property
-    async def connection(self) -> redis.AsyncRedis:
-        return await redis.get_redis_async()
-
     async def close(self) -> None:
-        """Close the PubSub connection if it exists."""
-        if self._pubsub is not None:
-            try:
-                await self._pubsub.close()
-            except Exception:
-                logger.warning("Failed to close PubSub connection", exc_info=True)
-            finally:
-                self._pubsub = None
+        """No-op kept for backward compatibility.
+
+        Earlier revisions of this class stored the per-listen pubsub on the
+        instance, requiring an external close. ``listen_events`` now owns its
+        own client/pubsub locally so concurrent calls on a singleton (e.g.
+        ``_webhook_event_bus``) cannot clobber each other's connection.
+        """
+        return None
 
     async def publish_event(self, event: M, channel_key: str):
-        """
-        Publish an event to Redis. Gracefully handles connection failures
-        by logging the error instead of raising exceptions.
-        """
+        """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
+        _assert_no_wildcard(channel_key)
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
-            connection = await self.connection
-            await connection.publish(full_channel_name, message)
+            cluster = await redis.get_redis_async()
+            # redis-py 6.x async cluster has no spublish(); execute_command handles MOVED.
+            await cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(
-                f"Failed to publish event to Redis channel {channel_key}. "
-                "Event bus operation will continue without Redis connectivity."
-            )
+            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
-        pubsub, full_channel_name = self._get_pubsub_channel(
-            await self.connection, channel_key
+        _assert_no_wildcard(channel_key)
+        full_channel_name = self._build_channel_name(channel_key)
+
+        # Sharded pub/sub only delivers on the keyslot-owning shard, so pin
+        # a plain AsyncRedis to that node. Both client and pubsub stay
+        # generator-local — concurrent listen_events on the same instance
+        # (e.g. the singleton _webhook_event_bus) must not share state.
+        client: "AsyncRedis" = await redis.connect_sharded_pubsub_async(
+            full_channel_name
         )
-        assert isinstance(pubsub, AsyncPubSub)
-        self._pubsub = pubsub
-
-        if "*" in channel_key:
-            await pubsub.psubscribe(full_channel_name)
-        else:
-            await pubsub.subscribe(full_channel_name)
-
-        async for message in pubsub.listen():
-            if event := self._deserialize_message(message, channel_key):
-                yield event
+        pubsub: AsyncPubSub = client.pubsub()
+        try:
+            await pubsub.execute_command("SSUBSCRIBE", full_channel_name)
+            # redis-py 6.x async PubSub.listen() exits when ``channels`` is
+            # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
+            pubsub.channels[full_channel_name] = None  # type: ignore[index]
+            async for message in pubsub.listen():
+                if event := self._deserialize_message(message, channel_key):
+                    yield event
+        finally:
+            try:
+                await pubsub.aclose()
+            except Exception:
+                logger.warning("Failed to close PubSub connection", exc_info=True)
+            try:
+                await client.aclose()
+            except Exception:
+                logger.warning(
+                    "Failed to close shard-pinned Redis connection", exc_info=True
+                )
 
     async def wait_for_event(
         self, channel_key: str, timeout: Optional[float] = None

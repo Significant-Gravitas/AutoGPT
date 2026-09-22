@@ -242,3 +242,117 @@ def test_resolve_sandbox_path_tmp_escape_raises():
 def test_resolve_sandbox_path_tmp_prefix_collision_raises():
     with pytest.raises(ValueError):
         resolve_sandbox_path("/tmp_evil/malicious.txt")
+
+
+class TestSdkToolResultRedirectHint:
+    """``sdk_tool_result_redirect_hint`` builds the "Offending fragment"
+    line from the path-shaped token in *path_or_command*, not from the
+    command's executable. Regression coverage for the case where
+    ``cat /…/tool-results/foo.json | jq`` previously echoed
+    ``Offending fragment: 'cat'`` — useless to the model."""
+
+    def test_absolute_sdk_path_in_bash_command(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        cmd = (
+            "cat /root/.claude/projects/-tmp-abc/def/tool-results/"
+            "toolu_x.json | jq ."
+        )
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-tmp-abc/def/"
+            "tool-results/toolu_x.json'"
+        ) in msg
+        assert "'cat'" not in msg
+
+    def test_quoted_path_unwraps_quotes(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        cmd = 'cat "/root/.claude/projects/-a/b/tool-results/x.json"'
+        msg = sdk_tool_result_redirect_hint(cmd)
+        assert (
+            "Offending fragment: '/root/.claude/projects/-a/b/tool-results/x.json'"
+            in msg
+        )
+
+    def test_relative_shorthand(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        msg = sdk_tool_result_redirect_hint("cat tool-outputs/toolu_x.json | head")
+        assert "Offending fragment: 'tool-outputs/toolu_x.json'" in msg
+
+    def test_bare_path_input(self):
+        # ``read_workspace_file`` passes a bare path, not a command.
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        msg = sdk_tool_result_redirect_hint("tool-outputs/toolu_y.json")
+        assert "Offending fragment: 'tool-outputs/toolu_y.json'" in msg
+
+    def test_empty_input_fragment(self):
+        from backend.copilot.context import sdk_tool_result_redirect_hint
+
+        # Defensive: never crash on an empty input; the message just
+        # echoes an empty fragment.
+        msg = sdk_tool_result_redirect_hint("")
+        assert "Offending fragment: ''" in msg
+
+
+class TestEnvelopeDoesNotEscapeItsTurn:
+    """The turn envelope must not outlive the turn that set it.
+
+    ``mark_session_completed`` → ``dispatch_next_for_user`` → ``dispatch_turn``
+    runs inside the driver stream's own ``finally``. If the finished turn's
+    envelope were still visible there, the user's *queued* message would be
+    promoted as a depth-1 child and silently lose the descent-denied tools.
+
+    What prevents it is that the driver is consumed inside
+    ``asyncio.create_task`` (``stream_heartbeat``), which copies the context so
+    a ``ContextVar.set`` inside the generator cannot propagate to the caller.
+    That is load-bearing and non-obvious — inline the wrapper and every queued
+    turn quietly becomes a narrowed child — so it is pinned here.
+    """
+
+    @staticmethod
+    async def _drive(gen) -> None:
+        async for _ in gen:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_envelope_set_inside_a_task_driven_stream_does_not_leak(self):
+        import asyncio
+
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("inner-turn"))
+            yield 1
+
+        assert get_current_envelope() is None
+        # The task boundary is what isolates it — same shape as stream_heartbeat.
+        await asyncio.create_task(self._drive(driver()))
+        assert get_current_envelope() is None, (
+            "the envelope escaped its turn; a queued user message would now be "
+            "promoted as a narrowed child"
+        )
+
+    @pytest.mark.asyncio
+    async def test_control_generator_driven_without_a_task_does_leak(self):
+        """The control that makes the test above meaningful: drive the same
+        generator with no task boundary and the envelope *does* escape."""
+        from backend.copilot.context import get_current_envelope, set_execution_context
+        from backend.copilot.tree import root_envelope
+
+        async def driver():
+            set_execution_context(None, None, envelope=root_envelope("leaked"))
+            yield 1
+
+        assert get_current_envelope() is None
+        try:
+            await self._drive(driver())
+            leaked = get_current_envelope()
+            assert leaked is not None and leaked.tree_id == "leaked"
+        finally:
+            # An assertion failure here must not cascade into the sibling
+            # test: this generator leaks the contextvar deliberately.
+            set_execution_context(None, None, envelope=None)

@@ -5,6 +5,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
@@ -26,6 +27,10 @@ export const useRunGraph = () => {
     useShallow((state) => state.setIsGraphRunning),
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+  const [runTarget, setRunTarget] = useState<{
+    graphID: string;
+    graphVersion: number | null;
+  } | null>(null);
 
   const setNodeErrorsForBackendId = useNodeStore(
     useShallow((state) => state.setNodeErrorsForBackendId),
@@ -73,12 +78,17 @@ export const useRunGraph = () => {
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
     usePostV1ExecuteGraphAgent({
       mutation: {
-        onSuccess: (response: any) => {
+        onSuccess: (response, variables) => {
           clearAllNodeErrors();
-          const { id } = response.data as GraphExecutionMeta;
+          const { id, graph_id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
+          // Simulate goes through the same mutation as Run; only a real run
+          // is an activation.
+          if (!variables.data.dry_run) {
+            trackAgentRunGoal({ id: graph_id }, "builder");
+          }
         },
         onError: (error: any) => {
           setIsGraphRunning(false);
@@ -138,9 +148,18 @@ export const useRunGraph = () => {
   const handleRunGraph = async ({
     dryRun = false,
   }: { dryRun?: boolean } = {}) => {
-    await saveGraph(undefined);
+    // Use the version returned by the save, not the one captured in this
+    // closure — saving creates a new graph version and the stale closure value
+    // would run the previous (pre-edit) version. See the delete-node-then-run bug.
+    const savedGraph = await saveGraph(undefined);
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
+      // Hand the freshly-saved version to the dialog so it runs THIS version,
+      // not the stale one still in the URL (setQueryStates updates it async).
+      setRunTarget({
+        graphID: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
+      });
       setOpenRunInputDialog(true);
     } else {
       // Clear stale results so the UI shows fresh output from this execution
@@ -149,8 +168,8 @@ export const useRunGraph = () => {
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({
-        graphId: flowID ?? "",
-        graphVersion: flowVersion || null,
+        graphId: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
         data: {
           inputs: {},
           credentials_inputs: {},
@@ -179,5 +198,6 @@ export const useRunGraph = () => {
     isTerminatingGraph,
     openRunInputDialog,
     setOpenRunInputDialog: handleSetOpenRunInputDialog,
+    runTarget,
   };
 };

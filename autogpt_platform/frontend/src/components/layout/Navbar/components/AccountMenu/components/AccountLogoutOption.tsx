@@ -1,26 +1,28 @@
 "use client";
-import { IconLogOut } from "@/components/__legacy__/ui/icons";
 import { useRouter } from "next/navigation";
+import { AccountMenuRow } from "./AccountMenuRow";
+import { Logout03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function AccountLogoutOption() {
+interface Props {
+  weight?: "bold" | "regular";
+}
+
+export function AccountLogoutOption({ weight = "bold" }: Props) {
   const router = useRouter();
 
-  async function handleLogout() {
+  function handleLogout() {
     router.replace("/logout");
   }
 
   return (
-    <button
-      className="inline-flex w-full items-center justify-start gap-2.5"
+    <AccountMenuRow
+      as="button"
+      destructive
+      label="Log out"
+      newLayout={weight === "regular"}
+      icon={<Icon icon={Logout03Icon} className="h-[18px] w-[18px] shrink-0" />}
       onClick={handleLogout}
-      type="button"
-    >
-      <div className="relative h-4 w-4">
-        <IconLogOut />
-      </div>
-      <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        Log out
-      </div>
-    </button>
+    />
   );
 }

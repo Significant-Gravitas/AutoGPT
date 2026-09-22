@@ -4,7 +4,7 @@ export const timeRegex = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 export const scheduleFormSchema = z.object({
   scheduleName: z.string().trim().min(1, "Schedule name is required"),
-  time: z.string().trim().regex(timeRegex, "Use HH:MM (24h)"),
+  time: z.string().trim().regex(timeRegex, "Use HH:MM (24h)").optional(),
 });
 
 export type ScheduleFormValues = z.infer<typeof scheduleFormSchema>;
@@ -14,7 +14,7 @@ export function validateSchedule(
 ): Partial<Record<keyof ScheduleFormValues, string>> {
   const result = scheduleFormSchema.safeParse({
     scheduleName: values.scheduleName ?? "",
-    time: values.time ?? "",
+    ...(values.time !== undefined ? { time: values.time } : {}),
   });
 
   if (result.success) return {};

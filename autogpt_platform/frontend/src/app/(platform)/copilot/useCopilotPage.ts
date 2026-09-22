@@ -1,59 +1,138 @@
-import {
-  getGetV2ListSessionsQueryKey,
-  useDeleteV2DeleteSession,
-  useGetV2ListSessions,
-  type getV2ListSessionsResponse,
-} from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { uploadFileDirect } from "@/lib/direct-upload";
-import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useQueryClient } from "@tanstack/react-query";
-import type { FileUIPart } from "ai";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useEffect, useRef, useState } from "react";
+import type { UIMessage } from "ai";
+import { parseAsString, useQueryState } from "nuqs";
+import { useEffect, useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { getLatestAssistantStatusMessage } from "./messageParts";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import { useCopilotStreamStore } from "./copilotStreamStore";
+import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import {
+  buildKickoffMessage,
+  getKickoffAttemptToken,
+  isKickoffMessage,
+  shouldClearKickoffParam,
+  type ExpertKickoffMetadata,
+} from "./expertKickoff";
+import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useSendMessage } from "./useSendMessage";
+import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 
-const TITLE_POLL_INTERVAL_MS = 2_000;
-const TITLE_POLL_MAX_ATTEMPTS = 5;
+function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  if (lastUserIndex === -1 || lastUserIndex === messages.length - 1) {
+    return messages;
+  }
+  return messages.slice(0, lastUserIndex + 1);
+}
 
-interface UploadedFile {
-  file_id: string;
-  name: string;
-  mime_type: string;
+function hasAssistantTail(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
+}
+
+function getLatestKickoffAttemptToken(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const attemptToken = getKickoffAttemptToken(messages[index]);
+    if (attemptToken) return attemptToken;
+  }
+  return null;
 }
 
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-
-  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
-
+  const { user, isUserLoading, isLoggedIn } = useAuth();
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const [newThreadParam] = useQueryState("new", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const [kickoffParam, setKickoffParam] = useQueryState(
+    "kickoff",
+    parseAsString,
+  );
   const {
-    sessionToDelete,
-    setSessionToDelete,
-    isDrawerOpen,
-    setDrawerOpen,
-    copilotChatMode,
-    copilotLlmModel,
-    isDryRun,
-  } = useCopilotUIStore();
+    expertsById,
+    isLoadingExperts,
+    hasExpertsSettled,
+    hasExpertsErrored,
+  } = useExpertMap();
+  const validExpertIdParam =
+    expertIdParam && isValidUUID(expertIdParam) ? expertIdParam : null;
+  // Day one only fires for an expert we can still address. `onKickoff` writes
+  // its opening turn through `sendNewMessage`, bypassing the `onSend` archive
+  // guard, so a bogus id, an unreadable roster or a fired expert has to fall
+  // through to the read-only thread rather than reach the kickoff path.
+  const kickoffExpert = validExpertIdParam
+    ? expertsById.get(validExpertIdParam)
+    : undefined;
+  const kickoffExpertId =
+    isExpertsEnabled && hasExpertsSettled && kickoffExpert?.isArchived === false
+      ? kickoffExpert.id
+      : null;
+  const isKickoffResolving =
+    isExpertsEnabled &&
+    kickoffParam === "1" &&
+    validExpertIdParam !== null &&
+    isLoadingExperts;
+
+  useEffect(() => {
+    if (kickoffParam !== "1") return;
+    if (
+      !shouldClearKickoffParam(
+        isExpertsEnabled,
+        hasExpertsSettled,
+        kickoffExpertId,
+      )
+    )
+      return;
+    void setKickoffParam(null, { history: "replace" });
+  }, [
+    hasExpertsSettled,
+    isExpertsEnabled,
+    kickoffExpertId,
+    kickoffParam,
+    setKickoffParam,
+  ]);
+
+  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
     setSessionId,
+    sessionLlmAuthProvider,
+    sessionLlmCredentialId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
-    historicalDurations,
+    historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
+    activeStreamStartedAt,
     hasMoreMessages,
     oldestSequence,
     isLoadingSession,
@@ -62,29 +141,68 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
-  } = useChatSession({ dryRun: isDryRun });
+    sessionChatStatus,
+    sessionSentFrom,
+  } = useChatSession({
+    dryRun: isDryRun,
+    expertId,
+    adoptLatestExpertThread: !newThreadParam,
+  });
+
+  // An open session owns its identity: the URL param only describes who the
+  // NEXT session will address, and it is absent whenever a thread is reached
+  // from global search, a bookmark or a shared link.
+  const activeExpertId = sessionId ? sessionExpertId : expertId;
+  const expertIdentity = useMemo(
+    () =>
+      resolveExpertIdentity(activeExpertId, expertsById, {
+        settled: hasExpertsSettled,
+        errored: hasExpertsErrored,
+      }),
+    [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
+  );
+  const isResolvingExpertIdentity = Boolean(
+    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
+  );
+  const isExpertSendLocked =
+    isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
     messages: currentMessages,
+    setMessages,
     sendMessage,
     stop,
     status,
     error,
     isReconnecting,
-    isSyncing,
+    isFinishProbing,
+    isRestoringActiveSession,
     isUserStoppingRef,
+    isUserStopping,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
   } = useCopilotStream({
+    userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
+    rawSessionMessages,
+    sessionAuthProvider: sessionLlmAuthProvider,
+    sessionCredentialId: sessionLlmCredentialId,
+    activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
-    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+    // Sent whenever the picker can set it. The tier control is not behind
+    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
+    // so gating the value on that flag silently ran the turn on the tier the
+    // user had not chosen. Entitlement is the server's call, not the flag's.
+    copilotModel: copilotLlmModel,
   });
+  const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
-  const { pagedMessages, hasMore, isLoadingMore, loadMore } =
+  const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
       initialOldestSequence: oldestSequence,
@@ -92,339 +210,238 @@ export function useCopilotPage() {
       initialPageRawMessages: rawSessionMessages,
     });
 
+  // Merge the older-pages and current-page stat maps; current-page (historical)
+  // wins on overlap since it was persisted more recently.
+  const turnStats = useMemo(() => {
+    const merged = new Map(pagedTurnStats);
+    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedTurnStats, historicalTurnStats]);
+
+  // Ref that mirrors whether a stream turn is currently in-flight.
+  // Updated synchronously on every render so it always reflects the latest
+  // status — unlike reading `status` inside onSend (which captures the
+  // closure's render-cycle value and can be stale for a frame).
+  // Setting it to true *before* calling sendMessage prevents rapid
+  // double-presses from both routing to /stream before React can re-render
+  // with status="submitted".
+  const isInflightRef = useRef(false);
+  isInflightRef.current =
+    !isUserStopping && (status === "streaming" || status === "submitted");
+
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const messages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const cachedSessionMessages = useMemo(
+    () =>
+      sessionId
+        ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
+        : [],
+    [sessionId],
+  );
+  const cachedRawMessages = concatWithAssistantMerge(
+    pagedMessages,
+    cachedSessionMessages,
+  );
+
+  // Drop / trim assistant messages whose leading text is a replay of an
+  // earlier assistant (Claude Agent SDK's `--resume` behaviour). See
+  // helpers/stripReplayPrefix.ts for the three cases.
+  const messages = useMemo(() => stripReplayPrefix(rawMessages), [rawMessages]);
+  const cachedMessages = useMemo(
+    () => stripReplayPrefix(cachedRawMessages),
+    [cachedRawMessages],
+  );
+  const restoreStatusMessage = useMemo(
+    () =>
+      isRestoringActiveSession
+        ? getLatestAssistantStatusMessage(messages)
+        : null,
+    [isRestoringActiveSession, messages],
+  );
+  const displayMessages = useMemo(() => {
+    if (!isRestoringActiveSession) return messages;
+    if (hasAssistantTail(cachedMessages)) return cachedMessages;
+    return trimVisibleMessagesForActiveRestore(messages);
+  }, [isRestoringActiveSession, messages, cachedMessages]);
+
+  // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
+  // lives in a dedicated hook so this component is just glue.
+  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+    sessionId,
+    status,
+    messages,
+    setMessages,
+  });
 
   useCopilotNotifications(sessionId);
 
-  // --- Delete session ---
-  const { mutate: deleteSessionMutation, isPending: isDeleting } =
-    useDeleteV2DeleteSession({
-      mutation: {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListSessionsQueryKey(),
-          });
-          if (sessionToDelete?.id === sessionId) {
-            setSessionId(null);
-          }
-          setSessionToDelete(null);
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete chat",
-            description:
-              error instanceof Error ? error.message : "An error occurred",
-            variant: "destructive",
-          });
-          setSessionToDelete(null);
-        },
-      },
-    });
-
-  // --- Responsive ---
-  const breakpoint = useBreakpoint();
-  const isMobile =
-    breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
-
-  const pendingFilesRef = useRef<File[]>([]);
-  // Pre-built file parts from workflow import (already uploaded, skip re-upload)
-  const pendingFilePartsRef = useRef<FileUIPart[]>([]);
-
-  // --- Send pending message after session creation ---
-  useEffect(() => {
-    if (!sessionId || pendingMessage === null) return;
-    const msg = pendingMessage;
-    const files = pendingFilesRef.current;
-    const prebuiltParts = pendingFilePartsRef.current;
-    setPendingMessage(null);
-    pendingFilesRef.current = [];
-    pendingFilePartsRef.current = [];
-
-    if (prebuiltParts.length > 0) {
-      // File already uploaded (e.g. workflow import) — send directly
-      sendMessage({ text: msg, files: prebuiltParts });
-    } else if (files.length > 0) {
-      setIsUploadingFiles(true);
-      void uploadFiles(files, sessionId)
-        .then((uploaded) => {
-          if (uploaded.length === 0) {
-            toast({
-              title: "File upload failed",
-              description: "Could not upload any files. Please try again.",
-              variant: "destructive",
-            });
-            return;
-          }
-          const fileParts = buildFileParts(uploaded);
-          sendMessage({
-            text: msg,
-            files: fileParts.length > 0 ? fileParts : undefined,
-          });
-        })
-        .finally(() => setIsUploadingFiles(false));
-    } else {
-      sendMessage({ text: msg });
-    }
-  }, [sessionId, pendingMessage, sendMessage]);
-
-  // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
-  useWorkflowImportAutoSubmit({
+  const {
+    onSend: sendNewMessage,
+    isUploadingFiles,
+    pendingSend,
+    setPendingFileParts,
+  } = useSendMessage({
+    sessionId,
+    sendMessage,
     createSession,
-    setPendingMessage,
-    pendingFilePartsRef,
+    isUserStoppingRef,
   });
 
-  async function uploadFiles(
-    files: File[],
-    sid: string,
-  ): Promise<UploadedFile[]> {
-    const results = await Promise.allSettled(
-      files.map(async (file) => {
-        try {
-          const data = await uploadFileDirect(file, sid);
-          if (!data.file_id) throw new Error("No file_id returned");
-          return {
-            file_id: data.file_id,
-            name: data.name || file.name,
-            mime_type: data.mime_type || "application/octet-stream",
-          } as UploadedFile;
-        } catch (err) {
-          console.error("File upload failed:", err);
-          toast({
-            title: "File upload failed",
-            description: file.name,
-            variant: "destructive",
-          });
-          throw err;
-        }
-      }),
-    );
-    return results
-      .filter(
-        (r): r is PromiseFulfilledResult<UploadedFile> =>
-          r.status === "fulfilled",
-      )
-      .map((r) => r.value);
-  }
-
-  function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
-    return uploaded.map((f) => ({
-      type: "file" as const,
-      mediaType: f.mime_type,
-      filename: f.name,
-      url: `/api/proxy/api/workspace/files/${f.file_id}/download`,
-    }));
-  }
-
-  async function onSend(message: string, files?: File[]) {
+  // Wrap sendNewMessage with queue-in-flight routing: if a session is active
+  // and a turn is already running, POST the follow-up text to the pending
+  // endpoint so the backend buffers it; otherwise fall through to normal send.
+  async function onSend(
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
+  ) {
     const trimmed = message.trim();
-    if (!trimmed && (!files || files.length === 0)) return;
+    const hasAttachments =
+      (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
+    if (!trimmed && !hasAttachments) return;
+    if (isExpertSendLocked) return;
 
-    // Client-side file limits
-    if (files && files.length > 0) {
-      const MAX_FILES = 10;
-      const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
-
-      if (files.length > MAX_FILES) {
-        toast({
-          title: "Too many files",
-          description: `You can attach up to ${MAX_FILES} files at once.`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const oversized = files.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
-      if (oversized.length > 0) {
-        toast({
-          title: "File too large",
-          description: `${oversized[0].name} exceeds the 100 MB limit.`,
-          variant: "destructive",
-        });
-        return;
-      }
+    // Sending anything retires the greeting for good: flag it done on
+    // the server (kept in the DB, just never shown again) and cache the
+    // fact locally so no future visit even has to ask.
+    // Gated on the flag: the endpoint 404s without it, and because the
+    // local cache is only written on success, an ungated call retried on
+    // every single message the user ever sent.
+    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
+      completeGreeting(undefined, {
+        onSuccess: () => setGreetingDone(user?.id),
+        // Retiring the greeting is bookkeeping — the worst case is
+        // seeing it once more — so a failure must never surface here.
+        onError: () => undefined,
+      });
+    }
+    if (takeIntroAwaitingFollowup()) {
+      trackBrainDump("intro_followup_sent", { chars: trimmed.length });
     }
 
-    isUserStoppingRef.current = false;
+    if (sessionId && isInflightRef.current) {
+      if (hasAttachments) {
+        toast({
+          title: "Please wait to attach files",
+          description:
+            "File attachments can't be queued until the current response finishes.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    if (sessionId) {
-      if (files && files.length > 0) {
-        setIsUploadingFiles(true);
-        try {
-          const uploaded = await uploadFiles(files, sessionId);
-          if (uploaded.length === 0) {
-            // All uploads failed — abort send so chips revert to editable
-            throw new Error("All file uploads failed");
-          }
-          const fileParts = buildFileParts(uploaded);
-          sendMessage({
-            text: trimmed || "",
-            files: fileParts.length > 0 ? fileParts : undefined,
-          });
-        } finally {
-          setIsUploadingFiles(false);
+      try {
+        await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed);
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.name === "QueueFollowUpNotActiveError"
+        ) {
+          await sendNewMessage(message, files, workspaceFiles, metadata);
+          return;
         }
-      } else {
-        sendMessage({ text: trimmed });
+        toast({
+          title: "Could not queue message",
+          description: "Please wait for the current response to finish.",
+          variant: "destructive",
+        });
+        throw err;
       }
       return;
     }
 
-    setPendingMessage(trimmed || "");
-    if (files && files.length > 0) {
-      pendingFilesRef.current = files;
+    // Mark in-flight synchronously before dispatching so a rapid second
+    // press sees isInflightRef.current=true and routes to the queue path
+    // instead of triggering a duplicate /stream POST.
+    if (sessionId) {
+      isInflightRef.current = true;
     }
-    await createSession();
+    await sendNewMessage(message, files, workspaceFiles, metadata);
   }
 
-  // --- Session list (for mobile drawer & sidebar) ---
-  const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions(
-      { limit: 50 },
-      { query: { enabled: !isUserLoading && isLoggedIn } },
-    );
+  useWorkflowImportAutoSubmit({
+    onSend,
+    setPendingFileParts,
+    isSendLocked: isExpertSendLocked,
+  });
 
-  const sessions =
-    sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
-
-  // Start title polling when stream ends cleanly — sidebar title animates in
-  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
-  const prevStatusRef = useRef(status);
-
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = status;
-
-    const wasActive = prev === "streaming" || prev === "submitted";
-    const isNowReady = status === "ready";
-
-    if (!wasActive || !isNowReady || !sessionId || isReconnecting) return;
-
-    queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
-    });
-    const sid = sessionId;
-    let attempts = 0;
-    clearInterval(titlePollRef.current);
-    titlePollRef.current = setInterval(() => {
-      const data = queryClient.getQueryData<getV2ListSessionsResponse>(
-        getGetV2ListSessionsQueryKey({ limit: 50 }),
+  const { isKickoffStarting } = useExpertKickoff({
+    userId: user?.id ?? null,
+    expertId: kickoffExpertId,
+    kickoff: isExpertsEnabled && kickoffParam === "1",
+    sessionId,
+    sessionExpertId,
+    hasPersistedExpertHistory:
+      sessionId && hydratedMessages !== undefined
+        ? hydratedMessages.some((message) => !isKickoffMessage(message))
+        : null,
+    kickoffAttemptToken,
+    isClientThreadEmpty: messages.every(isKickoffMessage),
+    onAdoptSession: setSessionId,
+    async onKickoff(id, attemptToken) {
+      const kickoffMessage = buildKickoffMessage(id, attemptToken);
+      await sendNewMessage(
+        kickoffMessage.text,
+        undefined,
+        undefined,
+        kickoffMessage.metadata,
       );
-      const hasTitle =
-        data?.status === 200 &&
-        data.data.sessions.some((s) => s.id === sid && s.title);
-      if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
-        clearInterval(titlePollRef.current);
-        titlePollRef.current = undefined;
-        return;
-      }
-      attempts += 1;
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
-      });
-    }, TITLE_POLL_INTERVAL_MS);
-  }, [status, sessionId, isReconnecting, queryClient]);
+    },
+    onSettled() {
+      void setKickoffParam(null, { history: "replace" });
+    },
+  });
 
-  // Clean up polling on session change or unmount
-  useEffect(() => {
-    return () => {
-      clearInterval(titlePollRef.current);
-      titlePollRef.current = undefined;
-    };
-  }, [sessionId]);
-
-  // --- Mobile drawer handlers ---
-  function handleOpenDrawer() {
-    setDrawerOpen(true);
-  }
-
-  function handleCloseDrawer() {
-    setDrawerOpen(false);
-  }
-
-  function handleDrawerOpenChange(open: boolean) {
-    setDrawerOpen(open);
-  }
-
-  function handleSelectSession(id: string) {
-    setSessionId(id);
-    if (isMobile) setDrawerOpen(false);
-  }
-
-  function handleNewChat() {
-    setSessionId(null);
-    if (isMobile) setDrawerOpen(false);
-  }
-
-  // --- Delete handlers ---
-  function handleDeleteClick(id: string, title: string | null | undefined) {
-    if (isDeleting) return;
-    setSessionToDelete({ id, title });
-  }
-
-  function handleConfirmDelete() {
-    if (sessionToDelete) {
-      deleteSessionMutation({ sessionId: sessionToDelete.id });
-    }
-  }
-
-  function handleCancelDelete() {
-    if (!isDeleting) {
-      setSessionToDelete(null);
-    }
-  }
+  useSessionTitlePoll({ sessionId, status, isReconnecting });
 
   return {
     sessionId,
-    messages,
+    messages: displayMessages,
     status,
     error,
     stop,
     isReconnecting,
-    isSyncing,
+    isFinishProbing,
+    isRestoringActiveSession,
+    restoreStatusMessage,
+    activeStreamStartedAt,
+    isUserStopping,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,
     onSend,
-    // Pagination
+    // onEnqueue delegates to onSend, which internally routes to the queue
+    // endpoint when isInflightRef.current is true.
+    onEnqueue: onSend,
+    queuedMessages,
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,
-    // Mobile drawer
-    isMobile,
-    isDrawerOpen,
-    sessions,
-    isLoadingSessions,
-    handleOpenDrawer,
-    handleCloseDrawer,
-    handleDrawerOpenChange,
-    handleSelectSession,
-    handleNewChat,
-    // Delete functionality
-    sessionToDelete,
-    isDeleting,
-    handleDeleteClick,
-    handleConfirmDelete,
-    handleCancelDelete,
-    // Historical durations for persisted timer stats
-    historicalDurations,
-    // Rate limit reset
+    turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
-    // Dry run dev toggle
-    // isDryRun = global preference for NEW sessions (from localStorage).
-    // sessionDryRun = actual dry_run value of the CURRENT session (from API).
-    // Use isDryRun to configure future sessions; use sessionDryRun to display
-    // the current session's simulation state (banner, indicators).
-    isDryRun,
+    providerLimit,
+    dismissProviderLimit,
+    // sessionDryRun is the CURRENT session's immutable dry_run flag from API,
+    // used to render the banner. The global `isDryRun` preference (for new
+    // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionChatStatus,
+    sessionSentFrom,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isAdoptingExpertSession,
+    isKickoffStarting: isKickoffResolving || isKickoffStarting,
   };
 }
