@@ -14,7 +14,11 @@ export function escapeCurrencyAmounts(markdown: string): string {
       const fence = FENCE_RE.exec(line)?.[1];
 
       if (openFence) {
-        if (fence && fence[0] === openFence[0]) {
+        if (
+          fence &&
+          fence[0] === openFence[0] &&
+          fence.length >= openFence.length
+        ) {
           openFence = null;
         }
         return line;

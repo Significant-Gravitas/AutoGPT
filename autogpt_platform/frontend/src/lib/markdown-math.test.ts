@@ -30,6 +30,13 @@ describe("escapeCurrencyAmounts", () => {
     );
   });
 
+  it("keeps a fence open past a shorter closing fence", () => {
+    const markdown = "````\n```\n$5 and $10\n````\nprose $5 and $10";
+    expect(escapeCurrencyAmounts(markdown)).toBe(
+      "````\n```\n$5 and $10\n````\nprose \\$5 and \\$10",
+    );
+  });
+
   it("is idempotent, so an already-escaped price is left as one", () => {
     const once = escapeCurrencyAmounts("It costs $5.");
     expect(once).toBe("It costs \\$5.");
