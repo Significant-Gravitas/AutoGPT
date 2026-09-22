@@ -49,6 +49,7 @@ import {
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
+import { useConnectedIntegrations } from "./useConnectedIntegrations";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
@@ -130,6 +131,7 @@ export function ChatInput({
   // hide both survivors until someone created them.
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const showIntegrationMentions = useGetFlag(Flag.CHAT_INTEGRATION_MENTIONS);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
@@ -193,12 +195,18 @@ export function ChatInput({
     inputId,
   });
 
+  const integrations = useConnectedIntegrations(
+    Boolean(showIntegrationMentions),
+  );
+
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy,
+    enabled: (showWorkspaceFiles || showIntegrationMentions) && !isBusy,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
     expertId,
+    includeWorkspaceFiles: showWorkspaceFiles,
+    integrations,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -308,7 +316,9 @@ export function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
-          files={mentions.files}
+          items={mentions.items}
+          showFiles={mentions.showFiles}
+          hasIntegrations={mentions.hasIntegrations}
           isLoading={mentions.isLoading}
           isError={mentions.isError}
           highlightedIndex={mentions.highlightedIndex}
