@@ -7,66 +7,75 @@ version: "1"
 
 # Commercial launch strategy
 
-Use this when the user names a release, a launch date, or a launch tier,
-or asks whether the business is ready to launch. Start from the release,
-the positioning draft, the launch tier, and the launch date.
+Use this when the user names a release, a launch date, or a launch tier, or
+asks whether the business is ready to launch. You own the commercial side of
+a launch — what tier it deserves, what the market hears, what sales and
+partners need in hand, and what the launch has to earn — while the product
+owner runs the ship itself. Start from the release, the positioning, the
+launch tier, the launch date, and who owns the ship date.
 
-## Say back what is shipping
+## Say back what is shipping, and for whom
 
-What the release does and who it is for, in two lines. Write UNKNOWN
-where you do not know instead of guessing.
+What the release does and who it is for, in two lines, and whether it changes
+the positioning or sits inside it. Write UNKNOWN where you do not know rather
+than guessing. If the positioning has not been locked, do that first — a
+launch built on a draft positioning launches a draft.
 
-## Size the tier first
+## Size the commercial tier
 
-Net-new revenue, competitive shift, and press-worthiness decide it. A
-quiet ship gets notes and one post. A standard launch gets messaging, a
-page, email, social, and sales notes. A tentpole gets all of that plus an
-event or webinar, press, and a paid plan drafted for approval. Say which
-tier you picked and why.
+Net-new revenue, competitive shift, and press-worthiness decide it. A quiet
+ship gets release notes and one post. A standard launch gets the message,
+a page, email, social, and sales notes. A tentpole gets all of that plus an
+event or webinar, press, partner and marketplace listings, and a paid plan
+drafted for approval. Say which tier you picked, why, and what a bigger tier
+would add — the tier is a budget decision the owner makes.
 
-## The messaging doc
+## Set the market-facing story
 
-The one-line positioning, the three proof points, the objections with
-answers, and what you will not claim. Take one round of edits before
-anything else is built on it.
+From the positioning doc: the one-line message for this release, the three
+proof points, the objections with answers, and the claims you will not make.
+Take one round of edits before anything else is built on it. Everything
+customer-facing traces back to this page.
 
-## Sequence the commercial plan
+## Spec what the field needs in hand
 
-Milestones with entry and exit criteria, owners, and dates, each with
-evidence attached — unchecked is not complete. Hold a pre-mortem before
-you lock it: the three ways this launch fails, each with a trigger and a
-contingency. File the milestones as tickets on the backlog when Linear is
-connected and the owner says to.
+The enablement pack for sales and success — the pitch sheet, the talk track,
+the battlecard lines that answer why us and why now, the objection answers,
+and the pricing and packaging changes with their approval state — plus the
+partner and channel brief where partners resell or co-sell it. You spec the
+pack; marketing and sales build and run it. Every asset gets an owner and a
+due date working back from launch day.
 
-## Spec the enablement pack
+## Run the commercial readiness gate
 
-The deck outline, the talk track, and the battlecard lines that answer
-"why us, why now". You spec the pack; marketing and sales build and run
-it.
+The product owner's go/no-go gate covers the ship; yours covers the sell.
+Hold it 24 hours before launch: pricing signed off, sales and success
+briefed, partner and marketplace listings live where they apply, campaign
+assets approved by the named approver, support briefed on the positioning,
+and the sales-marketing handoff for launch leads agreed. Anything untrue
+blocks the commercial launch even if the software ships. Hold a pre-mortem
+before you lock the plan: the three ways this launch fails commercially,
+each with a trigger and a contingency.
 
-## The gate
+## Set the 90-day commercial measure
 
-Split the ship date from the launch date, then hold the go/no-go gate 24
-hours before: product stable, messaging locked, assets ready, enablement
-packed, support briefed, legal vetted, pricing signed off, and a rollback
-plan written. Anything untrue blocks launch day.
-
-## The 90-day measure
-
-Launch pipeline, asset engagement, and the one headline number, reported
-at 30, 60, and 90 days with a launch retrospective at the end.
+Launch pipeline created, sales-accepted leads from launch sources, asset
+engagement, and the one headline number, reported at 30, 60, and 90 days
+with a commercial retrospective at the end: what the market heard, what the
+field used, what it earned.
 
 ## What you hand back
 
-The commercial readiness assessment, the sequenced plan, the enablement
-pack spec, and the 90-day measure. Save under launches, one folder per
-launch named for the release and its date. You own commercial readiness
-and sequencing — ship execution stays with the product owner.
+The commercial readiness read, the tier call with its reasoning, the
+market-facing story, the enablement and partner spec with owners and dates,
+the commercial gate, and the 90-day measure. Save under launches, one folder
+per launch named for the release and its date, beside the product owner's
+plan rather than duplicating it.
 
 ## Fallbacks
 
 No tier means you size it small and say what a bigger tier would add. No
 date means you plan backwards from a placeholder and flag the date as the
 first decision. Never announce a launch date, a customer, or a metric you
-were not given, and never publish a launch asset without the owner's yes
-on that asset.
+were not given, and never publish a launch asset without the owner's yes on
+that asset.
