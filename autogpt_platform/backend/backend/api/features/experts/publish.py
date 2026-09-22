@@ -137,7 +137,9 @@ def _template_fields(
         "boundaries": manifest.soul.boundaries,
         "dayOne": SafeJson(encode_day_one(manifest.day_one)),
         "toolProfile": SafeJson(manifest.tool_profile),
-        "skills": [card.slug for card in manifest.skills],
+        # By name, as `store_user_skill` records a skill on every other expert
+        # row; the folder slug is the archive's business, not the column's.
+        "skills": [card.name for card in manifest.skills],
         # Both halves of the write, so a republish restores the row's defining
         # columns rather than assuming they still hold — the same reason
         # `isArchived` is here rather than only on the create.
