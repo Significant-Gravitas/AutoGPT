@@ -41,6 +41,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -75,7 +76,6 @@ logger = logging.getLogger(__name__)
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
-MAX_SKILLS_PER_EXPERT = 150
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 # Loaded only on activation, so it costs nothing per turn; 50k clears
@@ -384,12 +384,8 @@ async def resolve_skill_owner(
     return SkillOwner(expert_id=expert.id, scope=None)
 
 
-# Redis lock key for serialising store_skill writes per user. A per-user
-# distributed lock turns the otherwise-racy "count existing skills, then
-# write a new one" into an atomic critical section so two concurrent
-# ``store_skill`` calls cannot both pass the MAX_SKILLS_PER_EXPERT check.
-# Held only for the duration of the count + write; skill reads stay
-# lock-free.
+# Best-effort package-write coordination. Root publication enforces capacity
+# in PostgreSQL independently of this lease or the cached skill index.
 _SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
 _SKILL_WRITE_LOCK_TTL_SECONDS = 30
 
@@ -557,10 +553,6 @@ class BuiltInSkillError(Exception):
     """Raised by :func:`delete_user_skill` for default seeded skills."""
 
 
-class SkillLimitError(Exception):
-    """Raised by :func:`store_user_skill` when the per-expert cap is reached."""
-
-
 async def delete_user_skill(
     user_id: str,
     name: str,
@@ -716,14 +708,7 @@ async def store_user_skill(
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=files))
 
-    # Serialise the count-then-write critical section per-user so two
-    # concurrent writers cannot both pass the MAX_SKILLS_PER_EXPERT check.
-    # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
-    # ~1s before falling back to the strict-cap unlocked path below — without
-    # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
-    # both see N<MAX, and both write (cap overruns by 1).  Lock failure
-    # (Redis unavailable) still falls back to the unlocked write but the
-    # cap-enforcement branch below refuses any at-cap write in that case.
+    # Coordinate ordinary package writes; the database owns the hard cap.
     lock: AsyncClusterLock | None = None
     lock_held = False
     try:
@@ -747,26 +732,13 @@ async def store_user_skill(
         )
     try:
         manager = await _get_user_skill_manager(user_id, scope)
-        # Enforce the per-owner cap *before* we write.  When the lock IS held
-        # this is a true atomic check-then-write — an upsert at-cap is safe
-        # because no new slot is consumed.  When the lock FAILED to acquire,
-        # the check is no longer atomic, so refuse any write at-or-above the
-        # cap defensively (the caller can retry; a Redis blip is rare).
-        # No healing here: this call runs inside the per-owner write lock that
-        # the copy would need, so it would stall on itself for every name.
-        existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
+        # A live preflight avoids uploads that are already known to exceed the
+        # cap. Publication repeats this check atomically after the blob upload.
+        existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         existing_slugs = {s.name for s in existing}
         at_cap = len(existing_slugs) >= MAX_SKILLS_PER_EXPERT
         is_new = name not in existing_slugs
-        if at_cap and (is_new or not lock_held):
-            if not lock_held:
-                logger.warning(
-                    "[skills] refusing at-cap unlocked write for user %s "
-                    "(is_new=%s) — concurrent write could otherwise overrun "
-                    "the cap",
-                    user_id,
-                    is_new,
-                )
+        if at_cap and is_new:
             raise SkillLimitError(
                 f"Skill limit reached ({MAX_SKILLS_PER_EXPERT}). "
                 "Delete an unused skill first."
@@ -805,20 +777,20 @@ async def store_user_skill(
                         {_META_EXECUTABLE: True} if entry.is_executable else None
                     ),
                 )
+            await manager.write_file(
+                content=rendered.encode("utf-8"),
+                filename="SKILL.md",
+                path=_skill_md_path(name, expert_id),
+                mime_type="text/markdown",
+                overwrite=True,
+                metadata=metadata,
+            )
         except Exception:
             # Not a rollback: a file already here keeps the new bytes, so an
             # upsert can fail mixed. Undo only what this call created — deleting
             # the rest would turn a failed write into a lost file.
             await _delete_paths(manager, written - existing_paths)
             raise
-        await manager.write_file(
-            content=rendered.encode("utf-8"),
-            filename="SKILL.md",
-            path=_skill_md_path(name, expert_id),
-            mime_type="text/markdown",
-            overwrite=True,
-            metadata=metadata,
-        )
         await _delete_paths(
             manager, {f.path for f in stale if f.path not in written}, stale
         )

@@ -14,7 +14,12 @@ from typing import Optional
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import workspace_db, workspace_skill_db
+from backend.data.skill_capacity import (
+    MAX_SKILLS_PER_EXPERT,
+    SkillLimitError,
+    skill_owner_folder,
+)
 from backend.data.workspace import WorkspaceFile
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -22,6 +27,7 @@ from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
     WorkspaceScope,
 )
+from backend.data.workspace_skill import WorkspaceSkillWrite
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -360,14 +366,46 @@ class WorkspaceManager:
                     ) from None
                 raise ValueError(f"File already exists at path: {path}")
 
+        replaced_storage_path: str | None = None
         try:
-            file = await _persist_db_record()
+            if skill_owner_folder(path) is not None:
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    WorkspaceSkillWrite(
+                        workspace_id=self.workspace_id,
+                        file_id=file_id,
+                        name=filename,
+                        path=path,
+                        storage_path=storage_path,
+                        mime_type=mime_type,
+                        size_bytes=len(content),
+                        overwrite=overwrite,
+                        checksum=checksum,
+                        metadata=metadata,
+                    )
+                )
+                if publication.status == "capacity":
+                    raise SkillLimitError(
+                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT}). Delete an unused skill first."
+                    )
+                if publication.status == "exists":
+                    raise ValueError(f"File already exists at path: {path}")
+                assert publication.file is not None
+                file = publication.file
+                replaced_storage_path = publication.replaced_storage_path
+            else:
+                file = await _persist_db_record()
         except Exception:
             try:
                 await storage.delete(storage_path)
             except Exception as e:
                 logger.warning(f"Failed to clean up orphaned storage file: {e}")
             raise
+
+        if replaced_storage_path and replaced_storage_path != storage_path:
+            try:
+                await storage.delete(replaced_storage_path)
+            except Exception:
+                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
