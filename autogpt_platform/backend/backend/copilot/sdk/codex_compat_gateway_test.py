@@ -1172,7 +1172,7 @@ def _satisfied_tool_call(
         gateway_call_id=call_id,
         raw_call_id=call_id,
         conversation=conversation,
-        future=asyncio.get_event_loop().create_future(),
+        future=asyncio.get_running_loop().create_future(),
         result=CodexDynamicToolResult(content=output, success=True),
         claim_fingerprint="fingerprint-of-the-original-request",
     )
@@ -1221,7 +1221,7 @@ def _compaction_payload(call_id: str, output: str) -> dict:
 
 
 class TestCompactionRequestRouting:
-    def test_compaction_request_starts_a_new_conversation(self) -> None:
+    async def test_compaction_request_starts_a_new_conversation(self) -> None:
         """Settled results + a new fingerprint is a fresh request, not a
         replay.  Returning None routes it to ``_start_conversation``; raising
         here is what 409s the CLI's compaction mid-turn."""
@@ -1233,7 +1233,7 @@ class TestCompactionRequestRouting:
             is None
         )
 
-    def test_true_replay_takes_the_replay_path_not_the_new_conversation(
+    async def test_true_replay_takes_the_replay_path_not_the_new_conversation(
         self,
     ) -> None:
         """A real duplicate carries the same fingerprint, and that branch is
@@ -1250,7 +1250,7 @@ class TestCompactionRequestRouting:
         assert isinstance(outcome, _DuplicateSubmission)
         assert outcome.replay_key == fingerprint
 
-    def test_conflicting_result_still_rejected(self) -> None:
+    async def test_conflicting_result_still_rejected(self) -> None:
         """Same id, different output, is a genuine protocol conflict."""
         gateway = _unstarted_gateway()
         _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
@@ -1260,7 +1260,7 @@ class TestCompactionRequestRouting:
                 _compaction_payload("toolu_1", "something-else.txt")
             )
 
-    def test_unclaimed_result_still_continues_its_conversation(self) -> None:
+    async def test_unclaimed_result_still_continues_its_conversation(self) -> None:
         """The ordinary path — a result the gateway is still waiting on —
         must keep resolving against its own conversation."""
         gateway = _unstarted_gateway()
@@ -1269,7 +1269,7 @@ class TestCompactionRequestRouting:
             gateway_call_id="toolu_2",
             raw_call_id="toolu_2",
             conversation=conversation,
-            future=asyncio.get_event_loop().create_future(),
+            future=asyncio.get_running_loop().create_future(),
         )
         gateway._conversations[conversation.id] = conversation
         gateway._tool_calls["toolu_2"] = record
