@@ -8,9 +8,10 @@ version: "1"
 # Nurture sequence build and readout
 
 Use this when someone wants a sequence, a lifecycle journey or a re-engagement
-series for a specific segment. Deciding which emails should exist at all is the
-lifecycle map's job; this builds the journey around them and judges it
-afterwards.
+series for a specific segment. If a lifecycle map already says which emails
+should exist, build inside it; if none exists, name the stages you are
+assuming in one line so the owner can correct them before anything is
+written.
 
 ## Map the journey before you write
 

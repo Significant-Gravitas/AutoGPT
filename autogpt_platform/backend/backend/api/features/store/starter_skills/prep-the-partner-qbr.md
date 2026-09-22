@@ -36,8 +36,9 @@ measurable, and dated; and the one decision the review has to make.
 Name the executive sponsor on each side and what each of them cares
 about.
 
-Health below 5 for two quarters running triggers a partner improvement
-plan: a 45-day review, and tier demotion if it fails.
+Health below the agreed bar for two quarters running — say, under 5 on a
+10-point weighted overall score — triggers a partner improvement plan: a
+45-day review, and tier demotion if it fails.
 
 ## Ship the pre-read three days out
 

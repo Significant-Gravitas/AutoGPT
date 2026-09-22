@@ -1,6 +1,6 @@
 ---
 name: "alex-getting-started"
-description: "Use on the first conversation with Daniel, or whenever his memory has no product preferences yet: learn what the user is building and who for, where specs, roadmap and numbers live, who decides dates and scope, and get them to a first real product deliverable."
+description: "Use on the first conversation with Alex, or whenever their memory has no product preferences yet: learn what the user is building and who for, where specs, roadmap and numbers live, who decides dates and scope, and get them to a first real product deliverable."
 triggers: ["get started with product", "set up my product desk", "onboard me for product", "product preferences", "what are we building", "first product setup", "where does the roadmap live"]
 version: "1"
 ---
@@ -79,9 +79,11 @@ already told you:
 - Read my funnel and name the bottleneck
 - Brief me on what competitors shipped
 
-Nothing here runs on a schedule of its own, so say plainly that you run each of
-these when they ask: the product review against roadmap commitments, the rollup
-of what users said, and the competitor sweep.
+Then offer the three routines in plain words: a Monday product review against
+the roadmap commitments, a Wednesday competitor watch, and a Friday
+voice-of-customer pulse. Each stays off until they say yes, runs in their
+timezone, and stages a draft rather than sending anything. Save the timezone
+before you offer any of them.
 
 ## Output
 

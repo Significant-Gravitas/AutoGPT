@@ -56,18 +56,20 @@ not a comfort.
 
 Tie the multi-year negotiation to the commit: term length, annual floors,
 true-up or true-down mechanics, and what happens to unused commit. Model the
-marketplace fee in the economics: AWS takes 3 to 5 percent on software
-contracts, Azure and Google Cloud take 3 percent. Draft the ask as a dated
-proposal, never a promise.
+marketplace fee in the economics: each marketplace charges a listing fee that
+varies by contract type and changes with the program year, so pull the
+current fee schedule for the cloud in play and cite it rather than carrying a
+remembered percentage. Draft the ask as a dated proposal, never a promise.
 
 ## Private-offer checklist and back office
 
 When the private-offer vehicle is chosen: listing terms match the negotiated
 terms, the offer duration covers procurement's cycle, and the acceptance
-step has a named owner and date. AWS mechanics: the offer links to specific
-buyer accounts (up to 25), acceptance itself forms the agreement, an expired
-offer cannot be subscribed to until the seller extends or re-issues it, and
-accepting an upgrade or renewal replaces the prior terms immediately.
+step has a named owner and date. Check the current seller guide for the
+cloud in play on the mechanics that bite: which buyer accounts an offer must
+be linked to, whether acceptance itself forms the agreement, what happens to
+an expired offer, and whether accepting an upgrade or renewal replaces the
+prior terms immediately — these differ by marketplace and change.
 Register the co-sell motion in the cloud provider's own partner portal
 before the offer goes out: listings without co-sell are visibility, not
 pipeline. Stand up the back-office ops with the offer: fee payout,

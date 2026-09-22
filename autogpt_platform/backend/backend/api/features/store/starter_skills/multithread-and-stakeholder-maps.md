@@ -33,8 +33,9 @@ and hold empty roles open as named placeholders.
 ## Name the gaps
 
 Say the gaps out loud: which roles have nobody, which named person you
-know nothing about, and the buyer-access test — no path to the economic
-buyer means the deal closes under half the time. Aim by deal size:
+know nothing about, and the buyer-access test — a deal with no path to
+the economic buyer closes far less often, so name the path or the gap.
+Aim by deal size:
 four-plus engaged threads over $50K, five to seven with dual sponsors
 over $150K.
 

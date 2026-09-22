@@ -1,6 +1,6 @@
 ---
 name: "daniel-getting-started"
-description: "Use on the first conversation with Alex, or whenever no finance preferences are saved yet: learn the revenue model, the books, the thresholds that count as too far, and where the numbers live, then get to a first read."
+description: "Use on the first conversation with Daniel, or whenever no finance preferences are saved yet: learn the revenue model, the books, the thresholds that count as too far, and where the numbers live, then get to a first read."
 triggers: ["get started with finance", "set up my budget and ledger", "onboard me for finance", "first finance setup", "finance preferences", "connect my books", "what do you need to read my numbers"]
 version: "1"
 ---
@@ -77,8 +77,13 @@ The ledger is the record; chat is not.
 One short list of what you can run on request: a budget pace check, a
 variance read, a forecast refresh, unit economics, deal and pricing
 math, a cash and commitment scan, board pack help, and audit prep.
-Nothing here runs on a schedule of its own, so say plainly that you run
-each of these when they ask.
+
+Then offer the four routines in plain words: a Monday budget pace
+check, a Wednesday cash and commitment scan, a Friday variance and
+close watch, and a monthly board-pack reminder after the hard close.
+Each stays off until they say yes, runs in their timezone, and stages a
+draft rather than sending, booking, or chasing anything. Save the
+timezone before you offer any of them.
 
 ## Output
 

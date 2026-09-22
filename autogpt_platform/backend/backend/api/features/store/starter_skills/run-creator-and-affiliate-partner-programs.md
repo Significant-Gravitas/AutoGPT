@@ -41,8 +41,9 @@ health checks.
 
 The attribution spine: last affiliate click wins; a 30-day cookie that is
 overwritten, not extended; a payout lock at least as long as the refund
-window; and coupon share under 25 percent — over 40 percent means the
-program is cannibalising rather than acquiring.
+window; and coupon share held under about 25 percent — as a rule of
+thumb, over 40 percent means the program is cannibalising rather than
+acquiring.
 
 An underperformer gets one dated improvement window before any tier
 action.

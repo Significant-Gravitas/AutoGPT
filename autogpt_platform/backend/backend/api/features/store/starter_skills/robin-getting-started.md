@@ -1,68 +1,102 @@
 ---
 name: "robin-getting-started"
-description: "Use on the first conversation with Robin, or whenever their memory has no support preferences yet: learn how the user runs phone support, their knowledge base, staffing, and sensitive-data handling, and get them to a first worked case."
+description: "Use on the first chat with Robin, or whenever their memory has no support preferences yet: learn how the desk runs — channels, SLAs, policies, approval limits, escalation paths — and work one real case."
 triggers: ["get started with support", "set up my support desk", "onboard me for support", "first ticket", "set up my queues", "support preferences", "first support setup"]
 version: "1"
 ---
 
-# Getting started
+# Support getting started
 
-Use this on the first conversation after setup, or whenever memory has
-no support preferences yet: learn how the user runs phone support,
-the knowledge base, staffing, and
-sensitive-data handling, and get them to a first worked item.
+Run this on the first chat after setup, or any time memory holds no support
+preferences yet. The goal is to learn how the desk runs and to work one
+real case in the same session — not to interview them.
 
-Anything helps to begin: a past call recording or transcript, a KB
-link, the staffing or dashboard home, or the owner's own notes on queues,
-voice, and policies.
+Anything helps to begin: a pasted ticket, an export of the open queue, a
+help-center link, the refund policy, or the owner's own notes on voice and
+escalation.
 
 ## Say hello briefly
 
-One or two sentences: your name, and the specialist job you do — calls
-and callbacks, KB capture, forecasts and schedules, safe handling, and
-the vertical queues — with fraud, safety, VIP, and the rest behind you.
-Name the single thing you need to begin: which queue hurts most. No
-tool tours, no setup talk.
+One or two sentences: your name, and the job you do — triage, replies in
+their voice, troubleshooting, and owning every case to closure, with
+billing, escalations, VIP, phone, knowledge, quality, staffing, and the
+vertical queues behind that. Name the one thing you need to begin: the
+oldest or riskiest open case. No tool tours, no setup talk.
 
-## Start the first real item at once
+## Work the first real case at once
 
-Take the first real item they paste — a call to review, a callback to
-run, a KB gap, a schedule to build, or a vertical case — and start the
-matching skill immediately. Don't wait on the questions below; none of
-them change the first pass.
+Take the first ticket, thread, or export they paste and start the matching
+skill — triage the queue, draft the reply, or troubleshoot the breakage.
+Don't wait on the questions below; none of them change the first pass.
+Nothing sends: the draft waits for their yes.
 
 ## Check connections first, never re-ask
 
-Check what is already connected first: Gmail, Google Drive, Notion,
-Slack, Google Sheets, Google Calendar, Granola, Gong, and Linear. The
-ticket store itself may be a Sheets export rather than a connector.
-Then ask only about what is missing, one source at a time, and never
-re-ask for a connected source. Save every answer into the prefs memory
-before you offer any routine.
+Check what is already connected and say what you found: Gmail, Google
+Sheets, Google Docs, Google Drive, Google Calendar, Slack, Notion, Linear,
+Gong, and Granola. The ticket store itself is often a Sheets export or a
+pasted thread rather than a connector, and that works. Then ask only about
+what is missing, one source at a time, and never re-ask for a connected
+source.
 
-## Ask the rest one at a time
+## Then the rest, one at a time
 
-Each is skippable: their timezone and SLA targets (first-response plus
-resolution per channel, callback-keep target), the voice stack and IVR
-paths, the knowledge-base home and review cadence, the workforce
-management (WFM) targets and schedule owner, the safe-handling regimes and redaction tool, the vertical
-queues in play with policy homes, and the dashboard home.
+Ask as a conversation, say each is skippable, and stop the moment they
+hand you a case — do the work, then come back. Save every answer to the
+prefs memory as it arrives, one fact per line; the other skills read these:
 
-Offer the starter menu: run a call or callback, capture or fix a KB
-article, build a forecast or schedule, check a draft for sensitive
-data, mediate a two-sided dispute, rebook a disrupted trip, trace a
-shipment, explain benefits or fix a claim, or run a mass recovery.
-Nothing here runs on a schedule of its own, so say plainly that you
-run each of these when they ask: the callback and queue sweep, or the
-knowledge and staffing pulse.
+- Channels and where each queue lives: email, chat, phone, social, and the
+  ticket store or inbox behind them.
+- SLA targets per channel: first response, resolution, and the callback
+  promise.
+- Company voice: tone, how the customer's name is used, and the banned
+  phrases.
+- Policy homes: the refund, return, warranty, and goodwill passages, and the
+  help center or knowledge base.
+- Approval limits and approvers: refunds, credits, goodwill, exceptions,
+  and discounts — the gate on every money draft.
+- The escalation matrix: severity levels, the on-call path, the exec and
+  VIP path, and the safety path.
+- VIP tiers and the update cadence each tier is owed.
+- Regulated regimes in play — card data, health data, securities rules — and
+  the redaction tool.
+- The voice stack and IVR paths, the workforce targets and schedule owner,
+  and the dashboard home, when the desk has them.
+- The vertical queues in play — marketplace, travel, logistics, member
+  benefits — with their policy homes.
+- Their timezone, and which hour the standing sweeps should land.
 
-End with the draft, the one evidence gap that would most improve it,
-and the 7/30/90-day arc: end-of-week review, solo-readiness check at
-30 days, long-term plan at 90 days.
+## Starter menu
 
-Deliver a worked first item plus saved prefs and connected sources.
+Once one case is worked, offer five options as a question widget, each a
+thing you do right now:
 
-## What not to do
+- Triage my open queue with reasons
+- Draft the reply to this customer
+- Troubleshoot this breakage to its cause
+- Check this refund or exception against policy
+- Score last week's threads and CSAT
 
-No item pasted yet means you ask for the riskiest or oldest open one
-and wait. Do not work a placeholder item.
+## Routines
+
+Offer the standing work in plain words: a weekday open-case sweep that
+stages follow-ups, an escalation and SLA watch each morning, a callback and
+queue sweep twice a day, a resolution follow-up pulse, a Monday knowledge
+and staffing pulse, and a Friday quality and voice-of-customer pulse. Each
+stays off until they say yes, runs in their timezone, and never sends to a
+customer on its own. Save the timezone before you offer any of them.
+
+## Set the arc out loud
+
+End of week one: the queue triaged and the first replies in their voice.
+Day 30: cases owned to closure without a nudge from them. Day 90: the
+knowledge, quality, and staffing loops running on the routines, with the
+numbers to show it. One check-in each week until then.
+
+## Fallbacks
+
+No case pasted yet means you ask for the riskiest or oldest open one and
+wait — never work a placeholder. A question they skip stays unset in memory
+and you carry on; a skill that needs a missing pref names it once and asks
+then. If memory already holds their preferences, skip the questions and
+offer the two or three things most useful today.

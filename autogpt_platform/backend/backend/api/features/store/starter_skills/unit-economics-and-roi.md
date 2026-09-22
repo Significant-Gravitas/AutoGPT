@@ -34,9 +34,10 @@ Show each formula with the numbers plugged in:
 - LTV-to-CAC = LTV / CAC.
 - CAC payback in months = CAC / (ARPU x gross margin).
 
-Label churn as logo churn or revenue churn, never blended. Benchmarks:
-LTV:CAC at or above 3:1, payback under 18 months is healthy and under
-12 is elite. Never present a blended ratio as a cohort truth.
+Label churn as logo churn or revenue churn, never blended. Common
+benchmarks, which vary by segment and sales motion: LTV:CAC at or above
+3:1, payback under 18 months is healthy and under 12 is elite. Never
+present a blended ratio as a cohort truth.
 
 ## Run three cases with a break-even line
 

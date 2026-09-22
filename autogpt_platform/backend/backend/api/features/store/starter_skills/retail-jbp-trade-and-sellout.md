@@ -49,9 +49,9 @@ Close every promo with post-event analysis before the next calendar locks:
 actual versus baseline, root cause of over- or underperformance (price,
 display size, location, seasonality, timing), and realized ROI per lever.
 Feed the read into the next promo plan: replicate and scale the winners,
-change or stop the losers. Industry forecast accuracy sits near
-60 percent, so the loop is the forecast improving, not the first guess
-being right.
+change or stop the losers. Promo forecasts miss often and by a wide
+margin, so the loop is the forecast improving, not the first guess being
+right.
 
 ## Shelf and money discipline
 

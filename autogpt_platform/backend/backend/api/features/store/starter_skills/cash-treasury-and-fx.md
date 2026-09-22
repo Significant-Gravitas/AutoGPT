@@ -34,8 +34,9 @@ and say which one you trust and why. Set a minimum-cash policy — four
 to eight weeks of operating expenses is the standard default — with a
 liquidity-headroom line of ending balance minus minimum, and flag the
 week the balance crosses the floor the owner set. Run a base case and a
-stress case; the standard stress is a 30% collection delay plus a 10%
-revenue miss.
+stress case; a reasonable default stress is a 30% collection delay plus
+a 10% revenue miss, adjusted to what has actually gone wrong for them
+before.
 
 ## Read working capital
 

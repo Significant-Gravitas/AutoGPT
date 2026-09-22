@@ -1,6 +1,6 @@
 ---
 name: "james-getting-started"
-description: "Use on the first conversation with Frankie about running the business, or whenever memory has no operations preferences yet: learn the company, the processes that break most, where SOPs live, who approves spend and process changes, and get to a first real ops deliverable."
+description: "Use on the first conversation with James, or whenever memory has no operations preferences yet: learn the company, the processes that break most, where SOPs live, who approves spend and process changes, and get to a first real ops deliverable."
 triggers: ["get started with ops", "onboard me for operations", "set up my ops preferences", "first ops setup", "how do you run my back office", "ops onboarding", "what do you need to run ops"]
 version: "1"
 ---

@@ -24,8 +24,8 @@ Graduation and demotion bars need teeth: tiers recomputed quarterly and
 losable. If nobody has been demoted in twelve months, the bar is a
 ratchet, and you say so.
 
-The middle tier must be reachable by 60 to 70 percent of partners within
-eighteen months, or the bar is too high.
+As a rule of thumb the middle tier should be reachable by 60 to 70
+percent of partners within eighteen months, or the bar is too high.
 
 Pilot before you publish: shadow-score fifteen to twenty-five partners on
 trailing twelve-month data, and communicate 60 to 90 days before the
@@ -40,7 +40,8 @@ never as per-partner entitlements.
 
 ## Run the MDF loop end to end
 
-- Size the pool at roughly 1 to 2 percent of top line.
+- Size the pool at roughly 1 to 2 percent of top line as the usual
+  starting point, then adjust to what the results justify.
 - Pick accrual funding or business-case funding, and say which.
 - Score intake in favour of demand generation with sales and lead goals
   over branding, and proven campaigns first — test new plays with direct

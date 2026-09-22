@@ -38,9 +38,10 @@ Money rounds to whole units, rates to one decimal.
 
 ## Judge email against benchmarks, not vibes
 
-Published all-user averages sit directionally near 35% open, 2.6% click and
-0.2% unsubscribe, with wide spread by industry — treat them as a sanity check,
-not a target. Mail privacy features preload images and inflate opens, so score
+Published all-industry averages from the big email providers — roughly a third
+of recipients opening, a low single-digit click rate, and a fraction of a
+percent unsubscribing, with wide spread by industry and drift year to year —
+are a sanity check, not a target; cite the report and year if you quote one. Mail privacy features preload images and inflate opens, so score
 clicks, conversions and replies instead. Cold, warm and customer sends each get
 their own target.
 

@@ -20,15 +20,22 @@ or account records, and the open queue for dup checks.
 
 1. Read the ticket for impact and feeling: who is hurt, how many, is money,
    data, or safety involved, and how angry or at-risk the customer sounds.
-2. Assign P1-P4 with the reason in one line, check the open queue for
-   duplicates and link them, and note the SLA clock and breach risk.
+2. Assign the priority with the reason in one line. P1 is an outage, data
+   loss, a security or fraud event, imminent safety harm, or a VIP down; P2
+   is a broken core flow with a painful workaround; P3 is a single-customer
+   defect or a how-to with a path; P4 is a question, request, or feedback
+   with nothing broken. Rank against the open queue by impact, affected
+   count, SLA clock, and money, security, or compliance weight — the clock
+   starts at first customer contact and carries across handoffs, so a
+   breached or near-breach case outranks new arrivals. Check the open queue
+   for duplicates and link them, and log a category so trends surface
+   later.
 3. Route each ticket: simple FAQs go through the macro fast lane (canned
    reply plus instant ack with expected reply time), answer now,
    troubleshoot first, send to billing for money asks, escalate to a human
    with a repro doc when sentiment is hot, legal or safety words appear, or
    the ask exceeds the approval limit — or park as feedback with a thank-you
-   draft. State queue goals time-bound, e.g. first-contact
-   resolution 75->85% in 6 months.
+   draft.
 4. Show the ordered queue with priority, reason, route, and owner, take one
    round of edits, then save it as the day's work list.
 
