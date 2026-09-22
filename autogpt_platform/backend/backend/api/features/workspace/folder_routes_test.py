@@ -11,7 +11,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.api.features.workspace.folder_routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
-from backend.data.workspace_folder import WorkspaceFolder
+from backend.data.workspace_folder import UNCHANGED, WorkspaceFolder
 from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
@@ -148,7 +148,7 @@ def test_update_folder_success(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     update = mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
+        "backend.api.features.workspace.folder_routes.apply_folder_update",
         AsyncMock(return_value=_make_folder(name="Renamed")),
     )
 
@@ -156,7 +156,11 @@ def test_update_folder_success(mocker):
     assert response.status_code == 200
     assert response.json()["name"] == "Renamed"
     update.assert_awaited_once_with(
-        folder_id="fld-1", workspace_id="ws-001", name="Renamed", icon=None
+        folder_id="fld-1",
+        workspace_id="ws-001",
+        parent_id=UNCHANGED,
+        name="Renamed",
+        icon=None,
     )
 
 
@@ -166,7 +170,7 @@ def test_update_folder_not_found_returns_404(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
+        "backend.api.features.workspace.folder_routes.apply_folder_update",
         AsyncMock(side_effect=NotFoundError("nope")),
     )
 
@@ -265,19 +269,15 @@ def test_update_folder_without_parent_id_does_not_move_it(mocker):
         "backend.api.features.workspace.folder_routes.get_or_create_workspace",
         AsyncMock(return_value=_make_workspace()),
     )
-    mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
+    update = mocker.patch(
+        "backend.api.features.workspace.folder_routes.apply_folder_update",
         AsyncMock(return_value=_make_folder(name="Renamed")),
-    )
-    move = mocker.patch(
-        "backend.api.features.workspace.folder_routes.move_folder",
-        AsyncMock(return_value=_make_folder()),
     )
 
     response = client.patch("/folders/fld-1", json={"name": "Renamed"})
 
     assert response.status_code == 200
-    move.assert_not_awaited()
+    assert update.await_args.kwargs["parent_id"] is UNCHANGED
 
 
 @pytest.mark.parametrize("destination", ["invoices", None])
@@ -287,23 +287,20 @@ def test_update_folder_moves_it_when_parent_id_is_present(mocker, destination):
         AsyncMock(return_value=_make_workspace()),
     )
     update = mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
-        AsyncMock(return_value=_make_folder()),
-    )
-    move = mocker.patch(
-        "backend.api.features.workspace.folder_routes.move_folder",
+        "backend.api.features.workspace.folder_routes.apply_folder_update",
         AsyncMock(return_value=_make_folder()),
     )
 
     response = client.patch("/folders/fld-1", json={"parent_id": destination})
 
     assert response.status_code == 200
-    move.assert_awaited_once_with(
-        folder_id="fld-1", workspace_id="ws-001", parent_id=destination
+    update.assert_awaited_once_with(
+        folder_id="fld-1",
+        workspace_id="ws-001",
+        parent_id=destination,
+        name=None,
+        icon=None,
     )
-    # The move runs first, so a rejected destination leaves the name alone.
-    assert move.await_args is not None
-    update.assert_awaited_once()
 
 
 def test_update_folder_cycle_returns_400(mocker):
@@ -311,16 +308,11 @@ def test_update_folder_cycle_returns_400(mocker):
         "backend.api.features.workspace.folder_routes.get_or_create_workspace",
         AsyncMock(return_value=_make_workspace()),
     )
-    update = mocker.patch(
-        "backend.api.features.workspace.folder_routes.update_folder",
-        AsyncMock(return_value=_make_folder()),
-    )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.move_folder",
+        "backend.api.features.workspace.folder_routes.apply_folder_update",
         AsyncMock(side_effect=FolderValidationError("cycle")),
     )
 
     response = client.patch("/folders/fld-1", json={"parent_id": "own-child"})
 
     assert response.status_code == 400
-    update.assert_not_awaited()

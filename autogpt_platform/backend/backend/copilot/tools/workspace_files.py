@@ -519,7 +519,8 @@ def _folder_subtree(
 
     Nearest first, so a cap truncates the deepest folders rather than an
     arbitrary set, and the caller can name the remainder for the model to
-    list directly.
+    list directly. Deliberately not shared with ``workspace_folder._subtree_ids``:
+    that one walks DB rows and must not cap, since it drives a delete.
     """
     children: dict[str | None, list[str]] = {}
     for folder in folders:

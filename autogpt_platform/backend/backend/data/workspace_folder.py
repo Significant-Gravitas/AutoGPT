@@ -27,6 +27,14 @@ from backend.util.exceptions import NotFoundError
 logger = logging.getLogger(__name__)
 
 
+class _Unchanged:
+    """``parent_id`` absent from a PATCH: leave the folder where it is."""
+
+
+UNCHANGED = _Unchanged()
+ParentChange = Optional[str] | _Unchanged
+
+
 class WorkspaceFolder(pydantic.BaseModel):
     """Pydantic model for UserWorkspaceFolder, safe for RPC transport."""
 
@@ -196,47 +204,8 @@ async def update_folder(
     name: Optional[str] = None,
     icon: Optional[str] = None,
 ) -> WorkspaceFolder:
-    """Update a folder's name/icon. Moving one is :func:`move_folder`."""
-    # update() uses where={"id": ...} without workspaceId — verify ownership first.
-    existing = await _get_folder_record(folder_id, workspace_id)
-
-    if name is not None and await _name_taken(
-        workspace_id, name, existing.parentId, exclude_folder_id=folder_id
-    ):
-        raise FolderAlreadyExistsError("A folder with this name already exists")
-
-    update_data: dict = {}
-    if name is not None:
-        update_data["name"] = name
-    if icon is not None:
-        update_data["icon"] = icon
-
-    if not update_data:
-        return await get_folder(folder_id, workspace_id)
-
-    # update_many (not update) so the write itself is guarded by isDeleted: a
-    # folder soft-deleted concurrently after the ownership check above must not
-    # be silently updated (and reported as a 200).
-    try:
-        updated_count = await UserWorkspaceFolder.prisma().update_many(
-            where={"id": folder_id, "isDeleted": False},
-            data=update_data,
-        )
-    except UniqueViolationError:
-        raise FolderAlreadyExistsError("A folder with this name already exists")
-
-    if updated_count == 0:
-        raise NotFoundError(f"Folder #{folder_id} not found")
-
-    # Re-read without an isDeleted filter so a delete racing in *after* a
-    # successful update doesn't turn it into a spurious 404.
-    refreshed = await UserWorkspaceFolder.prisma().find_first(
-        where={"id": folder_id},
-    )
-    if refreshed is None:
-        raise NotFoundError(f"Folder #{folder_id} not found")
-    count = await _file_count(workspace_id, folder_id)
-    return WorkspaceFolder.from_db(refreshed, file_count=count)
+    """Rename a folder and/or change its icon, leaving it where it is."""
+    return await apply_folder_update(folder_id, workspace_id, name=name, icon=icon)
 
 
 async def move_folder(
@@ -244,41 +213,75 @@ async def move_folder(
     workspace_id: str,
     parent_id: Optional[str],
 ) -> WorkspaceFolder:
-    """Move a folder under *parent_id*, or to the workspace root when None.
+    """Move a folder under *parent_id*, or to the workspace root when None."""
+    return await apply_folder_update(folder_id, workspace_id, parent_id=parent_id)
 
-    Refuses a move into the folder's own subtree, which would detach that
-    subtree from the root and make it unreachable from any listing. A
-    workspace's moves are serialized, because two of them checking at once
-    would each pass and then make the other's folder its parent.
+
+async def apply_folder_update(
+    folder_id: str,
+    workspace_id: str,
+    parent_id: ParentChange = UNCHANGED,
+    name: Optional[str] = None,
+    icon: Optional[str] = None,
+) -> WorkspaceFolder:
+    """Move and/or rename a folder as a single write.
+
+    One PATCH may do both, and half of it must not survive a refusal of the
+    other, so the destination check, the name check and the write share one
+    transaction and one statement. The name is checked against the folder's
+    destination rather than where it came from, since that is where it has to
+    be unique.
+
+    A folder cannot move into its own subtree, which would detach it from the
+    root. A workspace's moves are serialized, because two of them checking at
+    once would each pass and then make the other's folder its parent.
+
+    *parent_id* left at ``UNCHANGED`` keeps the folder where it is; ``None``
+    moves it to the workspace root.
     """
     async with transaction() as tx:
         await _lock_workspace_moves(tx, workspace_id)
 
         folder = await _get_folder_record(folder_id, workspace_id)
-        if parent_id is not None:
-            await _get_folder_record(parent_id, workspace_id)
-            if folder_id in await _ancestor_ids(workspace_id, parent_id):
+        moving = not isinstance(parent_id, _Unchanged)
+        destination = parent_id if moving else folder.parentId
+
+        if moving and destination is not None:
+            await _get_folder_record(destination, workspace_id)
+            if folder_id in await _ancestor_ids(workspace_id, destination):
                 raise FolderValidationError(
                     "A folder cannot be moved into itself or one of its subfolders"
                 )
-        if await _name_taken(workspace_id, folder.name, parent_id, folder_id):
-            raise FolderAlreadyExistsError(
-                "A folder with this name already exists in the destination"
-            )
 
-        try:
-            updated_count = await UserWorkspaceFolder.prisma(tx).update_many(
-                where={"id": folder_id, "isDeleted": False},
-                data={"parentId": parent_id},
-            )
-        except UniqueViolationError:
-            raise FolderAlreadyExistsError(
-                "A folder with this name already exists in the destination"
-            )
-        if updated_count == 0:
-            raise NotFoundError(f"Folder #{folder_id} not found")
+        if (moving or name is not None) and await _name_taken(
+            workspace_id, folder.name if name is None else name, destination, folder_id
+        ):
+            raise FolderAlreadyExistsError("A folder with this name already exists")
 
-    logger.info(f"Moved workspace folder {folder_id} under parent {parent_id}")
+        data: dict = {}
+        if moving:
+            data["parentId"] = destination
+        if name is not None:
+            data["name"] = name
+        if icon is not None:
+            data["icon"] = icon
+
+        if data:
+            # update_many (not update) so the write itself is guarded by
+            # isDeleted: a folder soft-deleted concurrently after the ownership
+            # check must not be updated and reported as a 200.
+            try:
+                updated_count = await UserWorkspaceFolder.prisma(tx).update_many(
+                    where={"id": folder_id, "isDeleted": False},
+                    data=data,
+                )
+            except UniqueViolationError:
+                raise FolderAlreadyExistsError("A folder with this name already exists")
+            if updated_count == 0:
+                raise NotFoundError(f"Folder #{folder_id} not found")
+
+    if data:
+        logger.info(f"Updated workspace folder {folder_id}: {sorted(data)}")
     return await get_folder(folder_id, workspace_id)
 
 
@@ -349,7 +352,9 @@ async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:
     """*folder_id* and every live folder beneath it.
 
     One query plus a walk in Python: a user's folder list is small, and a
-    recursive CTE would mean raw SQL for no measurable gain.
+    recursive CTE would mean raw SQL for no measurable gain. Uncapped, unlike
+    the model-facing ``workspace_files._folder_subtree``, because a delete has
+    to reach the whole subtree.
     """
     children: dict[Optional[str], list[str]] = {}
     for f in await UserWorkspaceFolder.prisma().find_many(

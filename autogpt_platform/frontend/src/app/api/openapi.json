@@ -16740,7 +16740,7 @@
       "patch": {
         "tags": ["workspace"],
         "summary": "Update workspace folder",
-        "description": "Rename a folder, change its icon, and/or move it.\n\nSending ``parent_id: null`` moves the folder to the workspace root;\nleaving the field out keeps it where it is. The move is applied first, so\na rejected destination leaves the folder untouched rather than renamed;\na request that both moves and renames is checked against the folder's\ncurrent name at the destination.",
+        "description": "Rename a folder, change its icon, and/or move it.\n\nSending ``parent_id: null`` moves the folder to the workspace root;\nleaving the field out keeps it where it is. Move and rename are applied\ntogether or not at all, and the new name is checked for a clash against\nthe destination.",
         "operationId": "updateWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

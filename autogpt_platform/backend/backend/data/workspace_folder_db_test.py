@@ -22,12 +22,14 @@ from backend.data import workspace_folder
 from backend.data.user import get_or_create_user
 from backend.data.workspace import create_workspace_file, get_or_create_workspace
 from backend.data.workspace_folder import (
+    apply_folder_update,
     bulk_move_files_to_folder,
     create_folder,
     delete_folder,
     list_workspace_folders,
     move_folder,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 
@@ -231,6 +233,52 @@ async def test_two_moves_racing_into_each_other_cannot_build_a_cycle(
 
     parents = {f.id: f.parent_id for f in await list_workspace_folders(workspace)}
     assert None in (parents[a.id], parents[b.id]), parents
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_creating_under_an_unknown_parent_is_refused(server: SpinTestServer):
+    """``parentId`` is written directly and the FK only proves the row exists,
+    so a parent from another workspace has to be refused here or not at all."""
+    workspace = await _workspace()
+
+    with pytest.raises(NotFoundError):
+        await create_folder(workspace, "Orphan", parent_id=str(uuid.uuid4()))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_and_rename_in_one_patch_apply_together(
+    server: SpinTestServer,
+):
+    workspace = await _workspace()
+    destination = await create_folder(workspace, "Invoices")
+    moving = await create_folder(workspace, "Source")
+
+    updated = await apply_folder_update(
+        moving.id, workspace, parent_id=destination.id, name="2026"
+    )
+
+    assert (updated.parent_id, updated.name) == (destination.id, "2026")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refused_rename_leaves_the_folder_where_it_was(
+    server: SpinTestServer,
+):
+    """The move used to be written before the rename was checked, so a PATCH
+    doing both left the folder at its new parent under its old name and the
+    client holding a 409 — half of a request it had been told failed."""
+    workspace = await _workspace()
+    destination = await create_folder(workspace, "Invoices")
+    await create_folder(workspace, "Taken", parent_id=destination.id)
+    moving = await create_folder(workspace, "Source")
+
+    with pytest.raises(FolderAlreadyExistsError):
+        await apply_folder_update(
+            moving.id, workspace, parent_id=destination.id, name="Taken"
+        )
+
+    parents = {f.id: f.parent_id for f in await list_workspace_folders(workspace)}
+    assert parents[moving.id] is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
