@@ -1,9 +1,9 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ErrorPage from "../page";
 
 let searchMessage: string | null = null;
-let supabaseState = {
+let authState = {
   isUserLoading: false,
   isLoggedIn: false,
 };
@@ -18,14 +18,14 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => supabaseState,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => authState,
 }));
 
 describe("ErrorPage", () => {
   afterEach(() => {
     searchMessage = null;
-    supabaseState = {
+    authState = {
       isUserLoading: false,
       isLoggedIn: false,
     };
@@ -44,7 +44,7 @@ describe("ErrorPage", () => {
 
   it("keeps the session expired screen for authenticated users", async () => {
     searchMessage = "session-expired";
-    supabaseState = {
+    authState = {
       isUserLoading: false,
       isLoggedIn: true,
     };
@@ -55,6 +55,28 @@ describe("ErrorPage", () => {
       expect(container.querySelector(".min-h-screen")).not.toBeNull();
     });
 
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("waits for authentication before showing an expired session or redirecting", () => {
+    searchMessage = "session-expired";
+    authState = { isUserLoading: true, isLoggedIn: false };
+
+    const { rerender } = render(<ErrorPage />);
+    expect(screen.queryByText(/Your session has expired/)).toBeNull();
+    expect(replaceMock).not.toHaveBeenCalled();
+
+    authState = { isUserLoading: false, isLoggedIn: false };
+    rerender(<ErrorPage />);
+    expect(replaceMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("preserves unrelated errors for logged-out users", () => {
+    searchMessage = "server-error";
+    render(<ErrorPage />);
+    expect(
+      screen.queryByText(/Our servers are experiencing issues/),
+    ).not.toBeNull();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 });
