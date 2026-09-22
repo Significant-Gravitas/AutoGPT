@@ -474,6 +474,42 @@ class CodexAnthropicGateway:
                     f"Conflicting result for tool_use_id {record.gateway_call_id!r}"
                 )
 
+        if _delivers_results_with_new_ask(payload.get("messages")):
+            # A delivery that also says something new is a new ask, and the
+            # whole request has to reach the model — a continuation forwards
+            # the tool output alone and drops the text.
+            #
+            # The CLI's auto-compaction request is the case that matters.
+            # Captured from claude 2.1.274 mid-turn: the CLI compacts before
+            # running the tool it was just handed, drops that unanswered
+            # ``tool_use``, and appends the summarisation instruction to the
+            # last user message — whose ``tool_result`` was delivered one
+            # request earlier and is therefore *settled*.  Every branch below
+            # this point either replays or raises for a settled result, so
+            # without this check the request is a 409 the CLI retries with
+            # backoff, no summary is written, and the turn refires until it
+            # dies — the ``after_source=no_summary_line`` cycle in the dev
+            # traces, minutes apart per firing.
+            #
+            # A still-pending result in the same shape has not been observed
+            # but is handled the same way, defensively: claiming it would
+            # resume the *task* upstream and the model would answer with its
+            # next tool call, not a summary.  Cancelling the future unwinds
+            # the upstream invoke without another model call — CancelledError
+            # escapes the session's tool-error handling, whereas an unanswered
+            # future would time out, be reported to the model as a failed
+            # tool, and resume the task anyway.  Requests carry
+            # ``store: False``, so nothing upstream is lost.  The result stays
+            # on the record so a re-sent copy reads as settled rather than
+            # conflicting.
+            for record, result in known:
+                if record.result is None:
+                    record.result = result
+                record.closed = True
+                if not record.future.done():
+                    record.future.cancel()
+            return None
+
         claimable = [
             (record, result)
             for record, result in known
@@ -495,31 +531,10 @@ class CodexAnthropicGateway:
                 raise _DuplicateToolResultError(
                     "This tool-result request refers to a closed model call"
                 )
-            if not _delivers_tool_results(payload.get("messages")):
-                # Settled results that are *not* what this request is for.
-                # A continuation exists to hand back a tool result, so it ends
-                # on those blocks and nothing else; this one carries them as
-                # history and then asks for something new.  The CLI's
-                # auto-compaction is exactly that shape — whole conversation
-                # replayed, satisfied ``tool_result`` included, summarisation
-                # instruction appended to the final user message.
-                #
-                # Rejecting it costs a round trip and an upstream call for
-                # nothing.  Measured against CLI 2.1.274: the CLI does retry
-                # through the 409 and still writes its summary, so this is not
-                # what strands a turn — an arm answering the compaction
-                # request normally took 6 compactions / 0 rejections, the
-                # arm 409-ing it took 3 compactions / 11 rejections, and every
-                # turn completed in both.  The fix is worth making because the
-                # rejection is wrong, not because it is fatal.
-                #
-                # A byte-identical *replay* never reaches here: it matches a
-                # ``claim_fingerprint`` and is answered from the replay cache
-                # above, so one tool result still buys one upstream call.
-                #
-                # Starting a new conversation is safe here: requests carry
-                # ``store: False``, so there is no upstream state to lose.
-                return None
+            # A pure delivery of results that were already answered, under a
+            # new fingerprint: a re-framed replay.  There is no response of
+            # its own to serve and no new ask to forward (that case returned
+            # above), so one tool result still buys one upstream call.
             raise _DuplicateToolResultError(
                 "This tool-result request refers to a completed model call"
             )
@@ -1113,26 +1128,41 @@ def _content_text(value: object) -> str:
     )
 
 
-def _delivers_tool_results(value: object) -> bool:
-    """Is this request's purpose to hand back tool results?
+def _delivers_results_with_new_ask(value: object) -> bool:
+    """Does the final user message hand back tool results *and* ask for more?
 
-    True when the conversation ends on a message whose content is nothing but
-    ``tool_result`` blocks — the shape a client sends to answer an outstanding
-    ``tool_use``.  False when results appear only as history under some new
-    ask, which is how the CLI's auto-compaction request looks.
+    A continuation answers an outstanding ``tool_use`` and nothing else: its
+    last user message is ``tool_result`` blocks, plus at most the
+    ``<system-reminder>`` text the CLI injects beside them.  A message that
+    also carries free text is a new ask that happens to include results.
+
+    The CLI's auto-compaction request is exactly that shape (captured from
+    claude 2.1.274): the whole conversation replayed, the latest
+    ``tool_result`` still undelivered, and the summarisation instruction as a
+    text block in that same user message.  Trailing ``system`` messages are
+    skipped — the CLI appends one to every request.
     """
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list):
         return False
-    last = value[-1]
-    if not isinstance(last, dict):
-        return False
-    content = last.get("content")
-    if not isinstance(content, list) or not content:
-        return False
-    return all(
-        isinstance(block, dict) and block.get("type") == "tool_result"
-        for block in content
-    )
+    for message in reversed(value):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        has_result = False
+        has_ask = False
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_result":
+                has_result = True
+            elif block.get("type") == "text":
+                text = str(block.get("text") or "").lstrip()
+                if text and not text.startswith("<system-reminder>"):
+                    has_ask = True
+        return has_result and has_ask
+    return False
 
 
 def _extract_tool_results(value: object) -> dict[str, CodexDynamicToolResult]:

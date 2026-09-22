@@ -1180,13 +1180,23 @@ def _satisfied_tool_call(
     gateway._tool_calls[call_id] = record
 
 
-def _compaction_payload(call_id: str, output: str) -> dict:
-    """The shape the CLI actually sends when auto-compaction fires.
+def _pending_tool_call(gateway: CodexAnthropicGateway, call_id: str) -> _ToolCallRecord:
+    """Record a tool call the gateway asked for and is still waiting on."""
+    conversation = _Conversation(id=f"conv-{call_id}")
+    record = _ToolCallRecord(
+        gateway_call_id=call_id,
+        raw_call_id=call_id,
+        conversation=conversation,
+        future=asyncio.get_running_loop().create_future(),
+    )
+    gateway._conversations[conversation.id] = conversation
+    gateway._tool_calls[call_id] = record
+    return record
 
-    Captured from claude 2.1.274 against a stub: the whole conversation is
-    replayed — settled ``tool_result`` included — with the summarisation
-    instruction appended to the final user message.
-    """
+
+def _turn_with_final_user_content(call_id: str, final_content: list[dict]) -> dict:
+    """One tool round as the CLI sends it, ending on *final_content* plus the
+    ``system`` message the CLI appends to every request."""
     return {
         "model": "gpt-6-astra",
         "stream": True,
@@ -1198,33 +1208,76 @@ def _compaction_payload(call_id: str, output: str) -> dict:
                     {"type": "tool_use", "id": call_id, "name": "Glob", "input": {}}
                 ],
             },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": call_id,
-                        "content": output,
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "CRITICAL: Respond with TEXT ONLY. Do NOT call any "
-                            "tools. You already have all the context you need to "
-                            "write a detailed summary of the conversation."
-                        ),
-                    },
-                ],
-            },
+            {"role": "user", "content": final_content},
+            {"role": "system", "content": "<total_tokens>1 tokens left</total_tokens>"},
         ],
     }
 
 
+def _delivery_payload(call_id: str, output: str, *, reminder: bool = False) -> dict:
+    """A plain continuation: the CLI handing back one tool result, with or
+    without the ``<system-reminder>`` text it sometimes injects beside it."""
+    content: list[dict] = [
+        {"type": "tool_result", "tool_use_id": call_id, "content": output}
+    ]
+    if reminder:
+        content.append(
+            {
+                "type": "text",
+                "text": (
+                    "<system-reminder>\nThe file changed on disk.\n"
+                    "</system-reminder>"
+                ),
+            }
+        )
+    return _turn_with_final_user_content(call_id, content)
+
+
+def _compaction_payload(call_id: str, output: str) -> dict:
+    """The shape the CLI actually sends when auto-compaction fires.
+
+    Captured from claude 2.1.274 against a stub: the whole conversation is
+    replayed with the summarisation instruction as a text block in the same
+    user message as the latest ``tool_result`` — which, mid-turn, has not
+    been delivered yet.
+    """
+    return _turn_with_final_user_content(
+        call_id,
+        [
+            {"type": "tool_result", "tool_use_id": call_id, "content": output},
+            {
+                "type": "text",
+                "text": (
+                    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. "
+                    "You already have all the context you need to write a "
+                    "detailed summary of the conversation."
+                ),
+            },
+        ],
+    )
+
+
 class TestCompactionRequestRouting:
-    async def test_compaction_request_starts_a_new_conversation(self) -> None:
-        """Settled results + a new fingerprint is a fresh request, not a
-        replay.  Returning None routes it to ``_start_conversation``; raising
-        here is what 409s the CLI's compaction mid-turn."""
+    async def test_compaction_with_pending_result_abandons_the_call(self) -> None:
+        """The real mid-turn shape: the latest result is still undelivered.
+        Claiming it would resume the task upstream and lose the summarise
+        instruction, so the call is abandoned and the request served whole."""
+        gateway = _unstarted_gateway()
+        record = _pending_tool_call(gateway, "toolu_1")
+
+        outcome = gateway._continue_conversation(
+            _compaction_payload("toolu_1", "notes.txt")
+        )
+
+        assert outcome is None
+        assert record.closed
+        assert record.future.cancelled()
+        assert record.result is not None and record.result.content == "notes.txt"
+
+    async def test_compaction_with_settled_result_starts_a_new_conversation(
+        self,
+    ) -> None:
+        """Settled results under a new ask is a fresh request, not a replay."""
         gateway = _unstarted_gateway()
         _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
 
@@ -1233,15 +1286,35 @@ class TestCompactionRequestRouting:
             is None
         )
 
-    async def test_true_replay_takes_the_replay_path_not_the_new_conversation(
-        self,
-    ) -> None:
-        """A real duplicate carries the same fingerprint, and that branch is
-        checked before the new-conversation fallthrough.  It is answered with
-        the stored response rather than a fresh turn."""
+    async def test_resent_compaction_request_reads_as_settled(self) -> None:
+        """The CLI retries a failed compaction; the abandoned call's stored
+        result must make the second copy settled, not conflicting."""
+        gateway = _unstarted_gateway()
+        _pending_tool_call(gateway, "toolu_1")
+        payload = _compaction_payload("toolu_1", "notes.txt")
+
+        assert gateway._continue_conversation(payload) is None
+        assert gateway._continue_conversation(payload) is None
+
+    async def test_delivery_beside_a_system_reminder_still_continues(self) -> None:
+        """Injected reminder text is not a new ask."""
+        gateway = _unstarted_gateway()
+        record = _pending_tool_call(gateway, "toolu_1")
+
+        outcome = gateway._continue_conversation(
+            _delivery_payload("toolu_1", "notes.txt", reminder=True)
+        )
+
+        assert isinstance(outcome, _Continuation)
+        assert outcome.conversation is record.conversation
+        assert record.future.result().content == "notes.txt"
+
+    async def test_true_replay_of_a_delivery_takes_the_replay_path(self) -> None:
+        """A byte-identical resend of an accepted delivery is answered from
+        the replay cache, and that branch is checked before any 409."""
         gateway = _unstarted_gateway()
         _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
-        payload = _compaction_payload("toolu_1", "notes.txt")
+        payload = _delivery_payload("toolu_1", "notes.txt")
         fingerprint = _tool_result_request_fingerprint(payload)
         gateway._tool_calls["toolu_1"].claim_fingerprint = fingerprint
 
@@ -1251,7 +1324,8 @@ class TestCompactionRequestRouting:
         assert outcome.replay_key == fingerprint
 
     async def test_conflicting_result_still_rejected(self) -> None:
-        """Same id, different output, is a genuine protocol conflict."""
+        """Same id, different output, is a genuine protocol conflict — even
+        when it arrives dressed as a compaction request."""
         gateway = _unstarted_gateway()
         _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
 
@@ -1260,23 +1334,26 @@ class TestCompactionRequestRouting:
                 _compaction_payload("toolu_1", "something-else.txt")
             )
 
+    async def test_reframed_delivery_of_a_completed_result_still_rejected(
+        self,
+    ) -> None:
+        """A pure delivery of an already-answered result under a new
+        fingerprint has no response to serve and nothing new to forward."""
+        gateway = _unstarted_gateway()
+        _satisfied_tool_call(gateway, "toolu_1", "notes.txt")
+
+        with pytest.raises(_DuplicateToolResultError, match="completed model call"):
+            gateway._continue_conversation(_delivery_payload("toolu_1", "notes.txt"))
+
     async def test_unclaimed_result_still_continues_its_conversation(self) -> None:
         """The ordinary path — a result the gateway is still waiting on —
         must keep resolving against its own conversation."""
         gateway = _unstarted_gateway()
-        conversation = _Conversation(id="conv-live")
-        record = _ToolCallRecord(
-            gateway_call_id="toolu_2",
-            raw_call_id="toolu_2",
-            conversation=conversation,
-            future=asyncio.get_running_loop().create_future(),
-        )
-        gateway._conversations[conversation.id] = conversation
-        gateway._tool_calls["toolu_2"] = record
+        record = _pending_tool_call(gateway, "toolu_2")
 
         outcome = gateway._continue_conversation(
-            _compaction_payload("toolu_2", "notes.txt")
+            _delivery_payload("toolu_2", "notes.txt")
         )
 
         assert isinstance(outcome, _Continuation)
-        assert outcome.conversation is conversation
+        assert outcome.conversation is record.conversation
