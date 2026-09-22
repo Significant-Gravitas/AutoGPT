@@ -1007,7 +1007,8 @@ class CredentialSelectionRequest(BaseModel):
     """The credential the user picked for each provider on a connect card."""
 
     selections: dict[str, str] = Field(
-        description="Provider slug to credential id.", max_length=20
+        description="Provider slug to credential id.",  # gitleaks:allow (schema text)
+        max_length=20,
     )
 
 

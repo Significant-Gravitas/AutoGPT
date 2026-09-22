@@ -69,16 +69,16 @@ logger = logging.getLogger(__name__)
 # Limits — keep the per-turn <available_skills> index small enough that it
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
-# (~50 tok), so 50 entries ≈ 2.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 22k tokens under the same
+# (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
+# trigger to the per-field caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
 # The cap is per owner folder and per origin: what the owner saves and what
 # the platform installs (a hire's bundle, a marketplace install) each get
-# MAX_USER_SKILLS, so a template's size never eats the owner's own room.
+# MAX_SKILLS_PER_EXPERT, so a template's size never eats the owner's own room.
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
-MAX_USER_SKILLS = 50
+MAX_SKILLS_PER_EXPERT = 150
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 # Loaded only on activation, so it costs nothing per turn; 50k clears
@@ -413,7 +413,7 @@ async def resolve_skill_owner(
 # Redis lock key for serialising store_skill writes per user. A per-user
 # distributed lock turns the otherwise-racy "count existing skills, then
 # write a new one" into an atomic critical section so two concurrent
-# ``store_skill`` calls cannot both pass the MAX_USER_SKILLS check.
+# ``store_skill`` calls cannot both pass the MAX_SKILLS_PER_EXPERT check.
 # Held only for the duration of the count + write; skill reads stay
 # lock-free.
 _SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
@@ -760,7 +760,7 @@ async def store_user_skill(
         validate_package(SkillPackage(skill_md=rendered, files=files))
 
     # Serialise the count-then-write critical section per-user so two
-    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
+    # concurrent writers cannot both pass the MAX_SKILLS_PER_EXPERT check.
     # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
     # ~1s before falling back to the strict-cap unlocked path below — without
     # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
@@ -811,7 +811,7 @@ async def store_user_skill(
                 f"'{name}' is one of the owner's own skills; rename or delete "
                 "it before installing a skill by that name."
             )
-        at_cap = len(same_origin) >= MAX_USER_SKILLS
+        at_cap = len(same_origin) >= MAX_SKILLS_PER_EXPERT
         is_new = name not in same_origin
         if at_cap and (is_new or not lock_held):
             if not lock_held:
@@ -823,7 +823,7 @@ async def store_user_skill(
                     is_new,
                 )
             raise SkillLimitError(
-                f"Skill limit reached ({MAX_USER_SKILLS} {_ORIGIN_LABELS[origin]} "
+                f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
                 "skills). Delete an unused skill first."
             )
 
@@ -2245,7 +2245,7 @@ class ListSkillsTool(BaseTool):
 # nested SKILL.md files and yield no roots at all; the bound is the most a
 # compliant folder can hold, every allowed skill carrying a full package.
 # Roots one folder can hold: a full budget for every origin.
-_MAX_ROOTS_PER_FOLDER = MAX_USER_SKILLS * len(_SKILL_ORIGINS)
+_MAX_ROOTS_PER_FOLDER = MAX_SKILLS_PER_EXPERT * len(_SKILL_ORIGINS)
 _MAX_ROOT_SCAN = _MAX_ROOTS_PER_FOLDER * (MAX_PACKAGE_FILES + 1)
 
 
