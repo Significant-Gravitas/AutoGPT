@@ -9,9 +9,13 @@ and the per-tree spend ceiling of the tree that started it.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
-from backend.blocks.autopilot import _spawner_envelope_from
+from backend.blocks.autopilot import AutoPilotBlock, _spawner_envelope_from
+from backend.copilot.executor.utils import _admitted_turn_envelope
+from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tree import (
     MAX_DEPTH,
     SpawnRequest,
@@ -175,3 +179,77 @@ def test_recovery_re_derives_a_child_rather_than_an_unrestricted_root() -> None:
     assert recovery.tools <= (spawner.tools or frozenset())
     # It is emphatically not a root: None is the root sentinel.
     assert recovery.tools is not None
+
+
+async def _dispatch_kwargs(context: ExecutionContext) -> dict:
+    """The kwargs AutoPilotBlock really hands the dispatch chokepoint.
+
+    Read off the block instead of retyped: a test that rebuilds the spawn
+    request itself cannot see the block stop sending one. The refused outcome
+    is just an early exit once the call has been observed.
+    """
+    turn = AsyncMock(return_value=("refused", SessionResult(refusal="stop here")))
+    with patch(
+        "backend.copilot.sdk.session_waiter.run_copilot_turn_via_queue", new=turn
+    ):
+        with pytest.raises(RuntimeError):
+            await AutoPilotBlock().execute_copilot(
+                prompt="do the thing",
+                system_context="",
+                session_id="sess-1",
+                max_recursion_depth=3,
+                user_id="u1",
+                spawner_envelope=_spawner_envelope_from(context),
+            )
+    assert turn.await_args is not None
+    return turn.await_args.kwargs
+
+
+async def _admitted(kwargs: dict):
+    """Put those kwargs through the real chokepoint, tree ledger stubbed."""
+    with patch("backend.copilot.executor.utils.admit_turn", new=AsyncMock()), patch(
+        "backend.copilot.executor.utils.get_current_envelope", return_value=None
+    ):
+        return await _admitted_turn_envelope(
+            "turn-1",
+            "u1",
+            kwargs["permissions"],
+            kwargs["spawn"],
+            kwargs["spawner_envelope"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_user_started_graph_is_admitted_as_a_root_not_refused() -> None:
+    """A graph the user ran themselves has no spawner, and asking to spawn
+    without one is exactly what the chokepoint refuses — so the block must not
+    ask. Sending the request unconditionally refuses every such run with "this
+    task's context was lost", on the one path where nothing was lost.
+    """
+    kwargs = await _dispatch_kwargs(ExecutionContext())
+    assert kwargs["spawner_envelope"] is None
+    assert kwargs["spawn"] is None
+
+    envelope = await _admitted(kwargs)
+    assert envelope.depth == 0
+    # None is the root sentinel: a user-started graph genuinely holds everything.
+    assert envelope.tools is None
+
+
+@pytest.mark.asyncio
+async def test_an_agent_started_graph_still_asks_to_spawn_and_inherits() -> None:
+    """The other direction, or dropping the spawn request altogether would pass
+    the test above while silently narrowing every inherited turn."""
+    spawner = derive_child_envelope(root_envelope("t"), SpawnRequest(may_spawn=True))
+    kwargs = await _dispatch_kwargs(
+        ExecutionContext(
+            copilot_tree_id=spawner.tree_id,
+            copilot_tree_depth=spawner.depth,
+            copilot_tree_tools=sorted(spawner.tools or ()),
+        )
+    )
+    assert kwargs["spawn"] == SpawnRequest(may_spawn=True)
+
+    envelope = await _admitted(kwargs)
+    assert envelope.tree_id == spawner.tree_id
+    assert envelope.depth == spawner.depth + 1

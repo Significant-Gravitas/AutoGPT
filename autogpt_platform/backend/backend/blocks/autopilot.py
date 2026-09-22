@@ -441,7 +441,13 @@ class AutoPilotBlock(Block):
                 # root a fresh, unbounded tree. The spawning turn's identity
                 # rides in the execution context instead.
                 spawner_envelope=spawner_envelope,
-                spawn=SpawnRequest(may_spawn=True),
+                # Only a spawned turn asks to spawn: a graph the user ran
+                # themselves has none, and that pair is what dispatch refuses.
+                spawn=(
+                    SpawnRequest(may_spawn=True)
+                    if spawner_envelope is not None
+                    else None
+                ),
                 # Graph block execution is synchronous from the caller's
                 # perspective — wait effectively as long as needed. The
                 # SDK enforces its own idle-based timeout inside the
