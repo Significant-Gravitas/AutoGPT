@@ -1,3 +1,4 @@
+import { getFieldDomId } from "../../field-accessibility";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
@@ -130,7 +131,14 @@ export const CredentialsField = (props: FieldProps) => {
   // Ties the explanation to the control for assistive tech: dropping the
   // required marker also removes the only programmatic cue that a visible
   // field cannot be filled.
-  const unavailableNoteId = `${fieldPathId?.$id ?? "credentials"}-unavailable`;
+  const unavailableNoteId = getFieldDomId(
+    `${fieldPathId?.$id ?? "credentials"}-unavailable`,
+    formContext,
+  );
+  const optionalToggleId = getFieldDomId(
+    `credentials-optional-${nodeId}`,
+    formContext,
+  );
 
   return (
     <div
@@ -179,14 +187,14 @@ export const CredentialsField = (props: FieldProps) => {
         formContext?.showOptionalToggle !== false && (
           <div className="mt-1 flex items-center gap-2">
             <Switch
-              id={`credentials-optional-${nodeId}`}
+              id={optionalToggleId}
               checked={credentialsOptional}
               onCheckedChange={(checked) =>
                 setCredentialsOptional(nodeId, checked)
               }
             />
             <label
-              htmlFor={`credentials-optional-${nodeId}`}
+              htmlFor={optionalToggleId}
               className="cursor-pointer text-xs text-gray-500"
             >
               Optional - skip block if not configured

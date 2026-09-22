@@ -137,7 +137,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           onChange={handleTextareaChange}
           onKeyDown={guardedOnKeyDown}
           rows={props.rows || 3}
-          {...(hideLabel ? { "aria-label": label } : {})}
+          aria-label={
+            props["aria-label"] ?? (hideLabel && label ? label : undefined)
+          }
+          aria-labelledby={props["aria-labelledby"]}
+          aria-describedby={props["aria-describedby"]}
           id={inputId}
           disabled={props.disabled}
           value={props.value}
@@ -176,7 +180,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           groupSeparator=","
           decimalSeparator="."
           allowNegativeValue
-          {...(hideLabel ? { "aria-label": label } : {})}
+          aria-label={
+            props["aria-label"] ?? (hideLabel && label ? label : undefined)
+          }
+          aria-labelledby={props["aria-labelledby"]}
+          aria-describedby={props["aria-describedby"]}
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
@@ -209,7 +217,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
-        {...(hideLabel ? { "aria-label": label } : {})}
+        {...(hideLabel && label ? { "aria-label": label } : {})}
         {...props}
         id={inputId}
         onKeyDown={guardedOnKeyDown}
