@@ -6,6 +6,8 @@ import logging
 import uuid
 
 import pytest
+import sentry_sdk
+import sentry_sdk.feature_flags
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 
@@ -616,6 +618,51 @@ class TestForcedFlagsInEveryBackend:
         with pytest.raises(HTTPException) as off:
             await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
         assert off.value.status_code == 404
+
+
+class TestSentryFlagContext:
+    """Every vendor's served value lands on the scope Sentry attaches to errors."""
+
+    @pytest.fixture
+    def sentry_flags(self):
+        with sentry_sdk.isolation_scope() as scope:
+            # A forked scope inherits whatever earlier tests recorded.
+            scope.flags.clear()
+            yield scope.flags
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
+    async def test_a_boolean_flag_is_recorded_as_served(
+        self, mocker, ld_client, user_context, sentry_flags, backend
+    ):
+        use_backend(mocker, backend)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=backend is FeatureFlagBackend.POSTHOG)
+
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        assert sentry_flags.get() == [{"flag": Flag.HIRE_EXPERTS.value, "result": True}]
+
+    @pytest.mark.asyncio
+    async def test_a_non_boolean_flag_records_nothing(
+        self, ld_client, user_context, sentry_flags
+    ):
+        ld_client.variation.return_value = {"daily": 5}
+
+        await ff.get_feature_flag_value("copilot-cost-limits", "u-1")
+        assert sentry_flags.get() == []
+
+    @pytest.mark.asyncio
+    async def test_a_recording_failure_does_not_break_the_read(
+        self, mocker, ld_client, user_context
+    ):
+        mocker.patch.object(
+            sentry_sdk.feature_flags,
+            "add_feature_flag",
+            side_effect=RuntimeError("sentry down"),
+        )
+        ld_client.variation.return_value = True
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
 
 def _gated_route():

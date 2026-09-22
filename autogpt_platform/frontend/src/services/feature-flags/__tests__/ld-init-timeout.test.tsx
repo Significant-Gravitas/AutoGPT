@@ -12,17 +12,22 @@ import { Flag, useGetFlag } from "../use-get-flag";
 // floods Sentry on every page load and never really times out.
 const LD_HIGH_TIMEOUT_THRESHOLD_SECONDS = 5;
 
-const ld = vi.hoisted(() => ({ timeouts: [] as unknown[] }));
+const ld = vi.hoisted(() => ({
+  timeouts: [] as unknown[],
+  options: [] as unknown[],
+}));
 
 interface Props {
   timeout?: number;
+  options?: unknown;
   children: ReactNode;
 }
 
 vi.mock("launchdarkly-react-client-sdk", () => {
   // Declared inside the factory: vi.mock is hoisted above module scope.
-  function MockLDProvider({ timeout, children }: Props) {
+  function MockLDProvider({ timeout, options, children }: Props) {
     ld.timeouts.push(timeout);
+    ld.options.push(options);
     return <>{children}</>;
   }
   return {
@@ -47,10 +52,6 @@ vi.mock("@/services/environment", () => ({
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@sentry/nextjs", () => ({
-  buildLaunchDarklyFlagUsedHandler: () => ({}),
 }));
 
 function FlagProbe() {
@@ -80,5 +81,15 @@ describe("LaunchDarkly initialisation timeout", () => {
     );
 
     expect(screen.getByText("payment: false")).toBeDefined();
+  });
+
+  it("wires no LaunchDarkly-only Sentry inspector; the flag seam records for every vendor", () => {
+    render(
+      <LaunchDarklyProvider>
+        <FlagProbe />
+      </LaunchDarklyProvider>,
+    );
+
+    expect(ld.options.at(-1)).toBeUndefined();
   });
 });

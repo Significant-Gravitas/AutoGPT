@@ -10,6 +10,7 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
+import sentry_sdk.feature_flags
 from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
@@ -488,10 +489,24 @@ async def _evaluate_flag_value(
     """
     backend = settings.config.feature_flag_backend
     if backend is FeatureFlagBackend.POSTHOG:
-        return await _evaluate_posthog(flag_key, user_id, default)
-    if backend is FeatureFlagBackend.DUAL:
-        return await _evaluate_dual(flag_key, user_id, default)
-    return await _evaluate_launchdarkly(flag_key, user_id, default)
+        result = await _evaluate_posthog(flag_key, user_id, default)
+    elif backend is FeatureFlagBackend.DUAL:
+        result = await _evaluate_dual(flag_key, user_id, default)
+    else:
+        result = await _evaluate_launchdarkly(flag_key, user_id, default)
+    _record_flag_for_sentry(flag_key, result[0])
+    return result
+
+
+def _record_flag_for_sentry(flag_key: str, value: Any) -> None:
+    """Put a served flag on Sentry's scope so errors show which flags were on."""
+    # Sentry's flag context holds booleans only; JSON and string flags are skipped.
+    if not isinstance(value, bool):
+        return
+    try:
+        sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+    except Exception:
+        logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 
 
 async def _evaluate_dual(

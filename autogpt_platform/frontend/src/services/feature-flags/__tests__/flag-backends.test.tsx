@@ -20,6 +20,17 @@ vi.mock("@posthog/react", () => ({
   usePostHog: () => ({ capture: postHog.capture }),
 }));
 
+const sentry = vi.hoisted(() => ({ addFeatureFlag: vi.fn() }));
+
+vi.mock("@sentry/nextjs", () => ({
+  getClient: () => ({
+    getIntegrationByName: (name: string) =>
+      name === "FeatureFlags"
+        ? { addFeatureFlag: sentry.addFeatureFlag }
+        : undefined,
+  }),
+}));
+
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
 }));
@@ -204,6 +215,47 @@ describe("dual backend", () => {
   });
 });
 
+describe("Sentry's flag context", () => {
+  it.each([
+    ["launchdarkly", undefined],
+    ["posthog", "posthog"],
+    ["dual", "dual"],
+  ])("records the served boolean in %s mode", async (_, backend) => {
+    const { Flag, useGetFlag } = await loadWithBackend(backend);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    postHog.enabled.mockReturnValue(backend === "posthog");
+
+    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
+      HIRE_EXPERTS,
+      true,
+    );
+  });
+
+  it("records nothing for a JSON-valued flag", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    launchDarkly.flags = { "copilot-bot-platforms": { slack: false } };
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it("still serves the flag when recording throws", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    sentry.addFeatureFlag.mockImplementation(() => {
+      throw new Error("sentry down");
+    });
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toBe(true);
+  });
+});
+
 describe("posthog flags follow the provider's gate", () => {
   it("falls back to defaults outside cloud, where no PostHogProvider mounts", async () => {
     process.env.NEXT_PUBLIC_BEHAVE_AS = "LOCAL";
@@ -221,6 +273,7 @@ beforeEach(() => {
   postHog.enabled.mockReturnValue(undefined);
   postHog.payload.mockReturnValue(undefined);
   postHog.capture.mockClear();
+  sentry.addFeatureFlag.mockReset();
   Object.keys(process.env)
     .filter((key) => key.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
     .forEach((key) => delete process.env[key]);
