@@ -1,4 +1,7 @@
-import { getPostV1CreateExecutionScheduleMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getPostV1CreateExecutionScheduleMockHandler,
+  getPostV1CreateExecutionScheduleResponseMock,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { server } from "@/mocks/mock-server";
 import * as invalidateSchedules from "@/services/schedules/invalidate-schedules";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
@@ -42,7 +45,13 @@ afterEach(() => {
 
 describe("useCronSchedulerDialog", () => {
   test("successful create invalidates ALL schedule queries (regression: previously invalidated NONE)", async () => {
-    server.use(getPostV1CreateExecutionScheduleMockHandler());
+    const requests: unknown[] = [];
+    server.use(
+      getPostV1CreateExecutionScheduleMockHandler(async ({ request }) => {
+        requests.push(await request.json());
+        return getPostV1CreateExecutionScheduleResponseMock();
+      }),
+    );
     const invalidateSpy = vi.spyOn(
       invalidateSchedules,
       "invalidateAllScheduleQueries",
@@ -62,7 +71,7 @@ describe("useCronSchedulerDialog", () => {
 
     act(() => {
       result.current.setCronExpression("0 9 * * *");
-      result.current.setScheduleName("Morning run");
+      result.current.setScheduleName("  Morning run  ");
     });
 
     await act(async () => {
@@ -75,6 +84,9 @@ describe("useCronSchedulerDialog", () => {
         "graph-xyz",
       );
     });
+    expect(requests).toEqual([
+      expect.objectContaining({ name: "Morning run" }),
+    ]);
     invalidateSpy.mockRestore();
   });
 
@@ -111,37 +123,88 @@ describe("useCronSchedulerDialog", () => {
     expect(createScheduleMock).not.toHaveBeenCalled();
   });
 
-  test("empty schedule name shows destructive toast and skips the mutation", async () => {
-    const createScheduleMock = vi.fn();
-    server.use(getPostV1CreateExecutionScheduleMockHandler(createScheduleMock));
+  test.each(["", " ", "\t\n", "\u2003"])(
+    "blank schedule name %j is rejected without a mutation",
+    async (name) => {
+      const createScheduleMock = vi.fn();
+      server.use(
+        getPostV1CreateExecutionScheduleMockHandler(createScheduleMock),
+      );
 
-    const { result } = renderHook(
-      () =>
-        useCronSchedulerDialog({
-          open: true,
-          setOpen: vi.fn(),
-          inputs: {},
-          credentials: {},
+      const { result } = renderHook(
+        () =>
+          useCronSchedulerDialog({
+            open: true,
+            setOpen: vi.fn(),
+            inputs: {},
+            credentials: {},
+          }),
+        { wrapper: makeWrapper("?flowID=g&flowVersion=1") },
+      );
+
+      act(() => {
+        result.current.setCronExpression("0 9 * * *");
+        result.current.setScheduleName(name);
+      });
+
+      await act(async () => {
+        await result.current.handleCreateSchedule();
+      });
+
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Invalid schedule",
+          description: "Please enter a schedule name",
+          variant: "destructive",
         }),
-      { wrapper: makeWrapper("?flowID=g&flowVersion=1") },
-    );
+      );
+      expect(result.current.scheduleNameError).toBe(
+        "Schedule name is required",
+      );
+      expect(createScheduleMock).not.toHaveBeenCalled();
+    },
+  );
+});
 
-    act(() => {
-      result.current.setCronExpression("0 9 * * *");
-    });
-
-    await act(async () => {
-      await result.current.handleCreateSchedule();
-    });
-
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Invalid schedule",
-        description: "Please enter a schedule name",
-        variant: "destructive",
+test("editing a rejected name clears the inline error", async () => {
+  const { result } = renderHook(
+    () =>
+      useCronSchedulerDialog({
+        open: true,
+        setOpen: vi.fn(),
+        inputs: {},
+        credentials: {},
       }),
-    );
-    expect(result.current.scheduleNameError).toBe("Schedule name is required");
-    expect(createScheduleMock).not.toHaveBeenCalled();
+    { wrapper: makeWrapper("?flowID=g&flowVersion=1") },
+  );
+  await act(async () => {
+    await result.current.handleCreateSchedule();
   });
+  expect(result.current.scheduleNameError).toBe("Schedule name is required");
+  act(() => {
+    result.current.setScheduleName("Weekly report");
+  });
+  expect(result.current.scheduleNameError).toBe("");
+});
+
+test("changing the default cron does not erase a typed schedule name", () => {
+  const { result, rerender } = renderHook(
+    ({ cron }) =>
+      useCronSchedulerDialog({
+        open: true,
+        setOpen: vi.fn(),
+        inputs: {},
+        credentials: {},
+        defaultCronExpression: cron,
+      }),
+    {
+      initialProps: { cron: "0 9 * * *" },
+      wrapper: makeWrapper("?flowID=g&flowVersion=1"),
+    },
+  );
+  act(() => {
+    result.current.setScheduleName("Weekly report");
+  });
+  rerender({ cron: "0 10 * * *" });
+  expect(result.current.scheduleName).toBe("Weekly report");
 });

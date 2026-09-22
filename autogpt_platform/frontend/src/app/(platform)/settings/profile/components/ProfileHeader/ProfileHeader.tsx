@@ -2,9 +2,6 @@
 
 import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { CameraIcon, PencilSimpleIcon, UserIcon } from "@phosphor-icons/react";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
-
 import {
   Avatar,
   AvatarFallback,
@@ -14,6 +11,13 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { type ProfileFormState, validateForm } from "../../helpers";
+import {
+  Camera01Icon,
+  Loading03Icon,
+  PencilIcon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   avatarUrl: string;
@@ -83,7 +87,7 @@ export function ProfileHeader({
             height={224}
           />
           <AvatarFallback className="bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-500">
-            <UserIcon size={48} weight="regular" />
+            <Icon icon={UserIcon} size={48} />
           </AvatarFallback>
         </Avatar>
 
@@ -96,9 +100,9 @@ export function ProfileHeader({
           className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-[2px]"
         >
           {isUploading ? (
-            <CircleNotchIcon size={26} weight="bold" className="animate-spin" />
+            <Icon icon={Loading03Icon} size={26} className="animate-spin" />
           ) : (
-            <CameraIcon size={26} weight="regular" />
+            <Icon icon={Camera01Icon} size={26} />
           )}
         </motion.div>
 
@@ -123,7 +127,7 @@ export function ProfileHeader({
             className="absolute bottom-1 right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
             style={{ transformOrigin: "center" }}
           >
-            <PencilSimpleIcon size={16} weight="bold" />
+            <Icon icon={PencilIcon} size={16} />
           </motion.span>
         </motion.span>
 

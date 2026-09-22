@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { Spinner } from "@phosphor-icons/react";
+import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   title?: string;
@@ -8,13 +9,17 @@ interface Props {
 }
 
 export function LoadingView({
-  title = "Setting up AutoPilot",
+  title = "Setting up AutoGPT",
   message = "Loading...",
 }: Props) {
   return (
     <AuthCard title={title}>
       <div className="flex flex-col items-center gap-4">
-        <Spinner size={48} className="animate-spin text-primary" />
+        <Icon
+          icon={Loading03Icon}
+          size={48}
+          className="animate-spin text-primary"
+        />
         <Text variant="body-medium" className="text-muted-foreground">
           {message}
         </Text>

@@ -9,7 +9,13 @@ from backend.data.model import is_credentials_field_name
 
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_or_error,
+)
 from .base import BaseTool
+from .expert_scope import require_installed_workflow
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -27,7 +33,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "Requires tool:get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -43,10 +49,8 @@ class EditAgentTool(BaseTool):
                     "type": "string",
                     "description": "Graph ID or library agent ID to edit.",
                 },
-                "agent_json": {
-                    "type": "object",
-                    "description": "Updated agent JSON with nodes and links.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -58,7 +62,7 @@ class EditAgentTool(BaseTool):
                     "default": True,
                 },
             },
-            "required": ["agent_id", "agent_json"],
+            "required": ["agent_id"],
         }
 
     async def _execute(
@@ -66,7 +70,8 @@ class EditAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_id: str = "",
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         **kwargs,
@@ -104,15 +109,32 @@ class EditAgentTool(BaseTool):
                 error="missing_agent_id",
                 session_id=session_id,
             )
-
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide agent_json with the complete updated agent graph."
-                ),
-                error="missing_agent_json",
-                session_id=session_id,
+        if user_id:
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=agent_id,
+                library_agent_id=agent_id,
+                name=agent_id,
             )
+            if scope_error is not None:
+                return scope_error
+
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide agent_json with the complete updated agent "
+                'graph (inline or as an "@@agptfile:<path>" string), or '
+                "agent_json_ref pointing at the workspace agent file."
+            ),
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         nodes = agent_json.get("nodes", [])
         if not nodes:
@@ -142,8 +164,8 @@ class EditAgentTool(BaseTool):
                     "by editing the graph — that would change the agent's global "
                     "default for everyone who uses it. A trigger's configuration "
                     "lives on a per-trigger preset: use the "
-                    "setup_agent_webhook_trigger tool with these fields as "
-                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "tool:setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run tool:edit_agent leaving the "
                     "trigger block's config unchanged."
                 ),
                 error="trigger_config_edit_blocked",

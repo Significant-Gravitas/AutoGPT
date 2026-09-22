@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/atoms/Button/Button";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 export interface AdminUserSearchProps {
   /** Current search query value (controlled). Falls back to internal state if omitted. */
@@ -54,7 +56,7 @@ export function AdminUserSearch({
         aria-label={placeholder}
         value={currentValue}
         onChange={(e) => handleChange(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+        onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         disabled={isLoading}
       />
       <Button
@@ -64,7 +66,7 @@ export function AdminUserSearch({
         disabled={isLoading || !currentValue.trim()}
         loading={isLoading}
       >
-        {isLoading ? "Searching..." : <MagnifyingGlass size={16} />}
+        {isLoading ? "Searching..." : <Icon icon={Search01Icon} size={16} />}
       </Button>
     </div>
   );

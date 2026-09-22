@@ -1,11 +1,12 @@
 import React from "react";
-import { InfoIcon, WarningIcon } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
+import { Alert01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type ResolutionModeBarProps = {
   incompatibilities: IncompatibilityInfo | null;
@@ -82,13 +83,19 @@ export function ResolutionModeBar({
   return (
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-amber-50 px-3 py-2 dark:bg-amber-900/30">
       <div className="flex items-center gap-2">
-        <WarningIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <Icon
+          icon={Alert01Icon}
+          className="h-4 w-4 text-amber-600 dark:text-amber-400"
+        />
         <span className="text-sm text-amber-700 dark:text-amber-300">
           Remove incompatible connections
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <InfoIcon className="h-4 w-4 cursor-help text-amber-500" />
+            <Icon
+              icon={InformationCircleIcon}
+              className="h-4 w-4 cursor-help text-amber-500"
+            />
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <p className="mb-2 font-semibold">Incompatible changes:</p>

@@ -1,15 +1,6 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import {
-  EyeClosedIcon,
-  EyeIcon,
-  LinkIcon,
-  ListBulletsIcon,
-  TextBIcon,
-  TextItalicIcon,
-  TextStrikethroughIcon,
-} from "@phosphor-icons/react";
 import { type ReactNode, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -23,6 +14,16 @@ import {
   type ProfileFormState,
   validateForm,
 } from "../../helpers";
+import {
+  EyeClosedIcon,
+  EyeIcon,
+  LeftToRightListBulletIcon,
+  Link01Icon,
+  TextBoldIcon,
+  TextItalicIcon,
+  TextStrikethroughIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   formState: ProfileFormState;
@@ -47,35 +48,35 @@ interface MarkdownAction {
 const ACTIONS: ReadonlyArray<MarkdownAction> = [
   {
     label: "Bold",
-    icon: <TextBIcon size={16} weight="bold" />,
+    icon: <Icon icon={TextBoldIcon} size={16} />,
     before: "**",
     after: "**",
     placeholder: "bold text",
   },
   {
     label: "Italic",
-    icon: <TextItalicIcon size={16} />,
+    icon: <Icon icon={TextItalicIcon} size={16} />,
     before: "*",
     after: "*",
     placeholder: "italic text",
   },
   {
     label: "Strikethrough",
-    icon: <TextStrikethroughIcon size={16} />,
+    icon: <Icon icon={TextStrikethroughIcon} size={16} />,
     before: "~~",
     after: "~~",
     placeholder: "strikethrough",
   },
   {
     label: "Link",
-    icon: <LinkIcon size={16} />,
+    icon: <Icon icon={Link01Icon} size={16} />,
     before: "[",
     after: "](https://)",
     placeholder: "link text",
   },
   {
     label: "Bulleted list",
-    icon: <ListBulletsIcon size={16} />,
+    icon: <Icon icon={LeftToRightListBulletIcon} size={16} />,
     before: "- ",
     after: "",
     placeholder: "list item",
@@ -202,7 +203,11 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           onClick={() => setIsPreview((v) => !v)}
           className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-black"
         >
-          {isPreview ? <EyeClosedIcon size={14} /> : <EyeIcon size={14} />}
+          {isPreview ? (
+            <Icon icon={EyeClosedIcon} size={14} />
+          ) : (
+            <Icon icon={EyeIcon} size={14} />
+          )}
           {isPreview ? "Edit" : "Preview"}
         </button>
       </div>

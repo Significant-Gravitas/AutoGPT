@@ -30,6 +30,30 @@ def _free_rebuild_lock():
         yield redis
 
 
+@pytest.fixture(autouse=True)
+def _pin_openrouter_transport():
+    """Pin the chat transport to OpenRouter so the flex-tier path is taken
+    deterministically. ``rebuild_communities_for_user`` only takes the flex
+    branch when ``chat_cfg.transport.supports_flex_tier`` is True, which holds
+    only for the OpenRouter transport. That resolves from
+    ``config.openrouter_active``, which needs a non-empty ``api_key`` — absent
+    on fork-PR CI, where repo secrets (incl. ``OPENAI_API_KEY``) aren't exposed.
+    Without this pin the transport silently drops to ``direct_anthropic`` (no
+    flex), and tests that only patch ``make_flex_graphiti_client`` fall through
+    to the real sync client. The flag-driven sync test patches
+    ``community_rebuild_use_flex_tier`` itself, so it still takes the sync path.
+    """
+    with (
+        patch("backend.copilot.sdk.env.config.use_openrouter", True),
+        patch("backend.copilot.sdk.env.config.api_key", "or-key"),
+        patch(
+            "backend.copilot.sdk.env.config.base_url",
+            "https://openrouter.ai/api/v1",
+        ),
+    ):
+        yield
+
+
 def _neighbor(uuid: str, edge_count: int = 1):
     """Mimic graphiti's Neighbor namedtuple — only attributes touched by LP."""
     return SimpleNamespace(node_uuid=uuid, edge_count=edge_count)
@@ -204,6 +228,45 @@ class TestRebuildCommunitiesForUser:
         assert "MATCH (c:Community" in cleanup_query
         assert "DETACH DELETE c" in cleanup_query
         client.build_communities.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_expert_scope_uses_resolved_group_for_client_and_lock(
+        self, _free_rebuild_lock
+    ) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+        client = MagicMock()
+        client.graph_driver = driver
+        client.build_communities = AsyncMock(return_value=[])
+        make_client = AsyncMock(return_value=client)
+
+        with (
+            patch(
+                "backend.copilot.graphiti.communities.derive_memory_group_id",
+                return_value="expert_resolved_group",
+            ) as derive_group,
+            patch(
+                "backend.copilot.graphiti.communities.make_flex_graphiti_client",
+                make_client,
+            ),
+            patch(
+                "backend.copilot.graphiti.communities.close_graphiti_client",
+                new=AsyncMock(),
+            ),
+        ):
+            result = await rebuild_communities_for_user(
+                "883cc9da-fe37-4863-839b-acba022bf3ef",
+                expert_id="expert-1",
+                force=True,
+            )
+
+        assert result["error"] is None
+        derive_group.assert_called_once_with(
+            "883cc9da-fe37-4863-839b-acba022bf3ef", "expert-1"
+        )
+        make_client.assert_awaited_once_with("expert_resolved_group")
+        lock_key = _free_rebuild_lock.set.call_args.args[0]
+        assert lock_key == "graphiti:community_rebuild_lock:expert_resolved_group"
 
     @pytest.mark.asyncio
     async def test_failure_path_returns_error_in_result(self) -> None:

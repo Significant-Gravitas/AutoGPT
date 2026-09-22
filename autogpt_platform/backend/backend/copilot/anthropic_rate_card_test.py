@@ -1,6 +1,8 @@
 """Unit tests for the Anthropic rate card used in direct-mode cost computation."""
 
-from .anthropic_rate_card import compute_anthropic_cost_usd
+import pytest
+
+from .anthropic_rate_card import compute_anthropic_cost_usd, get_max_output_tokens
 
 
 class TestComputeAnthropicCostUsd:
@@ -161,3 +163,54 @@ class TestComputeAnthropicCostUsd:
         )
         # fresh_input clamped to 0, cache_read = 1000 × $3 × 0.1 / M = $0.0003.
         assert cost == 0.0003
+
+
+class TestSonnet5Rates:
+    """The refreshed rate card must carry claude-sonnet-5 — without it,
+    direct-Anthropic deployments cap output at the 32K fallback and bill
+    at Opus fallback rates (~7.5x)."""
+
+    def test_sonnet_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-sonnet-5") == 128000
+
+    def test_sonnet_5_billed_at_litellm_rates_not_fallback(self):
+        cost = compute_anthropic_cost_usd(
+            model="claude-sonnet-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        # Intro rates in litellm today: 1M x $2 + 1M x $10 = $12 — the
+        # Opus fallback would charge $90. The catalog deliberately bills
+        # sticker ($3/$15); this asserts the vendored litellm value, so
+        # when the intro window ends (2026-08-31) and a rate refresh
+        # brings sticker rates, update this to 18.0 — that change is
+        # expected, not a mispricing.
+        assert cost == 12.0
+
+
+class TestOpus5Rates:
+    """Opus 5 direct-mode costs must use published rates, not the 3x fallback."""
+
+    def test_opus_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-opus-5") == 128000
+
+    def test_opus_5_billed_at_published_rates_without_fallback(self, caplog):
+        cost = compute_anthropic_cost_usd(
+            model="claude-opus-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        assert cost == 30.0
+        assert "falling back" not in caplog.text
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 6.75), ("1h", 10.5)])
+    def test_opus_5_cache_rates(self, cache_ttl, expected_cost):
+        cost = compute_anthropic_cost_usd(
+            model="claude-opus-5",
+            prompt_tokens=2_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+            cache_creation_tokens=1_000_000,
+            cache_ttl=cache_ttl,
+        )
+        assert cost == expected_cost

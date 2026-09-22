@@ -5,8 +5,9 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { ShareIcon } from "@phosphor-icons/react";
 import { usePublishToMarketplace } from "./usePublishToMarketplace";
+import { Share01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   flowID: string | null;
@@ -29,7 +30,7 @@ export function PublishToMarketplace({ flowID, flowVersion }: Props) {
             onClick={handlePublishToMarketplace}
             disabled={isDisabled}
           >
-            <ShareIcon className="size-4" />
+            <Icon icon={Share01Icon} className="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>Publish to Marketplace</TooltipContent>

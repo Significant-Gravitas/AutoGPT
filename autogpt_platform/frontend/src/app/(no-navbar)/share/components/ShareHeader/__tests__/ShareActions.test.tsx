@@ -8,10 +8,10 @@ import {
 } from "@/tests/integrations/test-utils";
 import { ShareActions } from "../ShareActions";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
 
 // Clipboard isn't available in jsdom by default; defineProperty so
@@ -28,7 +28,7 @@ beforeEach(() => {
     value: new URL("http://localhost/share/chat/some-token"),
   });
   clipboardWrite.mockClear();
-  mockUseSupabase.mockReset();
+  mockUseAuth.mockReset();
 });
 
 afterEach(() => {
@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("ShareActions", () => {
   test("renders Sign up CTA when the viewer is anonymous", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       isLoggedIn: false,
       isUserLoading: false,
     });
@@ -49,7 +49,7 @@ describe("ShareActions", () => {
   });
 
   test("hides Sign up CTA when the viewer is signed in", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       isLoggedIn: true,
       isUserLoading: false,
     });
@@ -60,10 +60,10 @@ describe("ShareActions", () => {
   });
 
   test("hides Sign up CTA while auth state is still loading", () => {
-    // First paint after navigation: useSupabase hasn't initialised yet.
+    // First paint after navigation: useAuth hasn't initialised yet.
     // Showing then hiding the CTA on hydration looks broken to a
     // signed-in viewer opening their own share, so we suppress it.
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       isLoggedIn: false,
       isUserLoading: true,
     });
@@ -76,7 +76,7 @@ describe("ShareActions", () => {
   });
 
   test("clicking Copy link writes the current URL to the clipboard", async () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       isLoggedIn: false,
       isUserLoading: false,
     });
@@ -97,7 +97,7 @@ describe("ShareActions", () => {
   });
 
   test("clipboard failure leaves the button on 'Copy link' and does not flash 'Copied'", async () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       isLoggedIn: false,
       isUserLoading: false,
     });

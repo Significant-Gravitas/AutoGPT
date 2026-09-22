@@ -1,5 +1,9 @@
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Runtime import would cycle: data.execution imports backend.blocks.
+    from backend.data.execution import ExecutionContext
 
 from backend.blocks._base import (
     BlockCategory,
@@ -14,7 +18,7 @@ from backend.blocks.llm import (
     AIBlockBase,
     AICredentials,
     AICredentialsField,
-    LlmModel,
+    LLMModel,
     LLMResponse,
     llm_call,
 )
@@ -76,7 +80,7 @@ class AIConditionBlock(AIBlockBase):
             placeholder="Leave empty to use input_value, or enter a specific value",
             default=None,
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for evaluating the condition.",
@@ -134,9 +138,10 @@ class AIConditionBlock(AIBlockBase):
     async def llm_call(
         self,
         credentials: APIKeyCredentials,
-        llm_model: LlmModel,
+        llm_model: LLMModel,
         prompt: list,
         max_tokens: int,
+        execution_context: "ExecutionContext | None" = None,
     ) -> LLMResponse:
         """Wrapper method for llm_call to enable mocking in tests."""
         return await llm_call(
@@ -145,6 +150,7 @@ class AIConditionBlock(AIBlockBase):
             prompt=prompt,
             force_json_output=False,
             max_tokens=max_tokens,
+            execution_context=execution_context,
         )
 
     async def run(
@@ -195,6 +201,7 @@ class AIConditionBlock(AIBlockBase):
             llm_model=input_data.model,
             prompt=prompt,
             max_tokens=MIN_LLM_OUTPUT_TOKENS,
+            execution_context=kwargs.get("execution_context"),
         )
 
         # Extract the boolean result from the response
