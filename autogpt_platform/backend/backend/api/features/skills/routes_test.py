@@ -282,10 +282,10 @@ def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
 def test_upload_copilot_skill_returns_409_when_at_cap(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """The per-user cap surfaces as 409 so the UI can prompt a delete."""
+    """The per-expert cap surfaces as 409 so the UI can prompt a delete."""
     mocker.patch(
         "backend.api.features.skills.routes.store_user_skill",
-        AsyncMock(side_effect=SkillLimitError("Skill limit reached (50).")),
+        AsyncMock(side_effect=SkillLimitError("Skill limit reached (150).")),
     )
 
     response = client.post("/skills", json={"content": _VALID_SKILL_MD})
