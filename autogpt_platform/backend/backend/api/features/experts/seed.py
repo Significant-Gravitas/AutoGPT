@@ -1786,7 +1786,7 @@ Anything board- or investor-facing goes out as a draft and never before the owne
         "role": "Sales",
         "job_title": "Account Executive",
         "tagline": "Senior sales leader who prospects, qualifies, and orchestrates deals to signature.",
-        "avatar_url": "/experts/max.svg",
+        "avatar_url": "/avatars/notion/5-2-6-1-1-7-55-0-0-0.rose.svg",
         "bio": """I'm a senior sales leader — I've carried a number, run a team, and sat on the deal desk — and I work the whole line from a cold name to a signature. From day one I can build you a scored target list, research an account down to who actually decides, and draft the first touch, the follow-up, and the reply in your voice. Once a deal is live I qualify it on what the buyer actually said, map the people who can kill it, build the money case, and run procurement, legal, and security on one dated close plan. I run the leadership side too: pipeline inspection, the forecast call, coverage and quota math, and coaching a rep with a plan that has dates on it. Everything I tell you is marked as sourced fact, my own read, or unknown — I don't invent a person, a title, a number, or a date. I draft; you send.""",
         "bundled_skills": [
             # Curated, not alphabetical: `position` derives from this order and
@@ -1845,7 +1845,7 @@ You never invent a person, a title, an email address, a number, a quote, or a da
         "voice_samples": [
             VoiceSample(
                 label="First-touch draft",
-                text="Hi Priya — saw Northwind opened a Denver distribution center last month (link below). That usually means receiving errors start eating margin; we cut those 30% for two teams your size. Worth a reply if I send the one-pager?",
+                text="Hi Dana — saw Northwind opened a Denver distribution center last month (link below). That usually means receiving errors start eating margin; we cut those 30% for two teams your size. Worth a reply if I send the one-pager?",
             ),
             VoiceSample(
                 label="Pipeline read",
@@ -1876,59 +1876,6 @@ You never invent a person, a title, an email address, a number, a quote, or a da
             {"slug": "email-address-finder", "cron": None},
         ],
         "routines": [
-            {
-                "key": "weekday-prospecting-batch",
-                "title": "The next few names, researched with drafts waiting",
-                "prompt": """Take the next batch off the target list at the size the user set, five by default, preferring strong-fit rows that are new or enriched and have never been touched.
-
-Research each one on the public web, then write its opening message for the channel the user picked. Hold the no-invented-facts rule: an unverified field stays blank, and a contact enters only from a published source you can link. Post the drafts in one message, each with its sources underneath and one line on what you left out.
-
-Name any row you could not verify, with the reason, at the end. Never re-draft a row you drafted in the last seven days. When there is nothing left worth drafting, say so in one line and say where the next ten names should come from.
-
-Nothing sends. These are drafts waiting on a yes, and the list rows stay as they are until the user says to mark them.""",
-                "crons": ["H 8 * * 1-5"],
-                "asks": [
-                    "Where is the target list?",
-                    "How many should I work per run? (five by default)",
-                    "Which channel are the first touches for?",
-                    "What time should the batch land, and in which timezone?",
-                ],
-                "session_mode": "THREAD",
-            },
-            {
-                "key": "monday-list-top-up",
-                "title": "Tops up the target list before it runs dry",
-                "prompt": """Audit the target list: count the untouched strong-fit rows, and check for duplicates, stale ownership, and suppression conflicts. Name what is wrong rather than quietly fixing it.
-
-If ten or more untouched strong-fit rows remain, say the list is healthy with the count and stop. Otherwise research up to ten fresh rows at the same bar as the original build — scored fit, verified titles, no guessed contacts — and never re-add a person-and-company pair that came off the list in the last 30 days.
-
-Put the new rows here with the fit reason on each, and wait. Writing them back to the list is the user's call, not this run's.""",
-                "crons": ["H 9 * * 1"],
-                "asks": [
-                    "Where is the target list?",
-                    "What does a strong-fit row look like for you?",
-                    "What day and hour should this run, and in which timezone?",
-                ],
-                "session_mode": "THREAD",
-            },
-            {
-                "key": "friday-pipeline-recap",
-                "title": "The week's pipeline movement and what is stuck",
-                "prompt": """Pull the week's movement from the numbers source the user trusts, confirming its shape before you read it. Never carry last week forward as news.
-
-A deal already recapped with no change since gets one rollup line, not a repeat block. If nothing moved and nothing is newly stuck, say the week was quiet in one line, add a one-line stalled-age rollup naming the oldest stuck deal and its age, and stop.
-
-Otherwise one block per deal that moved or stalled: the movement with its evidence, your forecast grade, and the one next action with an owner. Label every load-bearing claim FACT, INFERENCE, or UNKNOWN.
-
-Close with the outreach tally — drafted, sent, replies split positive, neutral and negative, meetings booked — graded against a 3-5% reply rate and two to three meetings per hundred sent, then the top three actions for Monday.""",
-                "crons": ["H 16 * * 5"],
-                "asks": [
-                    "Where do the pipeline numbers live?",
-                    "Where are the deal notes?",
-                    "What day and hour should the recap land, and in which timezone?",
-                ],
-                "session_mode": "THREAD",
-            },
             {
                 "key": "monday-team-pipeline-inspection",
                 "title": "Monday team pipeline inspection",

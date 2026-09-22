@@ -44,7 +44,7 @@
     {
       "id": "robin-reply_draft-03",
       "kind": "reply_draft",
-      "prompt": "Draft a help-center-grounded answer for Priya's SSO login failure: SAML handshake error, cite the doc URL, one concrete step she can take now, and mark anything unwritten as a KB candidate, never a quoted rule."
+      "prompt": "Draft a help-center-grounded answer for Marta's SSO login failure: SAML handshake error, cite the doc URL, one concrete step she can take now, and mark anything unwritten as a KB candidate, never a quoted rule."
     },
     {
       "id": "robin-reply_draft-04",

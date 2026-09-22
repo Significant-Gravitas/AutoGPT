@@ -113,7 +113,7 @@ async def test_user_prefix_is_the_production_first_turn_context():
     ):
         assert await build_expert_context("user", max_.id) == user_prefix(max_, roster)
         assert await build_expert_context("user", None) == user_prefix(None, roster)
-    assert "Lead Finder" in user_prefix(max_, roster)
+    assert "Lead Finder (Local Businesses)" in user_prefix(max_, roster)
     assert (
         "Maria" in user_prefix(max_, roster)
         and "Max" not in user_prefix(max_, roster).split("<team_context>")[1]
