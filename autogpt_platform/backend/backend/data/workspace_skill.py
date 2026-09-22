@@ -51,15 +51,17 @@ async def publish_workspace_skill_file(
     if folder is None:
         raise ValueError("Skill publication requires a canonical SKILL.md path")
     async with _publication_transaction(write.workspace_id, folder) as tx:
-        existing = await tx.userworkspacefile.find_unique(
+        # Live rows only: since paths are unique among live files, a path holds
+        # at most one, and retired roots left behind at it are history rather
+        # than something to retire again.
+        existing = await tx.userworkspacefile.find_first(
             where={
-                "workspaceId_path": {
-                    "workspaceId": write.workspace_id,
-                    "path": write.path,
-                }
+                "workspaceId": write.workspace_id,
+                "path": write.path,
+                "isDeleted": False,
             }
         )
-        if existing and not existing.isDeleted and not write.overwrite:
+        if existing and not write.overwrite:
             return WorkspaceSkillPublication(status="exists")
         origin = skill_origin(write.metadata) or SKILL_ORIGIN_USER
         existing_origin = skill_origin(
@@ -67,7 +69,7 @@ async def publish_workspace_skill_file(
             if existing and isinstance(existing.metadata, dict)
             else None
         )
-        active = existing is not None and not existing.isDeleted
+        active = existing is not None
         if (
             active
             and origin == SKILL_ORIGIN_MARKETPLACE
@@ -168,12 +170,11 @@ async def _create_root(tx: Prisma, write: WorkspaceSkillWrite) -> UserWorkspaceF
 async def _replace_root(
     tx: Prisma, file_id: str, write: WorkspaceSkillWrite
 ) -> UserWorkspaceFile:
+    # No rename: the retired row leaves the live-only unique index the moment
+    # it is marked deleted, so the replacement takes the path in the same
+    # transaction and the retired row keeps the path it was retired at.
     await tx.userworkspacefile.update(
         where={"id": file_id},
-        data={
-            "isDeleted": True,
-            "deletedAt": datetime.now(timezone.utc),
-            "path": f"{write.path}__deleted__{file_id}",
-        },
+        data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
     )
     return await _create_root(tx, write)
