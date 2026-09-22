@@ -4534,9 +4534,10 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert hired.expert.avatar_url is None
     assert hired.expert.bio is None
     assert hired.expert.skills == []
-    # The owner's own skill edit after hire, which no re-seed may touch.
+    # The owner's own edits after hire, which no re-seed may touch.
     await prisma.models.Expert.prisma().update(
-        where={"id": hired.expert.id}, data={"skills": ["Customer interviews"]}
+        where={"id": hired.expert.id},
+        data={"skills": ["Customer interviews"], "avatarUrl": "/avatars/mine.svg"},
     )
 
     entry: seed.RosterEntry = {
@@ -4562,17 +4563,69 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
-    assert refreshed.avatar_url == "/experts/maria.svg"
     assert refreshed.job_title == "Marketing Manager"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
     assert refreshed.categories == ["marketing"]
-    # A user's rename and skill list survive the refresh: the template's
-    # skills neither replace the owner's nor get merged back into them.
+    # A user's rename, skill list and avatar survive the refresh: the
+    # template's skills neither replace the owner's nor get merged back into
+    # them, and its avatar never reaches a hire at all.
     assert refreshed.skills == ["Customer interviews"]
+    assert refreshed.avatar_url == "/avatars/mine.svg"
     assert refreshed.name == "My Maria"
     # Day one stays on the template; the backfill must not copy it onto hires.
     assert refreshed.day_one == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_keeps_an_owner_set_avatar(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """An owner picks their hire's avatar, and no re-seed may take it back.
+
+    Driven through ``seed_roster`` rather than the helper, so a later pass
+    that pushes avatars separately fails here rather than silently resetting
+    every hire that ever set one."""
+    entry: seed.RosterEntry = {
+        "name": f"Maria {uuid.uuid4().hex[:8]}",
+        "role": "Marketing",
+        "job_title": "Marketing Generalist",
+        "tagline": "Does all of marketing.",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a generalist marketer.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "You are Maria, a generalist.",
+        "voice_preferences": "Clear and confident.",
+        "voice_samples": [],
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [],
+        "preloads": [],
+        "routines": [],
+    }
+    monkeypatch.setattr(seed, "ROSTER", [entry])
+    (template_id,) = await seed.seed_roster()
+    _seeded_template_ids.append(template_id)
+    hired = await experts_db.hire_expert(test_user.id, template_id, None)
+    await experts_db.update_avatar(test_user.id, hired.expert.id, "/avatars/mine.svg")
+
+    monkeypatch.setattr(
+        seed,
+        "ROSTER",
+        [
+            {
+                **entry,
+                "avatar_url": "/experts/maria-refreshed.svg",
+                "tagline": "Takes a keyword from brief to article.",
+            }
+        ],
+    )
+    assert await seed.seed_roster() == [template_id]
+
+    refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert refreshed is not None
+    assert refreshed.avatar_url == "/avatars/mine.svg"
+    assert refreshed.tagline == "Takes a keyword from brief to article."
 
 
 # ─── Pods ──────────────────────────────────────────────────────────────
