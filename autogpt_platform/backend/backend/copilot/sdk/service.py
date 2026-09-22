@@ -3,6 +3,7 @@
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
 import asyncio
+import contextlib
 import base64
 import functools
 from copy import copy
@@ -42,6 +43,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
@@ -113,10 +115,11 @@ from ..pending_messages import (
 )
 from ..permissions import (
     CopilotPermissions,
-    all_known_tool_names,
     apply_tool_permissions,
+    denied_tool_names,
 )
 from ..prompting import (
+    get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -170,12 +173,13 @@ from ..tools import (
     ToolGroup,
     expert_tool_disabled_groups,
     kickoff_turn_disabled_tools,
+    origin_disabled_tools,
     tool_names_in_groups,
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
-from ..tools.skills import build_skills_context
+from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
 from ..transcript import (
     _run_compression,
@@ -703,13 +707,10 @@ async def _consume_sdk_until_done(
         measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
         compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
-            # Compaction events end with StreamFinishStep, which maps to
-            # Vercel AI SDK's "finish-step" — that clears activeTextParts.
-            # Close any open text block BEFORE the compaction events so
-            # the text-end arrives before finish-step, preventing
-            # "text-end for missing text part" errors on the frontend.
+            # Compaction events end with StreamFinishStep; open blocks must
+            # close before it (see ``SDKResponseAdapter.end_open_blocks``).
             pre_close: list[StreamBaseResponse] = []
-            state.adapter._end_text_if_open(pre_close)
+            state.adapter.end_open_blocks(pre_close)
             # Compaction events bypass the adapter, so sync step state
             # when a StreamFinishStep is present — otherwise the adapter
             # will skip StreamStartStep on the next AssistantMessage.
@@ -966,6 +967,15 @@ _BUILDING_MODE_CONTINUATION = (
     "Continue working on the user's request from where you left off."
 )
 
+# Sent instead when the guide could not be loaded, so the model is never told
+# a <building_guide> block is present that is not. The building-mode gates stay
+# closed, which is correct — the guide really is absent.
+_BUILDING_MODE_UNAVAILABLE_CONTINUATION = (
+    "The agent-building guide could not be loaded into your system prompt. "
+    "Continue working on the user's request from where you left off, and do "
+    "not retry enter_agent_building_mode in this turn."
+)
+
 # Synthetic message injected when a turn ends with extended thinking but no
 # visible TextBlock. Bounded to one re-prompt per turn — if the model still
 # returns thinking-only the adapter promotes the last thinking block to
@@ -1033,10 +1043,7 @@ def _hidden_short_names_for_permissions(
     Hiding the tool from the MCP server removes it from the model's tool
     list entirely so it never reaches for the blocked name.
     """
-    if permissions is None or permissions.is_empty():
-        return frozenset()
-    all_tools = all_known_tool_names()
-    return all_tools - permissions.effective_allowed_tools(all_tools)
+    return denied_tool_names(permissions)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -1721,12 +1728,19 @@ async def _apply_building_mode_restart(
     building_mode_requested flips False either way.
     """
     session.building_mode_requested = False
-    building_suffix = await build_builder_system_prompt_suffix(session)
+    # ``force``: the enter tool set the flag in this very turn, so re-deriving
+    # "is this session building?" from persisted history asks a question the
+    # caller already answered — and answers it wrong, because the tool call is
+    # not in ``messages`` yet.
+    building_suffix = await build_builder_system_prompt_suffix(session, force=True)
     session.guide_in_system_prompt = bool(building_suffix)
     if not building_suffix:
+        # Only a guide-load failure reaches here now.
         logger.error(
-            f"{log_prefix} Building-mode restart: guide suffix "
-            f"empty — continuing without prompt upgrade"
+            "%s Building-mode restart: guide suffix empty — relaunching "
+            "without the guide (session_id=%s)",
+            log_prefix,
+            session.session_id,
         )
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
@@ -1745,6 +1759,7 @@ async def _apply_building_mode_restart(
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
+        + get_chat_platform_supplement(session.metadata.source_platform)
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -1762,7 +1777,11 @@ async def _apply_building_mode_restart(
     state.options = sdk_options_restart
     state.use_resume = True
     state.resume_file = session_id
-    state.query_message = _BUILDING_MODE_CONTINUATION
+    state.query_message = (
+        _BUILDING_MODE_CONTINUATION
+        if building_suffix
+        else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
+    )
     # Fresh adapter, same carry-over rules as a transient retry.
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
@@ -1777,6 +1796,8 @@ async def _apply_building_mode_restart(
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
         state.adapter.prior_attempt_emitted_visible_content = True
+    if not building_suffix:
+        return StreamStatus(message="Continuing without the agent guide…")
     return StreamStatus(message="Entering building mode — loading the agent guide…")
 
 
@@ -4207,7 +4228,7 @@ async def _run_stream_attempt(
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
-        state.adapter._end_text_if_open(closing_responses)
+        state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
         notice_block_id = str(uuid.uuid4())
@@ -4461,6 +4482,38 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _maybe_prepend_skills_update(
+    session: ChatSession,
+    user_id: str | None,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<skills_update>`` drift notice, if any.
+
+    Compares the live skill registry against the ``<available_skills>``
+    index baked into the session history at session start. No-op for
+    non-user turns, anonymous turns, and steady-state sessions — and for
+    the first turn, where ``inject_user_context`` just wrote a fresh index
+    into history so the diff is empty by construction. Query-only: the
+    notice is never persisted, so a later turn re-diffs from the same
+    baseline and the reminder clears itself once the session restarts.
+    """
+    if not is_user_message or not user_id:
+        return query_message
+    try:
+        notice = await build_skills_update_notice(
+            user_id,
+            expert_id=session.expert_id,
+            prior_contents=[
+                m.content or "" for m in session.messages if m.role == "user"
+            ],
+        )
+    except Exception:
+        logger.exception("[skills] failed to build skills update notice")
+        return query_message
+    return notice + query_message if notice else query_message
+
+
 async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues]
     session_id: str,
     message: str | None = None,
@@ -4475,6 +4528,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     organization_id: str | None = None,
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4567,7 +4621,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message
+        session, message, is_user_message, message_metadata
     )
     if _user_message_appended and is_user_message:
         track_user_message(
@@ -4742,8 +4796,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # warm-context, and CLI session restore are all independent network
         # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
+        # Captured outside the closure: `session` is narrowed to ChatSession
+        # here, but that narrowing does not carry into nested functions.
+        owner_expert_id = session.expert_id
+
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
+            nonlocal e2b_sandbox
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -4753,13 +4812,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     )
                 return None
             try:
+                # An expert session runs on the expert's own persistent box;
+                # everything else gets a per-session sandbox.
                 sandbox = await get_or_create_sandbox(
                     session_id,
                     api_key=e2b_api_key,
                     template=config.e2b_sandbox_template,
                     timeout=config.e2b_sandbox_timeout,
                     on_timeout=config.e2b_sandbox_on_timeout,
+                    volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
+                    expert_id=owner_expert_id,
+                    user_id=user_id,
                 )
+                # Publish the live box before the gather returns: if a sibling
+                # setup leg fails, the finally below still pauses it and
+                # releases the expert's turn slot instead of leaking both.
+                e2b_sandbox = sandbox
             except Exception as e2b_err:
                 logger.error(
                     "[E2B] [%s] Setup failed: %s",
@@ -4771,27 +4839,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
             return sandbox
 
-        (
-            e2b_sandbox,
-            (base_system_prompt, understanding),
-            (graphiti_enabled, warm_ctx),
-            _restore,
-        ) = await asyncio.gather(
-            _setup_e2b(),
-            _build_system_prompt(user_id if not has_history else None),
-            _fetch_graphiti_context(user_id, session, message),
-            # Restore CLI session — single GCS round-trip covers both
-            # --resume and builder state.  message_count watermark lives
-            # in the companion .meta.json alongside the session file.
-            _restore_cli_session_for_turn(
-                user_id,
-                session_id,
-                session,
-                sdk_cwd,
-                transcript_builder,
-                log_prefix,
-            ),
-        )
+        # The E2B leg runs as its own task: if a sibling leg fails first, the
+        # box it may already have opened (and the expert turn it counted)
+        # must still be published so the finally below pauses and releases it.
+        e2b_task = asyncio.create_task(_setup_e2b())
+        try:
+            (
+                (base_system_prompt, understanding),
+                (graphiti_enabled, warm_ctx),
+                _restore,
+            ) = await asyncio.gather(
+                _build_system_prompt(user_id if not has_history else None),
+                _fetch_graphiti_context(user_id, session, message),
+                # Restore CLI session — single GCS round-trip covers both
+                # --resume and builder state.  message_count watermark lives
+                # in the companion .meta.json alongside the session file.
+                _restore_cli_session_for_turn(
+                    user_id,
+                    session_id,
+                    session,
+                    sdk_cwd,
+                    transcript_builder,
+                    log_prefix,
+                ),
+            )
+        except BaseException:
+            with contextlib.suppress(BaseException):
+                e2b_sandbox = await e2b_task
+            raise
+        e2b_sandbox = await e2b_task
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
@@ -4812,6 +4888,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         team_building_supplement = get_team_building_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+        chat_platform_supplement = get_chat_platform_supplement(
+            session.metadata.source_platform
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4822,6 +4901,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # get_agent_building_guide skip redundant guide round-trips when the
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
+        # Turn-scoped, as the baseline's turn-end clear makes it: without
+        # this the buffer the adapter fills would carry a previous turn's
+        # calls into a gate that asks about *this* turn.
+        session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
@@ -4829,6 +4912,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
+            + chat_platform_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4896,11 +4980,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if is_expert_kickoff_turn(session)
             else frozenset()
         )
+        # A machine-authored session cannot staff the team, so it is not
+        # offered the proposal tools its own guard would refuse.
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
             | kickoff_hidden
+            | origin_disabled_tools(session.metadata.origin)
+        )
+        # run_capability reaches deferred tools by id; the same hidden set
+        # must bound it, so it travels with the turn's execution context.
+        set_execution_context(
+            user_id,
+            session,
+            sandbox=e2b_sandbox,
+            sdk_cwd=sdk_cwd,
+            permissions=permissions,
+            envelope=envelope,
+            hidden_tools=hidden_tools,
         )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
@@ -5103,6 +5201,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),
             "conversation_turn": str(turn),
+            "tool_surface": "registry",
         }
         if _user_tier:
             _otel_metadata["subscription_tier"] = _user_tier.value
@@ -5354,6 +5453,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        # Skill-drift notice — same query-only contract as builder
+        # context: never persisted, re-diffed every turn.
+        query_message = await _maybe_prepend_skills_update(
+            session, user_id, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5547,6 +5651,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
+                    session, user_id, is_user_message, state.query_message
+                )
+                state.query_message = await _maybe_prepend_skills_update(
                     session, user_id, is_user_message, state.query_message
                 )
                 prior_adapter = state.adapter
@@ -5787,7 +5894,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
-                    state.adapter._end_text_if_open(cleanup_events)
+                    state.adapter.end_open_blocks(cleanup_events)
                 cleanup_events.extend(
                     interrupted.finalize(
                         session,
@@ -6163,7 +6270,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Use pause_sandbox_direct to skip the Redis lookup and reconnect
         # round-trip — e2b_sandbox is the live object from this turn.
         if e2b_sandbox is not None:
-            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
+            task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox,
+                    session_id,
+                    expert_id=session.expert_id if session else None,
+                )
+            )
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
 

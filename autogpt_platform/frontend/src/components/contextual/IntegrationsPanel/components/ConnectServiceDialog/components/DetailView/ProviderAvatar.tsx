@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 import { useState } from "react";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 
 interface Props {
   id: string;

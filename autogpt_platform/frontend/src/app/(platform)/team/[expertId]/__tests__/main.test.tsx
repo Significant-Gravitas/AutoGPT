@@ -47,7 +47,10 @@ import {
   getGetHomeDashboardResponseMock200,
 } from "@/app/api/__generated__/endpoints/home/home.msw";
 import { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
-import { getGetV2ListStoreAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/store/store.msw";
+import {
+  getGetV2ListMarketplaceSkillsMockHandler200,
+  getPostV2InstallMarketplaceSkillMockHandler200,
+} from "@/app/api/__generated__/endpoints/store/store.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -85,8 +88,9 @@ vi.mock("framer-motion", async (importActual) => {
   return { ...actual, useReducedMotion: () => true };
 });
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
+const { setFlagStatusMock, skillsHubFlag } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
+  skillsHubFlag: { enabled: true, ready: true },
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -99,7 +103,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     useFlagStatus: (flag: string) =>
       flag === "hire-experts"
         ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
+        : flag === "skills-hub"
+          ? skillsHubFlag
+          : actual.useFlagStatus(flag as never),
   };
 });
 
@@ -139,6 +145,7 @@ const maria: Expert = {
   bio: "Maria is a senior marketing strategist.",
   skills: ["Content strategy"],
   tagline: "Grows your brand while you sleep",
+  job_title: "Marketing Manager",
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
@@ -280,6 +287,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  skillsHubFlag.enabled = true;
   resetCopilotChatRegistry();
   window.localStorage.removeItem("team-workflows-view");
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
@@ -317,7 +325,9 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.getByText("Marketing Manager")).toBeDefined();
+    expect(screen.queryByText("Marketing Strategist")).toBeNull();
+    expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
@@ -344,7 +354,7 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
-  test("shows the expert's integrations as logos after the role pill", async () => {
+  test("shows the expert's integrations beside the name", async () => {
     server.use(
       getGetExpertMockHandler(() => ({
         ...maria,
@@ -364,9 +374,9 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const pill = within(header).getByText("Marketing Strategist");
+    const name = within(header).getByRole("heading", { name: "Maria" });
     expect(
-      pill.compareDocumentPosition(integrations) &
+      name.compareDocumentPosition(integrations) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -720,23 +730,21 @@ describe("ExpertDetailPage", () => {
     expect(await within(list).findByText("Deep Research")).toBeDefined();
   });
 
-  test("offers marketplace skills as a second source in the add dialog", async () => {
-    const user = userEvent.setup();
-    server.use(
+  function hubSkillHandlers(installs: string[], onInstalled = () => {}) {
+    return [
       getListCopilotSkillsMockHandler200([]),
-      getGetV2ListStoreAgentsMockHandler200({
-        agents: [
+      getGetV2ListMarketplaceSkillsMockHandler200({
+        skills: [
           {
             slug: "seo-audit",
-            agent_name: "SEO Audit Pro",
-            agent_image: "",
+            name: "seo-audit",
+            title: "SEO audit",
+            description: "Audit any page for SEO gaps",
+            categories: ["marketing"],
+            required_providers: [],
+            install_count: 3,
             creator: "acme",
-            creator_avatar: "",
-            sub_heading: "Audit any page for SEO gaps",
-            description: "",
-            runs: 3,
-            rating: 4.5,
-            agent_graph_id: "graph-seo",
+            creator_avatar: null,
           },
         ],
         pagination: {
@@ -746,6 +754,26 @@ describe("ExpertDetailPage", () => {
           page_size: 20,
         },
       }),
+      getPostV2InstallMarketplaceSkillMockHandler200(({ request, params }) => {
+        const expertId = new URL(request.url).searchParams.get("expert_id");
+        installs.push(`${params.slug as string}@${expertId}`);
+        onInstalled();
+        return { name: "seo-audit", required_providers: [] };
+      }),
+    ];
+  }
+
+  test("installs a marketplace skill onto the expert being viewed", async () => {
+    const user = userEvent.setup();
+    const installs: string[] = [];
+    // The install writes the name onto the row server-side, so the expert
+    // read after it is what the list must pick up.
+    let skills: string[] = [];
+    server.use(
+      ...hubSkillHandlers(installs, () => {
+        skills = ["seo-audit"];
+      }),
+      getGetExpertMockHandler(() => ({ ...maria, skills })),
     );
     render(<ExpertDetailPage />);
 
@@ -757,7 +785,32 @@ describe("ExpertDetailPage", () => {
     const list = await within(dialog).findByRole("list", {
       name: "Marketplace skills",
     });
-    expect(within(list).getByText("SEO Audit Pro")).toBeDefined();
+    expect(within(list).getByText("SEO audit")).toBeDefined();
+    await user.click(within(list).getByRole("button", { name: "Add" }));
+
+    // The expert's own id, not the caller's library: this is the whole
+    // difference from the old tab, which only recorded the listing's name.
+    await waitFor(() => expect(installs).toEqual(["seo-audit@expert-maria"]));
+    const attached = await screen.findByRole("list", { name: "Expert skills" });
+    expect(await within(attached).findByText("seo-audit")).toBeDefined();
+  });
+
+  test("hides the marketplace tab when the skills hub is off", async () => {
+    const user = userEvent.setup();
+    skillsHubFlag.enabled = false;
+    server.use(...hubSkillHandlers([]));
+    render(<ExpertDetailPage />);
+
+    await openTab("Skills");
+    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
+
+    expect(
+      within(dialog).queryByRole("tab", { name: "Marketplace" }),
+    ).toBeNull();
+    // The dialog must not promise a source it cannot show either.
+    expect(dialog.textContent).toContain("Pick one from your library.");
+    expect(dialog.textContent).not.toMatch(/marketplace/i);
   });
 
   test("removes a skill from the expert", async () => {

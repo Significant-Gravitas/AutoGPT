@@ -1,7 +1,7 @@
 "use client";
 
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
-import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -31,11 +31,12 @@ interface Props {
   isLoading: boolean;
   marketQuery: string;
   onMarketQueryChange: (query: string) => void;
-  marketplaceSkills: StoreAgent[];
+  marketplaceSkills: MarketplaceSkill[];
   isMarketplaceLoading: boolean;
+  hasMarketplace: boolean;
   isSaving: boolean;
   onAdd: (name: string) => void;
-  onAddMarketplace: (agent: StoreAgent) => void;
+  onAddMarketplace: (skill: MarketplaceSkill) => void;
   onClose: () => void;
 }
 
@@ -49,6 +50,7 @@ export function AddSkillDialog({
   onMarketQueryChange,
   marketplaceSkills,
   isMarketplaceLoading,
+  hasMarketplace,
   isSaving,
   onAdd,
   onAddMarketplace,
@@ -81,24 +83,27 @@ export function AddSkillDialog({
         <div className="flex flex-col gap-3">
           <Text variant="body" tone="muted">
             Skills are reusable instructions this expert follows for a specific
-            job. Pick one from your library or install one from the marketplace.
+            job. Pick one from your library
+            {hasMarketplace ? " or install one from the marketplace" : ""}.
           </Text>
-          <TabsLine
-            variant="compact"
-            value={source}
-            onValueChange={(next) => onSourceChange(next as Source)}
-          >
-            <TabsLineList>
-              <TabsLineTrigger value="library" icon={BookOpen01Icon}>
-                Library
-              </TabsLineTrigger>
-              <TabsLineTrigger value="marketplace" icon={Store01Icon}>
-                Marketplace
-              </TabsLineTrigger>
-            </TabsLineList>
-          </TabsLine>
+          {hasMarketplace ? (
+            <TabsLine
+              variant="compact"
+              value={source}
+              onValueChange={(next) => onSourceChange(next as Source)}
+            >
+              <TabsLineList>
+                <TabsLineTrigger value="library" icon={BookOpen01Icon}>
+                  Library
+                </TabsLineTrigger>
+                <TabsLineTrigger value="marketplace" icon={Store01Icon}>
+                  Marketplace
+                </TabsLineTrigger>
+              </TabsLineList>
+            </TabsLine>
+          ) : null}
 
-          {source === "library" ? (
+          {!hasMarketplace || source === "library" ? (
             <>
               <SearchInput
                 size="small"
@@ -167,14 +172,14 @@ export function AddSkillDialog({
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Marketplace skills"
                 >
-                  {marketplaceSkills.map((agent) => (
+                  {marketplaceSkills.map((skill) => (
                     <SkillOption
-                      key={`${agent.creator}/${agent.slug}`}
-                      name={agent.agent_name}
-                      description={agent.sub_heading || agent.description}
+                      key={skill.slug}
+                      name={skill.title}
+                      description={skill.description}
                       icon={Store01Icon}
                       disabled={isSaving}
-                      onAdd={() => onAddMarketplace(agent)}
+                      onAdd={() => onAddMarketplace(skill)}
                     />
                   ))}
                 </ul>
