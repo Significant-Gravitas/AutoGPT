@@ -23,6 +23,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
@@ -31,13 +32,14 @@ from backend.util.settings import Settings
 
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
-    COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
     get_session_lock_key,
+    start_legacy_cancel_queue_reaper,
 )
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
@@ -103,6 +105,7 @@ class CoPilotExecutor(AppProcess):
 
         self._task_locks: dict[str, ClusterLock] = {}
         self._active_tasks_lock_obj: threading.Lock | None = None
+        self._codex_runtime_pool_closed = False
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -148,11 +151,14 @@ class CoPilotExecutor(AppProcess):
            own ``finally`` publishes its terminal state via
            ``mark_session_completed``. When a turn exits, ``on_run_done``
            removes it from ``active_tasks`` and releases its cluster lock.
-        3. Shut down the thread-pool executor (cancels pending, leaves
+        3. Stop message consumer threads and disconnect their clients.
+        4. Close the process-local Codex runtime pool after turns and
+           consumers have stopped, checkpointing credentials before worker
+           teardown.
+        5. Shut down the thread-pool executor (cancels pending, leaves
            running threads alone — process exit handles them).
-        4. Release any cluster locks still held (defensive — on_run_done's
+        6. Release any cluster locks still held (defensive — on_run_done's
            finally should have already released them).
-        5. Stop message consumer threads + disconnect pika clients.
 
         The zombie-session bug this PR targets is handled inside each
         turn's own lifecycle by :func:`sync_fail_close_session`, NOT by
@@ -224,7 +230,10 @@ class CoPilotExecutor(AppProcess):
                 self._cancel_thread, self.cancel_client, f"{prefix} [cancel]"
             )
 
-        # 4. Worker cleanup + executor shutdown
+        # 4. Checkpoint and close shared Codex runtimes before worker teardown
+        self._close_codex_runtime_pool(prefix)
+
+        # 5. Worker cleanup + executor shutdown
         if self._executor:
             from .processor import cleanup_worker
 
@@ -241,7 +250,7 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"{prefix} Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # 5. Release any cluster locks still held
+        # 6. Release any cluster locks still held
         for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
@@ -250,6 +259,18 @@ class CoPilotExecutor(AppProcess):
                 logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
         logger.info(f"{prefix} Graceful shutdown completed")
+
+    def _close_codex_runtime_pool(self, prefix: str) -> None:
+        with self._active_tasks_lock:
+            if self._codex_runtime_pool_closed:
+                return
+            self._codex_runtime_pool_closed = True
+
+        try:
+            logger.info(f"{prefix} Closing Codex runtime pool...")
+            asyncio.run(get_codex_transport().close_runtime_pool())
+        except Exception as e:
+            logger.error(f"{prefix} Codex runtime pool cleanup error: {e}")
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -271,12 +292,16 @@ class CoPilotExecutor(AppProcess):
             return
 
         cancel_channel = self.cancel_client.get_channel()
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        cancel_queue_name = declare_pod_cancel_queue(cancel_channel, self.executor_id)
         cancel_channel.basic_consume(
-            queue=COPILOT_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info("Starting to consume cancel messages...")
+        logger.info(f"Starting to consume cancel messages on {cancel_queue_name}...")
+        start_legacy_cancel_queue_reaper(cancel_channel)
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_tasks:
             raise RuntimeError("Cancel message consumer stopped unexpectedly")
@@ -641,20 +666,31 @@ def _dispatch_engine_switch_continuation(
     history, so the user's next message still lands on the SDK engine with
     the guide in the prefix.
     """
+
+    async def dispatch() -> None:
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, switch.user_id)
+        if session is None:
+            raise RuntimeError("copilot_session_not_found")
+        await schedule_turn(
+            session_id=session_id,
+            user_id=switch.user_id,
+            turn_id=str(uuid.uuid4()),
+            message=engine_switch.CONTINUATION_MESSAGE,
+            is_user_message=False,
+            # No engine is named here: the processor pins a building-mode
+            # session to the SDK from its message history, which is what made
+            # this argument redundant even while it existed.
+            organization_id=switch.organization_id,
+            team_id=switch.team_id,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+        )
+
     for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
         try:
-            asyncio.run(
-                schedule_turn(
-                    session_id=session_id,
-                    user_id=switch.user_id,
-                    turn_id=str(uuid.uuid4()),
-                    message=engine_switch.CONTINUATION_MESSAGE,
-                    is_user_message=False,
-                    mode="extended_thinking",
-                    organization_id=switch.organization_id,
-                    team_id=switch.team_id,
-                )
-            )
+            asyncio.run(dispatch())
             logger.info(f"Dispatched engine-switch continuation for {session_id}")
             return
         except Exception as switch_err:

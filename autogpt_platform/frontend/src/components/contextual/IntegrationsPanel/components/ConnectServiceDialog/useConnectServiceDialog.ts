@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
@@ -14,9 +15,16 @@ import {
 interface Args {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onConnected?: (credential: CredentialsMetaResponse) => void;
+  initialProviderId?: string | null;
 }
 
-export function useConnectServiceDialog({ open, onOpenChange }: Args) {
+export function useConnectServiceDialog({
+  open,
+  onOpenChange,
+  onConnected,
+  initialProviderId,
+}: Args) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -30,12 +38,14 @@ export function useConnectServiceDialog({ open, onOpenChange }: Args) {
   });
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setSelectedId(initialProviderId ?? null);
+    } else {
       setQuery("");
       setSelectedId(null);
       setDirection(1);
     }
-  }, [open]);
+  }, [open, initialProviderId]);
 
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
   const providers = filterConnectableProviders(allProviders, debouncedQuery);
@@ -56,7 +66,10 @@ export function useConnectServiceDialog({ open, onOpenChange }: Args) {
     setSelectedId(null);
   }
 
-  function handleSuccess() {
+  // Report the credential this dialog created before closing, so callers act
+  // on the one they asked for rather than on whatever else appeared meanwhile.
+  function handleSuccess(credential?: CredentialsMetaResponse) {
+    if (credential) onConnected?.(credential);
     onOpenChange(false);
   }
 

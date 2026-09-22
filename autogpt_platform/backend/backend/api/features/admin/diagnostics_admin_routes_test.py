@@ -9,6 +9,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import AgentExecutionStatus
 
 import backend.api.features.admin.diagnostics_admin_routes as diagnostics_admin_routes
+from backend.api.features.experts import experts_db
 from backend.data.diagnostics import (
     AgentDiagnosticsSummary,
     ExecutionDiagnosticsSummary,
@@ -208,6 +209,82 @@ def test_requeue_single_execution_with_add_graph_execution(
     assert call_kwargs["graph_exec_id"] == "exec-stuck-123"  # Requeue mode!
     assert call_kwargs["graph_id"] == "graph-456"
     assert call_kwargs["user_id"] == "user-123"
+
+
+def test_requeue_single_expert_workspace_unavailable_returns_503(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    mock_exec_meta = GraphExecutionMeta(
+        id="exec-stuck-123",
+        user_id="user-123",
+        graph_id="graph-456",
+        graph_version=1,
+        inputs=None,
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=AgentExecutionStatus.QUEUED,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        stats=None,
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[mock_exec_meta],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1"),
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/requeue",
+        json={"execution_id": "exec-stuck-123"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "The expert workspace is still being set up. Try again shortly."
+    }
+
+
+def test_requeue_single_unavailable_expert_returns_generic_404(
+    mocker: pytest_mock.MockFixture,
+    admin_user_id: str,
+):
+    mock_exec_meta = GraphExecutionMeta(
+        id="exec-stuck-123",
+        user_id="user-123",
+        graph_id="graph-456",
+        graph_version=1,
+        inputs=None,
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=AgentExecutionStatus.QUEUED,
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        stats=None,
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
+        return_value=[mock_exec_meta],
+    )
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.add_graph_execution",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("shared-expert"),
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/requeue",
+        json={"execution_id": "exec-stuck-123"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
 
 
 def test_stop_single_execution_with_stop_graph_execution(

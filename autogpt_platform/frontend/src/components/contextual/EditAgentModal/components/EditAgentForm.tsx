@@ -50,6 +50,8 @@ export function EditAgentForm({
     form,
     images,
     categoryOptions,
+    categoriesUnavailable,
+    categoryPlaceholder,
     isSubmitting,
     handleFormSubmit,
     handleImagesChange,
@@ -208,7 +210,8 @@ export function EditAgentForm({
                       labelVariant="body"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      placeholder={categoryPlaceholder}
+                      disabled={categoriesUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}

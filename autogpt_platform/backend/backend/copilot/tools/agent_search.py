@@ -152,11 +152,11 @@ async def _search_library(
                 search_term=query or None,
                 page_size=50 if not query else 10,
                 # Hide trigger agents — they aren't reusable as sub-agents
-                # (parent-coupled, single-purpose). AutoPilot accesses
+                # (parent-coupled, single-purpose). Otto accesses
                 # them via list_agent_triggers instead.
                 is_hidden=False,
                 # Load nodes so has_external_trigger / trigger_setup_info are
-                # populated — lets AutoPilot recognise (and set up) webhook
+                # populated — lets Otto recognise (and set up) webhook
                 # triggers from the listing without re-reading the full graph.
                 include_nodes=True,
             )
@@ -186,7 +186,7 @@ async def _search_library(
                 ),
                 suggestions=[
                     "Browse the marketplace to find and add agents",
-                    "Use find_agent to search the marketplace",
+                    "Use tool:find_agent to search the marketplace",
                 ],
                 session_id=session_id,
             )
@@ -198,7 +198,7 @@ async def _search_library(
             ),
             suggestions=[
                 "Try different keywords",
-                "Use find_agent to search the marketplace",
+                "Use tool:find_agent to search the marketplace",
                 "Check your library at /library",
             ],
             session_id=session_id,
@@ -211,7 +211,7 @@ async def _search_library(
 
     message = (
         "Found agents in the user's library. You can provide a link to view "
-        "an agent at: /library/agents/{agent_id}. Use view_agent_output to get "
+        "an agent at: /library/agents/{agent_id}. Use tool:view_agent_output to get "
         "execution results, or run_agent to execute. Let the user know we can "
         "create a custom agent for them based on their needs."
     )
@@ -219,7 +219,7 @@ async def _search_library(
         message += (
             "\n\nSome agents have a webhook trigger (see their "
             "`trigger_info`). To set up or activate "
-            "such a trigger, call setup_agent_webhook_trigger and pass the "
+            "such a trigger, call tool:setup_agent_webhook_trigger and pass the "
             "config_schema fields as `trigger_config` — you don't need the full "
             "graph for this, and must NOT edit the trigger node's values in the "
             "graph (that changes the agent's global default for everyone)."
@@ -396,12 +396,12 @@ async def search_library_for_creation(
                 "find_library_agent with for_creation=true and a "
                 "goal_summary describing what they want. If the user has "
                 "since clarified they want a new agent regardless, "
-                "proceed with create_agent and pass "
+                "proceed with tool:create_agent and pass "
                 "library_check_ack=true."
             ),
             suggestions=[
                 "Retry with for_creation=true and goal_summary=<user's goal>",
-                "Proceed with create_agent + library_check_ack=true",
+                "Proceed with tool:create_agent + library_check_ack=true",
             ],
             session_id=session_id,
         )
@@ -420,10 +420,10 @@ async def search_library_for_creation(
         return NoResultsResponse(
             message=(
                 "Could not run the library similarity check (database "
-                "error). Proceeding to create_agent is safe; pass "
+                "error). Proceeding to tool:create_agent is safe; pass "
                 "library_check_ack=true to satisfy the gate."
             ),
-            suggestions=["Proceed with create_agent + library_check_ack=true"],
+            suggestions=["Proceed with tool:create_agent + library_check_ack=true"],
             session_id=session_id,
         )
     except Exception as e:
@@ -436,10 +436,10 @@ async def search_library_for_creation(
         return NoResultsResponse(
             message=(
                 "Could not run the library similarity check. Proceeding "
-                "to create_agent is safe; pass library_check_ack=true to "
+                "to tool:create_agent is safe; pass library_check_ack=true to "
                 "satisfy the gate."
             ),
-            suggestions=["Proceed with create_agent + library_check_ack=true"],
+            suggestions=["Proceed with tool:create_agent + library_check_ack=true"],
             session_id=session_id,
         )
 
@@ -450,12 +450,12 @@ async def search_library_for_creation(
         return NoResultsResponse(
             message=(
                 "No functionally similar agents found in the user's library. "
-                "You may proceed to create a new agent: call `create_agent` "
+                "You may proceed to create a new agent: call `tool:create_agent` "
                 "with `library_check_ack=true` to satisfy the similarity "
                 "gate."
             ),
             suggestions=[
-                "Proceed with create_agent (no similar library agent to reuse)",
+                "Proceed with tool:create_agent (no similar library agent to reuse)",
             ],
             session_id=session_id,
         )
@@ -469,12 +469,12 @@ async def search_library_for_creation(
         return NoResultsResponse(
             message=(
                 "No functionally similar agents found in the user's library. "
-                "You may proceed to create a new agent: call `create_agent` "
+                "You may proceed to create a new agent: call `tool:create_agent` "
                 "with `library_check_ack=true` to satisfy the similarity "
                 "gate."
             ),
             suggestions=[
-                "Proceed with create_agent (no similar library agent to reuse)",
+                "Proceed with tool:create_agent (no similar library agent to reuse)",
             ],
             session_id=session_id,
         )
@@ -494,7 +494,7 @@ async def search_library_for_creation(
             "[0, 1]; format as `[N% match]` for the user) and ask whether "
             "they want to reuse one of these instead of creating a new "
             "agent. Use run_agent to execute a chosen existing agent. ONLY "
-            "call `create_agent` with `library_check_ack=true` if the user "
+            "call `tool:create_agent` with `library_check_ack=true` if the user "
             "explicitly chooses to build a new one anyway."
         ),
         title=(
@@ -587,7 +587,7 @@ async def lookup_library_agent_by_id(
 
     message = (
         "Found the requested library agent. Link to it at "
-        "/library/agents/{agent_id}. Use view_agent_output for execution "
+        "/library/agents/{agent_id}. Use tool:view_agent_output for execution "
         "results, or run_agent to execute it."
     )
     if truncation_notice:

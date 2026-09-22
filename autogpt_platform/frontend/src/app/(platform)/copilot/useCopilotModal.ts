@@ -1,6 +1,11 @@
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 
-export const COPILOT_MODALS = ["integrations", "skills", "scheduled"] as const;
+export const COPILOT_MODALS = [
+  "integrations",
+  "connect",
+  "skills",
+  "scheduled",
+] as const;
 export type CopilotModalType = (typeof COPILOT_MODALS)[number];
 
 export function useCopilotModal() {

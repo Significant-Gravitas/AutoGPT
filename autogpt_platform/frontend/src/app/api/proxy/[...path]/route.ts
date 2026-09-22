@@ -7,7 +7,9 @@ import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  buildSafeWorkspaceDownloadHeaders,
   fetchWorkspaceDownloadWithRetry,
+  getResponseStartTimeoutMs,
   getWorkspaceDownloadErrorMessage,
   isWorkspaceDownloadRequest,
   watchResponseStart,
@@ -136,18 +138,11 @@ async function handleWorkspaceDownload(
   // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
   const buffer = await response.arrayBuffer();
 
-  const contentType =
-    response.headers.get("Content-Type") || "application/octet-stream";
-  const contentDisposition = response.headers.get("Content-Disposition");
-
-  const responseHeaders: Record<string, string> = {
-    "Content-Type": contentType,
-    "Content-Length": String(buffer.byteLength),
-  };
-
-  if (contentDisposition) {
-    responseHeaders["Content-Disposition"] = contentDisposition;
-  }
+  const responseHeaders = buildSafeWorkspaceDownloadHeaders(
+    response.headers.get("Content-Type"),
+    response.headers.get("Content-Disposition"),
+    buffer.byteLength,
+  );
 
   return new NextResponse(buffer, {
     status: 200,
@@ -218,7 +213,10 @@ async function handler(
     // much tighter response-start watch arms only once the request body has
     // been fully uploaded — a multi-minute upload is legitimate, a backend
     // that stays silent after receiving everything is stalled.
-    const responseStart = watchResponseStart(hasBody ? req.body : null);
+    const responseStart = watchResponseStart(
+      hasBody ? req.body : null,
+      getResponseStartTimeoutMs(path, method),
+    );
 
     let backendResponse: Response;
     try {

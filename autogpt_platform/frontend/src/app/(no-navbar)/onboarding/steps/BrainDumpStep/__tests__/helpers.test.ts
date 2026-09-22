@@ -2,23 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encouragementAt,
   formatElapsed,
-  headline,
+  isInsufficientDump,
   isPermissionDenied,
   pickMimeType,
   recordingFeedbackAt,
-  RING_TARGET_SECONDS,
-  ringProgress,
 } from "../helpers";
-
-describe("headline", () => {
-  it("greets by name and trims the stored value", () => {
-    expect(headline("  Ada  ")).toBe("What keeps stealing your week, Ada?");
-  });
-
-  it("drops the name when the wizard never collected one", () => {
-    expect(headline("   ")).toBe("What keeps stealing your week?");
-  });
-});
 
 describe("encouragementAt", () => {
   it("shows nothing before the first line is due", () => {
@@ -79,17 +67,6 @@ describe("formatElapsed", () => {
   });
 });
 
-describe("ringProgress", () => {
-  // A depth meter, not a limit: the ring holds at full and recording
-  // carries on past it.
-  it("fills toward the target and then holds", () => {
-    expect(ringProgress(0)).toBe(0);
-    expect(ringProgress(RING_TARGET_SECONDS / 2)).toBeCloseTo(0.5, 5);
-    expect(ringProgress(RING_TARGET_SECONDS)).toBe(1);
-    expect(ringProgress(RING_TARGET_SECONDS * 10)).toBe(1);
-  });
-});
-
 describe("pickMimeType", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -128,5 +105,21 @@ describe("isPermissionDenied", () => {
     );
     expect(isPermissionDenied(new Error("NotAllowedError"))).toBe(false);
     expect(isPermissionDenied(null)).toBe(false);
+  });
+});
+
+describe("isInsufficientDump", () => {
+  it("recognises the quality gate's two rejection codes", () => {
+    expect(isInsufficientDump("no_usable_speech")).toBe(true);
+    expect(isInsufficientDump("insufficient_content")).toBe(true);
+  });
+
+  // Every other failure keeps the existing failure screen — including
+  // the HTTP status number a non-200 response reports as its code.
+  it("does not absorb ordinary failures", () => {
+    expect(isInsufficientDump("transcription_failed")).toBe(false);
+    expect(isInsufficientDump(undefined)).toBe(false);
+    expect(isInsufficientDump(null)).toBe(false);
+    expect(isInsufficientDump(500)).toBe(false);
   });
 });

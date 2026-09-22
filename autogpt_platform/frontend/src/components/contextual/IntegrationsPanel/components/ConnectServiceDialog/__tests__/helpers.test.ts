@@ -18,6 +18,40 @@ function makeMeta(overrides: Partial<ProviderMetadata> = {}): ProviderMetadata {
 }
 
 describe("toConnectableProviders", () => {
+  test("keeps official MCP presets separate from native auth providers", () => {
+    const mcpServer = {
+      server_url: "https://mcp.notion.com/mcp",
+      documentation_url: "https://developers.notion.com/docs/mcp",
+      setup_instructions: "Sign in to your Notion workspace.",
+      connection_mode: "hosted" as const,
+      auth_methods: ["oauth" as const],
+      icon_id: "notion",
+    };
+    const preset = {
+      name: "mcp_notion",
+      display_name: "Notion",
+      description: "Search and edit workspace content",
+      supported_auth_types: [],
+      mcp_server: mcpServer,
+    };
+    const result = toConnectableProviders([
+      makeMeta({ name: "notion" }),
+      preset,
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(
+      result.find((provider) => provider.id === "mcp_notion"),
+    ).toMatchObject({
+      name: "Notion",
+      mcpServer,
+      supportedAuthTypes: [],
+    });
+    expect(
+      result.find((provider) => provider.id === "notion")?.supportedAuthTypes,
+    ).toEqual(["oauth2", "api_key"]);
+  });
+
   test("formats provider name and preserves description and supported types", () => {
     const result = toConnectableProviders([
       makeMeta({ name: "github", description: "Issues and PRs" }),
@@ -55,6 +89,31 @@ describe("toConnectableProviders", () => {
     const openai = result.find((p) => p.id === "openai");
     expect(github?.supportedAuthTypes).toEqual(["oauth2"]);
     expect(openai?.supportedAuthTypes).toEqual([]);
+  });
+
+  test("merges ChatGPT sign-in into OpenAI while preserving backend auth targets", () => {
+    const result = toConnectableProviders([
+      makeMeta({
+        name: "codex",
+        description: "Use your ChatGPT plan",
+        supported_auth_types: ["oauth2"],
+      }),
+      makeMeta({
+        name: "openai",
+        description: "GPT models and embeddings",
+        supported_auth_types: ["api_key"],
+      }),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "openai",
+      name: "OpenAI",
+      description: "OpenAI models via API key or your ChatGPT subscription",
+      supportedAuthTypes: ["oauth2", "api_key"],
+      authProviderByType: { oauth2: "codex" },
+      searchTerms: ["codex"],
+    });
   });
 });
 
@@ -107,5 +166,15 @@ describe("filterConnectableProviders", () => {
 
   test("returns an empty list when nothing matches", () => {
     expect(filterConnectableProviders(providers, "nope")).toEqual([]);
+  });
+
+  test("matches presentation aliases", () => {
+    const openai = toConnectableProviders([
+      makeMeta({ name: "codex", supported_auth_types: ["oauth2"] }),
+      makeMeta({ name: "openai", supported_auth_types: ["api_key"] }),
+    ]);
+
+    expect(filterConnectableProviders(openai, "chatgpt")).toEqual(openai);
+    expect(filterConnectableProviders(openai, "codex")).toEqual(openai);
   });
 });

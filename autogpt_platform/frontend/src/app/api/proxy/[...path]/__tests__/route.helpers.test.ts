@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  buildSafeWorkspaceDownloadHeaders,
+  getSafeDownloadContentDisposition,
   isWorkspaceDownloadRequest,
   isRedirectStatus,
   isTransientWorkspaceDownloadStatus,
@@ -8,6 +10,8 @@ import {
   fetchWorkspaceDownloadWithRetry,
   watchResponseStart,
   RESPONSE_START_TIMEOUT_MS,
+  CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+  getResponseStartTimeoutMs,
 } from "../route.helpers";
 
 describe("isWorkspaceDownloadRequest", () => {
@@ -738,6 +742,54 @@ describe("isWorkspaceDownloadRequest", () => {
   });
 });
 
+describe("getSafeDownloadContentDisposition", () => {
+  it("forces an inline response to download while preserving its filename", () => {
+    expect(
+      getSafeDownloadContentDisposition('inline; filename="payload.html"'),
+    ).toBe('attachment; filename="payload.html"');
+  });
+
+  it("keeps attachment filename parameters", () => {
+    expect(
+      getSafeDownloadContentDisposition(
+        "attachment; filename*=UTF-8''image.png",
+      ),
+    ).toBe("attachment; filename*=UTF-8''image.png");
+  });
+
+  it("supplies attachment when the upstream omits a disposition", () => {
+    expect(getSafeDownloadContentDisposition(null)).toBe("attachment");
+  });
+});
+
+describe("buildSafeWorkspaceDownloadHeaders", () => {
+  it("hardens an upstream inline active-content response", () => {
+    expect(
+      buildSafeWorkspaceDownloadHeaders(
+        "text/html; charset=utf-8",
+        'inline; filename="payload.html"',
+        42,
+      ),
+    ).toEqual({
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": "42",
+      "Content-Disposition": 'attachment; filename="payload.html"',
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+
+  it("hardens a redirected storage response with missing metadata", () => {
+    expect(buildSafeWorkspaceDownloadHeaders(null, null, 7)).toEqual({
+      "Content-Type": "application/octet-stream",
+      "Content-Length": "7",
+      "Content-Disposition": "attachment",
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+  });
+});
+
 describe("isRedirectStatus", () => {
   it.each([301, 302, 303, 307, 308])("returns true for %d", (status) => {
     expect(isRedirectStatus(status)).toBe(true);
@@ -978,6 +1030,53 @@ describe("watchResponseStart", () => {
     expect((watch.signal.reason as DOMException).name).toBe("TimeoutError");
   });
 
+  it("uses the extended cold-start budget for Codex device login", () => {
+    const timeout = getResponseStartTimeoutMs(
+      ["api", "integrations", "codex", "login"],
+      "GET",
+    );
+    const watch = watchResponseStart(null, timeout);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(
+      CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+    );
+    expect(watch.signal.aborted).toBe(true);
+  });
+
+  it("keeps the standard budget for other methods and routes", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "login"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "github", "login"],
+        "GET",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
+  it("extends cold App Server account, rate-limit, and logout operations", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "integrations", "codex", "credentials", "cred-1"],
+        "DELETE",
+      ),
+    ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    for (const operation of ["account", "rate-limits"]) {
+      expect(
+        getResponseStartTimeoutMs(
+          ["api", "integrations", "codex", "credentials", "cred-1", operation],
+          "GET",
+        ),
+      ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
+    }
+  });
   it("does not abort once cleared (backend started responding)", () => {
     const watch = watchResponseStart(null);
 

@@ -109,7 +109,7 @@ class TestFastToSdkModeSwitch:
         )
 
         async def _mock_compress(msgs, target_tokens=None):
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress
@@ -117,7 +117,7 @@ class TestFastToSdkModeSwitch:
 
         # transcript_msg_count=4: baseline uploaded a transcript covering all
         # 4 prior messages, but use_resume=False (no CLI session from baseline).
-        result, compacted = await _build_query_message(
+        result, stats = await _build_query_message(
             "sdk-q1",
             session,
             use_resume=False,
@@ -132,7 +132,7 @@ class TestFastToSdkModeSwitch:
         assert "baseline-q2" in result
         assert "baseline-a2" in result
         assert "Now, the user says:\nsdk-q1" in result
-        assert compacted is False
+        assert stats is None
 
     @pytest.mark.asyncio
     async def test_scenario_r_single_baseline_turn_injected(self, monkeypatch):
@@ -146,7 +146,7 @@ class TestFastToSdkModeSwitch:
         )
 
         async def _mock_compress(msgs, target_tokens=None):
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress
@@ -187,7 +187,7 @@ class TestFastToSdkModeSwitch:
         )
 
         # transcript_msg_count=6 covers all prior messages → no gap.
-        result, compacted = await _build_query_message(
+        result, stats = await _build_query_message(
             "sdk-q2",
             session,
             use_resume=True,  # T2: --resume works after T1 set session_id
@@ -197,7 +197,7 @@ class TestFastToSdkModeSwitch:
 
         # --resume has full context — bare message only.
         assert result == "sdk-q2"
-        assert compacted is False
+        assert stats is None
 
     @pytest.mark.asyncio
     async def test_mode_switch_t1_compresses_all_baseline_turns(self, monkeypatch):
@@ -219,7 +219,7 @@ class TestFastToSdkModeSwitch:
 
         async def _mock_compress(msgs, target_tokens=None):
             compressed_batches.append(list(msgs))
-            return msgs, False
+            return msgs, False, None
 
         monkeypatch.setattr(
             "backend.copilot.sdk.service._compress_messages", _mock_compress

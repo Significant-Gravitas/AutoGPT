@@ -120,7 +120,6 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
         "api/features/store/content_handlers.py",
         "api/features/store/hybrid_search.py",
         "blocks/codex.py",
-        "blocks/mcp/client.py",
         "copilot/baseline/service.py",
         "copilot/bot/adapters/base.py",
         "copilot/bot/bot_backend.py",

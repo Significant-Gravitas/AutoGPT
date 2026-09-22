@@ -22,6 +22,11 @@ import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { FieldError } from "./FieldError";
 import { BlockUIType } from "@/app/(platform)/build/components/types";
+import {
+  FieldAccessibilityProvider,
+  getFieldDomId,
+  useFieldAccessibilityContext,
+} from "../../field-accessibility";
 
 export default function FieldTemplate(props: FieldTemplateProps) {
   const {
@@ -45,6 +50,7 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     readonly,
   } = props;
   const { nodeId, uiType } = registry.formContext;
+  const parentAccessibility = useFieldAccessibilityContext(id);
 
   const { isInputConnected } = useEdgeStore();
   const showAdvanced = useNodeStore(
@@ -101,45 +107,75 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   }
 
   const marginBottom = isPartOfAnyOf({ uiOptions }) || isUnionSchema ? 0 : 16;
+  const domId = getFieldDomId(id, registry.formContext);
+  const accessibleDescriptionId =
+    parentAccessibility?.descriptionId ??
+    (rawDescription ? `${domId}-description` : undefined);
+  const errorId = parentAccessibility?.errorId ?? `${domId}-error`;
 
   return (
-    <WrapIfAdditionalTemplate
-      classNames={classNames}
-      style={style}
-      disabled={disabled}
-      id={id}
-      label={label}
-      displayLabel={displayLabel}
-      onKeyRename={onKeyRename}
-      onKeyRenameBlur={onKeyRenameBlur}
-      onRemoveProperty={onRemoveProperty}
-      rawDescription={rawDescription}
-      readonly={readonly}
-      required={required}
-      schema={schema}
-      uiSchema={updatedUiSchema}
-      registry={registry}
+    <FieldAccessibilityProvider
+      value={{
+        fieldId: id,
+        labelId:
+          (shouldShowTitleSection && shouldDisplayLabel) || isUnionSchema
+            ? getFieldDomId(titleId(id), registry.formContext)
+            : parentAccessibility?.labelId,
+        descriptionId: accessibleDescriptionId,
+        errorId,
+      }}
     >
-      <div className="flex flex-col gap-2" style={{ marginBottom }}>
-        {shouldShowTitleSection && (
-          <div className="flex items-center gap-2">
-            {shouldDisplayLabel && (
-              <TitleFieldTemplate
-                id={titleId(id)}
-                title={label}
-                required={required}
-                schema={schema}
-                uiSchema={updatedUiSchema}
-                registry={registry}
-              />
-            )}
-            {shouldDisplayLabel && rawDescription && <span>{description}</span>}
-          </div>
-        )}
-        {shouldShowChildren && children}
+      <WrapIfAdditionalTemplate
+        classNames={classNames}
+        style={style}
+        disabled={disabled}
+        id={id}
+        label={label}
+        displayLabel={displayLabel}
+        onKeyRename={onKeyRename}
+        onKeyRenameBlur={onKeyRenameBlur}
+        onRemoveProperty={onRemoveProperty}
+        rawDescription={rawDescription}
+        readonly={readonly}
+        required={required}
+        schema={schema}
+        uiSchema={updatedUiSchema}
+        registry={registry}
+      >
+        <div className="flex flex-col gap-2" style={{ marginBottom }}>
+          {shouldShowTitleSection && (
+            <div className="flex items-center gap-2">
+              {shouldDisplayLabel && (
+                <TitleFieldTemplate
+                  id={titleId(id)}
+                  title={label}
+                  required={required}
+                  schema={schema}
+                  uiSchema={updatedUiSchema}
+                  registry={registry}
+                />
+              )}
+              {shouldDisplayLabel && rawDescription && (
+                <span>{description}</span>
+              )}
+            </div>
+          )}
+          {shouldShowChildren && children}
 
-        <FieldError nodeId={nodeId} fieldId={cleanUpHandleId(id)} />
-      </div>
-    </WrapIfAdditionalTemplate>
+          {rawDescription && !parentAccessibility?.descriptionId && (
+            <span id={accessibleDescriptionId} className="sr-only">
+              {rawDescription}
+            </span>
+          )}
+          {!parentAccessibility && (
+            <FieldError
+              nodeId={nodeId}
+              fieldId={cleanUpHandleId(id)}
+              id={errorId}
+            />
+          )}
+        </div>
+      </WrapIfAdditionalTemplate>
+    </FieldAccessibilityProvider>
   );
 }

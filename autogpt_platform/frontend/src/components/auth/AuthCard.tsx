@@ -40,9 +40,14 @@ interface Props {
   className?: string;
 }
 
-export function AuthCard({ children, title }: Props) {
+export function AuthCard({ children, title, className }: Props) {
   return (
-    <Card className="mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8">
+    <Card
+      className={cn(
+        "mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8",
+        className,
+      )}
+    >
       <Text variant="h3" as="h2" className="mb-3">
         {title}
       </Text>

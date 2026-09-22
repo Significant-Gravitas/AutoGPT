@@ -19,14 +19,26 @@ function render(ui: ReactElement) {
 // It has no readOnly/isStreaming props — those scenarios are handled by hiding
 // the button entirely at the ChatInput level when hasSession is true.
 describe("DryRunToggleButton", () => {
-  it("shows enabled label when isDryRun is true", () => {
+  // The button is icon-only in the composer row, so its state has to reach
+  // assistive tech through the label and show on the glyph itself — a tooltip
+  // never opens on touch.
+  it("names the active state for assistive tech when isDryRun is true", () => {
     render(<DryRunToggleButton isDryRun={true} onToggle={vi.fn()} />);
-    expect(screen.getByText("Test mode enabled")).toBeTruthy();
+    expect(screen.getByLabelText("Test mode active")).toBeTruthy();
   });
 
-  it("shows enable label when isDryRun is false", () => {
+  it("names the idle state for assistive tech when isDryRun is false", () => {
     render(<DryRunToggleButton isDryRun={false} onToggle={vi.fn()} />);
-    expect(screen.getByText("Enable test mode")).toBeTruthy();
+    expect(screen.getByLabelText("Enable Test mode")).toBeTruthy();
+  });
+
+  it("tints the glyph so the active state is visible without a tooltip", () => {
+    render(<DryRunToggleButton isDryRun={true} onToggle={vi.fn()} />);
+    const active = screen.getByRole("button").className;
+    cleanup();
+
+    render(<DryRunToggleButton isDryRun={false} onToggle={vi.fn()} />);
+    expect(screen.getByRole("button").className).not.toBe(active);
   });
 
   it("calls onToggle when clicked", () => {

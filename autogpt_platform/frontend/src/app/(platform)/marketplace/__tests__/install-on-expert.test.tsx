@@ -43,6 +43,12 @@ const hiredMaria: Expert = {
   skills: [],
   tagline: "Grows your brand while you sleep",
   identity: "You are Maria, a senior marketing strategist.",
+  voice_preferences: "Warm, concise, and direct.",
+  boundaries: "Never invent customer evidence.",
+  protected_soul_rules: [
+    "The expert discloses that it is AI when acting externally.",
+    "The expert asks for approval before acting externally.",
+  ],
   is_template: false,
   source_template_id: "template-maria",
   is_archived: false,
@@ -84,8 +90,12 @@ function renderAgentPage() {
   );
 }
 
+const datafast = vi.fn();
+
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
+    datafast.mockReset();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -125,6 +135,9 @@ describe("Install on Expert from marketplace detail", () => {
     expect(await screen.findByText("Installed on Maria")).toBeDefined();
     expect(installExpertId).toBe("expert-maria");
     expect(installBody).toEqual({ store_listing_version_id: "listing-1" });
+    expect(datafast).toHaveBeenCalledWith("workflow_installed_on_expert", {
+      expert_id: "expert-maria",
+    });
   });
 
   test("toasts success when the workflow is already installed", async () => {

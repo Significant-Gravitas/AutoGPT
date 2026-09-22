@@ -40,7 +40,6 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
   },
@@ -55,7 +54,7 @@ afterEach(() => {
   resetCopilotChatRegistry();
 });
 
-describe("AutoPilot streaming — submit / stop lifecycle", () => {
+describe("Otto streaming — submit / stop lifecycle", () => {
   it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {
     server.use(
       copilotStreamHandler({
@@ -121,7 +120,7 @@ describe("AutoPilot streaming — submit / stop lifecycle", () => {
   });
 });
 
-describe("AutoPilot streaming — resume on mount", () => {
+describe("Otto streaming — resume on mount", () => {
   it("issues a GET resume and renders streamed content when the session has an active_stream", async () => {
     server.use(
       copilotResumeHandler({

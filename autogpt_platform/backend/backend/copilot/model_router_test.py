@@ -631,7 +631,7 @@ class TestRegistryGating:
         assert resolved == ("anthropic/claude-sonnet-4.6", "catalog")
 
     def test_catalog_cell_values_normalize_on_every_transport(self, mocker):
-        """The REAL catalog routing cells must be transport-ready: OpenRouter
+        """Non-Codex catalog routing cells must be transport-ready: OpenRouter
         sends them verbatim (so they must be genuine OR slugs — the dot
         forms), and the direct-Anthropic family strips the vendor prefix and
         dedots without raising."""
@@ -647,7 +647,8 @@ class TestRegistryGating:
         # before anyone claims a cell.
         cells = [
             slug
-            for modes in get_catalog().routing.values()
+            for surface, modes in get_catalog().routing.items()
+            if surface != "copilot_codex"
             for tiers in modes.values()
             for slug in tiers.values()
         ] + [

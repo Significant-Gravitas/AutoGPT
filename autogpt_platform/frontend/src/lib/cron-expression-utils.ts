@@ -219,6 +219,14 @@ export function humanizeCronExpression(cronExpression: string): string {
   return `Cron Expression: ${cronExpression}`;
 }
 
+export function safeHumanizeCronExpression(cronExpression: string): string {
+  try {
+    return humanizeCronExpression(cronExpression);
+  } catch {
+    return "Scheduled";
+  }
+}
+
 function formatTime(hour: string, minute: string): string {
   // Cron expressions are now stored in the schedule's timezone (not UTC)
   // So we just format the time as-is without conversion
