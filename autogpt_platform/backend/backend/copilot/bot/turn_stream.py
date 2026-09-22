@@ -635,6 +635,10 @@ def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:
     options = _question_options(question)
     if not adapter.supports_choice_buttons or not text or not options:
         return False
+    # A native button consumes the question on the first click, so a
+    # multi-select one goes as numbered text the user can answer "1, 3" to.
+    if question.get("allow_multiple"):
+        return False
     if len(options) > adapter.max_choice_options:
         return False
     # A clipped label is worse than no button: two options sharing a prefix
@@ -753,6 +757,8 @@ def _clarification_message(clarification_output: dict[str, Any]) -> str:
         if options:
             numbered = "\n".join(f"{i}. {o}" for i, o in enumerate(options, 1))
             block = f"{block}\n{numbered}"
+            if question.get("allow_multiple"):
+                block = f"{block}\n(Pick one or more.)"
         blocks.append(block)
 
     if not blocks:

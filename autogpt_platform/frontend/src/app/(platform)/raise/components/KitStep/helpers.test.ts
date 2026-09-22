@@ -27,9 +27,10 @@ const storeAgent = {
 
 const marketplaceSkill: MarketplaceSkill = {
   slug: "seo-playbook",
-  // Deliberately unlike the slug: a listing's version name is its SKILL.md
-  // frontmatter name, and only the slug addresses the listing.
-  name: "SEO Playbook",
+  name: "seo-playbook",
+  // An acronym only survives because the API sends the author's own title;
+  // deriving one from the slug would read "Seo playbook".
+  title: "SEO Playbook",
   description: "An SEO playbook",
   categories: ["content"],
   required_providers: [],

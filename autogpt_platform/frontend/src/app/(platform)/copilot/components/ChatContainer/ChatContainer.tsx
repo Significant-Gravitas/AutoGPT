@@ -12,6 +12,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -82,6 +83,9 @@ export interface ChatContainerProps {
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
   isUploadingFiles?: boolean;
+  /** The message whose attachments are still uploading, shown as a
+   *  placeholder bubble until the real one lands in `messages`. */
+  pendingSend?: PendingUploadSend | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -131,6 +135,7 @@ export const ChatContainer = ({
   onEnqueue,
   queuedMessages,
   isUploadingFiles,
+  pendingSend,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -309,6 +314,7 @@ export const ChatContainer = ({
                   onRetry={handleRetry}
                   turnStats={turnStats}
                   queuedMessages={queuedMessages}
+                  pendingSend={pendingSend}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
@@ -396,6 +402,9 @@ export const ChatContainer = ({
                                 <VoiceModeBar
                                   state={voice.state}
                                   statusLabel={voice.statusLabel}
+                                  failure={voice.failure}
+                                  onRetry={voice.retryFailedUtterance}
+                                  onDownload={voice.downloadFailedUtterance}
                                   leaveButton={
                                     <VoiceModeButton
                                       isActive

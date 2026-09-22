@@ -9,9 +9,15 @@ from typing import Optional
 from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
 from backend.util.retry import stop_retry_loops
+from backend.util.secrets_guard import check_secrets
 from backend.util.settings import set_service_name
 
 logger = logging.getLogger(__name__)
+
+# How long ``AppProcess.stop`` waits for a child to act on a signal before
+# escalating. Long enough for an orderly shutdown, short enough that a wedged
+# child cannot hold the parent open indefinitely.
+STOP_TIMEOUT_SECONDS = 30
 
 
 class AppProcess(ABC):
@@ -122,6 +128,11 @@ class AppProcess(ABC):
         Returns:
             the process id or 0 if the process is not running in the background.
         """
+        # Startup guard: no service comes up on a missing or publicly-known
+        # secret. Deliberately here rather than at import time so tooling and
+        # tests that merely import backend modules are unaffected.
+        check_secrets()
+
         if not background:
             self.execute_run_command(silent)
             return 0
@@ -140,12 +151,26 @@ class AppProcess(ABC):
     def stop(self):
         """
         Stop the background process.
+
+        Both joins are bounded. An unbounded ``join()`` here wedges whoever is
+        shutting the service down when the child does not act on the SIGTERM —
+        in a test session that is the session fixture's teardown, so the run
+        finishes every test and then never prints its summary line.
         """
         if not self.process:
             return
 
+        pid = self.process.pid
         self.process.terminate()
-        self.process.join()
+        self.process.join(timeout=STOP_TIMEOUT_SECONDS)
 
-        logger.info(f"[{self.service_name}] with PID {self.process.pid} stopped")
+        if self.process.is_alive():
+            logger.warning(
+                f"[{self.service_name}] with PID {pid} ignored SIGTERM "
+                f"for {STOP_TIMEOUT_SECONDS}s; killing it"
+            )
+            self.process.kill()
+            self.process.join(timeout=STOP_TIMEOUT_SECONDS)
+
+        logger.info(f"[{self.service_name}] with PID {pid} stopped")
         self.process = None

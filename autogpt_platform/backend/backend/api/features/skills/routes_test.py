@@ -384,6 +384,8 @@ def test_expert_skill_routes_refuse_an_expert_the_caller_does_not_own(
         ("upload", "store_user_skill"),
         ("read", "read_user_skill_with_body"),
         ("delete", "delete_user_skill"),
+        ("upload_package", "store_user_skill"),
+        ("download_package", "read_user_skill_package"),
     ],
 )
 def test_expert_skill_routes_forward_an_owned_expert(

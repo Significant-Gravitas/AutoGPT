@@ -1,13 +1,9 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   BubbleChatIcon,
@@ -18,19 +14,14 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
-import { cn } from "@/lib/utils";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
-import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
-  getExpertBlurb,
   getExpertCover,
   getExpertRosterStatus,
   getWeeklySpend,
@@ -55,16 +46,9 @@ export function ExpertTeamCard({
   onEditSoul,
   onChat,
 }: Props) {
-  const blurb = getExpertBlurb(expert);
-  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
-  const avatarConfig = expertNotionConfig({
-    name: expert.name,
-    avatarUrl: expert.avatar_url,
-    color: expert.color,
-  });
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
@@ -109,28 +93,13 @@ export function ExpertTeamCard({
 
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">
-            {avatarConfig ? (
-              <span className="flex size-[5.5rem] items-center justify-center overflow-hidden rounded-full border border-stone-500 bg-white ring-4 ring-white">
-                <NotionAvatarImage
-                  config={avatarConfig}
-                  size={88}
-                  title={expert.name}
-                />
-              </span>
-            ) : (
-              <Avatar className="size-[5.5rem] rounded-full border border-stone-500 ring-4 ring-white">
-                <AvatarImage
-                  src={expert.avatar_url ?? undefined}
-                  alt={expert.name}
-                  width={88}
-                  height={88}
-                  className="bg-white"
-                />
-                <AvatarFallback className="grain-overlay">
-                  {expert.name}
-                </AvatarFallback>
-              </Avatar>
-            )}
+            <ExpertAvatar
+              name={expert.name}
+              avatarUrl={expert.avatar_url}
+              color={expert.color}
+              size={88}
+              className="ring-4 ring-background"
+            />
           </span>
 
           <div className="mt-2 flex min-w-0 flex-1 flex-col gap-1">
@@ -158,41 +127,18 @@ export function ExpertTeamCard({
         </div>
 
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
-          <div className="flex w-full items-center gap-2">
-            {/* `truncate` clips at the padding box, so descenders in a name like
-                "Fiona Gray" need a little room below the line box; the negative
-                margin hands that room back so the logos centre on the text. */}
-            <Text
-              variant="lead-medium"
-              tone="primary"
-              className="-mb-1 min-w-0 truncate pb-1"
-            >
-              {expert.name}
-            </Text>
-            <IntegrationIcons
-              expertName={expert.name}
-              providers={expert.credential_providers ?? []}
-            />
-          </div>
-          {/* Same pill as the expert page header and the marketplace card. */}
-          <Text
-            variant="small-medium"
-            as="span"
-            className={cn(
-              "inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
-              accent.pill,
-            )}
-          >
-            <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
-            <span className="truncate">{getExpertRoleLabel(expert.role)}</span>
-          </Text>
-          <Text
-            variant="body"
-            tone="muted"
-            className="mt-1 line-clamp-2 min-h-[2lh]"
-          >
-            {blurb}
-          </Text>
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+            nameAccessory={
+              <IntegrationIcons
+                expertName={expert.name}
+                providers={expert.credential_providers ?? []}
+              />
+            }
+          />
+          <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
         <div className="mt-3 flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 pl-5">

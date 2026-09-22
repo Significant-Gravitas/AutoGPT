@@ -188,6 +188,30 @@ describe("HireStep — hiring", () => {
     });
   });
 
+  it("sends the funnel start and the DataFast hire goal", async () => {
+    // The backend emits this hire's hire_completed, so without the start the
+    // funnel's completion rate is unreadable for onboarding hires.
+    const datafast = vi.fn();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
+    mockTeam(TEAM);
+    render(<HireStep />);
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Hire" }))[0],
+    );
+
+    await waitFor(() =>
+      expect(capture).toHaveBeenCalledWith("hire_started", {
+        template_id: "tpl-maria",
+      }),
+    );
+    await waitFor(() =>
+      expect(datafast).toHaveBeenCalledWith("hire_completed", {
+        template_id: "tpl-maria",
+      }),
+    );
+  });
+
   it("shows templates hired on an earlier visit as hired", async () => {
     mockTeam(TEAM);
     useOnboardingWizardStore.getState().markHired("tpl-max");

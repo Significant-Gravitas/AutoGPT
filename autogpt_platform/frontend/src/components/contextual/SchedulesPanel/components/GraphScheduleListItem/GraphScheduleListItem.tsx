@@ -39,7 +39,7 @@ export function GraphScheduleListItem({
 }: Props) {
   const {
     nextRunLabel,
-    nextRunRelative,
+    nextRunValue,
     nextRunTitle,
     recurrenceLabel,
     agentLabel,
@@ -164,7 +164,7 @@ export function GraphScheduleListItem({
             <dl className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-50/60">
               <ScheduleMetaRow
                 label="Next run"
-                value={nextRunRelative ?? "Pending"}
+                value={nextRunValue}
                 title={nextRunTitle}
               />
               <ScheduleMetaRow label="Repeats" value={recurrenceLabel} />

@@ -34,6 +34,7 @@ export function RaiseFlow() {
     items,
     name,
     role,
+    jobTitle,
     color,
     avatarUrl,
     about,
@@ -139,6 +140,7 @@ export function RaiseFlow() {
             <SoulPreviewPanel
               name={name}
               role={role}
+              jobTitle={jobTitle}
               avatarUrl={avatarUrl || null}
               color={color}
               about={about}

@@ -6,6 +6,13 @@ import { DREAM_OPERATIONS_PART_TYPE } from "./dreamOperations";
 /** Transient copy for the Thinking indicator — never rendered inline. */
 export const STATUS_PART_TYPE = "data-status";
 export const TOOL_DISPLAY_PART_TYPE = "data-tool-display";
+/**
+ * Emitted when the pending-message buffer is drained into a running turn.
+ * Carries the drained text when the backend ships it; `midTurnSplit` reads
+ * that to draw the follow-up bubble at the drain point. The part itself
+ * never renders.
+ */
+export const PENDING_DRAINED_PART_TYPE = "data-pending-drained";
 /** Legacy resume metadata. */
 const CURSOR_PART_TYPE = "data-cursor";
 
@@ -25,6 +32,7 @@ const BOOKKEEPING_PART_TYPES: ReadonlySet<string> = new Set([
   DREAM_OPERATIONS_PART_TYPE,
   COMPACTION_DATA_PART_TYPE,
   TOOL_DISPLAY_PART_TYPE,
+  PENDING_DRAINED_PART_TYPE,
 ]);
 
 export function isBookkeepingPart(part: { type: string }): boolean {
