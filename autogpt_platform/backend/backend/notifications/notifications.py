@@ -99,9 +99,11 @@ CONSUMER_CONCURRENCY = 10
 # by default), and every other in-flight ack on that channel then fails too;
 # a bounded wait turns one hung call into one retried message instead.
 MESSAGE_PROCESSING_TIMEOUT_SECONDS = 300
-# On shutdown, how long in-flight handlers get to settle before they are
-# cancelled. A handler cancelled between its send and its ack leaves an email
-# delivered and the message unacked, which the broker then redelivers.
+# How long in-flight handlers get to settle before they are cancelled, on
+# both of the ways a consumer comes down: a shutdown, and a handler that
+# cannot settle its own message. A handler cancelled between its send and its
+# ack leaves an email delivered and the message unacked, which the broker then
+# redelivers.
 #
 # The guarantee is narrower than that reads, so state it plainly: a handler
 # that finishes inside the grace is acked, and a handler still running at the
@@ -480,6 +482,19 @@ class NotificationManager(AppService):
                 await self._process_message_with_retry(
                     message, process_func, queue_name
                 )
+            except Exception:
+                # Failing here is how the consumer is brought down, but a
+                # TaskGroup aborts by cancelling every sibling first and only
+                # then the task running the loop, so the grace below would
+                # never get a look in: the other messages the prefetch handed
+                # this consumer would be cancelled between their send and
+                # their ack, and redelivered as second emails. Give them the
+                # same bounded grace a shutdown gives, here, before the
+                # exception leaves this task and the group aborts.
+                siblings = in_flight - {asyncio.current_task()}
+                if siblings:
+                    await asyncio.wait(siblings, timeout=HANDLER_SHUTDOWN_GRACE_SECONDS)
+                raise
             finally:
                 slots.release()
 
@@ -487,8 +502,9 @@ class NotificationManager(AppService):
         # message (an ack or reject failing for a reason other than a lost
         # channel, which `_settle` absorbs) cancels the loop and surfaces
         # here, so the consumer reconnects instead of sitting alive with
-        # unacked deliveries slowly pinning the prefetch. On cancellation it
-        # cancels and awaits every handler before returning.
+        # unacked deliveries slowly pinning the prefetch. Both ways out --
+        # that failure and a shutdown -- reach the handlers as a cancellation,
+        # and both give them a bounded grace to settle first.
         try:
             async with asyncio.TaskGroup() as group:
                 try:

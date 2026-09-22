@@ -351,6 +351,121 @@ async def test_shutdown_lets_in_flight_handlers_settle_before_cancelling_them():
     message.ack.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_shutdown_does_not_wait_past_the_grace_for_a_handler(monkeypatch):
+    """The other half of the grace, and the half with teeth: it is bounded.
+    A handler sitting in its retry backoff is up to
+    MAX_CONSUMER_RETRY_ATTEMPTS * MESSAGE_PROCESSING_TIMEOUT_SECONDS from
+    returning, and `_shutdown_service` waits only SHUTDOWN_TIMEOUT_SECONDS
+    for the consumers before it disconnects RabbitMQ. Waiting for such a
+    handler to finish on its own puts that disconnect underneath it."""
+    monkeypatch.setattr(delivery, "HANDLER_SHUTDOWN_GRACE_SECONDS", 0.05)
+    manager = _manager()
+    message = _message()
+    cancelled = asyncio.Event()
+
+    async def never(_: str) -> bool:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return True
+
+    consumer = asyncio.create_task(
+        manager._consume_queue(
+            _queue([message], then_wait=True), never, "q", delivery.Ordering.COMMUTATIVE
+        )
+    )
+    await asyncio.sleep(0.01)
+    consumer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(consumer, timeout=1)
+
+    assert cancelled.is_set()
+    # The honest half of the trade: this message is never settled, so the
+    # broker redelivers it and anything the handler had already sent goes out
+    # twice. The grace narrows that window, it does not close it.
+    message.ack.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_settle_failure_lets_its_siblings_finish_before_taking_them_down():
+    """Where the two fixes meet, and they do not compose for free. Failing a
+    handler is how the consumer is brought down, but a TaskGroup aborts by
+    cancelling every sibling first and the task running the loop second, so
+    the shutdown grace sits on the wrong side of the abort and never runs.
+    Without a grace of its own on this path, one message that cannot be acked
+    cancels the nine others the prefetch handed this consumer mid-send, and
+    the broker redelivers every one of them as a second email."""
+    manager = _manager()
+    broken = _message("0")
+    broken.ack.side_effect = RuntimeError("channel is in a bad way")
+    sibling = _message("1")
+
+    async def work(body: str) -> bool:
+        if body == "1":
+            await asyncio.sleep(0.05)
+        return True
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await manager._consume_queue(
+            _queue([broken, sibling], then_wait=True),
+            work,
+            "q",
+            delivery.Ordering.COMMUTATIVE,
+        )
+
+    assert raised.value.subgroup(RuntimeError) is not None
+    sibling.ack.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
+    """The grace is only worth having if it survives the real shutdown path.
+    `_shutdown_service` cancels the service task, not the consumers, and the
+    cancel reaches them through `asyncio.gather`, which cancels its children
+    and then waits for them before it raises — so `_run_service`'s own
+    `finally` cannot land a second cancel on a consumer mid-grace and cut it
+    short. Pinned here because none of that is visible from `_consume_queue`
+    alone, where the other shutdown tests cancel the consumer directly."""
+    manager = _manager()
+    manager.rabbitmq_config = MagicMock()
+    messages: list[MagicMock] = []
+
+    async def slow(_: str) -> bool:
+        await asyncio.sleep(0.05)
+        return True
+
+    def next_queue(_name: str) -> MagicMock:
+        message = _message()
+        messages.append(message)
+        return _queue([message], then_wait=True)
+
+    channel = MagicMock(
+        set_qos=AsyncMock(), get_queue=AsyncMock(side_effect=next_queue)
+    )
+    rabbit = MagicMock(connect=AsyncMock(), get_channel=AsyncMock(return_value=channel))
+
+    with (
+        patch.object(delivery.rabbitmq, "AsyncRabbitMQ", return_value=rabbit),
+        patch.object(manager, "_process_user_notification", slow),
+        patch.object(manager, "_process_ops_notification", slow),
+        patch.object(manager, "_process_audience_change", slow),
+        patch.object(manager, "_process_pass_work", slow),
+    ):
+        undecorated = inspect.unwrap(NotificationManager._run_service)
+        run = asyncio.create_task(undecorated(manager))
+        await asyncio.sleep(0.01)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(run, timeout=1)
+
+    assert len(messages) == 4
+    for message in messages:
+        message.ack.assert_awaited_once()
+
+
 # ── permanent delivery failures ────────────────────────────────────────────
 
 
