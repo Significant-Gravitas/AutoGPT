@@ -15726,7 +15726,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Skill or expert not found" },
-          "409": { "description": "Per-user skill limit reached" },
+          "409": {
+            "description": "Skill limit reached, or the skill name is already used by an owner-saved skill"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
