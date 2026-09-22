@@ -505,13 +505,15 @@ def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
         # Sentry's flag context holds booleans only; JSON and string flags are skipped.
         if isinstance(value, bool):
             sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+        # A pseudo-flag in the same buffer, so it travels only where the values do;
+        # a later real answer clears it rather than leaving a stale outage marker.
+        marker = f"{flag_key}.fallback"
         if not evaluated:
-            scope = sentry_sdk.get_isolation_scope()
-            # No public getter for contexts; the keys accumulate per scope.
-            known = scope._contexts.get("feature_flags", {}).get("fallback_keys", [])
-            keys = sorted({*known, flag_key})
-            scope.set_context("feature_flags", {"fallback_keys": keys})
-            scope.set_tag("feature_flags.fallback", "true")
+            sentry_sdk.feature_flags.add_feature_flag(marker, True)
+        elif any(
+            f["flag"] == marker for f in sentry_sdk.get_isolation_scope().flags.get()
+        ):
+            sentry_sdk.feature_flags.add_feature_flag(marker, False)
     except Exception:
         logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 

@@ -624,17 +624,11 @@ class TestSentryFlagContext:
     """Every vendor's served value lands on the scope Sentry attaches to errors."""
 
     @pytest.fixture
-    def sentry_scope(self):
+    def sentry_flags(self):
         with sentry_sdk.isolation_scope() as scope:
             # A forked scope inherits whatever earlier tests recorded.
             scope.flags.clear()
-            scope.remove_tag("feature_flags.fallback")
-            scope.remove_context("feature_flags")
-            yield scope
-
-    @pytest.fixture
-    def sentry_flags(self, sentry_scope):
-        return sentry_scope.flags
+            yield scope.flags
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
@@ -658,31 +652,35 @@ class TestSentryFlagContext:
         assert sentry_flags.get() == []
 
     @pytest.mark.asyncio
-    async def test_a_fallback_is_tagged_and_listed(
-        self, mocker, user_context, sentry_scope
+    async def test_a_fallback_is_marked_beside_its_value(
+        self, mocker, user_context, sentry_flags
     ):
         client = mocker.Mock(spec=LDClient)
         client.is_initialized.return_value = False
         mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
-        sentry_scope.set_context("feature_flags", {"fallback_keys": ["chat-search"]})
 
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
-        assert sentry_scope._tags["feature_flags.fallback"] == "true"
-        assert sentry_scope._contexts["feature_flags"] == {
-            "fallback_keys": ["chat-search", Flag.HIRE_EXPERTS.value]
-        }
+        assert sentry_flags.get() == [
+            {"flag": Flag.HIRE_EXPERTS.value, "result": False},
+            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+        ]
 
     @pytest.mark.asyncio
-    async def test_a_real_answer_is_not_a_fallback(
-        self, ld_client, user_context, sentry_scope
+    async def test_a_real_answer_clears_an_earlier_fallback(
+        self, ld_client, user_context, sentry_flags
     ):
-        ld_client.variation.return_value = False
+        sentry_sdk.feature_flags.add_feature_flag(
+            f"{Flag.HIRE_EXPERTS.value}.fallback", True
+        )
+        ld_client.variation.return_value = True
 
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
-        assert "feature_flags.fallback" not in sentry_scope._tags
-        assert "feature_flags" not in sentry_scope._contexts
+        assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
+            f"{Flag.HIRE_EXPERTS.value}.fallback": False,
+            Flag.HIRE_EXPERTS.value: True,
+        }
 
     @pytest.mark.asyncio
     async def test_a_recording_failure_does_not_break_the_read(
