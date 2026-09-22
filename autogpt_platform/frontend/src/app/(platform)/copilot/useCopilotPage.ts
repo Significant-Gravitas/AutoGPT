@@ -142,6 +142,7 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -279,6 +280,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
+    pendingSend,
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
@@ -412,6 +414,7 @@ export function useCopilotPage() {
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,
@@ -433,6 +436,7 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

@@ -261,6 +261,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
+| [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
+| [Jev Filter](block-integrations/typesafe/filter.md#jev-filter) | Filter items with sequential Jev scores, one call per item |
+| [Jev Pick Best](block-integrations/typesafe/pick_best.md#jev-pick-best) | Choose the best candidate using Jev and rank candidates directly by its probabilities |
+| [Jev Route](block-integrations/typesafe/route.md#jev-route) | Route data using Jev's typed choice |
+| [Jev Score](block-integrations/typesafe/score.md#jev-score) | Score evidence with Jev using an explicit ordered scale |
+| [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
@@ -340,6 +347,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Approve Reddit Post](block-integrations/misc.md#approve-reddit-post) | Approves a Reddit post or comment from the mod queue |
+| [Ban Subreddit User](block-integrations/misc.md#ban-subreddit-user) | Bans a user from a subreddit |
 | [Create Discord Thread](block-integrations/discord/bot_blocks.md#create-discord-thread) | Creates a new thread in a Discord channel |
 | [Create Reddit Post](block-integrations/misc.md#create-reddit-post) | Create a new post on a subreddit |
 | [Delete Reddit Comment](block-integrations/misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
@@ -366,6 +375,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get User Posts](block-integrations/misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
+| [Lock Reddit Post](block-integrations/misc.md#lock-reddit-post) | Locks or unlocks a Reddit post or comment to prevent or allow replies |
+| [Mod Queue](block-integrations/misc.md#mod-queue) | Fetches the mod queue for a subreddit |
 | [Post Reddit Comment](block-integrations/misc.md#post-reddit-comment) | This block posts a Reddit comment on a specified Reddit post |
 | [Post To Bluesky](block-integrations/ayrshare/post_to_bluesky.md#post-to-bluesky) | Post to Bluesky using Ayrshare |
 | [Post To Facebook](block-integrations/ayrshare/post_to_facebook.md#post-to-facebook) | Post to Facebook using Ayrshare |
@@ -383,6 +394,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
+| [Remove Reddit Post](block-integrations/misc.md#remove-reddit-post) | Removes a Reddit post or comment as a moderator |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
 | [Reply To Telegram Message](block-integrations/telegram/blocks.md#reply-to-telegram-message) | Reply to a specific message in a Telegram chat |
@@ -391,6 +403,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Discord Embed](block-integrations/discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
+| [Send Mod Mail](block-integrations/misc.md#send-mod-mail) | Sends a modmail message from a subreddit to a user |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
 | [Send Slack Message](block-integrations/slack/blocks.md#send-slack-message) | Send a text message to any Slack channel, DM, or thread |
 | [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
@@ -453,6 +466,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Unmute User](block-integrations/twitter/mutes.md#twitter-unmute-user) | This block unmutes a specified Twitter user |
 | [Twitter Unpin List](block-integrations/twitter/pinned_lists.md#twitter-unpin-list) | This block allows the authenticated user to unpin a specified List |
 | [Twitter Update List](block-integrations/twitter/manage_lists.md#twitter-update-list) | This block updates a specified Twitter List owned by the authenticated user |
+| [Unban Subreddit User](block-integrations/misc.md#unban-subreddit-user) | Unbans a user from a subreddit |
 
 ## Communication
 

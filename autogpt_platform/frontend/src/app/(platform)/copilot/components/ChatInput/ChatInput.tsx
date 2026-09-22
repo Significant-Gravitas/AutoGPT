@@ -35,6 +35,7 @@ import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
@@ -205,6 +206,11 @@ export function ChatInput({
   const {
     isRecording,
     isTranscribing,
+    transcriptionError,
+    hasFailedRecording,
+    retryTranscription,
+    downloadFailedRecording,
+    dismissTranscriptionError,
     elapsedTime,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
@@ -328,6 +334,16 @@ export function ChatInput({
         )}
       >
         {voiceBar}
+        {!voiceBar && transcriptionError && hasFailedRecording && (
+          <TranscriptionErrorBar
+            message={transcriptionError}
+            isRetrying={isTranscribing}
+            onRetry={retryTranscription}
+            onDownload={downloadFailedRecording}
+            onDismiss={dismissTranscriptionError}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}

@@ -27,6 +27,7 @@ from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
@@ -697,6 +698,7 @@ class CoPilotProcessor:
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+                message_metadata=entry.message_metadata,
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,
@@ -783,3 +785,8 @@ class CoPilotProcessor:
                     log.error(f"Failed to mark session completed: {mark_err}")
                 finally:
                     await cost_context_stack.aclose()
+                    # A browser turn leaves a Chromium tree on this pod that
+                    # nothing else ever stops; state is already persisted, so
+                    # the next turn restores it wherever it lands.
+                    if await close_browser_daemon(entry.session_id):
+                        log.info("Browser daemon teardown attempted for this turn")

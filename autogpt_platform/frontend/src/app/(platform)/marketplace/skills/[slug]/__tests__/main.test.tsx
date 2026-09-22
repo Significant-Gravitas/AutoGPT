@@ -55,7 +55,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
-  name: "Outreach playbook",
+  name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],
@@ -124,7 +125,7 @@ describe("Marketplace skill page", () => {
     expect(screen.queryByTestId("skill-install-button")).toBeNull();
   });
 
-  test("shows the instructions Otto will follow", async () => {
+  test("shows the instructions experts will follow", async () => {
     renderPage([]);
 
     expect(
@@ -138,6 +139,45 @@ describe("Marketplace skill page", () => {
     expect(
       screen.getAllByRole("heading", { name: "Outreach playbook" }),
     ).toHaveLength(1);
+  });
+
+  test("links a vendored skill to its source and shows its license", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: "coreyhaines31/marketingskills",
+        source_url:
+          "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+        license: "MIT",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    const source = await screen.findByRole("link", {
+      name: "coreyhaines31/marketingskills",
+    });
+    expect(source.getAttribute("href")).toBe(
+      "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+    );
+    expect(await screen.findByText("License: MIT")).toBeDefined();
+  });
+
+  test("shows a creator skill license without a source repo", async () => {
+    server.use(
+      getGetV2GetMarketplaceSkillMockHandler200({
+        ...outreach,
+        source_repo: null,
+        source_url: null,
+        license: "Proprietary",
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+      userSkillsHandler(),
+    );
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText("License: Proprietary")).toBeDefined();
   });
 
   test("installs in one click and offers the connect step afterwards", async () => {
@@ -159,7 +199,7 @@ describe("Marketplace skill page", () => {
     );
     await userEvent.click(button);
 
-    expect(await screen.findByText("Added to Otto")).toBeDefined();
+    expect(await screen.findByText("Installed")).toBeDefined();
     const connectStep = await screen.findByTestId("skill-connect-step");
     // The unconnected case is the normal path, so it must not read as a
     // failure: no error/warning wording, and the install already succeeded.
@@ -186,7 +226,7 @@ describe("Marketplace skill page", () => {
     );
     await userEvent.click(button);
 
-    expect(await screen.findByText("Added to Otto")).toBeDefined();
+    expect(await screen.findByText("Installed")).toBeDefined();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
 
@@ -194,7 +234,7 @@ describe("Marketplace skill page", () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
     renderPage([]);
 
-    const cta = await screen.findByRole("link", { name: "Add to Otto" });
+    const cta = await screen.findByRole("link", { name: "Install skill" });
     expect(cta.getAttribute("href")).toBe(
       "/signup?next=%2Fmarketplace%2Fskills%2Foutreach-playbook",
     );
@@ -206,7 +246,7 @@ describe("Marketplace skill page", () => {
     renderPage([]);
 
     expect(
-      await screen.findByText("Added to Otto", undefined, {
+      await screen.findByText("Installed", undefined, {
         timeout: 10000,
       }),
     ).toBeDefined();
@@ -247,7 +287,7 @@ describe("Marketplace skill page", () => {
     await userEvent.click(screen.getByTestId("skill-install-button"));
 
     expect(await screen.findByTestId("skill-install-button")).toBeDefined();
-    expect(screen.queryByText("Added to Otto")).toBeNull();
+    expect(screen.queryByText("Installed")).toBeNull();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
 

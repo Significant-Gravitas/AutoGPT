@@ -120,3 +120,45 @@ describe("readEnvOverride covers every Flag arm", () => {
     }
   });
 });
+
+describe("NEXT_PUBLIC_FORCE_ALL_FLAGS master switch", () => {
+  // `isForceAllFlags` is resolved once at module load, so each case needs a
+  // fresh module graph with NODE_ENV already stubbed.
+  async function loadWith(nodeEnv: string) {
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    vi.stubEnv("NEXT_PUBLIC_FORCE_ALL_FLAGS", "true");
+    return import("../use-get-flag");
+  }
+
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("forces a boolean flag on outside a production build", async () => {
+    const { envFlagOverride: override, Flag: F } =
+      await loadWith("development");
+    expect(override(F.CHAT_MODE_OPTION)).toBe(true);
+  });
+
+  it("is inert in a production build, so a stray env var cannot be baked into the client bundle", async () => {
+    const { envFlagOverride: override, Flag: F } = await loadWith("production");
+    expect(override(F.CHAT_MODE_OPTION)).toBeUndefined();
+  });
+
+  it("leaves per-flag overrides working in a production build", async () => {
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION", "true");
+    const { envFlagOverride: override, Flag: F } = await import(
+      "../use-get-flag"
+    );
+    expect(override(F.CHAT_MODE_OPTION)).toBe(true);
+  });
+
+  it("still skips array-typed flags when forced on", async () => {
+    const { envFlagOverride: override, Flag: F } =
+      await loadWith("development");
+    expect(override(F.BETA_BLOCKS)).toBeUndefined();
+  });
+});
