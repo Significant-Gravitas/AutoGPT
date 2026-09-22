@@ -55,6 +55,7 @@ export function CopilotChatHost({
     dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -79,6 +80,7 @@ export function CopilotChatHost({
           error={error}
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
+          sessionSentFrom={sessionSentFrom}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
