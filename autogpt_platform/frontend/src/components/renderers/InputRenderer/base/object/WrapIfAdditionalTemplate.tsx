@@ -58,13 +58,13 @@ export default function WrapIfAdditionalTemplate(
   };
   const title_id = generateObjectPropertyTitleId(id, label);
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
     if (e.currentTarget.value === "") {
       e.currentTarget.value = label;
       return;
     }
     onKeyRenameBlur(e);
-  };
+  }
 
   const isHandleConnected = isInputConnected(nodeId, handleId);
 
