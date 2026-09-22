@@ -6,8 +6,10 @@ an A/B/C experiment whose results can be sliced in both PostHog and Looker.
 
 This page is the contract between engineering and go-to-market: the event
 names, the SQL views and the definitions below are the ones dashboards should
-be built on. Change a definition here and in the view, and everything
-downstream follows.
+be built on. Change a definition here and in every view that repeats it: the
+task predicate is spelled out in `user_task_daily`, `user_lifecycle`,
+`retention_task_weekly` and `unit_economics_monthly` until a shared base view
+exists, so a change to one must be made in all four.
 
 ## Where each tool fits
 
@@ -35,14 +37,25 @@ downstream follows.
 - **Activated**: at least 3 tasks on at least 2 distinct days within 14 days
   of signup. (`analytics.user_lifecycle.activated`)
 - **Last active**: latest of last task, last visit, last scheduled run,
-  falling back to signup.
+  falling back to signup. Because a scheduled run counts, an account whose
+  schedule fires daily is never `stale_*` or `churned_30d` while it keeps
+  firing; `retention_task_weekly` deliberately ignores schedules and measures
+  people coming back. Use the one that matches the question.
+- **Login / visit**: a session row, from `auth.sessions` (Supabase, history
+  up to the Better Auth cutover on 2026-07-30) or `platform.UserAuthSession`
+  (Better Auth, everything since). Every login column reads both.
 - **Stale**: no activity in 14 / 30 days (`stale_14d`, `stale_30d`).
 - **Churned (30d)**: had at least one task ever, signed up more than 30 days
   ago, no activity in the last 30 days.
 - **Never activated (30d)**: signed up more than 30 days ago and never did a task.
 - **Cost to us**: `PlatformCostLog.costMicrodollars`, our real provider spend,
   split into agent (block runs), copilot (turns) and background (dream passes).
-- **Credits charged**: `CreditTransaction` `USAGE` rows, in cents.
+- **Credits charged**: `CreditTransaction` `USAGE` rows, in cents. A run
+  billed to an organisation writes `OrgCreditTransaction` instead; the credit
+  columns in `user_task_daily`, `user_lifecycle` and `unit_economics_monthly`
+  include those rows under the user who initiated them (`initiatedByUserId`),
+  while cost stays with the acting user, so per-user margin stays comparable
+  for org members.
 
 ## Activation events (PostHog)
 
@@ -161,8 +174,16 @@ is already wired this way.
    from changes type.
 2. Deploy the backend. From that moment every run row carries its trigger and
    every activation event flows to PostHog.
-3. `poetry run analytics-views` against production, then wire the new views
-   into Looker Studio.
+3. Nick Tindle runs `poetry run analytics-views` against production right
+   after the deploy that carries this change, before any Looker source is
+   added. Before that, on staging: `EXPLAIN (ANALYZE, BUFFERS)` on
+   `user_lifecycle`, `user_lifecycle_funnel_weekly`, `experiment_assignment`
+   and `user_attribution`. `user_lifecycle` has no date bound (it is a
+   per-user lifetime table), so every refresh aggregates the full history of
+   `AgentGraphExecution`, `ChatMessage`, `PlatformCostLog` and
+   `CreditTransaction`; if staging shows that hurting, the follow-up is a
+   nightly-refreshed materialized view (a `generate_views.py` change), not a
+   Looker source on the live view. Then wire the new views into Looker Studio.
 4. Confirm in PostHog that `run_agent`, `run_autopilot`, `schedule_created`
    and `agent_run_failed` are arriving with `source = platform`.
 

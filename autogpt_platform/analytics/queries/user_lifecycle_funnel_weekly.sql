@@ -52,8 +52,7 @@ WITH cohorts AS (
     COUNT(*) FILTER (WHERE expert_turns_total > 0 OR expert_workflow_runs_total > 0)
                                                                          AS used_expert,
     COUNT(*) FILTER (WHERE purchases_total > 0)                          AS purchased,
-    COUNT(*) FILTER (WHERE tasks_week_4 > 0)                             AS retained_w4,
-    MIN(signup_at)                                                       AS cohort_started_at
+    COUNT(*) FILTER (WHERE tasks_week_4 > 0)                             AS retained_w4
   FROM analytics.user_lifecycle
   WHERE signup_at >= CURRENT_DATE - INTERVAL '180 days'
   GROUP BY 1

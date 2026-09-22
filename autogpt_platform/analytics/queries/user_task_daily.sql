@@ -21,7 +21,10 @@
 --   Runs created before triggerSource existed cannot be split by
 --   start method; they are counted as human (same rule as
 --   user_lifecycle and retention_task_weekly) and also reported
---   separately in agent_runs_untagged.
+--   separately in agent_runs_untagged. Runs an admin started on the
+--   user's behalf (triggerSource = admin) are in agent_runs and
+--   agent_runs_admin but in neither task bucket, so tasks_human +
+--   tasks_automated can be less than agent_runs.
 --
 -- SOURCE TABLES
 --   platform.AgentGraphExecution — agent runs (triggerSource, expertId, stats)
@@ -29,7 +32,9 @@
 --   platform.ActivityEvent       — schedule.created / schedule.deleted
 --   platform.PlatformCostLog     — our provider cost (microdollars)
 --   platform.CreditTransaction   — credits charged to / bought by the user (cents)
---   auth.sessions                — logins
+--   platform.OrgCreditTransaction — org-billed rows, attributed to initiatedByUserId
+--   auth.sessions                — logins before the Better Auth cutover (2026-07-30)
+--   platform.UserAuthSession     — logins since (Better Auth)
 --
 -- OUTPUT COLUMNS
 --   user_id                      TEXT     User UUID
@@ -42,6 +47,7 @@
 --   agent_runs_scheduled         BIGINT   triggerSource = schedule
 --   agent_runs_webhook           BIGINT   triggerSource = webhook
 --   agent_runs_untagged          BIGINT   triggerSource IS NULL (pre-deploy rows; already inside agent_runs_human)
+--   agent_runs_admin             BIGINT   triggerSource = admin (support/ops started it; in neither task bucket)
 --   agent_runs_completed         BIGINT   Terminal status COMPLETED (as of query time)
 --   agent_runs_failed            BIGINT   Terminal status FAILED
 --   agent_runs_no_credits        BIGINT   FAILED with failure_reason insufficient_balance
@@ -52,7 +58,7 @@
 --   chat_sessions_touched        BIGINT   Distinct chat sessions with a user turn
 --   schedules_created            BIGINT   schedule.created activity events
 --   schedules_deleted            BIGINT   schedule.deleted activity events
---   logins                       BIGINT   Supabase sessions created
+--   logins                       BIGINT   Sessions created (Supabase history + Better Auth)
 --   platform_cost_usd            NUMERIC  Our total provider cost for the user that day
 --   agent_cost_usd               NUMERIC  ...of which block/agent runs
 --   copilot_cost_usd             NUMERIC  ...of which copilot turns (excl. dream passes)
@@ -96,12 +102,21 @@ WITH runs AS (
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'webhook')
                                                          AS agent_runs_webhook,
     COUNT(*) FILTER (WHERE ge."triggerSource" IS NULL)   AS agent_runs_untagged,
+    COUNT(*) FILTER (WHERE ge."triggerSource" = 'admin') AS agent_runs_admin,
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'COMPLETED')
                                                          AS agent_runs_completed,
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'FAILED')
                                                          AS agent_runs_failed,
+    -- Keep the legacy message predicates synchronized with graph_execution.sql
+    -- (and backend/util/exceptions.py): rows before failure_reason existed
+    -- (2026-08-18) only carry the message.
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'FAILED'
-                       AND ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance')
+                       AND (ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance'
+                            OR (ge."stats"::jsonb->>'failure_reason' IS NULL
+                                AND (ge."stats"::jsonb->>'error' = 'You have no credits left to run an agent.'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance of \$-?[0-9]+(\.[0-9]+)?, where this will cost \$-?[0-9]+(\.[0-9]+)?$'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: dynamic-cost blocks require a positive balance\.$'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Organization has -?[0-9]+ credits but needs [0-9]+$'))))
                                                          AS agent_runs_no_credits,
     COUNT(*) FILTER (WHERE ge."expertId" IS NOT NULL)    AS expert_workflow_runs,
     COALESCE(SUM((ge."stats"::jsonb->>'cost')::numeric), 0) / 100.0
@@ -167,26 +182,42 @@ costs AS (
   GROUP BY 1, 2
 ),
 credits AS (
+  -- Personal ledger plus org-billed rows attributed to the user who
+  -- initiated them, so an org member's spend sits next to their cost.
   SELECT
-    "userId"                                             AS user_id,
-    DATE_TRUNC('day', "createdAt")::date                 AS day,
-    -COALESCE(SUM("amount") FILTER (WHERE "type" = 'USAGE'), 0) / 100.0
+    user_id,
+    DATE_TRUNC('day', created_at)::date                  AS day,
+    -COALESCE(SUM(amount) FILTER (WHERE type = 'USAGE'), 0) / 100.0
                                                          AS credits_spent_usd,
-    COALESCE(SUM("amount") FILTER (WHERE "type" IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
+    COALESCE(SUM(amount) FILTER (WHERE type IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
                                                          AS credits_purchased_usd
-  FROM platform."CreditTransaction"
-  WHERE "isActive" = TRUE
-    AND "createdAt" > CURRENT_DATE - INTERVAL '90 days'
+  FROM (
+    SELECT "userId" AS user_id, "amount" AS amount, "type"::text AS type, "createdAt" AS created_at
+    FROM platform."CreditTransaction"
+    WHERE "isActive" = TRUE AND "createdAt" > CURRENT_DATE - INTERVAL '90 days'
+    UNION ALL
+    SELECT "initiatedByUserId", "amount", "type"::text, "createdAt"
+    FROM platform."OrgCreditTransaction"
+    WHERE "isActive" = TRUE AND "initiatedByUserId" IS NOT NULL
+      AND "createdAt" > CURRENT_DATE - INTERVAL '90 days'
+  ) c
   GROUP BY 1, 2
 ),
 logins AS (
   SELECT
-    user_id::text                                        AS user_id,
+    user_id,
     DATE_TRUNC('day', created_at)::date                  AS day,
     COUNT(*)                                             AS logins
-  FROM auth.sessions
-  WHERE user_id IS NOT NULL
-    AND created_at > CURRENT_DATE - INTERVAL '90 days'
+  FROM (
+    -- Supabase sessions: history up to the Better Auth cutover (2026-07-30)
+    SELECT user_id::text AS user_id, created_at::timestamptz AS created_at
+    FROM auth.sessions WHERE user_id IS NOT NULL
+    UNION ALL
+    -- Better Auth sessions: everything since
+    SELECT "userId", "createdAt"::timestamptz
+    FROM platform."UserAuthSession"
+  ) s
+  WHERE created_at > CURRENT_DATE - INTERVAL '90 days'
   GROUP BY 1, 2
 ),
 keys AS (
@@ -211,6 +242,7 @@ SELECT
   COALESCE(r.agent_runs_scheduled, 0)                    AS agent_runs_scheduled,
   COALESCE(r.agent_runs_webhook, 0)                      AS agent_runs_webhook,
   COALESCE(r.agent_runs_untagged, 0)                     AS agent_runs_untagged,
+  COALESCE(r.agent_runs_admin, 0)                        AS agent_runs_admin,
   COALESCE(r.agent_runs_completed, 0)                    AS agent_runs_completed,
   COALESCE(r.agent_runs_failed, 0)                       AS agent_runs_failed,
   COALESCE(r.agent_runs_no_credits, 0)                   AS agent_runs_no_credits,

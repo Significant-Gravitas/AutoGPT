@@ -11,7 +11,8 @@
 --   can be used as the feature table for a churn-signal analysis:
 --   pick a label column, regress on the rest.
 --
---   Definitions (change here, everywhere downstream follows):
+--   Definitions (the task predicate is repeated in user_task_daily,
+--   retention_task_weekly and unit_economics_monthly; keep them in sync):
 --   - task            human-started agent run (manual / API; untagged
 --                     legacy rows count) or a human chat turn. A run the
 --                     copilot started is represented by the chat turn that
@@ -25,10 +26,12 @@
 --   - never_activated_30d  signed up > 30 days ago and never did a task
 --
 -- SOURCE TABLES
---   platform.User, platform.UserOnboarding, auth.sessions,
+--   platform.User, platform.UserOnboarding,
+--   auth.sessions (Supabase, history to 2026-07-30) + platform.UserAuthSession (Better Auth, since),
 --   platform.AgentGraphExecution, platform.ChatMessage/ChatSession,
 --   platform.ActivityEvent (schedules), platform.Expert,
---   platform.PlatformCostLog, platform.CreditTransaction
+--   platform.PlatformCostLog, platform.CreditTransaction + platform.OrgCreditTransaction
+--   (org-billed runs, attributed to the user who initiated them)
 --
 -- OUTPUT COLUMNS
 --   Identity: user_id, email, signup_at, subscription_tier, timezone,
@@ -90,13 +93,22 @@ WITH users AS (
 ),
 logins AS (
   SELECT
-    user_id::text                                                        AS user_id,
+    user_id,
     MIN(created_at)                                                      AS first_login_at,
     MAX(created_at)                                                      AS last_login_at,
-    GREATEST(MAX(refreshed_at)::timestamptz, MAX(created_at)::timestamptz) AS last_visit_at,
+    MAX(seen_at)                                                         AS last_visit_at,
     COUNT(*)                                                             AS login_count
-  FROM auth.sessions
-  WHERE user_id IS NOT NULL
+  FROM (
+    -- Supabase sessions: history up to the Better Auth cutover (2026-07-30)
+    SELECT user_id::text AS user_id, created_at::timestamptz AS created_at,
+           GREATEST(refreshed_at::timestamptz, created_at::timestamptz) AS seen_at
+    FROM auth.sessions WHERE user_id IS NOT NULL
+    UNION ALL
+    -- Better Auth sessions: everything since; updatedAt moves on refresh
+    SELECT "userId", "createdAt"::timestamptz,
+           GREATEST("updatedAt"::timestamptz, "createdAt"::timestamptz)
+    FROM platform."UserAuthSession"
+  ) s
   GROUP BY 1
 ),
 runs AS (
@@ -110,8 +122,16 @@ runs AS (
                                                                          AS agent_runs_human_total,
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'schedule')              AS agent_runs_scheduled_total,
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'FAILED')              AS agent_runs_failed_total,
+    -- Keep the legacy message predicates synchronized with graph_execution.sql
+    -- (and backend/util/exceptions.py): rows before failure_reason existed
+    -- (2026-08-18) only carry the message.
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'FAILED'
-                       AND ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance')
+                       AND (ge."stats"::jsonb->>'failure_reason' = 'insufficient_balance'
+                            OR (ge."stats"::jsonb->>'failure_reason' IS NULL
+                                AND (ge."stats"::jsonb->>'error' = 'You have no credits left to run an agent.'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance of \$-?[0-9]+(\.[0-9]+)?, where this will cost \$-?[0-9]+(\.[0-9]+)?$'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: dynamic-cost blocks require a positive balance\.$'
+                                     OR ge."stats"::jsonb->>'error' ~ '^Organization has -?[0-9]+ credits but needs [0-9]+$'))))
                                                                          AS agent_runs_no_credits_total,
     COUNT(*) FILTER (WHERE ge."expertId" IS NOT NULL)                    AS expert_workflow_runs_total,
     COUNT(DISTINCT ge."agentGraphId")                                    AS distinct_agents_run,
@@ -206,15 +226,24 @@ costs AS (
   GROUP BY 1
 ),
 credits AS (
+  -- Personal ledger plus org-billed rows attributed to the user who
+  -- initiated them, so an org member's spend sits next to their cost.
   SELECT
-    "userId"                                                             AS user_id,
-    -COALESCE(SUM("amount") FILTER (WHERE "type" = 'USAGE'), 0) / 100.0  AS credits_spent_usd_total,
-    COALESCE(SUM("amount") FILTER (WHERE "type" IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
+    user_id,
+    -COALESCE(SUM(amount) FILTER (WHERE type = 'USAGE'), 0) / 100.0      AS credits_spent_usd_total,
+    COALESCE(SUM(amount) FILTER (WHERE type IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
                                                                          AS credits_purchased_usd_total,
-    COUNT(*) FILTER (WHERE "type" IN ('TOP_UP', 'SUBSCRIPTION'))         AS purchases_total,
-    MIN("createdAt") FILTER (WHERE "type" IN ('TOP_UP', 'SUBSCRIPTION')) AS first_purchase_at
-  FROM platform."CreditTransaction"
-  WHERE "isActive" = TRUE
+    COUNT(*) FILTER (WHERE type IN ('TOP_UP', 'SUBSCRIPTION'))           AS purchases_total,
+    MIN(created_at) FILTER (WHERE type IN ('TOP_UP', 'SUBSCRIPTION'))    AS first_purchase_at
+  FROM (
+    SELECT "userId" AS user_id, "amount" AS amount, "type"::text AS type, "createdAt" AS created_at
+    FROM platform."CreditTransaction"
+    WHERE "isActive" = TRUE
+    UNION ALL
+    SELECT "initiatedByUserId", "amount", "type"::text, "createdAt"
+    FROM platform."OrgCreditTransaction"
+    WHERE "isActive" = TRUE AND "initiatedByUserId" IS NOT NULL
+  ) c
   GROUP BY 1
 ),
 onboarding AS (
@@ -253,7 +282,7 @@ assembled AS (
     td.first_task_at, td.last_task_at,
     r.last_scheduled_run_at,
     COALESCE(
-      GREATEST(r.last_agent_run_at, t.last_chat_turn_at, l.last_visit_at, r.last_scheduled_run_at),
+      GREATEST(td.last_task_at, t.last_chat_turn_at, l.last_visit_at, r.last_scheduled_run_at),
       u.signup_at
     )                                                                    AS last_active_at,
     s.first_schedule_created_at,

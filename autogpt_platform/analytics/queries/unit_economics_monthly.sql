@@ -89,8 +89,10 @@ turns AS (
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
   GROUP BY 1, 2
 ),
--- Distinct calendar days with a run or a turn, across both surfaces, so a
--- user who runs agents on Monday and chats on Tuesday has two active days.
+-- Distinct calendar days on which a person did something (a human-started
+-- run or a human turn; same predicate as tasks_human), across both surfaces,
+-- so a user who runs agents on Monday and chats on Tuesday has two active
+-- days, while a schedule firing every night adds none.
 activity_days AS (
   SELECT user_id, DATE_TRUNC('month', day)::date AS month, COUNT(DISTINCT day) AS active_days
   FROM (
@@ -100,6 +102,7 @@ activity_days AS (
       AND ge."isDeleted" = FALSE
       AND ge."parentGraphExecutionId" IS NULL
       AND COALESCE(ge."stats"::jsonb->>'is_dry_run', 'false') <> 'true'
+      AND (ge."triggerSource" IS NULL OR ge."triggerSource" IN ('manual', 'api'))
     UNION
     SELECT s."userId", m."createdAt"::date
     FROM platform."ChatMessage" m
@@ -107,6 +110,7 @@ activity_days AS (
     WHERE m."role" = 'user'
       AND m."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
       AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+      AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
   ) d
   GROUP BY 1, 2
 ),
@@ -130,15 +134,25 @@ costs AS (
   GROUP BY 1, 2
 ),
 credits AS (
+  -- Personal ledger plus org-billed rows attributed to the user who
+  -- initiated them, so an org member's spend sits next to their cost.
   SELECT
-    "userId"                                                             AS user_id,
-    DATE_TRUNC('month', "createdAt")::date                               AS month,
-    -COALESCE(SUM("amount") FILTER (WHERE "type" = 'USAGE'), 0) / 100.0  AS credits_spent_usd,
-    COALESCE(SUM("amount") FILTER (WHERE "type" IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
+    user_id,
+    DATE_TRUNC('month', created_at)::date                                AS month,
+    -COALESCE(SUM(amount) FILTER (WHERE type = 'USAGE'), 0) / 100.0      AS credits_spent_usd,
+    COALESCE(SUM(amount) FILTER (WHERE type IN ('TOP_UP', 'SUBSCRIPTION')), 0) / 100.0
                                                                          AS credits_purchased_usd
-  FROM platform."CreditTransaction"
-  WHERE "isActive" = TRUE
-    AND "createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
+  FROM (
+    SELECT "userId" AS user_id, "amount" AS amount, "type"::text AS type, "createdAt" AS created_at
+    FROM platform."CreditTransaction"
+    WHERE "isActive" = TRUE
+      AND "createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
+    UNION ALL
+    SELECT "initiatedByUserId", "amount", "type"::text, "createdAt"
+    FROM platform."OrgCreditTransaction"
+    WHERE "isActive" = TRUE AND "initiatedByUserId" IS NOT NULL
+      AND "createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
+  ) c
   GROUP BY 1, 2
 ),
 keys AS (

@@ -22,7 +22,8 @@
 --   agent_name               TEXT         Display name
 --   is_created_by_user       BOOLEAN      Built by the user (vs. added from marketplace)
 --   added_at                 TIMESTAMPTZ  When it entered the library
---   last_run_at              TIMESTAMPTZ  Last run of any kind (nullable = never run)
+--   last_run_at              TIMESTAMPTZ  LibraryAgent.lastRunAt: last run of any kind,
+--                                         simulations included (nullable)
 --   last_completed_at        TIMESTAMPTZ  Last successful run
 --   last_failed_at           TIMESTAMPTZ  Last failed run
 --   runs_total               BIGINT       Lifetime root runs
@@ -34,7 +35,8 @@
 --   fail_rate_30d            FLOAT        failed / (completed + failed), last 30 days
 --   schedules_created_total  BIGINT       schedule.created events for this graph
 --   days_since_last_run      INT          NULL if never run
---   never_run                BOOLEAN      Added but never executed
+--   never_run                BOOLEAN      No root, non-dry run ever (a Simulate alone
+--                                         bumps last_run_at but keeps never_run true)
 --   idle_7d / idle_30d       BOOLEAN      Has run before, but not in the last 7 / 30 days
 --   failing                  BOOLEAN      >= 3 failures and >= 50% fail rate in 30 days
 --
@@ -122,7 +124,7 @@ SELECT
                                                AS fail_rate_30d,
   COALESCE(s.schedules_created_total, 0)       AS schedules_created_total,
   (CURRENT_DATE - a.last_run_at::date)         AS days_since_last_run,
-  a.last_run_at IS NULL                        AS never_run,
+  COALESCE(r.runs_total, 0) = 0                AS never_run,
   a.last_run_at IS NOT NULL AND a.last_run_at < NOW() - INTERVAL '7 days'  AS idle_7d,
   a.last_run_at IS NOT NULL AND a.last_run_at < NOW() - INTERVAL '30 days' AS idle_30d,
   COALESCE(r.failed_30d, 0) >= 3
