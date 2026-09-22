@@ -32,12 +32,17 @@ def emit_compaction_event(
     path: CompactionPath,
     stats: CompactionStats | None,
     after_source: str | None = None,
+    trace_id: str | None = None,
     log_prefix: str = "",
 ) -> None:
-    """Emit one event per completed compaction cycle on the current trace.
+    """Emit one event per completed compaction cycle on the turn's trace.
 
-    Called in-context (the turn's span is open), so no trace id is
-    needed — the event lands on the turn's trace. *stats* may be None
+    *trace_id* is the turn's Langfuse trace id, captured when the turn's
+    span opened (see ``CompactionTracker.trace_id``); when given, the
+    event is pinned to that trace explicitly rather than relying on the
+    ambient span context, which an awaited path may or may not still be
+    carrying by the time the cycle closes. Without it the event falls
+    back to the current span. *stats* may be None
     when the cycle produced no counts; the event still records that a
     cycle ran, which is what makes back-to-back compactions visible.
     *after_source* names how the post-compaction read resolved (or
@@ -54,7 +59,14 @@ def emit_compaction_event(
     if after_source is not None:
         metadata["after_source"] = after_source
     try:
-        get_client().create_event(name="copilot-compaction", metadata=metadata)
+        if trace_id:
+            get_client().create_event(
+                trace_context={"trace_id": trace_id},
+                name="copilot-compaction",
+                metadata=metadata,
+            )
+        else:
+            get_client().create_event(name="copilot-compaction", metadata=metadata)
     except Exception:
         logger.debug(
             "%s Langfuse compaction event emit failed", log_prefix, exc_info=True

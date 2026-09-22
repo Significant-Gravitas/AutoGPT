@@ -85,6 +85,20 @@ class TestEmitCompactionEvent:
         assert "after_source" not in metadata
         assert metadata["schema"] == 2
 
+    @patch("backend.copilot.sdk.langfuse_events.get_client")
+    def test_explicit_trace_id_pins_the_event_to_that_trace(self, mock_get_client):
+        client = _client(mock_get_client)
+        emit_compaction_event(path="sdk_internal", stats=_stats(), trace_id="trace-7")
+        kwargs = client.create_event.call_args.kwargs
+        assert kwargs["trace_context"] == {"trace_id": "trace-7"}
+        assert kwargs["name"] == "copilot-compaction"
+
+    @patch("backend.copilot.sdk.langfuse_events.get_client")
+    def test_no_trace_id_falls_back_to_the_ambient_span(self, mock_get_client):
+        client = _client(mock_get_client)
+        emit_compaction_event(path="sdk_internal", stats=_stats())
+        assert "trace_context" not in client.create_event.call_args.kwargs
+
 
 class TestEmitTurnUsageEvent:
     @patch("backend.copilot.sdk.langfuse_events.get_client")

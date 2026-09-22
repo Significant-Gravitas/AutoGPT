@@ -5,12 +5,14 @@ Covers pure helper functions that are not exercised by the SDK re-export tests.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from backend.util import json
 
+from . import transcript as transcript_module
 from .transcript import (
     TranscriptDownload,
     _build_path_from_parts,
@@ -1910,11 +1912,16 @@ class TestReadCompactedEntriesDetailed:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
         session = tmp_path / "projects" / "sess.jsonl"
         _write_session(session, ['{"role": "user", "content": "hi"}'])
-        session.chmod(0o000)
-        try:
-            entries, source = read_compacted_entries_detailed(str(session))
-        finally:
-            session.chmod(0o644)
+
+        # Fail the read at the module's own ``Path.read_text`` boundary rather
+        # than via ``chmod(0o000)``: a privileged process (root in a container)
+        # reads a mode-000 file anyway and the test would land on
+        # ``no_summary_line`` instead of the branch it is meant to exercise.
+        def _unreadable(self: Path, *args: object, **kwargs: object) -> str:
+            raise OSError(13, "Permission denied", str(self))
+
+        monkeypatch.setattr(transcript_module.Path, "read_text", _unreadable)
+        entries, source = read_compacted_entries_detailed(str(session))
         assert (entries, source) == (None, "unreadable")
 
     def test_empty_path(self) -> None:

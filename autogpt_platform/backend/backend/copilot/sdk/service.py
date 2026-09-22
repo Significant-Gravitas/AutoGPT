@@ -5236,6 +5236,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         try:
             _lf_span = get_client().start_as_current_span(name="copilot-sdk-turn")
             _lf_span.__enter__()
+            # Pin compaction events to this trace explicitly; the cycle
+            # that emits them closes deep inside the awaited message loop.
+            compaction.trace_id = get_client().get_current_trace_id()
         except Exception:
             logger.debug("Failed to open Langfuse parent span", exc_info=True)
             _lf_span = None

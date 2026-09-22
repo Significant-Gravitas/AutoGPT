@@ -377,6 +377,12 @@ class CompactionTracker:
         self._attempted_sources: list[str] = []
         self._completed_sources: list[str] = []
         self._pre_query_tool_call_id: str = ""
+        # The turn's Langfuse trace id, set by the service once the turn
+        # span is open so every compaction event is pinned to that trace
+        # instead of whatever span happens to be current when a cycle
+        # closes. ``None`` (span never opened) falls back to the ambient
+        # context inside ``emit_compaction_event``.
+        self.trace_id: str | None = None
 
     @property
     def attempt_count(self) -> int:
@@ -476,6 +482,7 @@ class CompactionTracker:
             path="pre_query",
             stats=stats,
             after_source="compress_result",
+            trace_id=self.trace_id,
             log_prefix="[SDK]",
         )
         events.append(_progress("rebuilding", stats))
@@ -615,6 +622,7 @@ class CompactionTracker:
             path="sdk_internal",
             stats=stats,
             after_source=after_source,
+            trace_id=self.trace_id,
             log_prefix="[SDK]",
         )
         done_events.append(_progress("rebuilding", stats))
