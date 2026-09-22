@@ -1,5 +1,6 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
@@ -8,6 +9,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
+  /** The new layout floats its sidebar/files controls over the chat's
+   *  top-left corner on small viewports. */
+  hasFloatingControls?: boolean;
 }
 
 /**
@@ -18,6 +22,7 @@ interface Props {
 export function CopilotChatHost({
   droppedFiles,
   onDroppedFilesConsumed,
+  hasFloatingControls,
 }: Props) {
   const {
     sessionId,
@@ -26,6 +31,7 @@ export function CopilotChatHost({
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -38,14 +44,19 @@ export function CopilotChatHost({
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     hasMoreMessages,
     isLoadingMore,
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -70,10 +81,12 @@ export function CopilotChatHost({
           error={error}
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
+          sessionSentFrom={sessionSentFrom}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
+          isFinishProbing={isFinishProbing}
           isRestoringActiveSession={isRestoringActiveSession}
           restoreStatusMessage={restoreStatusMessage}
           activeStreamStartedAt={activeStreamStartedAt}
@@ -84,6 +97,7 @@ export function CopilotChatHost({
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
           isUploadingFiles={isUploadingFiles}
+          pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
@@ -94,11 +108,19 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
+        failure={platformLimitFailure}
+        sessionId={sessionId}
         onDismiss={dismissRateLimit}
+      />
+      <ProviderLimitDialog
+        failure={providerLimit}
+        sessionId={sessionId}
+        onDismiss={dismissProviderLimit}
       />
     </>
   );

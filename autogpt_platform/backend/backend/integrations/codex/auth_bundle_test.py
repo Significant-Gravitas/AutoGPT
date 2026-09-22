@@ -63,11 +63,28 @@ def test_bundle_round_trips_through_oauth_credentials(tmp_path: Path):
     credentials = credentials_from_bundle(bundle)
 
     assert credentials.provider == "codex"
-    assert credentials.refresh_strategy == "provider_runtime"
+    # Sign-in and refresh are plain HTTP now, so the credentials manager owns
+    # the token lifecycle instead of a Codex process.
+    assert credentials.refresh_strategy == "oauth_handler"
     assert credentials.username == "alpha@example.com"
     assert credentials.access_token == SecretStr(tokens[1])
     assert bundle_from_credentials(credentials) == bundle
     assert all(token not in repr(credentials) for token in tokens)
+
+
+def test_credentials_stored_before_the_http_switch_are_still_readable(
+    tmp_path: Path,
+) -> None:
+    """Grants written when the CLI owned refresh must not break on upgrade."""
+    auth_path = tmp_path / "auth.json"
+    _write_auth(auth_path, "alpha")
+    bundle = read_auth_bundle(auth_path, "0.144.4")
+
+    legacy = credentials_from_bundle(bundle).model_copy(
+        update={"refresh_strategy": "provider_runtime"}
+    )
+
+    assert bundle_from_credentials(legacy) == bundle
 
 
 def test_provider_state_round_trips_through_existing_encryption(tmp_path: Path):

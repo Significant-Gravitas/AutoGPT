@@ -6,6 +6,7 @@ const TOOL_TO_CATEGORY: Record<string, string> = {
   find_library_agent: "search",
   run_agent: "agent run",
   run_block: "action",
+  run_capability: "action",
   create_agent: "agent created",
   edit_agent: "agent edited",
   schedule_agent: "agent scheduled",

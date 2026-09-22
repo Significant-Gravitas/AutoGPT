@@ -1,8 +1,10 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
 import type { ApiKeyConnectFormValues } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import { UnsupportedNotice } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/UnsupportedNotice";
@@ -13,10 +15,13 @@ import {
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import type { UseFormReturn } from "react-hook-form";
 import { InlineApiKeyForm } from "./InlineApiKeyForm";
+import { InlineHostScopedForm } from "./InlineHostScopedForm";
+import { InlineUserPasswordForm } from "./InlineUserPasswordForm";
 import {
   GlobeIcon,
   Key01Icon,
   SecurityCheckIcon,
+  SmartPhone01Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -28,10 +33,16 @@ interface Props {
   onSelectMethod: (method: AuthMethod) => void;
   apiKeyForm: UseFormReturn<ApiKeyConnectFormValues>;
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
+  /** The host the requesting block will call, when one is in scope. */
+  hostScopedHost?: string;
+  /** A method that completes inside this view rather than through the
+   *  panel footer's Continue: device auth, host-scoped, user/password. */
+  onInlineConnectSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
-const METHOD_ORDER: AuthMethod[] = [
+export const METHOD_ORDER: AuthMethod[] = [
   AuthType.oauth2,
+  AuthType.device_code,
   AuthType.api_key,
   AuthType.user_password,
   AuthType.host_scoped,
@@ -63,9 +74,14 @@ const METHOD_COPY: Record<
     icon: UserIcon,
   },
   [AuthType.host_scoped]: {
-    label: "Host",
-    description: "Scope credentials to one host.",
+    label: "Website access",
+    description: "Paste a key or headers used only for one website.",
     icon: GlobeIcon,
+  },
+  [AuthType.device_code]: {
+    label: "Device auth",
+    description: "Approve on your phone with a short code.",
+    icon: SmartPhone01Icon,
   },
 };
 
@@ -78,6 +94,8 @@ export function ConnectMethodView({
   onSelectMethod,
   apiKeyForm,
   onApiKeySubmit,
+  hostScopedHost,
+  onInlineConnectSuccess,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
     provider.supportedAuthTypes.includes(method),
@@ -189,6 +207,24 @@ export function ConnectMethodView({
                             form={apiKeyForm}
                             providerName={provider.name}
                             onSubmit={onApiKeySubmit}
+                          />
+                        ) : method === AuthType.device_code ? (
+                          <DeviceAuthConnectButton
+                            provider={provider.id}
+                            providerName={provider.name}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.host_scoped ? (
+                          <InlineHostScopedForm
+                            provider={provider.id}
+                            host={hostScopedHost}
+                            onSuccess={onInlineConnectSuccess}
+                          />
+                        ) : method === AuthType.user_password ? (
+                          <InlineUserPasswordForm
+                            provider={provider.id}
+                            providerName={provider.name}
+                            onSuccess={onInlineConnectSuccess}
                           />
                         ) : (
                           <UnsupportedNotice providerName={provider.name} />

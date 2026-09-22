@@ -9,6 +9,7 @@ import * as React from "react";
 
 import { Button } from "@/components/__legacy__/ui/button";
 import { cn } from "@/lib/utils";
+import { isKey } from "@/lib/keyboard";
 
 type CarouselApi = UseEmblaCarouselType[1];
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>;
@@ -88,10 +89,10 @@ const Carousel = React.forwardRef<
 
     const handleKeyDown = React.useCallback(
       (event: React.KeyboardEvent<HTMLDivElement>) => {
-        if (event.key === "ArrowLeft") {
+        if (isKey(event, "ArrowLeft")) {
           event.preventDefault();
           scrollPrev();
-        } else if (event.key === "ArrowRight") {
+        } else if (isKey(event, "ArrowRight")) {
           event.preventDefault();
           scrollNext();
         }

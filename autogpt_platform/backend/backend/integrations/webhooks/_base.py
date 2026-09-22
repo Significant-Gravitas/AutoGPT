@@ -186,7 +186,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         Verify the authenticity of an incoming webhook request.
 
         Default is a no-op: not every provider's webhook protocol supports
-        signing, so unsigned providers (e.g. Compass, Slant3D) don't override
+        signing, so unsigned providers (e.g. Compass) don't override
         this. Providers whose protocol does sign deliveries (GitHub, Telegram,
         Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
         missing or invalid signatures, using `hmac.compare_digest` for any

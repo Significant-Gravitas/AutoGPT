@@ -50,6 +50,13 @@ INSUFFICIENT_BALANCE_SUMMARY = (
     "This run couldn't complete because there weren't enough credits available. "
     f"{INSUFFICIENT_BALANCE_GUIDANCE}"
 )
+ENTITLEMENT_REQUIRED_GUIDANCE = (
+    "Upgrade the plan, or switch the step to an option your plan includes."
+)
+ENTITLEMENT_REQUIRED_SUMMARY = (
+    "This run couldn't complete because it used a feature the current plan "
+    f"doesn't include. {ENTITLEMENT_REQUIRED_GUIDANCE}"
+)
 
 
 # Default system prompt template for activity status generation
@@ -57,10 +64,13 @@ DEFAULT_SYSTEM_PROMPT = """You are an AI assistant analyzing what an agent execu
 You need to provide both a user-friendly summary AND a correctness assessment.
 
 FOR THE ACTIVITY STATUS:
-- Write from the user's perspective about what they accomplished, NOT about technical execution details
+- Describe what was accomplished as a neutral outcome, NOT about technical execution details
+- NEVER write in the first person: no 'I', 'I used', 'I calculated', 'It seems like I', 'It looks like I'
+- Do not address the user as 'you' and do not hedge with 'It seems like' or 'It looks like'
+- Lead with the result itself, e.g. 'Added 2 and 3 and produced 5.' or 'Release notes were generated covering the latest updates.'
 - Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps
 - Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc.
-- Keep it to 3 sentences maximum. Be conversational and human-friendly
+- Keep it to 3 sentences maximum. Be plain and human-friendly
 
 FOR THE CORRECTNESS SCORE:
 - Provide a score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose
@@ -130,11 +140,11 @@ INTENTION-BASED EVALUATION:
 - Match the outputs to the stated intention, not just technical completion
 
 PROVIDE:
-activity_status: 1-3 sentences about what the user accomplished, such as:
-- 'I analyzed your resume and provided detailed feedback for the IT industry.'
-- 'I couldn't complete the task because critical steps failed to produce any results.'
-- 'I failed to generate the content you requested due to missing API access.'
-- 'I extracted key information from your documents and organized it into a summary.'
+activity_status: 1-3 sentences describing the outcome, never in the first person, such as:
+- 'Analyzed the resume and provided detailed feedback for the IT industry.'
+- 'The task could not be completed because critical steps failed to produce any results.'
+- 'Content generation failed due to missing API access.'
+- 'Key information was extracted from the documents and organized into a summary.'
 - 'The task failed because the blog post creation step didn't produce any output.'
 
 correctness_score: A float score from 0.0 to 1.0 based on how well the intended purpose was achieved:
@@ -219,6 +229,12 @@ def _get_deterministic_failure_response(
     if execution_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE:
         return {
             "activity_status": INSUFFICIENT_BALANCE_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    if execution_stats.failure_reason == ExecutionFailureReason.ENTITLEMENT_REQUIRED:
+        return {
+            "activity_status": ENTITLEMENT_REQUIRED_SUMMARY,
             "correctness_score": 0.0,
         }
 

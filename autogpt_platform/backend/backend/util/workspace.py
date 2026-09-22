@@ -14,8 +14,24 @@ from typing import Optional
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import workspace_db, workspace_skill_db
+from backend.data.skill_capacity import (
+    MAX_SKILLS_PER_EXPERT,
+    SKILL_ORIGIN_LABELS,
+    SKILL_ORIGIN_USER,
+    SkillLimitError,
+    SkillOwnedError,
+    skill_origin,
+    skill_owner_folder,
+)
 from backend.data.workspace import WorkspaceFile
+from backend.data.workspace_scope import (
+    EXPERT_FILE_ACCESS_DENIED,
+    SHARED_ROOTS,
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+)
+from backend.data.workspace_skill import WorkspaceSkillWrite
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -48,7 +64,11 @@ class WorkspaceManager:
     """
 
     def __init__(
-        self, user_id: str, workspace_id: str, session_id: Optional[str] = None
+        self,
+        user_id: str,
+        workspace_id: str,
+        session_id: Optional[str] = None,
+        scope: Optional[WorkspaceScope] = None,
     ):
         """
         Initialize WorkspaceManager.
@@ -57,18 +77,54 @@ class WorkspaceManager:
             user_id: The user's ID
             workspace_id: The workspace ID
             session_id: Optional session ID for session-scoped file access
+            scope: Resolved grants for an expert session. ``None`` means the
+                account owner is acting and every file in the workspace is
+                reachable. When set, every operation — by path or by file ID,
+                including listings and counts — is confined to the scope.
         """
         self.user_id = user_id
         self.workspace_id = workspace_id
         self.session_id = session_id
+        self.scope = scope
         # Session path prefix for file isolation
         self.session_path = f"/sessions/{session_id}" if session_id else ""
+
+    def _authorize_path(self, path: str, *, write: bool = False) -> None:
+        if self.scope is not None and not self.scope.allows_path(path, write=write):
+            logger.warning(
+                "Workspace access denied for expert %s (write=%s): %s",
+                self.scope.expert_id,
+                write,
+                path,
+            )
+            raise WorkspaceAccessDeniedError(EXPERT_FILE_ACCESS_DENIED)
+
+    def _authorize_file(self, file: WorkspaceFile, *, write: bool = False) -> None:
+        self._authorize_path(file.path, write=write)
+
+    def _allowed_prefixes(
+        self, requested: Optional[list[str]] = None
+    ) -> Optional[list[str]]:
+        """Prefixes a listing may span: the scope's, narrowed to ``requested``.
+
+        A requested prefix survives only if it lies inside a scope prefix, so
+        this argument can narrow an expert's reach but never widen it.
+        """
+        if self.scope is None:
+            return requested
+        allowed = self.scope.read_prefixes
+        if requested is None:
+            return allowed
+        return [p for p in requested if any(p.startswith(a) for a in allowed)]
 
     def _resolve_path(self, path: str) -> str:
         """
         Resolve a path, defaulting to session folder if session_id is set.
 
-        Cross-session access is allowed by explicitly using /sessions/other-session-id/...
+        An absolute path into a shared root (:data:`SHARED_ROOTS`) is taken
+        as written: another session's folder, or a skill package, which every
+        session of the account shares. :meth:`_authorize_path` still applies,
+        so an expert reaches only the roots its scope grants.
 
         Args:
             path: Virtual path (e.g., "/file.txt" or "/sessions/abc123/file.txt")
@@ -76,8 +132,7 @@ class WorkspaceManager:
         Returns:
             Resolved path with session prefix if applicable
         """
-        # If path explicitly references a session folder, use it as-is
-        if path.startswith("/sessions/"):
+        if path.startswith(SHARED_ROOTS):
             return path
 
         # If we have a session context, prepend session path
@@ -137,6 +192,7 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
         if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
@@ -161,6 +217,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
@@ -218,6 +275,7 @@ class WorkspaceManager:
 
         # Resolve path with session prefix
         path = self._resolve_path(path)
+        self._authorize_path(path, write=True)
 
         # Enforce per-user workspace storage quota (tier-based).
         # For overwrites, subtract the existing file's size so replacing a file
@@ -312,14 +370,69 @@ class WorkspaceManager:
                     ) from None
                 raise ValueError(f"File already exists at path: {path}")
 
+        replaced_storage_path: str | None = None
+        replaced_file_id: str | None = None
         try:
-            file = await _persist_db_record()
+            if skill_owner_folder(path) is not None:
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    WorkspaceSkillWrite(
+                        workspace_id=self.workspace_id,
+                        file_id=file_id,
+                        name=filename,
+                        path=path,
+                        storage_path=storage_path,
+                        mime_type=mime_type,
+                        size_bytes=len(content),
+                        overwrite=overwrite,
+                        checksum=checksum,
+                        metadata=metadata,
+                    )
+                )
+                if publication.status == "capacity":
+                    origin = skill_origin(metadata) or SKILL_ORIGIN_USER
+                    raise SkillLimitError(
+                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {SKILL_ORIGIN_LABELS[origin]} "
+                        "skills). Delete an unused skill first."
+                    )
+                if publication.status == "owned":
+                    raise SkillOwnedError(
+                        f"'{path.rsplit('/', 2)[1]}' is one of the owner's own skills; "
+                        "rename or delete it before installing a skill by that name."
+                    )
+                if publication.status == "exists":
+                    raise ValueError(f"File already exists at path: {path}")
+                assert publication.file is not None
+                file = publication.file
+                replaced_storage_path = publication.replaced_storage_path
+                replaced_file_id = publication.replaced_file_id
+            else:
+                file = await _persist_db_record()
         except Exception:
             try:
                 await storage.delete(storage_path)
             except Exception as e:
                 logger.warning(f"Failed to clean up orphaned storage file: {e}")
             raise
+
+        if replaced_storage_path and replaced_storage_path != storage_path:
+            try:
+                await storage.delete(replaced_storage_path)
+            except Exception:
+                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+
+        if replaced_file_id and replaced_file_id != file.id:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=replaced_file_id, user_id=self.user_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean up replaced skill embedding", exc_info=True
+                )
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
@@ -355,6 +468,7 @@ class WorkspaceManager:
         metadata_not_equals: Optional[dict] = None,
         folder_id: Optional[str] = None,
         root_only: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -379,6 +493,9 @@ class WorkspaceManager:
                 this object (Artifacts "Generated" filter).
             folder_id: If set, only return files in this folder.
             root_only: If True, only return root-level files (folderId IS NULL).
+            allowed_path_prefixes: Only list files under these prefixes. When
+                the manager carries a scope the prefixes are intersected with
+                it (see :meth:`_allowed_prefixes`).
 
         Returns:
             List of WorkspaceFile instances
@@ -397,6 +514,7 @@ class WorkspaceManager:
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
             root_only=root_only,
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -413,6 +531,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             return False
+        self._authorize_file(file, write=True)
 
         # Delete from storage
         storage = await get_workspace_storage()
@@ -459,6 +578,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.get_download_url(file.storage_path, expires_in)
@@ -471,10 +591,20 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            WorkspaceFile instance or None
+            WorkspaceFile instance, or None when no such file exists.
+
+        Raises:
+            WorkspaceAccessDeniedError: the file exists but lies outside this
+                manager's scope. Deliberately not folded into ``None`` so an
+                expert sees "access denied" rather than "not found" for a
+                file it cannot reach; every caller either surfaces it as such
+                or treats it like any other failure to read the file.
         """
         db = workspace_db()
-        return await db.get_workspace_file(file_id, self.workspace_id)
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is not None:
+            self._authorize_file(file)
+        return file
 
     async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
@@ -491,12 +621,14 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
 
     async def get_file_count(
         self,
         path: Optional[str] = None,
         include_all_sessions: bool = False,
+        allowed_path_prefixes: Optional[list[str]] = None,
     ) -> int:
         """
         Get number of files in workspace.
@@ -516,5 +648,7 @@ class WorkspaceManager:
         db = workspace_db()
 
         return await db.count_workspace_files(
-            self.workspace_id, path_prefix=effective_path
+            self.workspace_id,
+            path_prefix=effective_path,
+            allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
         )

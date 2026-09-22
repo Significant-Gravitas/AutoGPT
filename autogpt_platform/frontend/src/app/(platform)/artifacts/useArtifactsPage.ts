@@ -1,21 +1,57 @@
 import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
+export type ArtifactsView = "list" | "grid";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
+const FOLDER_PARAM = "folder";
 
 export const ARTIFACTS_LIST_QUERY_KEY = ["artifacts", "list"] as const;
 
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
-export function useArtifactsPage() {
+interface Options {
+  folders: WorkspaceFolder[];
+  isFoldersLoading: boolean;
+  isFoldersError: boolean;
+}
+
+export function useArtifactsPage({
+  folders,
+  isFoldersLoading,
+  isFoldersError,
+}: Options) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [expertFilter, setExpertFilter] = useState<string | null>(null);
+  const [view, setView] = useState<ArtifactsView>("list");
+
+  // The open folder lives in the URL so a reload, a shared link and the back
+  // button land in it. Only a settled folders query can prove an id is gone,
+  // so until then it is taken at face value and the files load straight away
+  // rather than queueing behind the folder list.
+  const folderParam = searchParams.get(FOLDER_PARAM);
+  const isStaleFolder =
+    folderParam !== null &&
+    !isFoldersLoading &&
+    !isFoldersError &&
+    !folders.some((folder) => folder.id === folderParam);
+  const selectedFolderId = isStaleFolder ? null : folderParam;
+
+  const currentSearch = searchParams.toString();
+  useEffect(() => {
+    if (!isStaleFolder) return;
+    router.replace(folderHref(pathname, currentSearch, null));
+  }, [isStaleFolder, pathname, currentSearch, router]);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -24,12 +60,15 @@ export function useArtifactsPage() {
 
   const q = debouncedSearch || undefined;
   const origin = originFilter === "all" ? undefined : originFilter;
+  // An expert filter spans every file from that expert's conversations, so
+  // the folder axes are dropped: the API rejects combining them.
+  const expertId = expertFilter ?? undefined;
   // No folder selected → show only root-level files; a folder is selected →
   // scope the listing to that folder.
-  const folderId = selectedFolderId ?? undefined;
+  const folderId = expertId ? undefined : (selectedFolderId ?? undefined);
   // While searching, span the whole workspace (including files inside folders)
   // so global search isn't limited to root-level files.
-  const rootOnly = selectedFolderId === null && !q;
+  const rootOnly = !expertId && selectedFolderId === null && !q;
 
   const query = useInfiniteQuery({
     queryKey: [
@@ -39,6 +78,7 @@ export function useArtifactsPage() {
         origin: origin ?? null,
         folderId: folderId ?? null,
         rootOnly,
+        expertId: expertId ?? null,
       },
     ] as const,
     queryFn: ({ pageParam }) =>
@@ -49,6 +89,7 @@ export function useArtifactsPage() {
         origin,
         folder_id: folderId,
         root_only: rootOnly,
+        expert_id: expertId,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -73,13 +114,36 @@ export function useArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
-    setSelectedFolderId,
+    // Entering a folder is a step forward, so the back button leaves it;
+    // leaving replaces, so back does not drop you straight back inside.
+    openFolder: (folderId: string) =>
+      router.push(folderHref(pathname, currentSearch, folderId)),
+    closeFolder: () => {
+      if (folderParam === null) return;
+      router.replace(folderHref(pathname, currentSearch, null));
+    },
+    expertFilter,
+    setExpertFilter,
+    view,
+    setView,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {
       query.fetchNextPage();
     },
   };
+}
+
+function folderHref(
+  pathname: string,
+  search: string,
+  folderId: string | null,
+): string {
+  const params = new URLSearchParams(search);
+  if (folderId) params.set(FOLDER_PARAM, folderId);
+  else params.delete(FOLDER_PARAM);
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function flattenFiles(

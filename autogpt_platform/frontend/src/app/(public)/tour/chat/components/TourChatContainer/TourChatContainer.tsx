@@ -34,7 +34,7 @@ export function TourChatContainer({ chat }: Props) {
             />
             <p className="mt-2 flex items-center justify-center gap-1 text-sm text-zinc-400">
               <Icon icon={FlashIcon} className="size-3.5 shrink-0" />
-              Simulated demo — pick a scenario above to watch Autopilot build a
+              Simulated demo — pick a scenario above to watch Otto build a
               different agent
             </p>
           </div>

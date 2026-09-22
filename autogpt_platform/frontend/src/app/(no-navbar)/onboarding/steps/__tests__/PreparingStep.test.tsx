@@ -14,7 +14,7 @@ const GENERIC_CHECKLIST = [
 ];
 const DUMP_CHECKLIST = [
   "Reading your brain dump",
-  "Briefing AutoPilot on your work",
+  "Briefing Otto on your work",
   "Building your space",
   "Finding tools for your work",
 ];
@@ -56,7 +56,7 @@ describe("PreparingStep checklist copy", () => {
       expect(await screen.findByText(item)).toBeDefined();
     }
     expect(screen.queryByText("Reading your brain dump")).toBeNull();
-    expect(screen.queryByText("Briefing AutoPilot on your work")).toBeNull();
+    expect(screen.queryByText("Briefing Otto on your work")).toBeNull();
   });
 
   it("shows the generic checklist when the brain-dump flag is off, even with a stale path A", async () => {

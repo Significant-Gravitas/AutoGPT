@@ -15,6 +15,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -37,6 +38,9 @@ SIGNATURE_HEADER_PAIRS = (
 # replay. Only enforced when the timestamp parses; the signature itself is
 # always checked.
 MAX_TIMESTAMP_SKEW = timedelta(minutes=5)
+
+# Epoch seconds or milliseconds, optionally signed or fractional.
+_EPOCH_ONLY = re.compile(r"[+-]?\d+(?:\.\d+)?")
 
 _OPTIONAL_SECRET = TypeAdapter(Optional[SecretStr])
 _JSON_OBJECT = TypeAdapter(dict)
@@ -220,12 +224,20 @@ def _parse_timestamp(timestamp: str) -> Optional[datetime]:
     if not candidate:
         return None
 
-    try:
-        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
-    except ValueError:
-        pass
-    else:
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    # An all-digit value is an epoch, and must not be offered to
+    # `fromisoformat` first. Python 3.11+ accepts ISO 8601 *basic* format, so a
+    # 13-digit millisecond value whose leading digits happen to spell a valid
+    # YYYYMMDD parses as a date centuries in the past — 1787121651526 becomes
+    # 1787-12-16 — which then fails the replay-window check. Whether a given
+    # millisecond value does that depends on the wall clock, so the symptom is
+    # an intermittent 403 on valid deliveries.
+    if not _EPOCH_ONLY.fullmatch(candidate):
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     try:
         epoch = float(candidate)

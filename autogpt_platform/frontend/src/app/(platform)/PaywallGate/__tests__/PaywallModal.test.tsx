@@ -1,3 +1,7 @@
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   render,
@@ -377,9 +381,49 @@ describe("PaywallModal — upgrade mutation", () => {
     });
     const [args] = mutateFn.mock.calls[0];
     expect(args.data.cancel_url).toBe("https://app.test/copilot");
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription to Google Ads.
     expect(args.data.success_url).toBe(
-      "https://app.test/profile/credits?subscription=success",
+      "https://app.test/profile/credits?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
     );
+  });
+
+  it("reports begin_checkout only once Stripe returns a Checkout URL", async () => {
+    stubLocation();
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const mutateFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: { url: null } });
+    setupMocks({
+      mutateFn,
+      subscription: { tier: "NO_TIER", tier_costs: { PRO: 5000 } },
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+
+    mutateFn.mockResolvedValue({
+      status: 200,
+      data: { url: "https://checkout.stripe.com/pay/cs_test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+      ]);
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
   });
 
   it("401 from updateTier routes to /login instead of toasting a dead-end error", async () => {

@@ -1,6 +1,12 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
+import type { ToolUIPart } from "ai";
+import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
+import type {
+  CompactionPhase,
+  CompactionStats,
+} from "../../CompactionCard/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {
@@ -9,8 +15,10 @@ interface Props {
   isCurrentlyStreaming: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
+  compactionPhase?: CompactionPhase | null;
+  liveCompactionCallId?: string | null;
+  liveCompactionStats?: CompactionStats;
 }
 
 export function ChainMessageParts({
@@ -19,14 +27,12 @@ export function ChainMessageParts({
   isCurrentlyStreaming,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
+  compactionPhase,
+  liveCompactionCallId,
+  liveCompactionStats,
 }: Props) {
-  const segments = buildChainSegments(
-    parts,
-    isChainableToolPart,
-    isCurrentlyStreaming,
-  );
+  const segments = buildChainSegments(parts, isChainableToolPart);
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );
@@ -40,6 +46,17 @@ export function ChainMessageParts({
           isStreaming={
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (segment.kind === "experts") {
+      return (
+        <ExpertChangeGroup
+          key={`${messageID}-experts-${segment.index}`}
+          parts={segment.parts as ToolUIPart[]}
+          isCurrentlyStreaming={isCurrentlyStreaming}
+          readOnly={readOnly}
         />
       );
     }
@@ -51,8 +68,11 @@ export function ChainMessageParts({
         partIndex={segment.index}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
         readOnly={readOnly}
+        compactionPhase={compactionPhase}
+        liveCompactionCallId={liveCompactionCallId}
+        liveCompactionStats={liveCompactionStats}
+        isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );
   });

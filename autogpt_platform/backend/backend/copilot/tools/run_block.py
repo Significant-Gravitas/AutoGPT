@@ -4,24 +4,35 @@ import logging
 import uuid
 from typing import Any
 
+from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
 from .helpers import (
     BlockPreparation,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
     prepare_block_for_execution,
 )
-from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class RunBlockTool(BaseTool):
     """Tool for executing a block and returning its outputs."""
+
+    digest_large_output = True
 
     @property
     def name(self) -> str:
@@ -30,12 +41,12 @@ class RunBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a block. IMPORTANT: Always get block_id from find_block first "
+            "Execute a block. IMPORTANT: Always get block_id from find_capability first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
             "Pass `validate_only: true` to inspect a block without running it "
             "(safe pre-flight — returns schema + detected missing inputs). "
-            "If review_required, use continue_run_block."
+            "If review_required, use resume_capability."
         )
 
     @property
@@ -45,7 +56,7 @@ class RunBlockTool(BaseTool):
             "properties": {
                 "block_id": {
                     "type": "string",
-                    "description": "Block ID from find_block results.",
+                    "description": "Block ID from find_capability results.",
                 },
                 "input_data": {
                     "type": "object",
@@ -70,6 +81,30 @@ class RunBlockTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Only a credentialed execution is an integration action; schema
+        # lookups, dry runs and credential-less blocks leave no audit trail.
+        if (
+            not isinstance(result, BlockOutputResponse)
+            or not result.success
+            or result.is_dry_run
+            or not result.provider
+            or result.provider in LLM_PROVIDER_NAMES
+        ):
+            return None
+        return ActivityEventDraft(
+            category="INTEGRATION",
+            event_type="integration.action",
+            title=result.block_name,
+            provider=result.provider,
+            object_id=result.block_id,
+        )
 
     async def _execute(
         self,
@@ -150,7 +185,7 @@ class RunBlockTool(BaseTool):
                 message=(
                     f"Block '{prep.block.name}' ({block_id}) is not permitted "
                     f"by the current execution permissions. {available_hint}"
-                    "Use find_block to discover blocks that are allowed."
+                    "Use find_capability to discover blocks that are allowed."
                 ),
                 session_id=session_id,
             )
@@ -176,6 +211,7 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -209,6 +245,8 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
+            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
                     f"Block '{prep.block.name}' — all required inputs "
@@ -240,6 +278,11 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             )
 
+        if not dry_run:
+            spend_gate = await check_spend_approval(prep, user_id, session)
+            if spend_gate is not None:
+                return spend_gate
+
         hitl_or_err = await check_hitl_review(
             prep,
             user_id,
@@ -262,7 +305,41 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
+
+
+# Builder-UI render hints: none of them can appear in a graph, and the copilot's
+# own block-details card reads only title/type/description/required.
+_PRESENTATION_ONLY_KEYS = frozenset(
+    {"advanced", "llm_model", "llm_model_metadata", "secret"}
+)
+
+# Keys whose sub-dicts are named by the *author*, so a field called "secret"
+# must survive even though the annotation of the same name must not.
+_SCHEMA_MAP_KEYS = frozenset(
+    {"$defs", "definitions", "patternProperties", "properties"}
+)
+
+
+def _strip_presentation_annotations(node: Any) -> Any:
+    """Return *node* with the builder-UI annotation keys removed, recursively."""
+    if isinstance(node, dict):
+        cleaned: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _PRESENTATION_ONLY_KEYS:
+                continue
+            if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
+                cleaned[key] = {
+                    name: _strip_presentation_annotations(sub)
+                    for name, sub in value.items()
+                }
+            else:
+                cleaned[key] = _strip_presentation_annotations(value)
+        return cleaned
+    if isinstance(node, list):
+        return [_strip_presentation_annotations(item) for item in node]
+    return node
 
 
 def _strip_credentials_from_schema(

@@ -7,6 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { isKey } from "@/lib/keyboard";
+import { downloadRecording } from "../../voice/downloadRecording";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -28,6 +30,17 @@ export function useVoiceRecording({
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kept apart from `error`: a failed transcription is answered inline, next
+  // to the audio it still holds, not by a toast that expires in five seconds.
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(
+    null,
+  );
+  // Up to two minutes of speech. Dropping it on a transient 500 is the whole
+  // bug — the user cannot get those two minutes back.
+  const [failedRecording, setFailedRecording] = useState<Blob | null>(null);
+  // Bumped when the user dismisses. An attempt they have already waved away
+  // must not put the row back on screen when it finally fails.
+  const attemptRef = useRef(0);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -39,7 +52,7 @@ export function useVoiceRecording({
 
   const [isSupported, setIsSupported] = useState(false);
   // Sending the draft as transcription context ships with the brain-dump
-  // experience (Path B records a dump on top of AutoPilot's intro text).
+  // experience (Path B records a dump on top of Otto's intro text).
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isBrainDumpEnabledRef = useRef(isBrainDumpEnabled);
   isBrainDumpEnabledRef.current = isBrainDumpEnabled;
@@ -88,8 +101,11 @@ export function useVoiceRecording({
 
   const transcribeAudio = useCallback(
     async (audioBlob: Blob) => {
+      const attempt = attemptRef.current;
       setIsTranscribing(true);
       setError(null);
+      // The previous failure stays on screen through a retry: clearing it here
+      // would blink the row away and back, and take the Retry button with it.
 
       try {
         const formData = new FormData();
@@ -113,17 +129,43 @@ export function useVoiceRecording({
         if (data.text) {
           handleTranscription(data.text);
         }
+        setTranscriptionError(null);
+        setFailedRecording(null);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Transcription failed";
-        setError(message);
         console.error("Transcription error:", err);
+        // Dismissed while this was in flight: the user is done with this
+        // recording, so the failure has nobody to tell. The success path is
+        // deliberately not gated the same way — if the words do arrive, the
+        // user gets what they dictated rather than losing it twice.
+        if (attempt !== attemptRef.current) return;
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Transcription failed";
+        setTranscriptionError(message);
+        setFailedRecording(audioBlob);
       } finally {
         setIsTranscribing(false);
       }
     },
     [handleTranscription, inputId],
   );
+
+  /** Re-sends the recording that failed, byte for byte. */
+  function retryTranscription() {
+    if (!failedRecording || isTranscribing || isRecordingRef.current) return;
+    void transcribeAudio(failedRecording);
+  }
+
+  function downloadFailedRecording() {
+    if (failedRecording) downloadRecording(failedRecording);
+  }
+
+  function dismissTranscriptionError() {
+    attemptRef.current += 1;
+    setTranscriptionError(null);
+    setFailedRecording(null);
+  }
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecordingRef.current) {
@@ -175,6 +217,13 @@ export function useVoiceRecording({
       };
 
       mediaRecorder.start(1000); // Collect data every second
+
+      // Only once a new recording is genuinely under way. Everything above
+      // can still throw — a denied prompt, an unsupported mime type — and the
+      // catch has no way to give the previous recording back.
+      setTranscriptionError(null);
+      setFailedRecording(null);
+
       isRecordingRef.current = true;
       setIsRecording(true);
       startTimeRef.current = Date.now();
@@ -232,7 +281,7 @@ export function useVoiceRecording({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // Allow space to toggle recording (start when empty, stop when recording)
-      if (event.key === " " && !isTranscribing) {
+      if (isKey(event, " ") && !isTranscribing) {
         if (isRecordingRef.current) {
           // Stop recording on space
           event.preventDefault();
@@ -274,6 +323,11 @@ export function useVoiceRecording({
     isRecording,
     isTranscribing,
     error,
+    transcriptionError,
+    hasFailedRecording: failedRecording !== null,
+    retryTranscription,
+    downloadFailedRecording,
+    dismissTranscriptionError,
     elapsedTime,
     startRecording,
     stopRecording,

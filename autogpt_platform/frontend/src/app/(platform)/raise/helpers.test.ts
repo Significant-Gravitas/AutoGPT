@@ -64,7 +64,7 @@ describe("raise helpers", () => {
       "No weekly limit",
     );
     expect(kitBudgetLabel({ weeklyBudget: 500, attachments: [] })).toBe(
-      "500 credits ($5/week)",
+      "$5 / week",
     );
     expect(
       kitToolsLabel({
@@ -143,6 +143,23 @@ describe("restoring a persisted draft", () => {
     saveStepFromEarlierBuild("kit");
 
     expect(loadDraft().step).toBe("budget");
+  });
+
+  test("sends a draft from before the job title beat back to that beat", () => {
+    saveDraft({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      name: "Nova",
+      step: "avatar",
+    });
+
+    expect(loadDraft()).toEqual({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      step: "jobTitle",
+    });
   });
 
   test("restarts the flow when the stored step is not a known step", () => {
