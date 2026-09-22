@@ -46,7 +46,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
       {ordered.length > SHELF_PREVIEW_SIZE ? (
         <ShelfMoreButton
           isExpanded={isExpanded}
-          total={ordered.length}
+          count={ordered.length}
           noun="workflows"
           onToggle={() => setIsExpanded(!isExpanded)}
         />

@@ -87,7 +87,8 @@ export function SkillsList({ category }: Props) {
       {total > SHELF_PREVIEW_SIZE ? (
         <ShelfMoreButton
           isExpanded={isExpanded}
-          total={Math.min(total, SHELF_MAX_SIZE)}
+          count={Math.min(total, SHELF_MAX_SIZE)}
+          isAll={total <= SHELF_MAX_SIZE}
           noun="skills"
           onToggle={() =>
             setPageSize(
