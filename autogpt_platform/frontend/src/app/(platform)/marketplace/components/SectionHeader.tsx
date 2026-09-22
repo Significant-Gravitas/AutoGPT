@@ -13,6 +13,8 @@ interface Props {
   titleId?: string;
   subtitle?: string;
   action?: { label: string; href: string };
+  /** A control row above the actions, e.g. a shelf's own filter chips. */
+  filters?: ReactNode;
   /** A button above the text action, for the section's second door. */
   secondaryAction?: { label: string; href: string };
   size?: "default" | "small";
@@ -26,6 +28,7 @@ export function SectionHeader({
   titleId,
   subtitle,
   action,
+  filters,
   secondaryAction,
   size = "default",
 }: Props) {
@@ -66,8 +69,16 @@ export function SectionHeader({
           </p>
         ) : null}
       </div>
-      {action || secondaryAction ? (
-        <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2">
+      {action || secondaryAction || filters ? (
+        <div
+          className={cn(
+            "flex flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2",
+            // Chips wrap rather than push the heading off the page, so the
+            // column gives up `shrink-0` when it carries them.
+            filters ? "min-w-0 flex-1" : "shrink-0",
+          )}
+        >
+          {filters}
           {secondaryAction ? (
             <Button
               as="NextLink"

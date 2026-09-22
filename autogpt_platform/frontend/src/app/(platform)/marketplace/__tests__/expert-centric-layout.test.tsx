@@ -9,6 +9,7 @@ import {
   getGetV2ListMarketplaceSkillsMockHandler200,
   getGetV2ListStoreAgentsMockHandler,
   getGetV2ListStoreAgentsResponseMock,
+  getGetV2ListStoreCategoriesMockHandler,
   getGetV2ListStoreCreatorsMockHandler,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
@@ -189,6 +190,47 @@ describe("Marketplace with hire-experts on", () => {
 
     await waitFor(() =>
       expect(screen.getAllByTestId("skill-tile")).toHaveLength(12),
+    );
+  });
+
+  test("a topic chip narrows the shelf to that category", async () => {
+    const pipeline: MarketplaceSkill = {
+      ...outreach,
+      slug: "pipeline-review",
+      name: "pipeline-review",
+      title: "Pipeline review",
+      categories: ["sales"],
+    };
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler([
+        { value: "sales", label: "Sales", description: "Deals and outreach" },
+        { value: "content", label: "Content", description: "Writing" },
+      ]),
+      http.get("/api/proxy/api/store/skills", ({ request }) => {
+        const category = new URL(request.url).searchParams.get("category");
+        const skills = category === "sales" ? [pipeline] : [outreach];
+        return HttpResponse.json({
+          skills,
+          pagination: {
+            total_items: skills.length,
+            total_pages: 1,
+            current_page: 1,
+            page_size: 8,
+          },
+        });
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const chips = await screen.findByRole("group", {
+      name: "Filter skills by topic",
+    });
+    await userEvent.click(within(chips).getByRole("button", { name: "Sales" }));
+
+    expect(await screen.findByText("Pipeline review")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("Outreach playbook")).toBeNull(),
     );
   });
 

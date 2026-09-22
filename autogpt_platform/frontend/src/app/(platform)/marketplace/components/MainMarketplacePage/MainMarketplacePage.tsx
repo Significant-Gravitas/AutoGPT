@@ -76,7 +76,7 @@ export const MainMarkeplacePage = () => {
         {isHireExpertsEnabled ? (
           <>
             {skillsHub.ready && skillsHub.enabled ? (
-              <SkillsList category={category} />
+              <SkillsList key={category ?? "all"} category={category} />
             ) : null}
             {topAgents && (
               <WorkflowsShelf
