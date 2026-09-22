@@ -160,7 +160,13 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         cost_log_provider="anthropic",
         dispatch_provider="anthropic",
         supports_flex_tier=False,
-        sdk_context_window=CLAUDE_ENGINE_CONTEXT_WINDOW,
+        # Held to 200K on purpose although the engine would run 1M: these
+        # turns draw on the subscriber's own plan, and a chat sitting at
+        # 700K resends 700K every turn — a handful of messages drains a
+        # usage window. A pin *below* the CLI's model table is the one that
+        # takes effect (one above it is clamped away), so this is the lever
+        # that keeps a long chat from eating the plan limit.
+        sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
     ),
     "openrouter": TransportProfile(
         name="openrouter",
@@ -535,8 +541,9 @@ class ChatConfig(BaseSettings):
         description="Context window the SDK subprocess is held to, in tokens "
         "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see "
         "``sdk/context_window.py``). None (default) means the route's "
-        "coding-engine default: 1M on Claude-engine routes (subscription, "
-        "direct_anthropic), 272K on the Codex route, 200K on the platform "
+        "default: 1M on direct_anthropic (the operator's own key), 200K on "
+        "subscription (the subscriber's plan limit is the constraint, not "
+        "the engine), 272K on the Codex route, 200K on the platform "
         "(openrouter) route. An explicit value wins on every route. Moonshot "
         "routes use the lower of the resolved pin and the SKU's catalog window.",
     )

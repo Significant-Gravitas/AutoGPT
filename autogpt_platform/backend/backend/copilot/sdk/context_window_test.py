@@ -48,17 +48,24 @@ def _openrouter_config(**overrides) -> ChatConfig:
 
 
 class TestPinnedContextWindow:
-    @pytest.mark.parametrize("transport", ["direct_anthropic", "subscription"])
-    def test_claude_engine_routes_default_to_1m(self, transport):
-        if transport == "subscription":
-            cfg = _make_config(use_claude_code_subscription=True)
-        else:
-            cfg = _make_config()
-        assert cfg.transport.name == transport
+    def test_direct_anthropic_defaults_to_1m(self):
+        cfg = _make_config()
+        assert cfg.transport.name == "direct_anthropic"
         assert (
             pinned_context_window(cfg, "anthropic/claude-sonnet-5", codex_route=False)
             == CLAUDE_ENGINE_CONTEXT_WINDOW
             == 1_000_000
+        )
+
+    def test_subscription_pins_200k_for_the_plan_limit(self):
+        """The engine would run 1M, but these turns draw on the subscriber's
+        own plan; 200K keeps a long chat from draining a usage window."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        assert cfg.transport.name == "subscription"
+        assert (
+            pinned_context_window(cfg, "anthropic/claude-sonnet-5", codex_route=False)
+            == CLI_DEFAULT_CONTEXT_WINDOW
+            == 200_000
         )
 
     def test_platform_route_defaults_to_cli_default(self):
@@ -142,7 +149,7 @@ class TestPinnedContextWindow:
         """Subscription standard tier resolves no slug (CLI picks) — the pin
         still applies."""
         cfg = _make_config(use_claude_code_subscription=True)
-        assert pinned_context_window(cfg, None, codex_route=False) == 1_000_000
+        assert pinned_context_window(cfg, None, codex_route=False) == 200_000
 
 
 class TestAutocompactPct:

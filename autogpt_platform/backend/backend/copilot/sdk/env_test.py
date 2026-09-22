@@ -733,8 +733,10 @@ class TestContextWindowPin:
         assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
 
     @patch("backend.copilot.sdk.env.validate_subscription")
-    def test_subscription_defaults_to_claude_engine_window(self, _mock_validate):
-        """Subscription auth runs Claude models on the operator's plan: 1M."""
+    def test_subscription_pins_200k_to_protect_the_plan_limit(self, _mock_validate):
+        """Subscription turns draw on the subscriber's own plan: a 700K chat
+        resends 700K every turn, so the route is held to 200K with the 1M
+        gate set even though the engine would run 1M."""
         cfg = _make_config(use_claude_code_subscription=True)
         assert cfg.transport.name == "subscription"
         with patch("backend.copilot.sdk.env.config", cfg):
@@ -742,8 +744,8 @@ class TestContextWindowPin:
 
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
-        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "1000000"
-        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
+        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
 
     def test_openrouter_platform_default_stays_200k(self):
         """The platform route keeps today's behaviour: 200K pin, gate set."""

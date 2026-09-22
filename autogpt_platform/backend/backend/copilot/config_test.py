@@ -471,7 +471,7 @@ class TestTransportProfile:
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
-        assert p.sdk_context_window == 1_000_000
+        assert p.sdk_context_window == 200_000
 
     def test_direct_anthropic_profile_shape(self):
         cfg = _make_direct_safe_config(
