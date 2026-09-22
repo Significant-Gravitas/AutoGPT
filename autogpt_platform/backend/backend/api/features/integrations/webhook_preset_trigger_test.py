@@ -73,6 +73,11 @@ async def test_event_check_uses_unwrapped_trigger_config():
         trigger_node.id: {"events": {"push": True}, "payload": {"some": "payload"}}
     }
 
+    # `payload` is injected into the router's `dict(mask)` copy, so the preset's
+    # own mask must come back payload-free: dropping that copy would persist a
+    # delivery's payload into the stored trigger config.
+    assert preset.inputs["_node_input_mask_abc123"] == {"events": {"push": True}}
+
 
 @pytest.mark.asyncio
 async def test_skips_when_event_type_not_matched():

@@ -172,10 +172,11 @@ async def test_backfill_costs_one_query_on_a_converged_database():
     presets = MagicMock()
     presets.prisma.return_value.find_many = AsyncMock(return_value=[])
     get_graph = AsyncMock()
+    # The real registry, not a stub: the query's trigger-field arm below is
+    # derived from it, so a stub would make that assertion compare [] to [].
     with (
         patch("prisma.models.AgentPreset", presets),
         patch("backend.data.graph.get_graph", get_graph),
-        patch("backend.blocks.get_webhook_block_ids", return_value=["block-1"]),
     ):
         await webhooks_utils.migrate_flat_triggered_preset_inputs()
 
@@ -187,6 +188,17 @@ async def test_backfill_costs_one_query_on_a_converged_database():
     assert where["InputPresets"] == {
         "none": {"name": {"startswith": "_node_input_mask_"}}
     }
+    # ...and so are the un-convertible ones: a run-template preset is refused by
+    # `_holds_flat_trigger_config` forever, at the price of a `get_graph` a boot.
+    trigger_fields = webhooks_utils._trigger_config_field_names()
+    assert where["OR"] == [
+        {"NOT": [{"webhookId": None}]},
+        {"InputPresets": {"some": {"name": {"in": trigger_fields}}}},
+    ]
+    # The arm that excludes it: trigger block field names are in, a graph input's
+    # name is not.
+    assert "repo" in trigger_fields and "events" in trigger_fields
+    assert "topic" not in trigger_fields
 
 
 @pytest.mark.asyncio
@@ -217,3 +229,41 @@ async def test_backfill_wraps_a_preset_the_sql_migration_missed():
     assert io_model.prisma.return_value.delete_many.await_args.kwargs["where"] == {
         "id": {"in": ["r1", "r2"]}
     }
+
+
+def test_trigger_field_prefilter_covers_every_trigger_block():
+    """Soundness of that SQL arm, against the real producer: any name the
+    per-graph check can match lives in `trigger_setup_info.config_schema`, so
+    every block's config schema must be inside the prefilter or the backfill
+    would skip a preset it should convert."""
+    import datetime
+
+    from backend.blocks import get_webhook_block_ids
+    from backend.data.graph import GraphModel, NodeModel
+
+    prefilter = set(webhooks_utils._trigger_config_field_names())
+    assert prefilter
+
+    block_ids = list(get_webhook_block_ids())
+    assert block_ids, "no trigger blocks loaded; the assertion below is vacuous"
+    for block_id in block_ids:
+        graph = GraphModel(
+            id="graph-1",
+            version=1,
+            name="n",
+            description="d",
+            user_id="user-1",
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+            nodes=[
+                NodeModel(
+                    id="11111111-2222-3333-4444-555555555555",
+                    block_id=block_id,
+                    graph_id="graph-1",
+                    graph_version=1,
+                )
+            ],
+            links=[],
+        )
+        trigger_info = graph.trigger_setup_info
+        assert trigger_info, f"block #{block_id} has no trigger setup info"
+        assert set(trigger_info.config_schema.get("properties", {})) <= prefilter

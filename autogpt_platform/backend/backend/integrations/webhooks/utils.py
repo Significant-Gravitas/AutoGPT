@@ -265,6 +265,17 @@ async def migrate_flat_triggered_preset_inputs():
                 }
             },
             "InputPresets": {"none": {"name": {"startswith": NODE_INPUT_MASK_PREFIX}}},
+            # A run-template preset sits on a trigger-bearing graph and is
+            # refused below on every boot; excluding it here keeps the converged
+            # scan empty. Attached = triggered; detached needs a trigger field.
+            "OR": [
+                {"NOT": [{"webhookId": None}]},
+                {
+                    "InputPresets": {
+                        "some": {"name": {"in": _trigger_config_field_names()}}
+                    }
+                },
+            ],
         },
         include={"InputPresets": True},
     )
@@ -337,3 +348,24 @@ def _holds_flat_trigger_config(
     trigger_fields = set(trigger_info.config_schema.get("properties", {}))
     graph_fields = set(graph.input_schema.get("properties", {}))
     return bool(input_names & (trigger_fields - graph_fields))
+
+
+def _trigger_config_field_names() -> list[str]:
+    """Every non-credentials input name any trigger block in the registry declares.
+
+    A superset of any one graph's `trigger_setup_info.config_schema`, so a preset
+    holding none of these cannot hold a flat trigger config -- which is what lets
+    the backfill's query skip run-template presets without loading their graph.
+    """
+    from backend.blocks import get_block, get_webhook_block_ids
+    from backend.data.model import is_credentials_field_name
+
+    return sorted(
+        {
+            name
+            for block_id in get_webhook_block_ids()
+            if (block := get_block(block_id))
+            for name in (block.input_schema.jsonschema().get("properties") or {})
+            if not is_credentials_field_name(name)
+        }
+    )
