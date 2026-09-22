@@ -40,6 +40,8 @@ import {
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useRouter } from "next/navigation";
 import { ChatSessionRow } from "./components/ChatSessionRow/ChatSessionRow";
+import { ExpertSessionGroup } from "./components/ExpertSessionGroup/ExpertSessionGroup";
+import { HeaderAction } from "./components/HeaderAction";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
@@ -91,7 +93,6 @@ export function ChatSidebar() {
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const isPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById } = useExpertMap();
@@ -269,7 +270,6 @@ export function ChatSidebar() {
         isExporting={exportingSessionIds.has(session.id)}
         isDeleting={isDeleting}
         isPinningEnabled={isPinningEnabled}
-        isSharingEnabled={chatSharingEnabled}
         showProcessing={
           !!session.is_processing &&
           shouldShowSessionProcessingIndicator({
@@ -307,31 +307,6 @@ export function ChatSidebar() {
         }}
         onDelete={(e) => handleDeleteClick(e, session.id, session.title)}
       />
-    );
-  }
-
-  function renderSessionSection(
-    key: string,
-    label: string,
-    list: SessionSummaryResponse[],
-  ) {
-    const headerId = `session-group-${key}`;
-    return (
-      <div
-        key={key}
-        role="group"
-        aria-labelledby={headerId}
-        className="flex flex-col gap-1"
-      >
-        <div
-          id={headerId}
-          data-testid={`expert-group-header-${key}`}
-          className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-zinc-500"
-        >
-          {label}
-        </div>
-        {list.map((session, index) => renderSessionRow(session, index, list))}
-      </div>
     );
   }
 
@@ -398,34 +373,42 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center">
+                <div className="flex items-center [&_button:hover]:!bg-zinc-100 [&_button]:!h-8 [&_button]:!w-8 [&_button]:!min-w-0 [&_button]:!rounded-full [&_button]:!p-0 [&_button]:!text-zinc-600 [&_svg]:!size-[1.125rem]">
                   {isChatSearchEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Search chats"
-                      onClick={() => openSearch()}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Search01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Search chats">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Search chats"
+                        onClick={() => openSearch()}
+                      >
+                        <Icon icon={Search01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
                   {isArtifactsEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Files"
-                      onClick={() => router.push("/artifacts")}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Files01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Files">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Files"
+                        onClick={() => router.push("/artifacts")}
+                      >
+                        <Icon icon={Files01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
-                  <UsagePopover />
-                  <NotificationToggle />
-                  <SidebarTrigger />
+                  <HeaderAction label="Usage limits">
+                    <UsagePopover />
+                  </HeaderAction>
+                  <HeaderAction label="Notification settings">
+                    <NotificationToggle />
+                  </HeaderAction>
+                  <HeaderAction label="Collapse sidebar">
+                    <SidebarTrigger />
+                  </HeaderAction>
                 </div>
               </div>
               {sessionId ? (
@@ -461,17 +444,36 @@ export function ChatSidebar() {
                 </p>
               ) : sessionSections ? (
                 <>
-                  {pinned.length > 0 &&
-                    renderSessionSection("pinned", "Pinned", pinned)}
-                  {sessionSections.map((group) =>
-                    renderSessionSection(
-                      group.expertId ?? "autopilot",
-                      group.expertId
-                        ? (expertsById.get(group.expertId)?.name ?? "Expert")
-                        : "Autopilot",
-                      group.sessions,
-                    ),
+                  {pinned.length > 0 && (
+                    <ExpertSessionGroup
+                      groupKey="pinned"
+                      label="Pinned"
+                      sessions={pinned}
+                      renderRow={renderSessionRow}
+                    />
                   )}
+                  {sessionSections.map((group) => {
+                    const groupKey = group.expertId ?? "autopilot";
+                    const expert = group.expertId
+                      ? expertsById.get(group.expertId)
+                      : null;
+                    return (
+                      <ExpertSessionGroup
+                        key={groupKey}
+                        groupKey={groupKey}
+                        role={
+                          group.expertId
+                            ? expert?.jobTitle || expert?.role
+                            : "Head of AI"
+                        }
+                        label={
+                          group.expertId ? (expert?.name ?? "Expert") : "Otto"
+                        }
+                        sessions={group.sessions}
+                        renderRow={renderSessionRow}
+                      />
+                    );
+                  })}
                 </>
               ) : (
                 sessions.map((session, index) =>

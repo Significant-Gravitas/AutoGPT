@@ -6,6 +6,10 @@ import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import {
+  AUTH_PASSWORD_BCRYPT_COST,
+  AUTH_PASSWORD_MIN_LENGTH,
+} from "./password-policy";
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
@@ -48,7 +52,7 @@ const authDbPool =
     // DATABASE_URL explicitly.
     connectionString:
       process.env.DATABASE_URL ||
-      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres",
+      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres", // pragma: allowlist secret
     // Better Auth shares the platform Postgres; its tables live in the same
     // schema as the Prisma-managed ones (created by the backend migrations).
     options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
@@ -124,7 +128,7 @@ export const auth = betterAuth({
     // otherwise slip a 6-char password through. minPasswordLength is checked
     // when a password is *set* (sign-up / reset / change), never on sign-in,
     // so this does NOT lock out migrated users whose old password is shorter.
-    minPasswordLength: 12,
+    minPasswordLength: AUTH_PASSWORD_MIN_LENGTH,
     // A password reset kicks every active session, matching the previous
     // flow's signOut({ scope: "global" }) — the standard defense when a
     // user resets their password to evict a stolen session.
@@ -134,7 +138,7 @@ export const auth = betterAuth({
     password: {
       // bcrypt instead of Better Auth's default scrypt so password hashes
       // migrated from Supabase GoTrue keep verifying without a reset.
-      hash: (password) => hash(password, 10),
+      hash: (password) => hash(password, AUTH_PASSWORD_BCRYPT_COST),
       verify: ({ hash: hashValue, password }) => compare(password, hashValue),
     },
     sendResetPassword: async ({ user, url }) => {

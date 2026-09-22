@@ -14,6 +14,7 @@ import { getAccountMenuIcon } from "./helpers";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   menuItemGroups: MenuItemGroup[];
@@ -24,6 +25,7 @@ interface Props {
 
 export function AccountMenuNewLayout({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   menuItemGroups,
@@ -44,7 +46,12 @@ export function AccountMenuNewLayout({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
         </button>
       </PopoverTrigger>
 
@@ -59,6 +66,7 @@ export function AccountMenuNewLayout({
         <div className="px-2">
           <AccountMenuHeader
             userName={userName}
+            userHandle={userHandle}
             userEmail={userEmail}
             avatarSrc={avatarSrc}
             isLoading={isLoading}

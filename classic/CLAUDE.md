@@ -99,7 +99,7 @@ Note: Always run linters over the entire directory, not specific files, for best
 ### Forge (Core Framework)
 The `forge` package is the foundation that other components depend on:
 - `forge/agent/` - Agent implementation and protocols
-- `forge/llm/` - Multi-provider LLM integrations (OpenAI, Anthropic, Groq, LiteLLM)
+- `forge/llm/` - Multi-provider LLM integrations (OpenAI, Anthropic, Groq)
 - `forge/components/` - Reusable agent components
 - `forge/file_storage/` - File system abstraction
 - `forge/config/` - Configuration management

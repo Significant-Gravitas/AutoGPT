@@ -1,13 +1,15 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import {
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Wallet } from "../Wallet";
+import { TaskGroups } from "../components/WalletTaskGroups";
+import { getTaskGroups } from "../helpers";
 
 const confettiMock = vi.hoisted(() => vi.fn());
 const fetchCreditsMock = vi.hoisted(() => vi.fn());
@@ -76,7 +78,7 @@ function buildOnboarding(
   overrides: Partial<UserOnboarding> = {},
 ): UserOnboarding {
   return {
-    completedSteps: ["VISIT_COPILOT"],
+    completedSteps: ["ONBOARDING_COMPLETE"],
     walletShown: false,
     notified: [],
     rewardedFor: [],
@@ -110,6 +112,13 @@ beforeEach(() => {
     width: 100,
     height: 40,
   });
+});
+
+afterEach(() => {
+  if (vi.isFakeTimers()) {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
 });
 
 describe("Wallet", () => {
@@ -190,12 +199,55 @@ describe("Wallet", () => {
   });
 });
 
+describe("Wallet timer cleanup", () => {
+  it("cancels delayed task confetti when task groups unmount", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(
+      <TaskGroups groups={getTaskGroups(onboardingState.state)} />,
+    );
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    unmount();
+    vi.runOnlyPendingTimers();
+
+    expect(confettiMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels the pending balance flash when the wallet unmounts", () => {
+    vi.useFakeTimers();
+    const { rerender, unmount } = render(<Wallet compact />);
+
+    creditsState.credits = 1479;
+    rerender(<Wallet compact />);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resets the balance flash after credits briefly become unavailable", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<Wallet compact />);
+
+    creditsState.credits = null;
+    rerender(<Wallet compact />);
+    creditsState.credits = 1479;
+    rerender(<Wallet compact />);
+
+    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+      "opacity-50",
+    );
+
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+      "opacity-0",
+    );
+  });
+});
+
 describe("Wallet onboarding notifications", () => {
-  // Mounting <Wallet /> also mounts <TaskGroups />, whose celebration effect
-  // schedules its own confetti burst on a 300ms timer. That timer outlives the
-  // test that armed it and lands in a later one, so every assertion on
-  // confettiMock has to start from a clean slate after the render — otherwise
-  // the count depends on how fast the machine runs the suite.
   function emit(notification: WebSocketNotification) {
     const handler = onWebSocketMessageMock.mock.calls.at(-1)?.[1] as (
       n: WebSocketNotification,
@@ -210,7 +262,7 @@ describe("Wallet onboarding notifications", () => {
     expect(connectWebSocketMock).toHaveBeenCalledTimes(1);
 
     onboardingState.state = buildOnboarding({
-      completedSteps: ["VISIT_COPILOT", "SCHEDULE_AGENT"],
+      completedSteps: ["ONBOARDING_COMPLETE", "SCHEDULE_AGENT"],
     });
     rerender(<Wallet />);
 

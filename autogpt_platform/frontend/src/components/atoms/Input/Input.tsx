@@ -2,8 +2,9 @@ import {
   Input as BaseInput,
   type InputProps,
 } from "@/components/__legacy__/ui/input";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { forwardRef, ReactNode, useRef, useState } from "react";
+import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
@@ -14,7 +15,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps extends Omit<InputProps, "size"> {
+export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
   label: string;
   id: string;
   hideLabel?: boolean;
@@ -37,6 +38,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "textarea"
     | "date"
     | "datetime-local";
+  // Widened over InputProps, which only describes the <input> branch, so the
+  // handler is callable with either element's event and needs no cast.
+  onKeyDown?: React.KeyboardEventHandler<InputElement>;
   // Textarea-specific props
   rows?: number;
   amountPrefix?: string;
@@ -59,10 +63,20 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     wrapperClassName,
     amountPrefix,
     amountSuffix,
+    onKeyDown,
     ...props
   },
   ref,
 ) {
+  // Consumers never see keydowns an IME is still composing; see AGENTS.md
+  // "Keyboard handling". Left undefined when the consumer passes no handler, so
+  // we don't attach a listener that does nothing.
+  function handleKeyDown(e: React.KeyboardEvent<InputElement>) {
+    if (isComposingEvent(e)) return;
+    onKeyDown?.(e);
+  }
+  const guardedOnKeyDown = onKeyDown ? handleKeyDown : undefined;
+
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
       type: props.type,
@@ -70,25 +84,19 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
       decimalCount,
     });
   const [showPassword, setShowPassword] = useState(false);
+  const inputId = props.id;
 
   const isPasswordType = props.type === "password";
-  const inputType = showPassword ? "text" : props.type;
-  const passwordWrapperRef = useRef<HTMLDivElement>(null);
+  const inputType = isPasswordType && showPassword ? "text" : props.type;
 
   function handleTogglePassword() {
     setShowPassword((prev) => !prev);
   }
 
-  // Re-mask the password when focus leaves both the input and the toggle
-  // button (focus-within check). Clicking between the input and the reveal
-  // button keeps focus inside the wrapper so we don't flicker; navigating
-  // away re-masks so a revealed password doesn't linger after a failed
-  // submit or other abandoned flow.
   function handleWrapperBlur(e: React.FocusEvent<HTMLDivElement>) {
-    if (!isPasswordType || !showPassword) return;
-    if (passwordWrapperRef.current?.contains(e.relatedTarget as Node | null))
-      return;
-    setShowPassword(false);
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setShowPassword(false);
+    }
   }
 
   const baseStyles = cn(
@@ -127,16 +135,15 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
-          onKeyDown={
-            props.onKeyDown as
-              | React.KeyboardEventHandler<HTMLTextAreaElement>
-              | undefined
-          }
+          onKeyDown={guardedOnKeyDown}
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
-          id={props.id}
+          id={inputId}
           disabled={props.disabled}
           value={props.value}
+          maxLength={props.maxLength}
+          name={props.name}
+          required={props.required}
         />
       );
     }
@@ -160,7 +167,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           // CurrencyInput gives unformatted numeric string in value param
           onValueChange={handleAmountValueChange}
           value={props.value as string | number | undefined}
-          id={props.id}
+          id={inputId}
           name={props.name}
           disabled={props.disabled}
           inputMode="decimal"
@@ -173,6 +180,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
+          onKeyDown={guardedOnKeyDown}
           prefix={amountPrefix}
           suffix={amountSuffix}
         />
@@ -203,6 +211,8 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
         {...props}
+        id={inputId}
+        onKeyDown={guardedOnKeyDown}
         type={inputType}
       />
     );
@@ -210,7 +220,6 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
 
   const input = (
     <div
-      ref={isPasswordType ? passwordWrapperRef : undefined}
       onBlur={isPasswordType ? handleWrapperBlur : undefined}
       className={cn("relative w-full", wrapperClassName)}
     >
@@ -223,6 +232,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={showPassword ? "Hide password" : "Show password"}
           aria-pressed={showPassword}
+          aria-controls={inputId}
         >
           {showPassword ? (
             <Icon icon={EyeIcon} size={16} />
@@ -254,16 +264,18 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex w-full flex-col gap-2">
+    <div className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Text
-            variant={labelVariant}
-            as="span"
-            className={cn("text-black", labelClassName)}
-          >
-            {label}
-          </Text>
+          <label htmlFor={inputId}>
+            <Text
+              variant={labelVariant}
+              as="span"
+              className={cn("text-black", labelClassName)}
+            >
+              {label}
+            </Text>
+          </label>
           {labelTooltip ? (
             <InformationTooltip description={labelTooltip} iconSize={20} />
           ) : null}
@@ -275,6 +287,6 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         ) : null}
       </div>
       {inputWithError}
-    </label>
+    </div>
   );
 });

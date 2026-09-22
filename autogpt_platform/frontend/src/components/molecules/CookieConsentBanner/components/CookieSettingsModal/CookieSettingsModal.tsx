@@ -20,6 +20,8 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
     setAnalytics,
     monitoring,
     setMonitoring,
+    advertising,
+    setAdvertising,
     handleSavePreferences,
     handleAcceptAll,
     handleRejectAll,
@@ -112,6 +114,32 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
                 checked={monitoring}
                 onCheckedChange={setMonitoring}
                 aria-label="Toggle monitoring cookies"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-neutral-200 dark:border-neutral-800" />
+
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 space-y-1">
+                <Text
+                  variant="body-medium"
+                  className="text-neutral-900 dark:text-neutral-100"
+                >
+                  {COOKIE_CATEGORIES.advertising.name}
+                </Text>
+                <Text
+                  variant="body"
+                  className="text-neutral-600 dark:text-neutral-400"
+                >
+                  {COOKIE_CATEGORIES.advertising.description}
+                </Text>
+              </div>
+              <Switch
+                checked={advertising}
+                onCheckedChange={setAdvertising}
+                aria-label="Toggle advertising cookies"
               />
             </div>
           </div>

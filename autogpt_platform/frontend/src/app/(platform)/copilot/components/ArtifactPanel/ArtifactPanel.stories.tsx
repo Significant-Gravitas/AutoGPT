@@ -24,6 +24,10 @@ function openPanelWith(artifact: ArtifactRef) {
       activeArtifact: artifact,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
 }
@@ -184,6 +188,10 @@ export const Closed: Story = {
           activeArtifact: null,
           history: [],
           activeTab: "files",
+          lastArtifact: null,
+          mode: "artifact",
+          computer: null,
+          isComputerOpen: false,
         },
       });
       return <Story />;

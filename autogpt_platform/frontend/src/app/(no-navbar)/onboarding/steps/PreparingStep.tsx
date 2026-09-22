@@ -1,8 +1,8 @@
 "use client";
 
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
@@ -25,11 +25,8 @@ export function PreparingStep({
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
       <div className="flex flex-col items-center gap-4">
-        <AutoGPTLogo
-          className="relative right-[3rem] h-24 w-[12rem]"
-          hideText
-        />
-        <Text variant="h3" className="text-center">
+        <AutopilotAvatar size={120} />
+        <Text variant="h4" className="text-center">
           <TypingText
             text="Preparing your workspace..."
             active={started}
@@ -39,33 +36,29 @@ export function PreparingStep({
         </Text>
       </div>
 
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+      <div className="h-0.5 w-full overflow-hidden bg-zinc-100">
         <div
-          className="h-full rounded-full bg-purple-500 transition-all duration-100 ease-linear"
+          className="h-full bg-zinc-900 transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>
 
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-2">
         {checklist.map((item, i) => (
-          <li key={item} className="flex items-center gap-3">
-            <div
+          <li key={item} className="flex items-center gap-2">
+            <Icon
+              icon={Tick02Icon}
+              size={16}
               className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                i < completedItems
-                  ? "bg-neutral-900 text-white"
-                  : "bg-gray-200 text-gray-400",
+                "shrink-0 transition-colors",
+                i < completedItems ? "text-zinc-900" : "text-zinc-300",
               )}
-            >
-              <Icon icon={Tick02Icon} size={14} />
-            </div>
+            />
             <Text
               variant="body"
               as="span"
-              className={cn(
-                "transition-colors",
-                i < completedItems ? "!text-black" : "!text-zinc-500",
-              )}
+              tone={i < completedItems ? "primary" : "muted"}
+              className="transition-colors"
             >
               {item}
             </Text>

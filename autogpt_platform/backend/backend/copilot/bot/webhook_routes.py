@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from .adapters.base import WebhookAdapter
 from .adapters.slack import config as slack_config
 from .adapters.slack.adapter import SlackAdapter
+from .adapters.teams import config as teams_config
+from .adapters.teams.adapter import TeamsAdapter
 from .adapters.telegram import config as telegram_config
 from .adapters.telegram.adapter import TelegramAdapter
 from .bot_backend import BotBackend
@@ -64,4 +66,10 @@ def build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:
     if telegram_config.get_bot_token() and telegram_config.get_webhook_secret():
         adapters.append(TelegramAdapter(api))
         logger.info("Telegram adapter enabled")
+    # Teams: the tenant id is part of the credential, not optional — a
+    # single-tenant registration mints its outbound token against its own
+    # tenant authority.
+    if teams_config.is_configured():
+        adapters.append(TeamsAdapter(api))
+        logger.info("Teams adapter enabled")
     return adapters

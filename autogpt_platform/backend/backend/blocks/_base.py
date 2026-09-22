@@ -8,6 +8,7 @@ from typing import (
     Callable,
     ClassVar,
     Generic,
+    Literal,
     Optional,
     Type,
     TypeAlias,
@@ -38,6 +39,7 @@ from backend.util.exceptions import (
     BlockInputError,
     BlockOutputError,
     BlockUnknownError,
+    InsufficientBalanceError,
 )
 from backend.util.settings import Config
 
@@ -53,6 +55,13 @@ app_config = Config()
 
 
 BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
+
+
+# How the copilot ranks a block when it is offered as a capability.  A
+# ``service`` block acts on one named integration (Gmail, Linear, ...); a
+# ``primitive`` is a generic building block (HTTP, SQL, code, LLM calls) that
+# can reach many services and so ranks below a matching service capability.
+CapabilityKind = Literal["service", "primitive"]
 
 
 class BlockType(Enum):
@@ -540,7 +549,7 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 
 # Default wall-clock cap on a single block-run invocation. Leaf compute blocks
-# inherit this; coordination blocks (AgentExecutor, AutoPilot) override their
+# inherit this; coordination blocks (AgentExecutor, Otto) override their
 # instance attribute to None to opt out. The executor consults
 # `block.execution_timeout_seconds` and only wraps `run` in `wait_for` when
 # the value is not None.
@@ -568,6 +577,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
         is_sensitive_action: bool = False,
+        capability_kind: CapabilityKind | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -585,6 +595,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            capability_kind: How the copilot ranks this block as a capability.
+                Defaults to ``service`` when the block's credentials name exactly
+                one provider and ``primitive`` otherwise; set it explicitly on
+                provider-backed generic blocks (code sandboxes, SQL, HTTP).
         """
         self.id = id
         self.input_schema = input_schema
@@ -601,6 +615,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_sensitive_action = is_sensitive_action
+        self._capability_kind: CapabilityKind | None = capability_kind
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -691,6 +706,38 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def name(self):
         return self.__class__.__name__
 
+    @property
+    def capability_kind(self) -> CapabilityKind:
+        """``service`` for a block bound to one integration, else ``primitive``.
+
+        Explicit ``capability_kind`` wins.  Otherwise a block whose credential
+        inputs name exactly one provider is a service; blocks with no
+        credentials, or with a choice of providers (the LLM blocks), are
+        primitives.
+        """
+        if self._capability_kind is not None:
+            return self._capability_kind
+        try:
+            providers = {
+                provider
+                for info in self.input_schema.get_credentials_fields_info().values()
+                for provider in info.provider
+            }
+        except Exception:
+            # This runs while the block registry is being built, so one block
+            # with a malformed credentials schema would otherwise take the
+            # whole platform down at startup. "primitive" is the safe read:
+            # it only costs this block some ranking weight.
+            logger.warning(
+                "Could not read credentials for %s; treating it as a primitive",
+                self.name,
+                exc_info=True,
+            )
+            return "primitive"
+        if len(providers) == 1:
+            return "service"
+        return "primitive"
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -737,8 +784,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ):
                 yield output_name, output_data
         except Exception as ex:
-            if isinstance(ex, BlockError):
-                raise ex
+            if isinstance(ex, (BlockError, InsufficientBalanceError)):
+                raise
             else:
                 raise (
                     BlockExecutionError

@@ -2,26 +2,22 @@
 
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { SidebarMenu } from "@/components/ui/sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { cn } from "@/lib/utils";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { PinIcon } from "@hugeicons/core-free-icons";
+import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { groupSessionsByDate } from "./helpers";
+import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
+  const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { expertsById } = useExpertMap();
+  const { expertsById, activeExpertIds } = useExpertMap();
   const {
     sessions,
     isLoading,
@@ -29,6 +25,7 @@ export function RecentChats() {
     isLoadingMore,
     loadMore,
     activeSessionId,
+    togglePin,
     editingSessionId,
     editingTitle,
     setEditingTitle,
@@ -73,7 +70,8 @@ export function RecentChats() {
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
-        chatSharingEnabled={chatSharingEnabled}
+        chatPinningEnabled={chatPinningEnabled}
+        onPin={togglePin}
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
@@ -82,74 +80,59 @@ export function RecentChats() {
     );
   }
 
-  const groups = isExpertsEnabled
-    ? groupSessionsByExpert(sessions).map((group) => ({
-        key: group.expertId ?? "autopilot",
-        label: group.expertId
-          ? (expertsById.get(group.expertId)?.name ?? "Expert")
-          : "Autopilot",
-        avatarUrl: group.expertId
-          ? (expertsById.get(group.expertId)?.avatarUrl ?? null)
-          : null,
-        role: group.expertId
-          ? (expertsById.get(group.expertId)?.role ?? null)
-          : null,
-        showAvatar: true,
-        sessions: group.sessions,
-      }))
-    : groupSessionsByDate(sessions).map((group) => ({
-        key: group.label,
-        label: group.label,
-        avatarUrl: null,
-        role: null,
-        showAvatar: false,
-        sessions: group.sessions,
-      }));
+  const pinnedSessions = chatPinningEnabled
+    ? sessions.filter((session) => !!session.is_pinned)
+    : [];
+  const unpinnedSessions =
+    pinnedSessions.length > 0
+      ? sessions.filter((session) => !session.is_pinned)
+      : sessions;
 
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
-        {groups.map((group) => (
-          <div key={group.key}>
-            <div
-              className={cn(
-                "flex items-center px-2 pb-1.5",
-                group.showAvatar
-                  ? "gap-2 text-[13px] font-medium text-zinc-900"
-                  : "gap-1.5 text-xs font-medium text-zinc-500",
-              )}
-            >
-              {group.showAvatar && (
-                <Avatar className="h-5 w-5">
-                  {group.avatarUrl ? (
-                    <AvatarImage src={group.avatarUrl} alt={group.label} />
-                  ) : null}
-                  <AvatarFallback className="text-[9px]">
-                    {group.label}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <span className="truncate">{group.label}</span>
-              {group.role ? (
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
-                    getExpertAccent(group.role).pill,
-                  )}
-                >
-                  {group.role}
-                </span>
-              ) : null}
+        {pinnedSessions.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+              <Icon icon={PinIcon} className="size-3.5" />
+              <span className="truncate">Pinned</span>
             </div>
-            {group.showAvatar ? (
-              <div className="ml-[17px] border-l border-zinc-200 pl-1.5">
+            <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
+          </div>
+        )}
+        {isExpertsEnabled
+          ? groupSessionsByExpert(unpinnedSessions).map((group) => {
+              const expert = group.expertId
+                ? expertsById.get(group.expertId)
+                : null;
+              return (
+                // Keyed by expert id so each group's collapse/reveal state
+                // survives the session list's periodic refetch.
+                <ExpertChatGroup
+                  key={group.expertId ?? "autopilot"}
+                  label={group.expertId ? (expert?.name ?? "Expert") : "Otto"}
+                  role={
+                    group.expertId
+                      ? expert?.jobTitle || expert?.role
+                      : "Head of AI"
+                  }
+                  avatarUrl={expert?.avatarUrl ?? null}
+                  color={expert?.color ?? null}
+                  newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
+                  isAutopilot={!group.expertId}
+                  sessions={group.sessions}
+                  renderItem={renderItem}
+                />
+              );
+            })
+          : groupSessionsByDate(unpinnedSessions).map((group) => (
+              <div key={group.label}>
+                <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium text-zinc-500">
+                  <span className="truncate">{group.label}</span>
+                </div>
                 <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
               </div>
-            ) : (
-              <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-            )}
-          </div>
-        ))}
+            ))}
       </div>
 
       {hasMore && (

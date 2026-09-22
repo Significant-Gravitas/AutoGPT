@@ -47,6 +47,8 @@ export function PaymentMethodCard({ index = 0 }: Props) {
           variant="secondary"
           size="small"
           onClick={onManage}
+          data-fast-goal="billing_portal_open"
+          data-fast-goal-surface="settings_payment_method"
           disabled={!canManage}
           loading={isOpening}
         >
