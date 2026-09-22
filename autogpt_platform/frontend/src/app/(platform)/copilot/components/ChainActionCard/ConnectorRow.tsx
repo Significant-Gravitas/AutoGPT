@@ -156,6 +156,15 @@ export function ConnectorRow({ row }: Props) {
     (credential) => credential.id === row.selected?.id,
   );
   const hasChoice = !expertGrant && !row.selected && pickable.length > 1;
+  // No saved account fits, and there are several that a fresh sign-in could
+  // widen. Signing in without naming one requests only this card's scopes,
+  // which the backend cannot merge into an account that holds others, so it
+  // stored yet another credential beside them. The user names the account
+  // instead; with exactly one, `upgradableCredentialID` already does.
+  const updatable =
+    expertGrant || pickable.length > 0
+      ? []
+      : updatableAccounts(row, allProviders);
 
   async function pick(credential: Grantable): Promise<boolean> {
     row.select({
@@ -266,7 +275,16 @@ export function ConnectorRow({ row }: Props) {
                   error: null,
                   purpose: "choose",
                 }
-              : undefined
+              : updatable.length > 1
+                ? {
+                    credentials: updatable,
+                    // The dialog runs the sign-in itself for this purpose.
+                    onUse: async () => false,
+                    isPending: false,
+                    error: null,
+                    purpose: "update",
+                  }
+                : undefined
         }
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -352,6 +370,26 @@ function newlyConnectedCredential(
   if (!grantable) return null;
   const account = added.find((c) => c.id === grantable.id);
   return account ? { grantable, account } : null;
+}
+
+/** The user's own OAuth accounts for the row's provider: the ones a fresh
+ *  sign-in can widen. API keys have nothing to re-authorise, and managed and
+ *  system credentials are refused by the backend. */
+function updatableAccounts(
+  row: Row,
+  allProviders: CredentialsProvidersContextType | null,
+): Grantable[] {
+  return filterSystemCredentials(
+    allProviders?.[row.provider]?.savedCredentials ?? [],
+  )
+    .filter(
+      (credential) => credential.type === "oauth2" && !credential.is_managed,
+    )
+    .map((credential) => ({
+      id: credential.id,
+      title: credential.title ?? credential.username ?? row.displayName,
+      type: credential.type,
+    }));
 }
 
 /** The account a re-auth should upgrade in place. Signing in without it can
