@@ -93,6 +93,7 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     files = [
         _make_file(id="f1", name="a.txt", metadata={"origin": "user-upload"}),
         _make_file(id="f2", name="b.csv", metadata={"origin": "agent-created"}),
+        _make_file(id="f3", name="tc-123.json", metadata={"purpose": "tool-output"}),
     ]
     mock_instance = AsyncMock()
     mock_instance.list_files.return_value = files
@@ -102,7 +103,7 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert response.status_code == 200
 
     data = response.json()
-    assert len(data["files"]) == 2
+    assert len(data["files"]) == 3
     assert data["has_more"] is False
     assert data["offset"] == 0
     assert data["files"][0]["id"] == "f1"
@@ -110,6 +111,8 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["origin"] == "uploaded"
     assert data["files"][1]["id"] == "f2"
     assert data["files"][1]["origin"] == "generated"
+    assert data["files"][2]["metadata"] == {"purpose": "tool-output"}
+    assert data["files"][2]["origin"] == "generated"
     mock_instance.list_files.assert_called_once_with(
         limit=201,
         offset=0,
