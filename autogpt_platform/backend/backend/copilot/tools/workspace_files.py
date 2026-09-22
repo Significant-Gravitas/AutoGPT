@@ -4,6 +4,7 @@ import base64
 import logging
 import mimetypes
 import os
+from collections import deque
 from typing import Any, Optional
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -528,10 +529,10 @@ def _folder_subtree(
 
     subtree = [folder_id]
     seen = {folder_id}
-    queue = [folder_id]
+    queue = deque([folder_id])
     overflow = 0
     while queue:
-        for child in children.get(queue.pop(0), []):
+        for child in children.get(queue.popleft(), []):
             if child in seen:
                 continue
             seen.add(child)
