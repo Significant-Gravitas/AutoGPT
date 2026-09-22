@@ -78,8 +78,8 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
 # domains at all -- every one of the 17 store listings is sales, marketing or
 # content, so there is nothing for recruiting, finance, product or ops to
 # preload. That last group should leave this set once such listings exist.
-# Note this set now exempts 23 of the 33 roster entries, so the bound below is
-# only really checking the remaining ten.
+# Note this set now exempts 23 of the 32 roster entries, so the bound below is
+# only really checking the remaining nine.
 PERSONAS_WITHOUT_WORKFLOWS = {
     "Alex",
     "Casey",
@@ -3565,10 +3565,17 @@ def test_the_roster_is_the_expected_size_with_unique_names():
     side edits the test about the roster rather than the one about dev's nine.
     Names must be unique: two entries sharing one is what forced the rename of
     this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves plus the nine generalist experts this branch adds.
-    assert len(seed.ROSTER) == 33
+    # 24 from dev's waves plus the eight generalists added on top; the senior
+    # sales package was folded into Max rather than shipped as its own entry.
+    assert len(seed.ROSTER) == 32
     names = [entry["name"] for entry in seed.ROSTER]
     assert len(names) == len(set(names))
+
+
+def test_retired_templates_are_off_the_roster():
+    """A name in both lists would be archived and re-upserted on every run."""
+    names = {entry["name"] for entry in seed.ROSTER}
+    assert not names & set(seed.RETIRED_TEMPLATES), names & set(seed.RETIRED_TEMPLATES)
 
 
 def test_every_wave_three_skill_is_a_registered_starter():
@@ -3654,8 +3661,15 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
         ("Key terms in one clear record", "day 1"),
         ("Playbook gaps ready for counsel", "on request"),
     ]
-    for name in ("Jules", "Nadia", "Remy", "Max", "Frankie"):
+    for name in ("Jules", "Nadia", "Remy", "Frankie"):
         assert day_one[name] == [], name
+    # Max carries the senior sales package: two day-one reads and one that
+    # waits on a numbers source, none of them a clock.
+    assert [item.timing for item in day_one["Max"]] == [
+        "day 1",
+        "day 1",
+        "once your numbers are connected",
+    ]
     assert [item.timing for item in day_one["Devon"]] == [
         "after access",
         "on request",
@@ -4516,8 +4530,9 @@ def test_rescoped_templates_name_real_roster_entries():
     for rescope in seed.RESCOPED_TEMPLATES:
         assert rescope["name"] in names, rescope["name"]
         entry = next(e for e in seed.ROSTER if e["name"] == rescope["name"])
+        # The persona must actually move; the role may stay (Max kept "Sales"
+        # when the senior package replaced his identity).
         assert rescope["old_identity"] != entry["identity"], rescope["name"]
-        assert rescope["old_role"] != entry["role"], rescope["name"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
