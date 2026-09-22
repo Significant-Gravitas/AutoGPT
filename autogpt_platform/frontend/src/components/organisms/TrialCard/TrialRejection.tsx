@@ -2,24 +2,19 @@ import type { TrialRejectionReason } from "@/app/api/__generated__/models/trialR
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { TrialTitle } from "./TrialTitle/TrialTitle";
+import { trialRejectionCopy } from "./helpers";
 
 interface Props {
   reason: TrialRejectionReason;
 }
 
 export function TrialRejection({ reason }: Props) {
-  const alreadyUsed = reason === "intro_offer_already_used";
+  const { title, detail } = trialRejectionCopy(reason);
   return (
     <div role="status" className="flex flex-col gap-3">
-      <TrialTitle>
-        {alreadyUsed
-          ? "This introductory offer has already been used"
-          : "We couldn’t verify your card for this trial"}
-      </TrialTitle>
+      <TrialTitle>{title}</TrialTitle>
       <Text variant="body" className="!text-zinc-800">
-        {alreadyUsed
-          ? "This card or account has already redeemed an introductory offer. Each card and account can use one introductory offer."
-          : "Your card could not be verified for trial eligibility, so this trial was not activated."}
+        {detail}
       </Text>
       <Text variant="body" className="!text-zinc-800">
         This trial will not convert to a paid subscription. You can choose a

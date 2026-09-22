@@ -31368,7 +31368,11 @@
       },
       "TrialRejectionReason": {
         "type": "string",
-        "enum": ["intro_offer_already_used", "card_verification_failed"],
+        "enum": [
+          "intro_offer_already_used",
+          "card_verification_failed",
+          "country_not_eligible"
+        ],
         "title": "TrialRejectionReason"
       },
       "TrialStatusResponse": {

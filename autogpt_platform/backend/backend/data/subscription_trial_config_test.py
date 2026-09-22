@@ -45,6 +45,15 @@ def test_offer_has_no_implicit_existing_user_eligibility():
         {"allow_existing_beta_users": "true"},
         {"version": ""},
         {"unknown_setting": 1},
+        {"max_active_trials": -1},
+        {"max_active_trials": "5"},
+        {"max_active_trials": True},
+        {"eligible_countries": []},
+        {"eligible_countries": ["USA"]},
+        {"eligible_countries": ["U"]},
+        {"eligible_countries": ["U1"]},
+        {"eligible_countries": ["US", "D3"]},
+        {"eligible_countries": "US"},
     ],
 )
 def test_rejects_invalid_or_ambiguous_offer(overrides):
@@ -159,3 +168,53 @@ async def test_payment_enabled_and_valid_offer_is_available():
     enabled.assert_awaited_once_with(
         trials.Flag.ENABLE_PLATFORM_PAYMENT, "user-1", default=False
     )
+
+
+def test_offer_without_limits_is_uncapped_and_worldwide():
+    """An offer written before these knobs existed keeps its old meaning."""
+    offer = trials.TrialOffer.model_validate(offer_data())
+    assert offer.max_active_trials is None
+    assert offer.eligible_countries is None
+    assert offer.country_allowed("ZZ") is True
+    assert offer.country_allowed(None) is True
+
+
+@pytest.mark.parametrize(
+    "country,expected",
+    [
+        ("US", True),
+        ("us", True),
+        (" us ", True),
+        ("DE", True),
+        ("FR", False),
+        ("UK", False),  # ISO says GB; a near-miss must not match
+        (None, False),  # an unprovable country fails a restricted offer
+        ("", False),
+    ],
+)
+def test_country_allowlist_admits_only_listed_countries(country, expected):
+    offer = trials.TrialOffer.model_validate(
+        {**offer_data(), "eligible_countries": ["us", "DE"]}
+    )
+    assert offer.country_allowed(country) is expected
+
+
+def test_country_list_is_order_and_case_independent():
+    """The offer token gates checkout, so the same list must hash the same."""
+    accepted = {"price_id": "price_1", "unit_amount": 5000, "currency": "usd"}
+    one = trials.AcceptedTrialOffer.model_validate(
+        {**offer_data(), **accepted, "eligible_countries": ["us", "GB", "de"]}
+    )
+    two = trials.AcceptedTrialOffer.model_validate(
+        {**offer_data(), **accepted, "eligible_countries": ["DE", "gb", "US"]}
+    )
+    assert one.eligible_countries == ("DE", "GB", "US")
+    assert one.token == two.token
+
+
+def test_zero_cap_is_expressible_and_distinct_from_absent():
+    """0 pauses enrolment; absent means uncapped. They must not collapse."""
+    paused = trials.TrialOffer.model_validate({**offer_data(), "max_active_trials": 0})
+    uncapped = trials.TrialOffer.model_validate(offer_data())
+    assert paused.max_active_trials == 0
+    assert uncapped.max_active_trials is None

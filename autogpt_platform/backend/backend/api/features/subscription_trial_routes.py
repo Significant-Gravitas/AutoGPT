@@ -15,6 +15,7 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
 )
+from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_checkout import (
     TrialUnavailable,
     confirm_trial_checkout,
@@ -79,7 +80,8 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
             eligible=(
                 trial.status == "checkout_pending"
                 and trial.consumed_at is None
-                and await get_trial_offer(user_id) is not None
+                and (offer := await get_trial_offer(user_id)) is not None
+                and await trial_seat_available(offer, trial_id=trial.id)
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
@@ -96,7 +98,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
             ),
         )
     offer = await get_trial_offer(user_id)
-    if offer is None:
+    if offer is None or not await trial_seat_available(offer):
         return TrialStatusResponse()
     user = await get_user_by_id(user_id)
     has_history = False

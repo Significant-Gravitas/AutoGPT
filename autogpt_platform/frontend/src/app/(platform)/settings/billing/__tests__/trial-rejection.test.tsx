@@ -110,3 +110,30 @@ it("keeps a paid-plan action and support available after rejection", async () =>
     screen.getByRole("link", { name: "Contact support" }).getAttribute("href"),
   ).toBe("https://discord.gg/autogpt");
 });
+
+it("names the country restriction instead of blaming the card", async () => {
+  searchParams = new URLSearchParams("trial=success");
+  const response = {
+    ...trialResponse({ active: false, status: "canceled" }),
+    rejection_reason: "country_not_eligible",
+  };
+  server.use(
+    http.get("*/api/credits/trial", () => HttpResponse.json(response)),
+    http.post("*/api/credits/trial/confirm", () => HttpResponse.json(response)),
+  );
+  render(
+    <>
+      <TrialCheckoutConfirmation />
+      <TrialCard />
+    </>,
+  );
+  await screen.findByText("This trial isn’t available in your country yet");
+  await waitFor(() =>
+    expect(screen.queryByText(/Confirming your trial/)).toBeNull(),
+  );
+  expect(
+    screen.queryByText(/already redeemed|could not be verified/),
+  ).toBeNull();
+  expect(screen.getByText(/choose a paid plan/i)).toBeDefined();
+  expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
+});

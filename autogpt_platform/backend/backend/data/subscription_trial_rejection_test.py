@@ -77,3 +77,85 @@ async def test_reconciliation_preserves_rejection_on_replay(
         boundaries.subscriptiontrial.update.await_args.kwargs["data"]["rejectionReason"]
         == "intro_offer_already_used"
     )
+
+
+def restrict_to(trial, *countries):
+    offer = trial.offer.model_copy(update={"eligible_countries": countries})
+    return trial.model_copy(update={"offer": offer})
+
+
+@pytest.mark.asyncio
+async def test_card_from_unserved_country_is_rejected(trial, subscription, boundaries):
+    trial = restrict_to(trial, "US")
+    subscription["default_payment_method"]["card"]["country"] = "FR"
+    canceled = {**subscription, "status": "canceled"}
+    with patch.object(
+        fulfillment.stripe.Subscription,
+        "cancel_async",
+        AsyncMock(return_value=canceled),
+    ) as cancel:
+        await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    data = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert data["rejectionReason"] == "country_not_eligible"
+    assert (
+        cancel.await_args.kwargs["cancellation_details"]["comment"]
+        == "autogpt_trial:country_not_eligible"
+    )
+
+
+@pytest.mark.asyncio
+async def test_country_rejection_does_not_spend_the_intro_offer_claim(
+    trial, subscription, boundaries
+):
+    """The card must stay redeemable, or a traveller loses an offer they never got."""
+    trial = restrict_to(trial, "US")
+    subscription["default_payment_method"]["card"]["country"] = "FR"
+    canceled = {**subscription, "status": "canceled"}
+    with (
+        patch.object(
+            fulfillment, "claim_trial_identities", AsyncMock(return_value=True)
+        ) as claim,
+        patch.object(
+            fulfillment.stripe.Subscription,
+            "cancel_async",
+            AsyncMock(return_value=canceled),
+        ),
+    ):
+        await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    claim.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("country", ["US", "us"])
+async def test_card_from_served_country_is_fulfilled(
+    trial, subscription, boundaries, country
+):
+    trial = restrict_to(trial, "US", "DE")
+    subscription["default_payment_method"]["card"]["country"] = country
+    await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    data = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert data["rejectionReason"] is None
+    assert data["cardVerifiedAt"] is not None
+
+
+@pytest.mark.asyncio
+async def test_missing_card_country_is_rejected_only_when_countries_are_restricted(
+    trial, subscription, boundaries
+):
+    """Stripe omits the country on some cards; that is not proof of eligibility."""
+    subscription["default_payment_method"]["card"].pop("country", None)
+    await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    unrestricted = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert unrestricted["rejectionReason"] is None
+
+    canceled = {**subscription, "status": "canceled"}
+    with patch.object(
+        fulfillment.stripe.Subscription,
+        "cancel_async",
+        AsyncMock(return_value=canceled),
+    ):
+        await fulfillment._reconcile_locked(
+            restrict_to(trial, "US"), "sub_1", boundaries
+        )
+    restricted = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert restricted["rejectionReason"] == "country_not_eligible"

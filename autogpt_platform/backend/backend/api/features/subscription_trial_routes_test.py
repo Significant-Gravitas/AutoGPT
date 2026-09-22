@@ -241,3 +241,51 @@ async def test_cancellation_cannot_cancel_another_customer_or_paid_plan(
             await routes.cancel_trial(trial.user_id)
     assert error.value.status_code == 409
     cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_full_trial_hides_a_pending_enrollments_offer(trial):
+    """No seat, no card screen: the cap is enforced before anyone pays."""
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+        patch.object(
+            routes, "trial_seat_available", AsyncMock(return_value=False)
+        ) as seat,
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert not status.eligible
+    assert seat.await_args.kwargs["trial_id"] == trial.id
+
+
+@pytest.mark.asyncio
+async def test_pending_enrollment_keeps_its_offer_while_it_holds_a_seat(trial):
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+        patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.eligible
+
+
+@pytest.mark.asyncio
+async def test_full_trial_offers_nothing_to_a_new_visitor(trial):
+    """A first-time visitor sees no offer at all rather than a doomed one."""
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(routes, "trial_seat_available", AsyncMock(return_value=False)),
+        patch.object(routes, "get_user_by_id", AsyncMock()) as user,
+    ):
+        status = await routes.get_trial_status("user-1")
+    assert not status.eligible
+    assert status.offer is None
+    # answered from the cap alone -- no user lookup, no Stripe round-trip
+    user.assert_not_awaited()

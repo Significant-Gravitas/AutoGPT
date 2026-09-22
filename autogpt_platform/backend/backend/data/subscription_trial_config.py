@@ -11,6 +11,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -33,11 +34,56 @@ class TrialOffer(BaseModel):
     onboarding_credit_amount: int = Field(ge=0, le=2_147_483_647, strict=True)
     allow_existing_beta_users: bool = Field(default=False, strict=True)
 
+    # Omit (or null) to run the trial uncapped. 0 closes enrollment without
+    # ending the trials already running: the cap is only ever consulted when
+    # a new seat is taken, never to revoke a seat already held.
+    max_active_trials: int | None = Field(default=None, ge=0, strict=True)
+
+    # Omit (or null) to offer the trial everywhere. Present means allowlist:
+    # ISO 3166-1 alpha-2, matched against the *card's issuing country*, which
+    # is the only country Stripe attests to. Note "GB", not "UK" -- an unknown
+    # code simply never matches, so a typo closes the trial for that country
+    # rather than opening one by accident.
+    eligible_countries: tuple[str, ...] | None = Field(default=None)
+
+    @field_validator("eligible_countries", mode="after")
+    @classmethod
+    def normalized_countries(cls, value: tuple[str, ...] | None):
+        if value is None:
+            return None
+        codes = {code.strip().upper() for code in value}
+        if not codes:
+            # An empty allowlist reads as "nobody", which is indistinguishable
+            # from a list someone cleared by accident. Refuse it: the offer
+            # then fails validation, is logged, and no trial is served -- the
+            # same end state, reached loudly. Use max_active_trials: 0 to pause.
+            raise ValueError(
+                "eligible_countries must not be empty; omit it to allow all"
+            )
+        if not all(
+            len(code) == 2 and code.isalpha() and code.isascii() for code in codes
+        ):
+            raise ValueError("eligible_countries must be ISO 3166-1 alpha-2 codes")
+        # Sorted so model_dump_json() -- and therefore the offer token that
+        # gates checkout -- is identical in every process.
+        return tuple(sorted(codes))
+
     @model_validator(mode="after")
     def ordered_limits(self) -> "TrialOffer":
         if not self.daily_cost_limit <= self.weekly_cost_limit <= self.total_cost_limit:
             raise ValueError("Trial limits must satisfy daily <= weekly <= total")
         return self
+
+    def country_allowed(self, country: str | None) -> bool:
+        """Is *country* (ISO alpha-2, e.g. a card's issuing country) offered the trial?
+
+        An unknown country fails a configured allowlist: we cannot show that
+        the user is inside it, and a geo restriction that passes on missing
+        data is not a restriction.
+        """
+        if self.eligible_countries is None:
+            return True
+        return bool(country) and country.strip().upper() in self.eligible_countries
 
     def is_eligible(
         self,

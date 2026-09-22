@@ -221,3 +221,36 @@ def test_paid_conversion_requires_paid_post_trial_invoice(
         }
     )
     assert trial_subscription_tier(trial, subscription, now) == expected
+
+
+@pytest.mark.asyncio
+async def test_full_trial_surfaces_as_a_retryable_checkout_failure(
+    trial, checkout_guard
+):
+    """A full trial must reach the client as the 409 the route maps, not a 500."""
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(
+            checkout, "get_stripe_customer_id", AsyncMock(return_value="cus_1")
+        ),
+        patch.object(checkout, "_verify_eligibility", AsyncMock()),
+        patch.object(
+            checkout, "resolve_trial_price", AsyncMock(return_value=trial.offer)
+        ),
+        patch.object(
+            checkout,
+            "reserve_subscription_trial",
+            AsyncMock(side_effect=checkout.TrialCapacityReached("The trial is full")),
+        ),
+        patch.object(checkout, "_resume_checkout", AsyncMock()) as resume,
+    ):
+        with pytest.raises(checkout.TrialUnavailable, match="full"):
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+            )
+    resume.assert_not_awaited()

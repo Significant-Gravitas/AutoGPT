@@ -13,6 +13,10 @@ class Card(BaseModel):
     exp_month: int
     exp_year: int
     fingerprint: str | None = None
+    # ISO 3166-1 alpha-2 of the issuing bank, per Stripe. The only country on
+    # the enrolment that a third party vouches for -- a billing address is
+    # typed in by the customer, so it is a claim, not evidence.
+    country: str | None = None
 
 
 class PaymentMethod(BaseModel):
@@ -106,6 +110,10 @@ class SubscriptionSnapshot(BaseModel):
             and (method.card.exp_year, method.card.exp_month) >= (now.year, now.month)
             and not self.pending_setup_intent
         )
+
+    def card_country(self) -> str | None:
+        method = self.effective_payment_method()
+        return method.card.country if method and method.card else None
 
     def effective_payment_method(self) -> PaymentMethod | None:
         if self.default_payment_method is None and self.default_source is None:

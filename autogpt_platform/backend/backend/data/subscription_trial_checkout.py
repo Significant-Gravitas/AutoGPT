@@ -22,6 +22,7 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     reserve_subscription_trial,
 )
+from backend.data.subscription_trial_capacity import TrialCapacityReached
 from backend.data.subscription_trial_config import (
     AcceptedTrialOffer,
     TrialOffer,
@@ -81,9 +82,12 @@ async def _create_trial_checkout(
         raise TrialUnavailable(
             "The trial offer changed. Refresh to see the current terms"
         )
-    trial = await reserve_subscription_trial(
-        user_id, accepted, customer_id, success_url, cancel_url, metadata
-    )
+    try:
+        trial = await reserve_subscription_trial(
+            user_id, accepted, customer_id, success_url, cancel_url, metadata
+        )
+    except TrialCapacityReached as exc:
+        raise TrialUnavailable(str(exc)) from exc
     if trial.offer.token != offer_token:
         raise TrialUnavailable(
             "Another checkout reserved different trial terms. Refresh"

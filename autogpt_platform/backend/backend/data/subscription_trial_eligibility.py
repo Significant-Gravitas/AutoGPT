@@ -3,6 +3,7 @@ import stripe
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import SubscriptionCheckoutUnavailable
 from backend.data.subscription_trial import TrialState
+from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_config import TrialOffer
 from backend.data.user import get_user_by_id
 
@@ -18,6 +19,14 @@ async def verify_trial_eligibility(
     user = await get_user_by_id(user_id)
     if trial and session and not _owned_checkout(trial, session):
         raise SubscriptionCheckoutUnavailable("Checkout does not match this trial")
+    # Cheapest gate first, and the one that keeps a full trial from ever
+    # reaching a card screen. The binding check is in
+    # reserve_subscription_trial, which takes the seat under a lock; this is
+    # the early, friendly version of the same answer.
+    if not await trial_seat_available(offer, trial_id=trial.id if trial else None):
+        raise SubscriptionCheckoutUnavailable(
+            "The trial is full right now. Please check back later."
+        )
     result = await stripe_call(
         stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
     )
