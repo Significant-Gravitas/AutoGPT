@@ -337,6 +337,7 @@ def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
     is_user_message: bool,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """Append a user/assistant message to the session if not already present.
 
@@ -351,7 +352,9 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
-    session.messages.append(ChatMessage(role=role, content=message))
+    session.messages.append(
+        ChatMessage(role=role, content=message, metadata=metadata or None)
+    )
     return True
 
 
