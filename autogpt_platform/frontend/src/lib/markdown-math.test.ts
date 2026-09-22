@@ -37,6 +37,34 @@ describe("escapeCurrencyAmounts", () => {
     );
   });
 
+  it.each([
+    [
+      "after a blank line",
+      "Run it:\n\n    echo $5 and $10\n\nprose $5 and $10",
+    ],
+    ["at the start of the text", "    echo $5 and $10\n\nprose $5 and $10"],
+    ["indented with a tab", "\techo $5 and $10\n\nprose $5 and $10"],
+    [
+      "nested in a list item",
+      "- item\n\n      echo $5 and $10\n\nprose $5 and $10",
+    ],
+  ])("skips indented code %s", (_, markdown) => {
+    const [code] = markdown.split("\n\nprose");
+    expect(escapeCurrencyAmounts(markdown)).toBe(
+      `${code}\n\nprose \\$5 and \\$10`,
+    );
+  });
+
+  it("escapes indented lines that are not code", () => {
+    expect(
+      escapeCurrencyAmounts(
+        "- item\n\n    more $5 and $10\n\npara\n    lazy $5 and $10",
+      ),
+    ).toBe(
+      "- item\n\n    more \\$5 and \\$10\n\npara\n    lazy \\$5 and \\$10",
+    );
+  });
+
   it("is idempotent, so an already-escaped price is left as one", () => {
     const once = escapeCurrencyAmounts("It costs $5.");
     expect(once).toBe("It costs \\$5.");
