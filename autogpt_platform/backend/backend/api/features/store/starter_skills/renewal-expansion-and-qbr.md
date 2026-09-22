@@ -23,7 +23,8 @@ that set the grade. Anything unsourced is UNKNOWN, never smoothed over.
 ## Renewal calendar
 
 Run the renewal calendar at 180-plus/120/90/60/30 days with a probability
-per renewal: the 180-plus day enterprise Adoption Check (usage validation,
+per renewal, taken from the account's own signals under a rule you state, or
+left UNKNOWN when nothing sources it — never a number you felt: the 180-plus day enterprise Adoption Check (usage validation,
 sponsor alignment), then the commercial ask per window, the owner each
 side, and the expansion talk track once the renewal is safe. Renewals
 first, upsell second — no expansion pitch into an at-risk account.

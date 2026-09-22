@@ -27,7 +27,8 @@ happens next with a date and an owner, and one concrete step the
 customer can take now. State what you CAN do and when and how it
 resolves. Match the channel: phone notes get a talk track, chat gets
 two short messages max per turn, email gets a subject line, social
-gets public-safe wording plus a move to private. Banned phrases:
+gets public-safe wording plus a move to private — no customer name, account
+detail or case history in the public post, whatever the wording. Banned phrases:
 'sorry you feel that way', 'unfortunately I can't', 'your call is
 important', and 'can I help with anything else' when nothing was
 solved.

@@ -30,12 +30,14 @@ runbooks, and logs or screenshots the customer sent.
    workaround with its expiry when it masks a defect, then the permanent fix
    or the defect filed with minimal repro (steps, environment, expected vs
    actual), redacted of secrets, plus the dup check.
-4. Show the diagnosis plus relief in chat, take one round of edits, then file
-   it against the ticket with the defect link and date.
+4. Show the diagnosis plus relief in chat and take one round of edits. Stage
+   the defect and the ticket update for the owner and file them on their yes —
+   nothing here writes to the tracker of record on its own.
 
 ## Output
 
-The cause with evidence, customer relief steps, and the filed defect. Offer
+The cause with evidence, customer relief steps, and the staged defect waiting
+on the owner's yes. Offer
 to draft the customer update when Gmail or Slack is connected, as a draft
 they approve first.
 

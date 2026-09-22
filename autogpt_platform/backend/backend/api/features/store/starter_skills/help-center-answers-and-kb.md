@@ -31,8 +31,9 @@ the repeat history showing how often it recurs.
    date. Show both in
    chat, take one round of edits, then file them as drafts for the owner's
    yes before anything publishes.
-4. Log the answer against the ticket with its citation and mark whether it
-   closed the question or needs follow-up.
+4. Log the answer against the ticket, with its citation when a governing
+   passage exists and UNVERIFIED when none does, and mark whether it closed
+   the question or needs follow-up. Never write a citation you did not find.
 
 ## Output
 

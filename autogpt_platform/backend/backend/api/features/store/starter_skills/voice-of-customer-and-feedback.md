@@ -19,9 +19,10 @@ when they exist, and the product or engineering intake path.
 Read every thread, pull the exact customer words with speaker and
 date, and group them into themes. Each theme carries its count, two
 verbatim quotes, the origin channel per quote, and the ticket IDs
-behind it. Remember the silent majority — only 1 in 26 unhappy
-customers complain — so weight quiet signals too. Three mentions is a
-hint, ten is a pattern; say which each theme is.
+behind it. Complaints under-represent quiet unhappiness, so say where a
+theme is likely under-counted — but never scale a count by an assumed
+ratio, and never rank themes on an estimate you cannot source. Three
+mentions is a hint, ten is a pattern; say which each theme is.
 
 ## File each theme as sourced evidence
 

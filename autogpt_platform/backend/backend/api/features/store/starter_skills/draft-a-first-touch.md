@@ -46,8 +46,9 @@ exclamation points in any draft.
 ## Delivering the draft
 
 Show the draft in chat with the source links under it and one line on what
-you left out. Mark the row drafted, log the touch in the outreach log with
-its date, and save.
+you left out. Mark the row drafted with today's date in drafted_on, and save.
+The draft is unsent, so log no outreach touch: that entry goes in only after
+the user confirms the send, or the row reads as contacted when nobody was.
 
 Output: the unsent first-touch draft with sources, plus the row update.
 

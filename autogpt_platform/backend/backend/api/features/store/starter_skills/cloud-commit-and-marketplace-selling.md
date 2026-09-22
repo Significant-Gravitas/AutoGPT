@@ -17,9 +17,12 @@ consumption or burn rate, and the procurement and legal owners.
 MACC is the Microsoft Azure Consumption Commitment and only draws Azure
 spend; EDP is the AWS Enterprise Discount Program and is AWS-only; Google
 Cloud commits cover Google Cloud spend. A marketplace private offer is not
-a fourth peer: it is the contract that draws down the buyer's existing EDP,
-MACC, or Google Cloud commit, usually via their cloud
-relationship so onboarding takes weeks not months. Compare on three axes:
+a fourth peer: it is the contract that can draw down the buyer's existing
+EDP, MACC, or Google Cloud commit when the offer qualifies, usually via their
+cloud relationship so onboarding takes weeks not months. Never promise the
+drawdown before checking it. Each cloud sets its own eligibility, offer-type
+and purchase-path rules, and an offer that does not qualify bills on top of
+the commit rather than against it. Compare on three axes:
 how it counts against their existing commit, who approves it, and how fast
 it can sign. State the trade plainly and let them choose.
 
@@ -27,8 +30,10 @@ it can sign. State the trade plainly and let them choose.
 
 Name the two Azure flags separately before you pitch co-sell:
 MACC-eligible means the buyer can spend their Azure commit on you; Co-Sell
-Ready means Microsoft sellers earn quota credit selling you. One does not
-imply the other. For channel deals, name whether the offer runs as a
+Ready makes you discoverable to Microsoft sellers. Co-Sell Ready does not by
+itself retire a seller's quota — that needs the applicable incentive
+eligibility, such as Azure IP co-sell — so never pitch the one as the other.
+Neither flag implies the other. For channel deals, name whether the offer runs as a
 Channel Partner Private Offer (CPPO) with the partner transacting, or
 direct.
 

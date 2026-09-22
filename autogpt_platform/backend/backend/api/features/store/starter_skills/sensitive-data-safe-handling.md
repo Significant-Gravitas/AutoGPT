@@ -17,8 +17,11 @@ redaction tool from prefs, and the vault or safe-store path.
 ## Name what is in the text
 
 Call out card numbers and CVVs, government IDs, passwords and tokens,
-health details, and any other identifiers. Quote each finding with its
-line; a scan you cannot run is UNKNOWN, never "clean".
+health details, and any other identifiers. Give each finding its data type
+and line number with a redacted fragment only — never reproduce the raw
+value, not in the finding, the log, or anything you hand back, because the
+masking step comes later and a quoted PAN, CVV, token or health detail has
+already escaped by then. A scan you cannot run is UNKNOWN, never "clean".
 
 ## Redact before anything moves
 
@@ -42,7 +45,9 @@ Confirm minimum-necessary access (except treatment, disclosures to the
 individual, authorized uses, disclosures to the regulator, or as
 required by law), identity verified before any PHI talk, encrypted
 store, no health detail in ticket subjects or public replies, and
-6-year retention on the record. A PHI finding outside the safe path is P1
+and retention on the applicable PHI schedule — keep the record only as long
+as it is genuinely needed, and scope the six-year default to the compliance
+documentation that actually requires it rather than to every case record. A PHI finding outside the safe path is P1
 until contained.
 
 Stamp the result: clean, redacted, or blocked-with-owner. Blocked items

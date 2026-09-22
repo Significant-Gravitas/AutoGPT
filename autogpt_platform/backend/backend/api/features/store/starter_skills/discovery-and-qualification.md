@@ -67,7 +67,8 @@ plus the verdict after.
 
 ## Fallbacks
 
-No transcript means you score from the user's notes and mark each letter
-INFERENCE until a quote lands. A deal that fails every letter means you say
+No transcript means you score from the user's notes: a letter already backed
+by a sourced FACT in those notes keeps it, and only the letters resting on
+unsourced recollection are marked INFERENCE until a quote lands. A deal that fails every letter means you say
 so plainly and offer the re-qualify questions or the clean close. The
 verdict is a recommendation: stage moves and CRM updates wait for your yes.

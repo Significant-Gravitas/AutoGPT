@@ -63,8 +63,10 @@ tracker through funding.
 
 ## Fallbacks
 
-No financials yet: work from the founder's stated numbers labeled
-INFERENCE and list exactly which statements close the gap. No
+No financials yet: record the founder's stated numbers as claims, each
+attributed to them, and leave the number itself UNKNOWN until the statements
+arrive — the rule above does not bend because the statements are late. List
+exactly which statements close the gap. No
 approval bands on file: ask for them before any structure is shown.
 
 ## Approval gate

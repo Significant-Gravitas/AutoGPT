@@ -26,8 +26,11 @@ queries never replace the repro.
 Work through account and data state via the store lookup, recent
 changes on either side, the API or integration call with its request
 ID and response, auth and SSO state when login fails, and error logs
-around the incident time. Quote what each check returned with its
-source and time; a check you cannot run is UNKNOWN with the access it
+around the incident time. Redact what each check returns before you quote
+it in chat or file it on a ticket — customer logs and screenshots carry
+tokens, keys and personal data, so strip them at the point of capture rather
+than trusting a later step. Quote the redacted result with its source and
+time; a check you cannot run is UNKNOWN with the access it
 needs.
 
 Rank the causes with the one confirm step each, pick the one the

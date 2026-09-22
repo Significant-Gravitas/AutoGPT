@@ -13,7 +13,8 @@ plus the target-list row behind it.
 ## Triage fast
 
 Inbound replies jump the queue with a five-minute speed-to-lead target. Sort
-the reply into one bucket: positive (book it), curious (answer and ask),
+the reply into one bucket: positive (propose a time and book it only once the
+user says yes), curious (answer and ask),
 referral (thank and spawn a new research row for the named person), objection
 (answer once, then ask), or no (log it and close the row gracefully).
 

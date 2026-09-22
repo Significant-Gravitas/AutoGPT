@@ -62,5 +62,5 @@ rate-position proxies until revenue data lands.
 
 ## Approval gate
 
-Nothing goes to the partner and no rate or promo is changed without
-your explicit yes.
+Nothing goes to the partner, and no rate, promo, listing content, or
+availability is changed without your explicit yes.

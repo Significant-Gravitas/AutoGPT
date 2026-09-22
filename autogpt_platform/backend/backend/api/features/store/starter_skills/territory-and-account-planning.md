@@ -20,7 +20,8 @@ Coverage target is 1 over the historical win rate (floor 3x; enterprise
 buyer-confirmed intent this period, economic buyer engaged, terms agreed,
 close plan documented, procurement/legal initiated, close date in period.
 Score quarterly accuracy as 1 minus |actual minus forecast| over actual
-against a plus-minus 10% bar. Every number is ledger-sourced or UNKNOWN,
+against a plus-minus 10% bar; when actual is zero the percentage is
+undefined, so report accuracy as N/A and give the absolute variance instead. Every number is ledger-sourced or UNKNOWN,
 never estimated.
 
 ## Territory plan

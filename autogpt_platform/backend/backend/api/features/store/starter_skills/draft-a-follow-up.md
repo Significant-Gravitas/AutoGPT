@@ -37,8 +37,10 @@ the banned openers.
 ## Show and log
 
 Show the draft in chat with one line on which touch it is and why
-this angle. Mark the row with last_touch_on and next_step, log the
-touch in the outreach log with its date, and save.
+this angle. Mark the row with next_step, record the draft as pending, and
+save. Leave last_touch_on alone and log no outreach touch until the user
+confirms the send — writing either from an unsent draft puts false state in
+the CRM and shifts every later cadence date.
 
 ## Output
 

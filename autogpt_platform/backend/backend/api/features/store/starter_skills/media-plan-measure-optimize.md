@@ -70,5 +70,6 @@ launch checklist stays blocked until it lands.
 
 ## Approval gate
 
-Nothing goes to the buyer and no rate, bonus, or make-good is
-promised without your explicit yes.
+Nothing goes to the buyer, no rate, bonus, or make-good is promised, and
+nothing about tracking is configured — no pixel, no MMP, no postback —
+without your explicit yes.

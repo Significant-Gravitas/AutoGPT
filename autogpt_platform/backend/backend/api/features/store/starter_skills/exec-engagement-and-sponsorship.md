@@ -19,8 +19,10 @@ revenue potential, process, tenure, solvency, relationships, and geo; start
 small with the top scorers. Every key account gets a role-tagged
 stakeholder map with the champion, economic buyer, technical evaluators,
 and blockers, plus a key-account plan holding the account's top priorities
-and needs with links to all customer info, shared with internal and
-external stakeholders. Label each exec thread mapped, engaged, or
+and needs, shared with internal stakeholders. Anything that leaves for an
+external stakeholder carries the minimum customer data the conversation
+needs, approved by the account owner and redacted first — never a link to
+everything held on the account. Label each exec thread mapped, engaged, or
 sponsoring. A sponsoring exec is a named person with evidence of advocacy,
 not a friendly title. Where a key-account manager takes over, run a full
 sales-to-key-account-manager handoff so none of the sales conversation is
