@@ -2,6 +2,7 @@
 
 import uuid
 
+import prisma.enums
 import prisma.models
 import pytest
 
@@ -16,8 +17,15 @@ from backend.api.features.experts.experts_db_test import (
     _seeded_user_ids,
 )
 from backend.api.features.experts.models import ExpertDayOneItem
+from backend.api.features.experts.package_model import (
+    ExpertManifest,
+    ExpertPackage,
+    PackagedIdentity,
+    PackagedSkill,
+)
 from backend.api.features.experts.publish import (
     UnpublishedWorkflowsError,
+    _template_fields,
     publish_expert,
     published_template,
 )
@@ -261,3 +269,39 @@ async def test_the_seeder_leaves_a_published_template_alone_without_its_source(
     )
     assert untouched.identity == orphan.identity
     assert untouched.tagline == orphan.tagline
+
+
+def test_the_template_row_lists_skills_by_name_like_every_other_expert_row():
+    """``store_user_skill`` records a skill on its expert row by name, which is
+    what the raise, import and hire paths all leave behind and what the team
+    page reads back; the folder slug is the archive's business. The template
+    row is written from the manifest rather than through the store, so it has
+    to choose the same column value by hand."""
+    row = prisma.models.Expert.model_validate(
+        {
+            "id": "expert-1",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z",
+            "ownerUserId": "user-1",
+            "name": "Maria Ops",
+            "color": "sky-300",
+            "role": "Ops lead",
+            "identity": "Careful and brief.",
+            "boundaries": "",
+            "voicePreferences": "",
+            "skills": ["Deep Research"],
+            "categories": [],
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+            "weeklyBudget": 0,
+        }
+    )
+    package = ExpertPackage(
+        manifest=ExpertManifest(
+            identity=PackagedIdentity(name="Maria Ops"),
+            skills=[PackagedSkill(slug="deep-research", name="Deep Research")],
+        )
+    )
+
+    assert _template_fields(row, package)["skills"] == ["Deep Research"]
