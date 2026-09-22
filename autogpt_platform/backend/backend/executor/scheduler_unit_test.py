@@ -2174,3 +2174,24 @@ async def test_a_switched_on_routine_still_fires():
 
     schedule_turn.assert_awaited_once()
     self_delete.assert_not_awaited()
+
+
+@pytest.mark.parametrize("name", ["", " ", "\t\n", "\u2003"])
+def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(name):
+    scheduler = Scheduler(register_system_tasks=False)
+    with (
+        patch(f"{_SCHEDULER_PATH}.run_async") as run,
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="at least 1 character"),
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="user-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            name=name,
+        )
+    run.assert_not_called()
+    persist.assert_not_called()
