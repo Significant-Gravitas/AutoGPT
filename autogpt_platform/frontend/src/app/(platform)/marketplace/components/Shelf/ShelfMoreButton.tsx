@@ -1,3 +1,5 @@
+import { Button } from "@/components/atoms/Button/Button";
+
 interface Props {
   isExpanded: boolean;
   /** How many tiles the button reveals. */
@@ -18,15 +20,15 @@ export function ShelfMoreButton({
   onToggle,
 }: Props) {
   return (
-    <button
-      type="button"
+    <Button
+      size="small"
       aria-expanded={isExpanded}
       onClick={onToggle}
-      className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+      unmask={false}
     >
       {isExpanded
         ? "Show fewer"
         : `Load ${isAll ? "all " : ""}${count.toLocaleString()} ${noun}`}
-    </button>
+    </Button>
   );
 }

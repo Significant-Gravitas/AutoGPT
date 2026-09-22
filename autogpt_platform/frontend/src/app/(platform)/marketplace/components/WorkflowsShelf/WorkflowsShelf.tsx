@@ -46,7 +46,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
           <WorkflowTile key={agent.slug} agent={agent} />
         ))}
       </ul>
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-6 flex flex-wrap items-center gap-2">
         {ordered.length > SHELF_PREVIEW_SIZE ? (
           <ShelfMoreButton
             isExpanded={isExpanded}
@@ -54,9 +54,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
             noun="workflows"
             onToggle={() => setIsExpanded(!isExpanded)}
           />
-        ) : (
-          <span />
-        )}
+        ) : null}
         {/* The old full-width creator banner sat at the bottom of the page and
             spoke louder than the shelf it advertised; one line under the
             workflows is the whole invitation. */}

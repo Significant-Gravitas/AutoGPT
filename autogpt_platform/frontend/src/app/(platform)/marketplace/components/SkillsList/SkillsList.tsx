@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Book04Icon } from "@hugeicons/core-free-icons";
@@ -59,11 +60,6 @@ export function SkillsList({ category }: Props) {
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."
         filters={<SkillTopicChips selected={topic} onSelect={selectTopic} />}
-        action={
-          total > SHELF_PREVIEW_SIZE
-            ? { label: "Browse all skills", href: "/marketplace/skills" }
-            : undefined
-        }
       />
       {isLoading ? (
         <div
@@ -116,8 +112,8 @@ export function SkillsList({ category }: Props) {
           ))}
         </ul>
       )}
-      {total > SHELF_PREVIEW_SIZE ? (
-        <div className="mt-6">
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        {total > SHELF_PREVIEW_SIZE ? (
           <ShelfMoreButton
             isExpanded={isExpanded}
             count={Math.min(total, SHELF_MAX_SIZE)}
@@ -131,8 +127,16 @@ export function SkillsList({ category }: Props) {
               )
             }
           />
-        </div>
-      ) : null}
+        ) : null}
+        <Button
+          as="NextLink"
+          href="/marketplace/skills"
+          variant="secondary"
+          size="small"
+        >
+          Browse all skills
+        </Button>
+      </div>
       {openSlug ? (
         <SkillDialog
           key={openSlug}
