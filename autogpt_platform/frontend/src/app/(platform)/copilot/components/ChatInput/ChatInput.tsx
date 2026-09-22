@@ -286,19 +286,19 @@ export function ChatInput({
   }
 
   function addAttachments(incoming: Attachment[]) {
-    setAttachments((prev) => {
-      const { attachments: next, refusedFolders } = appendWithinCap(
-        prev,
-        incoming,
-      );
-      if (refusedFolders > 0) {
-        toast({
-          title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
-          description: `${refusedFolders} not added.`,
-        });
-      }
-      return next;
-    });
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { attachments: next, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
   }
 
   function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
