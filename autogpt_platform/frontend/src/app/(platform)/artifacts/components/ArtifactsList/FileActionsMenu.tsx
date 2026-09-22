@@ -133,9 +133,12 @@ export function FileActionsMenu({ file, className }: Props) {
       )}
       {isMoveOpen && (
         <MoveToFolderDialog
-          fileIds={[file.id]}
+          move={{
+            kind: "files",
+            fileIds: [file.id],
+            currentFolderId: file.folder_id,
+          }}
           subject={`“${file.name}”`}
-          currentFolderId={file.folder_id}
           isOpen={isMoveOpen}
           setIsOpen={setIsMoveOpen}
         />

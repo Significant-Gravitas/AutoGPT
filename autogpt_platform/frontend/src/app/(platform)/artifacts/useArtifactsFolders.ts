@@ -149,7 +149,7 @@ export function useArtifactsFolders() {
   };
 }
 
-function describeFolderMoveError(error: unknown, name: string): string {
+export function describeFolderMoveError(error: unknown, name: string): string {
   const status = error instanceof ApiError ? error.status : null;
   if (status === 409) return `A folder named “${name}” is already there`;
   if (status === 400) return "A folder can't be moved into itself";

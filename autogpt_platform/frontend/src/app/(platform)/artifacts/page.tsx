@@ -18,6 +18,10 @@ import { OriginFilter } from "./components/OriginFilter/OriginFilter";
 import { StorageUsage } from "./components/StorageUsage/StorageUsage";
 import { ViewToggle } from "./components/ViewToggle/ViewToggle";
 import { FolderBreadcrumb } from "./components/WorkspaceFolders/FolderBreadcrumb";
+import {
+  ancestorsOf,
+  childrenOf,
+} from "./components/WorkspaceFolders/folderTree";
 import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
 
@@ -82,22 +86,29 @@ export default function ArtifactsPage() {
 
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
-  const isFilteringByExpert = expertFilter !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-  const showFolders = !isInFolder && !isSearching && !isFilteringByExpert;
-  const hasFolders = showFolders && folders.length > 0;
-  // At the root the empty state depends on whether folders exist, so hold
-  // the loading state until both queries have settled.
+  // Folders are the container an expert filter narrows inside, so only a
+  // search — which spans every folder — replaces them with a flat list.
+  const showFolders = !isSearching;
+  const hasFolders =
+    showFolders && childrenOf(folders, selectedFolderId).length > 0;
+  // The empty state depends on whether child folders exist, so hold the
+  // loading state until both queries have settled.
   const isListLoading = isLoading || (showFolders && isFoldersLoading);
+  // Until the folders query settles the open folder's name is unknown, so the
+  // crumb stands in with the generic label rather than flickering a wrong one.
+  const breadcrumbItems = isInFolder
+    ? selectedFolder
+      ? ancestorsOf(folders, selectedFolder.id).map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+        }))
+      : [{ id: selectedFolderId, name: "Folder" }]
+    : [];
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
   }, []);
-
-  function handleExpertFilterChange(expertId: string | null) {
-    setExpertFilter(expertId);
-    if (expertId) closeFolder();
-  }
 
   if (!flagReady) {
     return <ArtifactsPageSkeleton showNewLayout={showNewLayout} />;
@@ -149,7 +160,10 @@ export default function ArtifactsPage() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
           />
-          <NewMenu selectedFolderId={selectedFolderId} />
+          <NewMenu
+            selectedFolderId={selectedFolderId}
+            selectedFolderName={selectedFolder?.name}
+          />
         </motion.div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -164,7 +178,7 @@ export default function ArtifactsPage() {
           <ExpertFilter
             experts={activeExperts}
             value={expertFilter}
-            onChange={handleExpertFilterChange}
+            onChange={setExpertFilter}
           />
         </motion.div>
         <motion.div
@@ -184,8 +198,10 @@ export default function ArtifactsPage() {
           transition={{ delay: reduceMotion ? 0 : 0.24 }}
         >
           <FolderBreadcrumb
-            folderName={selectedFolder?.name ?? "Folder"}
-            onBack={closeFolder}
+            items={breadcrumbItems}
+            onNavigate={(folderId) =>
+              folderId === null ? closeFolder() : openFolder(folderId)
+            }
           />
         </motion.div>
       ) : null}
@@ -219,6 +235,7 @@ export default function ArtifactsPage() {
           listKey={`${originFilter}|${expertFilter ?? "everyone"}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
           view={view}
           showFolders={showFolders}
+          folderParentId={selectedFolderId}
           onSelectFolder={openFolder}
         />
       </motion.div>
