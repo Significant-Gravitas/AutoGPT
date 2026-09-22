@@ -1184,6 +1184,80 @@ STARTER_SKILLS: list[CatalogEntry] = [
         "categories": ["marketing", "research"],
         "required_providers": [],
     },
+    {
+        "slug": "zara-getting-started",
+        "categories": ["marketing", "sales"],
+        "required_providers": [
+            "apollo",
+            "google",
+            "hubspot",
+            "mcp_amplitude",
+            "mcp_gong",
+            "mcp_linear",
+            "slack",
+            "stripe",
+        ],
+    },
+    {
+        "slug": "positioning-and-messaging",
+        "categories": ["marketing"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "icp-and-segmentation",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["apollo", "hubspot"],
+    },
+    {
+        "slug": "pricing-and-packaging",
+        "categories": ["marketing", "finance"],
+        "required_providers": ["google", "stripe"],
+    },
+    {
+        "slug": "commercial-launch-strategy",
+        "categories": ["marketing"],
+        "required_providers": ["google", "mcp_linear"],
+    },
+    {
+        "slug": "competitive-intelligence",
+        "categories": ["marketing", "research"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "gtm-performance-diagnostics",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["google", "hubspot", "mcp_amplitude"],
+    },
+    {
+        "slug": "gtm-planning-and-market-entry",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "opportunity-sizing-and-business-case",
+        "categories": ["marketing", "finance"],
+        "required_providers": ["apollo", "google"],
+    },
+    {
+        "slug": "sales-marketing-alignment-and-sla",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["hubspot"],
+    },
+    {
+        "slug": "field-enablement-content",
+        "categories": ["sales", "marketing"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "vertical-industry-plays",
+        "categories": ["marketing", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "developer-and-api-motion",
+        "categories": ["marketing", "development"],
+        "required_providers": ["mcp_amplitude"],
+    },
     *WAVE_THREE_STARTER_SKILLS,
 ]
 

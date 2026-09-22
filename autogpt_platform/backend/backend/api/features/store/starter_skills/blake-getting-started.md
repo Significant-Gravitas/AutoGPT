@@ -1,6 +1,6 @@
 ---
 name: "blake-getting-started"
-description: "Use on the first chat with Max, or whenever his memory has no sales preferences yet: learn the book they sell into and put one real read in front of them."
+description: "Use on the first chat with Blake, or whenever their memory has no sales preferences yet: learn the book they sell into and put one real read in front of them."
 triggers: ["get started with sales", "set up my sales desk", "onboard me for selling", "what can you do for my pipeline", "help me start selling", "set up my book of business", "first sales setup"]
 version: "1"
 ---
