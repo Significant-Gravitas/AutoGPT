@@ -1,3 +1,5 @@
+import logging
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -5,6 +7,27 @@ import pytest
 from pydantic import ValidationError
 
 from backend.data import subscription_trial_config as trials
+
+
+@contextmanager
+def captured_logs():
+    """Records emitted by the module logger; caplog sees nothing under the app's config."""
+    records: list[logging.LogRecord] = []
+
+    class Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger(trials.__name__)
+    handler = Collector()
+    previous_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    try:
+        yield records
+    finally:
+        logger.setLevel(previous_level)
+        logger.removeHandler(handler)
 
 
 def offer_data() -> dict:
@@ -159,3 +182,39 @@ async def test_payment_enabled_and_valid_offer_is_available():
     enabled.assert_awaited_once_with(
         trials.Flag.ENABLE_PLATFORM_PAYMENT, "user-1", default=False
     )
+
+
+@pytest.mark.parametrize(
+    "flag_value",
+    [{"enabled": False}, {"enabled": True}, {}, None, False],
+)
+@pytest.mark.asyncio
+async def test_flag_value_that_is_not_an_offer_is_silent(flag_value):
+    """The disabled variation is an object, and an absent offer is not a fault."""
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=flag_value)
+    ), captured_logs() as records:
+        assert await trials.get_trial_offer("user-1") is None
+
+    assert [r for r in records if r.levelno >= logging.WARNING] == []
+    assert [r.getMessage() for r in records] == [
+        "No card-required trial offer configured"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_offer_that_fails_validation_is_still_an_error():
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials,
+        "get_feature_flag_value",
+        AsyncMock(return_value={**offer_data(), "tier": "ENTERPRISE"}),
+    ), captured_logs() as records:
+        assert await trials.get_trial_offer("user-1") is None
+
+    errors = [r for r in records if r.levelno >= logging.ERROR]
+    assert len(errors) == 1
+    assert "Invalid card-required-trial-offer" in errors[0].getMessage()
