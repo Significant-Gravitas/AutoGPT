@@ -140,12 +140,15 @@ def test_exactly_one_enabled_recommended_model():
 
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
-    and per-1M token rates — must match its authored catalog entry."""
+    and per-1M token rates — must match its authored catalog entry.
+
+    Pin updated for a live OpenRouter reprice ($1.70/$8.50 -> $3.00/$15.00
+    per Mtok, verified 2026-09-22)."""
     k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
-        "input": 255.0,
-        "output": 1275.0,
+        "input": 450.0,
+        "output": 2250.0,
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
