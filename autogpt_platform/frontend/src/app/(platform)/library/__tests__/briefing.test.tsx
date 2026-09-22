@@ -16,7 +16,6 @@ import {
   getGetV1ListAllExecutionsMockHandler,
   getGetV1UserCostSummaryMockHandler,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import LibraryPage from "../page";
 
 afterEach(() => {
@@ -29,7 +28,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   >("@/services/feature-flags/use-get-flag");
   return {
     ...actual,
-    useGetFlag: (flag: Flag) => flag === "agent-briefing",
+    useGetFlag: () => false,
   };
 });
 

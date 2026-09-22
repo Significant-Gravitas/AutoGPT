@@ -467,6 +467,23 @@ class TestRunSubSession:
         assert mock_waiter.await_args.kwargs["permissions"] is perms
 
     @pytest.mark.asyncio
+    async def test_sub_message_carries_parent_provenance(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A plain Otto parent stamps its session with no expert, so the
+        sub's thread can link back and label the sender as Otto."""
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", session_id="s-parent"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_waiter.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": None,
+        }
+
+    @pytest.mark.asyncio
     async def test_wait_for_result_zero_returns_running(
         self, mock_queue, mock_waiter, mock_model
     ):

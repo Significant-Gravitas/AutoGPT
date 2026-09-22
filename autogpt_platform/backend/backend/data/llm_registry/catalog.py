@@ -840,14 +840,15 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — $1.70/$8.50 per Mtok on
-                # OpenRouter, credit rates at the standard 1.5x margin.
+                # Moonshot's premium tier — $3.00/$15.00 per Mtok on
+                # OpenRouter (repriced from $1.70/$8.50; verified live
+                # 2026-09-22), credit rates at the standard 1.5x margin.
                 cost=CatalogModelCost(
                     run_credits=9,
-                    input_credits_per_1m=255.0,
-                    output_credits_per_1m=1275.0,
-                    provider_input_usd_per_1m=1.70,
-                    provider_output_usd_per_1m=8.50,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
                 ),
             ),
             CatalogModel(
