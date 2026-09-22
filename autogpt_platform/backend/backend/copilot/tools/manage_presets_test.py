@@ -313,6 +313,30 @@ async def test_update_graph_inputs_stay_out_of_the_trigger_mask(session):
 
 
 @pytest.mark.asyncio
+async def test_update_graph_inputs_and_trigger_config_in_one_call(session):
+    """Both arguments in one call take different paths through the same merge;
+    folding either into the other would leave the tests above green."""
+    _, ldb, tdb = _triggered_preset_db(
+        {"topic": "weather", "_node_input_mask_abc": {"repo": "owner/repo"}}
+    )
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            inputs={"topic": "sports"},
+            trigger_config={"events": ["push"]},
+        )
+    assert tdb.update_triggered_preset.await_args.kwargs["inputs"] == {
+        "topic": "sports",
+        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]},
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_trigger_config_without_a_trigger_is_rejected(session):
     _, ldb, tdb = _triggered_preset_db({"topic": "weather"})
     with (

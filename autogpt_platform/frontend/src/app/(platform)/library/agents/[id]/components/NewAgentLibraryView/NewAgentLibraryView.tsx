@@ -5,7 +5,7 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
@@ -72,8 +72,12 @@ export function NewAgentLibraryView() {
   const { isNewLayoutActive } = usePlatformChrome();
 
   // A triggered preset whose webhook was detached is filed under Templates, so
-  // its stored inputs can still carry the trigger node's mask.
-  const activeTemplateInputs = splitPresetInputs(activeTemplate?.inputs);
+  // its stored inputs can still carry the trigger node's mask. Memoised because
+  // the run modal resets its form whenever these references change.
+  const activeTemplateInputs = useMemo(
+    () => splitPresetInputs(activeTemplate?.inputs),
+    [activeTemplate?.inputs],
+  );
 
   useEffect(() => {
     if (agent) {

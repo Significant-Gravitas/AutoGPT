@@ -31,6 +31,9 @@ def node_input_mask_key(node_id: str) -> str:
     (``migrate_webhook_presets_to_new_version``) so all sites agree on the
     format; the data migration mirrors it in SQL. Lives here (not in
     ``triggers.py``) so ``db.py`` can use it without an import cycle.
+
+    Keyed on the node id's first UUID segment, which is collision-free only
+    because a graph has at most one trigger node.
     """
     return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
 
