@@ -78,7 +78,7 @@ export const useRunGraph = () => {
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
     usePostV1ExecuteGraphAgent({
       mutation: {
-        onSuccess: (response: any, variables: any) => {
+        onSuccess: (response, variables) => {
           clearAllNodeErrors();
           const { id, graph_id } = response.data as GraphExecutionMeta;
           setQueryStates({
@@ -86,7 +86,7 @@ export const useRunGraph = () => {
           });
           // Simulate goes through the same mutation as Run; only a real run
           // is an activation.
-          if (!variables?.data?.dry_run) {
+          if (!variables.data.dry_run) {
             trackAgentRunGoal({ id: graph_id }, "builder");
           }
         },

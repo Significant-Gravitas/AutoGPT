@@ -157,7 +157,7 @@ export function useAgentRunModal(
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
     mutation: {
-      onSuccess: (response) => {
+      onSuccess: (response, variables) => {
         if (response.status === 200) {
           toast({
             title: "Agent execution started",
@@ -166,10 +166,14 @@ export function useAgentRunModal(
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
           callbacks?.onRun?.(response.data);
-          trackAgentRunGoal(
-            { id: agent.graph_id, name: agent.name },
-            "library",
-          );
+          // Simulate goes through the same mutation as Run; only a real run
+          // is an activation.
+          if (!variables.data.dry_run) {
+            trackAgentRunGoal(
+              { id: agent.graph_id, name: agent.name },
+              "library",
+            );
+          }
           setIsOpen(false);
         }
       },
