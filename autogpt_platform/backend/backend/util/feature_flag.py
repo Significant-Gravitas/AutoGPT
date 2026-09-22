@@ -315,6 +315,19 @@ async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
         return _anonymous_context(user_id), False
 
 
+def _with_request_attributes(context: Context, attributes: dict[str, str]) -> Context:
+    """*context* plus facts known only for this request, such as the country.
+
+    The user context is cached for a day, so anything that can change between
+    requests has to be layered on per evaluation rather than baked into it.
+    A copy is returned; the cached context is never modified. ``key`` and
+    ``kind`` are identity and cannot be overridden this way.
+    """
+    merged = {**context.to_dict(), **attributes}
+    merged.update(key=context.key, kind=context.kind)
+    return Context.from_dict(merged)
+
+
 def _anonymous_context(user_id: str) -> Context:
     """Build a minimal anonymous LD context carrying only the user key."""
     return Context.builder(user_id).kind("user").anonymous(True).build()
@@ -366,6 +379,8 @@ async def get_feature_flag_value(
     flag_key: str,
     user_id: str,
     default: Any = None,
+    *,
+    attributes: dict[str, str] | None = None,
 ) -> Any:
     """
     Get the raw value of a feature flag for a user.
@@ -381,12 +396,18 @@ async def get_feature_flag_value(
     Returns:
         The flag value from LaunchDarkly
     """
-    value, _ = await _evaluate_flag_value(flag_key, user_id, default)
+    value, _ = await _evaluate_flag_value(
+        flag_key, user_id, default, attributes=attributes
+    )
     return value
 
 
 async def _evaluate_flag_value(
-    flag_key: str, user_id: str, default: Any = None
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    *,
+    attributes: dict[str, str] | None = None,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` for one raw flag read.
 
@@ -408,6 +429,8 @@ async def _evaluate_flag_value(
 
         # Get user context (role/email) from the Better Auth user table
         context, context_resolved = await _fetch_user_context_status(user_id)
+        if attributes:
+            context = _with_request_attributes(context, attributes)
 
         # Evaluate flag
         result = client.variation(flag_key, context, default)

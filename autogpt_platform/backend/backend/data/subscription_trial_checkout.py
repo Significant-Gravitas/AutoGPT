@@ -22,7 +22,11 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     reserve_subscription_trial,
 )
-from backend.data.subscription_trial_capacity import TrialCapacityReached
+from backend.data.subscription_trial_capacity import (
+    TRIAL_FULL,
+    TrialCapacityReached,
+    trial_seat_available,
+)
 from backend.data.subscription_trial_config import (
     AcceptedTrialOffer,
     TrialOffer,
@@ -68,7 +72,10 @@ async def _create_trial_checkout(
     metadata: dict[str, str],
     country: str | None,
 ) -> str:
-    offer = await get_trial_offer(user_id)
+    # The same question the status endpoint answers before showing the offer,
+    # asked of the *current* flag: someone who would not be shown the trial
+    # now cannot start or resume one, whatever they were shown earlier.
+    offer = await get_trial_offer(user_id, country=country)
     if offer is None:
         raise TrialUnavailable("Trials are not available right now")
     existing = await get_subscription_trial(user_id)
@@ -77,9 +84,11 @@ async def _create_trial_checkout(
             raise TrialUnavailable("A trial has already been used for this account")
         if existing.offer.token != offer_token:
             raise TrialUnavailable("Refresh to accept the reserved trial terms")
-        return await _resume_checkout(existing, country=country)
+        if not await trial_seat_available(offer, trial_id=existing.id):
+            raise TrialUnavailable(TRIAL_FULL)
+        return await _resume_checkout(existing)
     customer_id = await get_stripe_customer_id(user_id)
-    await _verify_eligibility(user_id, customer_id, offer, country=country)
+    await _verify_eligibility(user_id, customer_id, offer)
     accepted = await resolve_trial_price(offer)
     if accepted.token != offer_token:
         raise TrialUnavailable(
@@ -95,7 +104,7 @@ async def _create_trial_checkout(
         raise TrialUnavailable(
             "Another checkout reserved different trial terms. Refresh"
         )
-    return await _resume_checkout(trial, country=country)
+    return await _resume_checkout(trial)
 
 
 async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
@@ -126,19 +135,14 @@ async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
     )
 
 
-async def _resume_checkout(trial: TrialState, *, country: str | None = None) -> str:
+async def _resume_checkout(trial: TrialState) -> str:
     session = await _find_checkout(trial)
     if session is None or session.status == "open":
         await expire_other_subscription_checkouts(
             trial.customer_id, session.id if session else None
         )
         await _verify_eligibility(
-            trial.user_id,
-            trial.customer_id,
-            trial.offer,
-            trial=trial,
-            session=session,
-            country=country,
+            trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
         )
     if session is None:
         session = await stripe_call(
@@ -151,7 +155,7 @@ async def _resume_checkout(trial: TrialState, *, country: str | None = None) -> 
             data={"stripeCheckoutSessionId": session.id},
         )
     if session.status == "expired":
-        return await _replace_expired_checkout(trial, session, country=country)
+        return await _replace_expired_checkout(trial, session)
     if session.status != "open" or not session.url:
         raise TrialUnavailable(
             "Trial checkout is complete. Refresh your billing status"
@@ -181,18 +185,10 @@ async def _find_checkout(trial: TrialState) -> stripe.checkout.Session | None:
 
 
 async def _replace_expired_checkout(
-    trial: TrialState,
-    session: stripe.checkout.Session,
-    *,
-    country: str | None = None,
+    trial: TrialState, session: stripe.checkout.Session
 ) -> str:
     await _verify_eligibility(
-        trial.user_id,
-        trial.customer_id,
-        trial.offer,
-        trial=trial,
-        session=session,
-        country=country,
+        trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
     )
     await SubscriptionTrial.prisma().update_many(
         where={
@@ -215,7 +211,7 @@ async def _replace_expired_checkout(
         raise TrialUnavailable("Trial checkout is no longer available")
     if current.checkout_attempt == trial.checkout_attempt:
         raise TrialUnavailable("Trial checkout changed. Refresh your billing status")
-    return await _resume_checkout(current, country=country)
+    return await _resume_checkout(current)
 
 
 def trial_checkout_params(trial: TrialState) -> dict:

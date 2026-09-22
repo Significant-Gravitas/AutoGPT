@@ -11,7 +11,6 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
-    field_validator,
     model_validator,
 )
 
@@ -34,41 +33,10 @@ class TrialOffer(BaseModel):
     onboarding_credit_amount: int = Field(ge=0, le=2_147_483_647, strict=True)
     allow_existing_beta_users: bool = Field(default=False, strict=True)
 
-    # Omit (or null) to run the trial uncapped. 0 closes enrollment without
+    # Omit (or null) to run the trial uncapped. 0 closes enrolment without
     # ending the trials already running: the cap is only ever consulted when
     # a new seat is taken, never to revoke a seat already held.
     max_active_trials: int | None = Field(default=None, ge=0, strict=True)
-
-    # Omit (or null) to offer the trial everywhere. Present means allowlist:
-    # ISO 3166-1 alpha-2. Checked twice with two signals -- the visitor's
-    # country before the offer is ever shown (from the edge, via the
-    # X-Client-Country header), and the card's issuing country at fulfilment,
-    # so someone who reaches the API around the edge still cannot enrol. Note
-    # "GB", not "UK" -- an unknown code simply never matches, so a typo closes
-    # the trial for that country rather than opening one by accident.
-    eligible_countries: tuple[str, ...] | None = Field(default=None)
-
-    @field_validator("eligible_countries", mode="after")
-    @classmethod
-    def normalized_countries(cls, value: tuple[str, ...] | None):
-        if value is None:
-            return None
-        codes = {code.strip().upper() for code in value}
-        if not codes:
-            # An empty allowlist reads as "nobody", which is indistinguishable
-            # from a list someone cleared by accident. Refuse it: the offer
-            # then fails validation, is logged, and no trial is served -- the
-            # same end state, reached loudly. Use max_active_trials: 0 to pause.
-            raise ValueError(
-                "eligible_countries must not be empty; omit it to allow all"
-            )
-        if not all(
-            len(code) == 2 and code.isalpha() and code.isascii() for code in codes
-        ):
-            raise ValueError("eligible_countries must be ISO 3166-1 alpha-2 codes")
-        # Sorted so model_dump_json() -- and therefore the offer token that
-        # gates checkout -- is identical in every process.
-        return tuple(sorted(codes))
 
     @model_validator(mode="after")
     def ordered_limits(self) -> "TrialOffer":
@@ -76,34 +44,14 @@ class TrialOffer(BaseModel):
             raise ValueError("Trial limits must satisfy daily <= weekly <= total")
         return self
 
-    def country_allowed(self, country: str | None) -> bool:
-        """Is *country* (ISO alpha-2) offered the trial?
-
-        An unknown country fails a configured allowlist: we cannot show that
-        the user is inside it, and a geo restriction that passes on missing
-        data is not a restriction.
-        """
-        if self.eligible_countries is None:
-            return True
-        return bool(country) and country.strip().upper() in self.eligible_countries
-
     def is_eligible(
         self,
         *,
         created_at: datetime,
         current_tier: str,
         has_subscription_history: bool,
-        country: str | None,
     ) -> bool:
-        """The one predicate behind "may this person see and start the trial".
-
-        ``country`` is required, not defaulted: every caller has to say what
-        it knows, and an offer restricted by country is hidden from anyone
-        whose country it cannot establish.
-        """
         if current_tier != "NO_TIER" or has_subscription_history:
-            return False
-        if not self.country_allowed(country):
             return False
         return created_at >= self.new_users_from or self.allow_existing_beta_users
 
@@ -118,16 +66,38 @@ class AcceptedTrialOffer(TrialOffer):
         return sha256(self.model_dump_json().encode()).hexdigest()
 
 
-async def get_trial_offer(user_id: str) -> TrialOffer | None:
+# What the flag serves to someone who should not see a trial:
+# ``{"enabled": false}`` is the off variation the LaunchDarkly flag was
+# created with, and ``null`` the other natural way to say it. Both are
+# deliberate answers, not misconfiguration, so neither is logged.
+_NO_OFFER: tuple[object, ...] = (None, {"enabled": False})
+
+
+async def get_trial_offer(
+    user_id: str, *, country: str | None = None
+) -> TrialOffer | None:
+    """The trial this user may see right now, or None.
+
+    Who is offered a trial is the flag's targeting, not this code: the
+    country is handed to the flag as the ``country`` attribute so that rules
+    such as "country is not one of IN" decide it. A missing country never
+    matches a country rule, negated or not, so the recommended shape -- a
+    rule serving the offer when country is not one of the excluded list,
+    falling through to off -- also withholds it when the country is unknown.
+    """
+    code = (country or "").strip().upper()
     try:
         if not await is_feature_enabled(
             Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
         ):
             return None
         raw = await get_feature_flag_value(
-            Flag.CARD_REQUIRED_TRIAL_OFFER, user_id, None
+            Flag.CARD_REQUIRED_TRIAL_OFFER,
+            user_id,
+            None,
+            attributes={"country": code} if code else None,
         )
-        if raw is None:
+        if raw in _NO_OFFER:
             return None
         return TrialOffer.model_validate(raw)
     except (ValidationError, ValueError, TypeError):

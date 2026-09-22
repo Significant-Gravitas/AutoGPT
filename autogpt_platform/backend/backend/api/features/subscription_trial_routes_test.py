@@ -291,71 +291,57 @@ async def test_full_trial_offers_nothing_to_a_new_visitor(trial):
     user.assert_not_awaited()
 
 
-def restricted_to(offer, *countries):
-    return offer.model_copy(update={"eligible_countries": countries})
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "country,expected", [("US", True), ("us", True), ("FR", False), (None, False)]
-)
-async def test_new_visitor_sees_the_offer_only_from_an_eligible_country(
-    trial, country, expected
-):
-    offer = restricted_to(trial.offer, "US")
-    user = MagicMock(
-        created_at=datetime.now(UTC),
-        subscription_tier=MagicMock(value="NO_TIER"),
-        stripe_customer_id=None,
-    )
-    with (
-        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=None)),
-        patch.object(routes, "get_trial_offer", AsyncMock(return_value=offer)),
-        patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
-        patch.object(routes, "get_user_by_id", AsyncMock(return_value=user)),
-        patch.object(routes, "resolve_trial_price", AsyncMock(return_value=offer)),
-        patch.object(
-            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
-        ),
-    ):
-        status = await routes.get_trial_status(trial.user_id, country)
-    assert status.eligible is expected
-    assert (status.offer is not None) is expected
-
-
-@pytest.mark.asyncio
-async def test_pending_enrollment_is_hidden_from_an_ineligible_country(trial):
-    """Reserving from inside the allowlist does not let you continue from outside it."""
-    offer = restricted_to(trial.offer, "US")
-    with (
-        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
-        patch.object(routes, "get_trial_offer", AsyncMock(return_value=offer)),
-        patch.object(routes, "trial_seat_available", AsyncMock(return_value=True)),
-        patch.object(
-            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
-        ),
-    ):
-        hidden = await routes.get_trial_status(trial.user_id, "FR")
-        shown = await routes.get_trial_status(trial.user_id, "US")
-    assert not hidden.eligible
-    assert shown.eligible
-
-
-@pytest.mark.asyncio
-async def test_checkout_forwards_the_edge_country_and_ignores_nothing_else(trial):
+def _app(trial):
     app = FastAPI()
     app.include_router(routes.router)
     app.dependency_overrides[routes.get_user_id] = lambda: trial.user_id
     app.dependency_overrides[routes.enforce_subscription_status_rate_limit] = (
         lambda: None
     )
+    return app
+
+
+@pytest.mark.asyncio
+async def test_status_asks_the_flag_with_the_edge_country(trial):
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=None)) as offer,
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=_app(trial)), base_url="https://example.com"
+        ) as client:
+            response = await client.get(
+                "/credits/trial", headers={"X-Client-Country": "IN"}
+            )
+    assert response.status_code == 200
+    assert response.json()["eligible"] is False
+    assert response.json()["offer"] is None
+    assert offer.await_args.kwargs["country"] == "IN"
+
+
+@pytest.mark.asyncio
+async def test_pending_enrollment_is_hidden_once_the_flag_excludes_it(trial):
+    """Reserving while eligible does not keep the offer visible after exclusion."""
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=None)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id, "IN")
+    assert not status.eligible
+
+
+@pytest.mark.asyncio
+async def test_checkout_carries_the_edge_country(trial):
     with patch.object(
         routes,
         "create_trial_checkout",
         AsyncMock(return_value="https://checkout.stripe.com/test"),
     ) as checkout:
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="https://example.com"
+            transport=ASGITransport(app=_app(trial)), base_url="https://example.com"
         ) as client:
             with_header = await client.post(
                 "/credits/trial",
@@ -366,5 +352,12 @@ async def test_checkout_forwards_the_edge_country_and_ignores_nothing_else(trial
                 "/credits/trial", json={"offer_token": trial.offer.token}
             )
     assert with_header.status_code == without.status_code == 200
-    first, second = (call.kwargs["country"] for call in checkout.await_args_list)
-    assert (first, second) == ("DE", None)
+    countries = [call.kwargs["country"] for call in checkout.await_args_list]
+    assert countries == ["DE", None]
+
+
+def test_country_header_is_not_advertised_as_api_surface():
+    """Browsers must not learn to set it; only the proxy does."""
+    app = FastAPI()
+    app.include_router(routes.router)
+    assert "X-Client-Country" not in str(app.openapi())

@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 from ldclient import Context, LDClient
+from ldclient.config import Config
+from ldclient.integrations.test_data import TestData
 
 import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
@@ -935,3 +937,85 @@ class TestEvaluateFeatureFlag:
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
         ld_client.variation.side_effect = Exception("boom")
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False
+
+
+class TestRequestAttributes:
+    """Facts known only per request (the visitor's country) reach targeting."""
+
+    @pytest.mark.asyncio
+    async def test_attributes_are_layered_on_without_touching_the_cache(
+        self, ld_client, mocker
+    ):
+        cached = (
+            Context.builder("user-1")
+            .kind("user")
+            .set("email_domain", "agpt.co")
+            .build()
+        )
+        mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(cached, True),
+        )
+        ld_client.variation.return_value = {"version": "v1"}
+
+        await feature_flag_module.get_feature_flag_value(
+            "card-required-trial-offer", "user-1", None, attributes={"country": "IN"}
+        )
+
+        evaluated = ld_client.variation.call_args[0][1]
+        assert evaluated.get("country") == "IN"
+        assert evaluated.get("email_domain") == "agpt.co"
+        assert cached.get("country") is None
+
+    @pytest.mark.asyncio
+    async def test_attributes_cannot_change_who_is_evaluated(self, ld_client, mocker):
+        cached = Context.builder("user-1").kind("user").build()
+        mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(cached, True),
+        )
+        await feature_flag_module.get_feature_flag_value(
+            "f", "user-1", None, attributes={"key": "someone-else", "kind": "org"}
+        )
+        evaluated = ld_client.variation.call_args[0][1]
+        assert (evaluated.key, evaluated.kind) == ("user-1", "user")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "country,offered", [("US", True), ("BR", True), ("IN", False), (None, False)]
+    )
+    async def test_a_real_country_rule_decides_the_offer(
+        self, mocker, country, offered
+    ):
+        """End to end through the real SDK evaluator, not a mocked variation.
+
+        The recommended production shape: serve the offer when country is not
+        one of the excluded list; otherwise, including an unknown country,
+        fall through to off.
+        """
+        td = TestData.data_source()
+        td.update(
+            td.flag("card-required-trial-offer")
+            .variations({"enabled": False}, {"version": "v1"})
+            .fallthrough_variation(0)
+            .if_not_match("country", "IN")
+            .then_return(1)
+        )
+        client = LDClient(
+            Config("sdk-test", update_processor_class=td, send_events=False)
+        )
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.builder("user-1").kind("user").build(), True),
+        )
+        try:
+            value = await feature_flag_module.get_feature_flag_value(
+                "card-required-trial-offer",
+                "user-1",
+                None,
+                attributes={"country": country} if country else None,
+            )
+        finally:
+            client.close()
+        assert (value == {"version": "v1"}) is offered

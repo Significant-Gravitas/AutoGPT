@@ -5945,17 +5945,6 @@
         "summary": "Get Trial Status",
         "operationId": "getTrialsGetTrialStatus",
         "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "X-Client-Country",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Client-Country"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5984,15 +5973,6 @@
         "operationId": "postTrialsStartTrialCheckout",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
-          {
-            "name": "X-Client-Country",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "X-Client-Country"
-            }
-          },
           {
             "name": "x-datafast-visitor-id",
             "in": "header",
@@ -31396,11 +31376,7 @@
       },
       "TrialRejectionReason": {
         "type": "string",
-        "enum": [
-          "intro_offer_already_used",
-          "card_verification_failed",
-          "country_not_eligible"
-        ],
+        "enum": ["intro_offer_already_used", "card_verification_failed"],
         "title": "TrialRejectionReason"
       },
       "TrialStatusResponse": {

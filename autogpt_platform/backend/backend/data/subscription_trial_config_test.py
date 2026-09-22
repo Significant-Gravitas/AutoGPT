@@ -48,12 +48,6 @@ def test_offer_has_no_implicit_existing_user_eligibility():
         {"max_active_trials": -1},
         {"max_active_trials": "5"},
         {"max_active_trials": True},
-        {"eligible_countries": []},
-        {"eligible_countries": ["USA"]},
-        {"eligible_countries": ["U"]},
-        {"eligible_countries": ["U1"]},
-        {"eligible_countries": ["US", "D3"]},
-        {"eligible_countries": "US"},
     ],
 )
 def test_rejects_invalid_or_ambiguous_offer(overrides):
@@ -87,7 +81,6 @@ def test_eligibility_never_retrials_or_overwrites_paid_access(
             + timedelta(days=days_from_cutoff),
             current_tier=tier,
             has_subscription_history=has_history,
-            country=None,
         )
         is expected
     )
@@ -171,81 +164,46 @@ async def test_payment_enabled_and_valid_offer_is_available():
     )
 
 
-def test_offer_without_limits_is_uncapped_and_worldwide():
-    """An offer written before these knobs existed keeps its old meaning."""
-    offer = trials.TrialOffer.model_validate(offer_data())
-    assert offer.max_active_trials is None
-    assert offer.eligible_countries is None
-    assert offer.country_allowed("ZZ") is True
-    assert offer.country_allowed(None) is True
-
-
-@pytest.mark.parametrize(
-    "country,expected",
-    [
-        ("US", True),
-        ("us", True),
-        (" us ", True),
-        ("DE", True),
-        ("FR", False),
-        ("UK", False),  # ISO says GB; a near-miss must not match
-        (None, False),  # an unprovable country fails a restricted offer
-        ("", False),
-    ],
-)
-def test_country_allowlist_admits_only_listed_countries(country, expected):
-    offer = trials.TrialOffer.model_validate(
-        {**offer_data(), "eligible_countries": ["us", "DE"]}
-    )
-    assert offer.country_allowed(country) is expected
-
-
-def test_country_list_is_order_and_case_independent():
-    """The offer token gates checkout, so the same list must hash the same."""
-    accepted = {"price_id": "price_1", "unit_amount": 5000, "currency": "usd"}
-    one = trials.AcceptedTrialOffer.model_validate(
-        {**offer_data(), **accepted, "eligible_countries": ["us", "GB", "de"]}
-    )
-    two = trials.AcceptedTrialOffer.model_validate(
-        {**offer_data(), **accepted, "eligible_countries": ["DE", "gb", "US"]}
-    )
-    assert one.eligible_countries == ("DE", "GB", "US")
-    assert one.token == two.token
+def test_offer_without_a_cap_keeps_its_old_meaning():
+    """Offers written before the cap existed validate and stay uncapped."""
+    assert trials.TrialOffer.model_validate(offer_data()).max_active_trials is None
 
 
 def test_zero_cap_is_expressible_and_distinct_from_absent():
     """0 pauses enrolment; absent means uncapped. They must not collapse."""
     paused = trials.TrialOffer.model_validate({**offer_data(), "max_active_trials": 0})
-    uncapped = trials.TrialOffer.model_validate(offer_data())
     assert paused.max_active_trials == 0
-    assert uncapped.max_active_trials is None
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "countries,country,expected",
+    "country,attributes",
     [
-        (None, "FR", True),  # no restriction: any country, known or not
-        (None, None, True),
-        (["US", "DE"], "US", True),
-        (["US", "DE"], "de", True),
-        (["US", "DE"], "FR", False),
-        (["US", "DE"], None, False),  # restricted + unknown = hidden
+        ("IN", {"country": "IN"}),
+        (" in ", {"country": "IN"}),
+        (None, None),
+        # a blank header is an unknown country, not a known non-excluded one
+        ("", None),
+        ("   ", None),
     ],
 )
-def test_country_gates_eligibility_before_the_offer_is_shown(
-    countries, country, expected
-):
-    offer = trials.TrialOffer.model_validate(
-        {**offer_data(), "eligible_countries": countries}
-        if countries is not None
-        else offer_data()
-    )
-    assert (
-        offer.is_eligible(
-            created_at=datetime(2026, 9, 11, tzinfo=UTC),
-            current_tier="NO_TIER",
-            has_subscription_history=False,
-            country=country,
-        )
-        is expected
-    )
+async def test_country_is_handed_to_the_flag_not_decided_here(country, attributes):
+    """Who sees a trial is the flag's targeting; the code only supplies the fact."""
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
+    ) as flag:
+        await trials.get_trial_offer("user-1", country=country)
+    assert flag.await_args.kwargs["attributes"] == attributes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("served", [None, {"enabled": False}])
+async def test_the_off_variation_is_an_answer_not_an_error(served, caplog):
+    """Every visitor a rule excludes gets this; it must not log as a fault."""
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(trials, "get_feature_flag_value", AsyncMock(return_value=served)):
+        assert await trials.get_trial_offer("user-1", country="IN") is None
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]

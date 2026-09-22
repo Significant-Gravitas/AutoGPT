@@ -8,6 +8,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from backend.data.db import transaction
 from backend.data.subscription_trial_capacity import (
+    TRIAL_FULL,
     TrialCapacityReached,
     lock_trial_capacity,
     trial_seat_available,
@@ -125,9 +126,7 @@ async def reserve_subscription_trial(
             # resuming, not competing for a new one.
             return TrialState.from_db(existing)
         if not await trial_seat_available(offer, client=tx):
-            raise TrialCapacityReached(
-                "The trial is full right now. Please check back later."
-            )
+            raise TrialCapacityReached(TRIAL_FULL)
         row = await tx.subscriptiontrial.create(
             data={
                 "userId": user_id,

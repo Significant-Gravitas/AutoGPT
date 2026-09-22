@@ -37,6 +37,8 @@ CHECKOUT_RESERVATION = timedelta(minutes=30)
 
 _CAPACITY_LOCK = "trial-capacity"
 
+TRIAL_FULL = "The trial is full right now. Please check back later."
+
 # One definition of "holding a seat", so the cap and the holder check can
 # never drift apart. $2 is the reservation window.
 _SEAT_HELD = """

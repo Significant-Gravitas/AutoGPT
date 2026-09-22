@@ -82,12 +82,6 @@ async def _reconcile_locked(
         if snapshot.has_verified_card(now):
             if not fingerprint:
                 rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
-            elif not trial.offer.country_allowed(snapshot.card_country()):
-                # Ordered ahead of the claim deliberately: a country we do
-                # not serve must not spend the card's one introductory
-                # offer, or the same card could never redeem it later from
-                # a country we do.
-                rejection_reason = TrialRejectionReason.COUNTRY_NOT_ELIGIBLE
             elif not await claim_trial_identities(trial, fingerprint, tx):
                 rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
         if snapshot.cancel_at_period_end or rejection_reason:
