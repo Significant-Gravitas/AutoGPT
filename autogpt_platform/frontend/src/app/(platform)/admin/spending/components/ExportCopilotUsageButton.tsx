@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChartLineIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -16,6 +15,8 @@ import {
   defaultStartDate,
   downloadCsv,
 } from "../helpers";
+import { ChartLineIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function ExportCopilotUsageButton() {
   const { toast } = useToast();
@@ -104,7 +105,7 @@ export function ExportCopilotUsageButton() {
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<ChartLineIcon weight="bold" />}
+          leftIcon={<Icon icon={ChartLineIcon} />}
         >
           Copilot Usage CSV
         </Button>

@@ -7,7 +7,6 @@ import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { useState } from "react";
 import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -15,6 +14,8 @@ import {
   getExecutionEntries,
   normalizeToArray,
 } from "../helpers";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const ViewMoreData = ({
   nodeId,
@@ -93,7 +94,7 @@ export const ViewMoreData = ({
                       onClick={() => copyExecutionId(result.node_exec_id)}
                       className="h-6 w-6 min-w-0 p-0"
                     >
-                      <CopyIcon size={14} />
+                      <Icon icon={Copy01Icon} size={14} />
                     </Button>
                   </div>
 
@@ -160,12 +161,13 @@ export const ViewMoreData = ({
                                   >
                                     {copiedKey ===
                                     `${result.node_exec_id}-${key}` ? (
-                                      <CheckIcon
+                                      <Icon
+                                        icon={Tick02Icon}
                                         size={16}
                                         className="text-green-600"
                                       />
                                     ) : (
-                                      <CopyIcon size={16} />
+                                      <Icon icon={Copy01Icon} size={16} />
                                     )}
                                   </Button>
                                 </div>

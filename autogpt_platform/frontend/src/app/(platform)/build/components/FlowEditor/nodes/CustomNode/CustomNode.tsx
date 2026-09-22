@@ -11,7 +11,6 @@ import React from "react";
 import { BlockUIType } from "../../../types";
 import { FormCreator } from "../FormCreator";
 import { OutputHandler } from "../OutputHandler";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
@@ -76,8 +75,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       BlockUIType.WEBHOOK_MANUAL,
     ].includes(data.uiType);
 
-    const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
-
     const hasConfigErrors =
       data.errors &&
       Object.values(data.errors).some(
@@ -106,7 +103,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
           <NodeHeader data={data} nodeId={nodeId} />
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
-          {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}

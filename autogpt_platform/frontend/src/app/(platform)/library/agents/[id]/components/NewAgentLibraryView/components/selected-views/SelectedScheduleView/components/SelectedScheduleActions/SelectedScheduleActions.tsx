@@ -6,10 +6,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EyeIcon, Play, TrashIcon } from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { useSelectedScheduleActions } from "./useSelectedScheduleActions";
+import { Delete02Icon, EyeIcon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   agent: LibraryAgent;
@@ -55,7 +56,7 @@ export function SelectedScheduleActions({
           {isRunning ? (
             <LoadingSpinner size="small" />
           ) : (
-            <Play weight="bold" size={18} className="text-zinc-700" />
+            <Icon icon={PlayIcon} size={18} className="text-zinc-700" />
           )}
         </Button>
         {openInBuilderHref && (
@@ -67,7 +68,7 @@ export function SelectedScheduleActions({
             target="_blank"
             aria-label="View scheduled task details"
           >
-            <EyeIcon weight="bold" size={18} className="text-zinc-700" />
+            <Icon icon={EyeIcon} size={18} className="text-zinc-700" />
           </Button>
         )}
         <Button
@@ -80,7 +81,7 @@ export function SelectedScheduleActions({
           {isDeleting ? (
             <LoadingSpinner size="small" />
           ) : (
-            <TrashIcon weight="bold" size={18} />
+            <Icon icon={Delete02Icon} size={18} />
           )}
         </Button>
         <AgentActionsDropdown agent={agent} scheduleId={scheduleId} />

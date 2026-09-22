@@ -206,6 +206,10 @@ class TestRunAgentToolSessionDryRun:
                 "backend.copilot.tools.run_agent.get_or_create_library_agent",
                 return_value=mock_library_agent,
             ),
+            patch(
+                "backend.api.features.orgs.db.get_user_default_team",
+                new=AsyncMock(return_value=(None, None)),
+            ),
             patch("backend.copilot.tools.run_agent.execution_utils") as mock_exec_utils,
             patch("backend.copilot.tools.run_agent.track_agent_run_success"),
         ):
@@ -389,7 +393,9 @@ class TestRunMCPToolToolSessionDryRun:
 
             # Execution should proceed
             mock_client.initialize.assert_called_once()
-            mock_client.call_tool.assert_called_once_with("some_tool", {"key": "value"})
+            mock_client.call_tool.assert_called_once_with(
+                "some_tool", {"key": "value"}, input_schema=None
+            )
             assert isinstance(result, MCPToolOutputResponse)
             assert result.success is True
 

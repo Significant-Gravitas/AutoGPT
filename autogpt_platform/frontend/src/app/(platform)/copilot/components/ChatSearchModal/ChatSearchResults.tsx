@@ -1,16 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  ChatCircleIcon,
-  CheckCircleIcon,
-  CircleNotchIcon,
-  HourglassIcon,
-} from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { MutableRefObject } from "react";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
 import { getSessionTitle, highlightMatch, type SearchSession } from "./helpers";
+import {
+  BubbleChatIcon,
+  CheckmarkCircle02Icon,
+  HourglassIcon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const indicatorTransition = {
   type: "spring" as const,
@@ -85,7 +86,8 @@ export function ChatSearchResults({
               </>
             )}
             <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5">
-              <ChatCircleIcon
+              <Icon
+                icon={BubbleChatIcon}
                 aria-hidden="true"
                 className={cn(
                   "h-4 w-4 shrink-0 transition-colors duration-150",
@@ -124,7 +126,7 @@ export function ChatSearchResults({
                   aria-label="Session queued"
                   className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-purple-600"
                 >
-                  <HourglassIcon className="h-3.5 w-3.5" weight="bold" />
+                  <Icon icon={HourglassIcon} className="h-3.5 w-3.5" />
                 </span>
               )}
               {session.chat_status !== "running" &&
@@ -136,18 +138,18 @@ export function ChatSearchResults({
                   hasCompletedIndicator: completedSessionIDs.has(session.id),
                   needsReload: !!sessionNeedsReload[session.id],
                 }) && (
-                  <CircleNotchIcon
+                  <Icon
+                    icon={Loading03Icon}
                     aria-label="Session processing"
                     className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-                    weight="bold"
                   />
                 )}
               {completedSessionIDs.has(session.id) &&
                 session.id !== currentSessionId && (
-                  <CheckCircleIcon
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
                     aria-label="Session completed"
                     className="h-4 w-4 shrink-0 text-green-500"
-                    weight="fill"
                   />
                 )}
               <AnimatePresence initial={false}>

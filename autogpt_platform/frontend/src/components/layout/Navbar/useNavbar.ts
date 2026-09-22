@@ -1,9 +1,9 @@
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 export function useNavbar() {
-  const { isLoggedIn, isUserLoading } = useSupabase();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const logoutInProgress = isLogoutInProgress();
 
   const {

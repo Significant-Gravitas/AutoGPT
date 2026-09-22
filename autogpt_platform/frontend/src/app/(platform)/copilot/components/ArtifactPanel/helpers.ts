@@ -1,13 +1,15 @@
 import {
-  Code,
-  File,
-  FileHtml,
-  FileText,
-  Image,
-  Table,
-  VideoCamera,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+  CodeIcon,
+  File02Icon,
+  FileEmpty02Icon,
+  HtmlFile01Icon,
+  Image01Icon,
+  TableIcon,
+  UserIcon,
+  Video01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import type { ArtifactRef } from "../../store";
 
 export interface ArtifactClassification {
   type:
@@ -21,8 +23,9 @@ export interface ArtifactClassification {
     | "video"
     | "pdf"
     | "text"
-    | "download-only";
-  icon: Icon;
+    | "download-only"
+    | "expert";
+  icon: IconSvgElement;
   label: string;
   openable: boolean;
   hasSourceToggle: boolean;
@@ -35,77 +38,77 @@ const TEN_MB = 10 * 1024 * 1024;
 const KIND: Record<string, ArtifactClassification> = {
   image: {
     type: "image",
-    icon: Image,
+    icon: Image01Icon,
     label: "Image",
     openable: true,
     hasSourceToggle: false,
   },
   video: {
     type: "video",
-    icon: VideoCamera,
+    icon: Video01Icon,
     label: "Video",
     openable: true,
     hasSourceToggle: false,
   },
   pdf: {
     type: "pdf",
-    icon: FileText,
+    icon: File02Icon,
     label: "PDF",
     openable: true,
     hasSourceToggle: false,
   },
   csv: {
     type: "csv",
-    icon: Table,
+    icon: TableIcon,
     label: "Spreadsheet",
     openable: true,
     hasSourceToggle: true,
   },
   html: {
     type: "html",
-    icon: FileHtml,
+    icon: HtmlFile01Icon,
     label: "HTML",
     openable: true,
     hasSourceToggle: true,
   },
   react: {
     type: "react",
-    icon: FileHtml,
+    icon: HtmlFile01Icon,
     label: "React",
     openable: true,
     hasSourceToggle: true,
   },
   markdown: {
     type: "markdown",
-    icon: FileText,
+    icon: File02Icon,
     label: "Document",
     openable: true,
     hasSourceToggle: true,
   },
   json: {
     type: "json",
-    icon: Code,
+    icon: CodeIcon,
     label: "Data",
     openable: true,
     hasSourceToggle: true,
   },
   code: {
     type: "code",
-    icon: Code,
+    icon: CodeIcon,
     label: "Code",
     openable: true,
     hasSourceToggle: false,
   },
   text: {
     type: "text",
-    icon: FileText,
+    icon: File02Icon,
     label: "Text",
     openable: true,
     hasSourceToggle: false,
   },
   "download-only": {
     type: "download-only",
-    icon: File,
+    icon: FileEmpty02Icon,
     label: "File",
     openable: false,
     hasSourceToggle: false,
@@ -264,6 +267,20 @@ const NATIVELY_RENDERED = new Set<ArtifactClassification["type"]>([
   "video",
   "pdf",
 ]);
+
+const EXPERT_CLASSIFICATION: ArtifactClassification = {
+  type: "expert",
+  icon: UserIcon,
+  label: "Expert",
+  openable: true,
+  hasSourceToggle: false,
+};
+
+/** An expert ref is not a file — it skips the MIME/extension tables. */
+export function classifyArtifactRef(ref: ArtifactRef): ArtifactClassification {
+  if (ref.expert) return EXPERT_CLASSIFICATION;
+  return classifyArtifact(ref.mimeType, ref.title, ref.sizeBytes);
+}
 
 export function classifyArtifact(
   mimeType: string | null,

@@ -37,6 +37,10 @@ class Webhook(BaseDbModel):
     events: list[str]
     config: dict = Field(default_factory=dict)
     secret: str
+    # Tenant of the graph/preset this webhook triggers — inherited from the
+    # parent resource at creation, not from the caller's active org.
+    organization_id: str | None = None
+    team_id: str | None = None
 
     provider_webhook_id: str
 
@@ -58,6 +62,8 @@ class Webhook(BaseDbModel):
             config=dict(webhook.config),
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
+            organization_id=webhook.organizationId,
+            team_id=webhook.teamId,
         )
 
 
@@ -95,20 +101,23 @@ class WebhookWithRelations(Webhook):
 
 
 async def create_webhook(webhook: Webhook) -> Webhook:
-    created_webhook = await IntegrationWebhook.prisma().create(
-        data=IntegrationWebhookCreateInput(
-            id=webhook.id,
-            userId=webhook.user_id,
-            provider=webhook.provider.value,
-            credentialsId=webhook.credentials_id,
-            webhookType=webhook.webhook_type,
-            resource=webhook.resource,
-            events=webhook.events,
-            config=SafeJson(webhook.config),
-            secret=webhook.secret,
-            providerWebhookId=webhook.provider_webhook_id,
-        )
+    create_input = IntegrationWebhookCreateInput(
+        id=webhook.id,
+        userId=webhook.user_id,
+        provider=webhook.provider.value,
+        credentialsId=webhook.credentials_id,
+        webhookType=webhook.webhook_type,
+        resource=webhook.resource,
+        events=webhook.events,
+        config=SafeJson(webhook.config),
+        secret=webhook.secret,
+        providerWebhookId=webhook.provider_webhook_id,
     )
+    if webhook.organization_id:
+        create_input["organizationId"] = webhook.organization_id
+    if webhook.team_id:
+        create_input["teamId"] = webhook.team_id
+    created_webhook = await IntegrationWebhook.prisma().create(data=create_input)
     return Webhook.from_db(created_webhook)
 
 
@@ -184,6 +193,8 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
+    organization_id: str | None,
+    team_id: str | None,
     events: list[str] | None = None,
 ) -> Webhook | None:
     where: IntegrationWebhookWhereInput = {
@@ -191,10 +202,29 @@ async def find_webhook_by_credentials_and_props(
         "credentialsId": credentials_id,
         "webhookType": webhook_type,
         "resource": resource,
+        "organizationId": organization_id,
+        "teamId": team_id,
     }
     if events is not None:
         where["events"] = {"has_every": events}
     webhook = await IntegrationWebhook.prisma().find_first(where=where)
+    return Webhook.from_db(webhook) if webhook else None
+
+
+async def find_webhook_by_credentials_and_props_any_tenant(
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+) -> Webhook | None:
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "userId": user_id,
+            "credentialsId": credentials_id,
+            "webhookType": webhook_type,
+            "resource": resource,
+        }
+    )
     return Webhook.from_db(webhook) if webhook else None
 
 
@@ -205,7 +235,13 @@ async def find_webhook_by_graph_and_props(
     graph_id: Optional[str] = None,
     preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """Either `graph_id` or `preset_id` must be provided."""
+    """Either `graph_id` or `preset_id` must be provided.
+
+    Deliberately does NOT filter by tenancy: the only caller
+    (`get_manual_webhook`) must find a manual webhook whose org/team lag the
+    graph/preset's current tenancy (e.g. after an expert rehome) so it can
+    move the row along instead of minting a new ingress URL.
+    """
     where_clause: IntegrationWebhookWhereInput = {
         "userId": user_id,
         "provider": provider,
@@ -223,6 +259,27 @@ async def find_webhook_by_graph_and_props(
         where=where_clause,
     )
     return Webhook.from_db(webhook) if webhook else None
+
+
+async def set_webhook_tenancy(
+    webhook_id: str,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+) -> Webhook:
+    """Move a webhook to the tenant of the graph/preset it triggers.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Both fields are always overwritten (resource-follows-parent), so passing
+    ``None`` clears the corresponding column.
+    """
+    updated_webhook = await IntegrationWebhook.prisma().update(
+        where={"id": webhook_id},
+        data={"organizationId": organization_id, "teamId": team_id},
+    )
+    if updated_webhook is None:
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
+    return Webhook.from_db(updated_webhook)
 
 
 async def update_webhook(

@@ -43,6 +43,7 @@ from backend.util.text import split_camelcase
         ("AutoGPTAgent", "AutoGPT Agent"),
         ("GitHubIntegration", "GitHub Integration"),
         ("LinkedInBlock", "LinkedIn Block"),
+        ("AllQuietGetOnCallBlock", "AllQuiet Get On Call Block"),
     ],
 )
 def test_split_camelcase(input_text: str, expected: str):

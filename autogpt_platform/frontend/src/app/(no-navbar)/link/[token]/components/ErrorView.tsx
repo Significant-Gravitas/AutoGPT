@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { LinkBreak } from "@phosphor-icons/react";
+import { Unlink01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   message: string;
@@ -11,7 +12,7 @@ export function ErrorView({ message }: Props) {
     <AuthCard title="Setup failed">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-          <LinkBreak size={40} weight="bold" className="text-red-600" />
+          <Icon icon={Unlink01Icon} size={40} className="text-red-600" />
         </div>
         <Text
           variant="body-medium"

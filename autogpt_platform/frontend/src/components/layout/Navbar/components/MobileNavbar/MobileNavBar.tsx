@@ -12,13 +12,14 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import { CaretUpIcon, ListIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
 import { MobileNavbarLogoutItem } from "./components/MobileNavbarLogoutItem";
 import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
+import { ArrowUp01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface MobileNavBarProps {
   userName?: string;
@@ -58,9 +59,9 @@ export function MobileNavBar({
           data-testid="mobile-nav-bar-trigger"
         >
           {isOpen ? (
-            <CaretUpIcon className="size-6 stroke-slate-800" />
+            <Icon icon={ArrowUp01Icon} className="size-6 stroke-slate-800" />
           ) : (
-            <ListIcon className="size-6 stroke-slate-800" />
+            <Icon icon={Menu01Icon} className="size-6 stroke-slate-800" />
           )}
           <span className="sr-only">Open menu</span>
         </Button>
@@ -81,9 +82,7 @@ export function MobileNavBar({
                       src={avatarSrc}
                       alt={userName || "Unknown User"}
                     />
-                    <AvatarFallback>
-                      {userName?.charAt(0) || "U"}
-                    </AvatarFallback>
+                    <AvatarFallback>{userName}</AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-full">
                     <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747]">

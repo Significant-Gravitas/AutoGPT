@@ -1,8 +1,9 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   children: React.ReactNode;
@@ -67,7 +68,7 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
           isDragging ? "opacity-100" : "opacity-0",
         )}
       >
-        <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
+        <Icon icon={Upload03Icon} className="h-10 w-10 text-violet-500" />
         <span className="text-lg font-medium text-violet-600">
           Drop files here
         </span>

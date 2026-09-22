@@ -12,7 +12,7 @@
 #                          wire backend/.env so AutoPilot runs without any
 #                          cloud API keys (CHAT_USE_LOCAL=true). See
 #                          docs/platform/copilot-local-llm.md.
-#   --ollama-model=NAME    Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
+#   --ollama-model=NAME    Model to pull (default: hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M).
 #   --ollama-host=URL      Use an existing Ollama at this URL instead of
 #                          installing one locally. Skips the Ollama install
 #                          but still writes the CHAT_USE_LOCAL .env entries.
@@ -33,7 +33,7 @@ DOCKER_CMD="docker"
 DOCKER_COMPOSE_CMD="docker compose"
 LOG_FILE=""
 WITH_OLLAMA=false
-OLLAMA_MODEL="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+OLLAMA_MODEL="hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 OLLAMA_HOST_URL=""
 
 # OS-family detection — Linux and macOS install Ollama very differently
@@ -175,7 +175,7 @@ bootstrap_ollama() {
         # the first chat turn fails with "model not found" — a setup
         # script that returns 0 should mean the platform is *usable*.
         # ``grep -F`` (fixed string) so model names containing regex
-        # metacharacters (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`` has ``.`` and
+        # metacharacters (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M`` has ``.`` and
         # ``:``) match literally, not as wildcards.
         if ! curl -sf "${OLLAMA_ROOT}/api/tags" \
             | grep -Fq "\"name\":\"$OLLAMA_MODEL\""; then
@@ -234,7 +234,7 @@ _bootstrap_ollama_linux() {
     sudo tee /etc/systemd/system/ollama.service.d/host.conf > /dev/null <<'OLLAMA_DROPIN'
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="OLLAMA_CONTEXT_LENGTH=32768"
+Environment="OLLAMA_CONTEXT_LENGTH=262144"
 OLLAMA_DROPIN
     sudo systemctl daemon-reload
     sudo systemctl restart ollama
@@ -288,7 +288,7 @@ _bootstrap_ollama_macos() {
     # effect.
     launchctl setenv OLLAMA_HOST "0.0.0.0:11434" \
         || handle_error "launchctl setenv OLLAMA_HOST failed"
-    launchctl setenv OLLAMA_CONTEXT_LENGTH "32768" \
+    launchctl setenv OLLAMA_CONTEXT_LENGTH "262144" \
         || handle_error "launchctl setenv OLLAMA_CONTEXT_LENGTH failed"
     # Stop any currently-running Ollama (tray app, brew service, raw
     # ``ollama serve``). ``pkill`` matches by name; ``|| true`` so the
@@ -310,7 +310,7 @@ _bootstrap_ollama_macos() {
     # Export the same vars on the serve invocation so the headless server
     # honors them too. ``disown`` so the background job survives this script's
     # exit even in shells with ``shopt -s huponexit`` (login shells, some CI).
-    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="32768" \
+    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="262144" \
         nohup ollama serve >/dev/null 2>&1 &
     disown 2>/dev/null || true
     for _ in $(seq 1 20); do
@@ -325,13 +325,40 @@ _bootstrap_ollama_macos() {
     print_color "GREEN" "✓ Ollama ready: http://localhost:11434"
 }
 
+init_env() {
+    # The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY and
+    # BETTER_AUTH_SECRET blank and the backend refuses to start without an
+    # ENCRYPTION_KEY, so generate them here exactly as `make init-env` does.
+    # Values that are already set are never overwritten.
+    cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to autogpt_platform"
+    print_color "BLUE" "Generating secrets for this install..."
+
+    local dir
+    for dir in . backend frontend; do
+        [ -f "$dir/.env" ] || cp "$dir/.env.default" "$dir/.env" || handle_error "Failed to create $dir/.env"
+    done
+
+    # The generator is stdlib-only Python. Hosts without python3 run it in a
+    # container instead, as the calling user so the .env files stay readable.
+    local -a generator=(python3)
+    if ! command -v python3 &> /dev/null; then
+        # $DOCKER_CMD may be "sudo docker", so it is split on purpose.
+        generator=($DOCKER_CMD run --rm --user "$(id -u):$(id -g)"
+            -v "$PWD:/platform" -w /platform python:3.13-alpine python3)
+    fi
+    for dir in . backend frontend; do
+        "${generator[@]}" single-container/runtime_config.py fill-env --path "$dir/.env" \
+            || handle_error "Failed to generate secrets in $dir/.env"
+    done
+    print_color "GREEN" "✓ Secrets ready"
+}
+
 write_local_env() {
     # Wire backend/.env so the new ChatConfig.local transport activates and
     # AutoPilot routes through Ollama with no cloud API keys. Uses the host
     # LAN IP (or the explicit --ollama-host URL) so containers on Linux
     # can reach Ollama without docker-compose extra_hosts gymnastics.
     cd "$REPO_DIR/autogpt_platform/backend" || handle_error "no backend dir"
-    [ -f .env ] || cp .env.default .env
     local host_url
     if [ -n "$OLLAMA_HOST_URL" ]; then
         # ``bootstrap_ollama`` already stripped the trailing slash + any
@@ -421,6 +448,30 @@ write_local_env() {
     print_color "GREEN" "✓ wrote backend/.env (CHAT_USE_LOCAL=true, Ollama at $host_url)"
 }
 
+check_backend_running() {
+    # `up -d` succeeds as soon as the containers are created, so a backend
+    # that exits on startup would otherwise be reported as a working install.
+    # Wait for it to answer rather than for a fixed time: on a slow host the
+    # imports alone can take longer than any short window.
+    print_color "BLUE" "Waiting for the backend to come up..."
+    local attempt
+    for attempt in $(seq 1 36); do
+        sleep 5
+        if $DOCKER_COMPOSE_CMD ps --status exited --services 2>/dev/null | grep -qx rest_server; then
+            print_color "RED" "The backend exited right after starting. Last log lines:"
+            $DOCKER_COMPOSE_CMD logs --tail 20 rest_server
+            print_color "YELLOW" "If it names a missing or retired secret, see 'Upgrading: secrets are generated per install' in docs/platform/getting-started.md."
+            exit 1
+        fi
+        if $DOCKER_COMPOSE_CMD exec -T rest_server python -c \
+            "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=3)" \
+            &> /dev/null; then
+            return 0
+        fi
+    done
+    print_color "YELLOW" "The backend has not answered yet. It may still be starting: check 'docker compose logs -f rest_server'."
+}
+
 run_docker() {
     cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to autogpt_platform"
     
@@ -432,13 +483,14 @@ run_docker() {
     LOG_FILE="$REPO_DIR/autogpt_platform/logs/docker_setup.log"
     
     if $DOCKER_COMPOSE_CMD up -d > "$LOG_FILE" 2>&1; then
+        check_backend_running
         print_color "GREEN" "✓ Services started successfully!"
     else
         print_color "RED" "Docker compose failed. Check log file for details: $LOG_FILE"
         print_color "YELLOW" "Common issues:"
         print_color "YELLOW" "- Docker is not running"
         print_color "YELLOW" "- Insufficient disk space"
-        print_color "YELLOW" "- Port conflicts (check if ports 3000, 8000, etc. are in use)"
+        print_color "YELLOW" "- Port conflicts (check if ports 3000, 8006, etc. are in use)"
         exit 1
     fi
 }
@@ -451,6 +503,7 @@ main() {
     check_prerequisites
     detect_repo
     clone_repo
+    init_env
     if [ "$WITH_OLLAMA" = true ]; then
         bootstrap_ollama
         write_local_env
@@ -463,7 +516,7 @@ main() {
     print_color "GREEN" "============================="
     echo
     print_color "BLUE" "🚀 Access AutoGPT at: http://localhost:3000"
-    print_color "BLUE" "📡 API available at: http://localhost:8000"
+    print_color "BLUE" "📡 API available at: http://localhost:8006"
     if [ "$WITH_OLLAMA" = true ]; then
         echo
         print_color "BLUE" "🦙 AutoPilot wired to Ollama (model: $OLLAMA_MODEL)"

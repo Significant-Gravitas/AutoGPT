@@ -90,7 +90,6 @@ export function getSubscriptionPricingExperimentPlans(
       ...plan,
       highlighted,
       badge: highlighted ? HIGHLIGHT_BADGE : null,
-      buttonVariant: highlighted ? "primary" : "secondary",
     } satisfies PlanDef;
   });
 }

@@ -14,23 +14,20 @@ test("settings happy path: user can save notification preferences and keep them 
   await loginPage.loginAsSeededUser("smokeSettings");
   await settingsPage.open();
 
-  const agentRunSwitch = settingsPage.getAgentRunNotificationsSwitch();
+  const alertsSwitch = settingsPage.getAlertsSwitch();
   // Assert the attribute exists before reading it — defaulting to "false"
   // would silently pass a regression that removes `aria-checked` entirely.
-  await expect(agentRunSwitch).toHaveAttribute(
-    "aria-checked",
-    /^(true|false)$/,
-  );
-  const initialState = await agentRunSwitch.getAttribute("aria-checked");
+  await expect(alertsSwitch).toHaveAttribute("aria-checked", /^(true|false)$/);
+  const initialState = await alertsSwitch.getAttribute("aria-checked");
   const expectedState = initialState === "true" ? "false" : "true";
 
-  await agentRunSwitch.click();
+  await alertsSwitch.click();
   await settingsPage.savePreferences();
-  await expect(agentRunSwitch).toHaveAttribute("aria-checked", expectedState);
+  await expect(alertsSwitch).toHaveAttribute("aria-checked", expectedState);
 
   await page.reload();
   await settingsPage.open();
-  await expect(settingsPage.getAgentRunNotificationsSwitch()).toHaveAttribute(
+  await expect(settingsPage.getAlertsSwitch()).toHaveAttribute(
     "aria-checked",
     expectedState,
   );
@@ -41,7 +38,7 @@ test("settings happy path: user can save notification preferences and keep them 
 
   await loginPage.loginAsSeededUser("smokeSettings");
   await settingsPage.open();
-  await expect(settingsPage.getAgentRunNotificationsSwitch()).toHaveAttribute(
+  await expect(settingsPage.getAlertsSwitch()).toHaveAttribute(
     "aria-checked",
     expectedState,
   );
@@ -57,7 +54,7 @@ test("settings happy path: user can edit display name and keep it after refresh"
   const updatedDisplayName = `E2E Display ${Date.now()}`;
 
   await loginPage.loginAsSeededUser("smokeSettings");
-  await page.goto("/profile");
+  await profileFormPage.open();
   await expect(await profileFormPage.isLoaded()).toBe(true);
 
   await profileFormPage.setDisplayName(updatedDisplayName);

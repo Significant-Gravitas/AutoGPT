@@ -53,10 +53,11 @@ describe("SettingsSidebar", () => {
     usePathnameMock.mockReturnValue("/settings/profile");
   });
 
-  it("renders SETTINGS header and all 6 nav items with correct hrefs", () => {
+  it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {
     render(<SettingsSidebar />);
 
-    expect(screen.getByText("SETTINGS")).toBeDefined();
+    const back = screen.getByRole("link", { name: /back/i });
+    expect(back.getAttribute("href")).toBe("/copilot");
 
     for (const { label, href } of expectedItems) {
       const link = screen.getByRole("link", { name: new RegExp(label, "i") });

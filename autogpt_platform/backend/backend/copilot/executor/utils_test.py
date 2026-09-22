@@ -1,6 +1,13 @@
 """Tests for CoPilot executor utils (queue config, message models, logging)."""
 
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_EXCHANGE,
     COPILOT_EXECUTION_EXCHANGE,
     COPILOT_EXECUTION_QUEUE_NAME,
     COPILOT_EXECUTION_ROUTING_KEY,
@@ -8,7 +15,62 @@ from backend.copilot.executor.utils import (
     CoPilotExecutionEntry,
     CoPilotLogMetadata,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
 )
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.prompting import VOICE_TURN_TAG
+from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_redispatches_admitted_persisted_message() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kickoff",
+            message_already_persisted=True,
+        )
+
+    assert turn_id is not None
+    append.assert_not_awaited()
+    dispatch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_skips_concurrent_persisted_redispatch() -> None:
+    slot = MagicMock(admitted=False)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        turn_id = await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kickoff",
+            message_already_persisted=True,
+        )
+
+    assert turn_id is None
+    dispatch.assert_not_awaited()
 
 
 class TestCoPilotExecutionEntry:
@@ -22,26 +84,9 @@ class TestCoPilotExecutionEntry:
         assert entry.user_id == "u1"
         assert entry.message == "hello"
         assert entry.is_user_message is True
-        assert entry.mode is None
+        assert not hasattr(entry, "mode")
         assert entry.context is None
         assert entry.file_ids is None
-
-    def test_mode_field(self):
-        entry = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="fast",
-        )
-        assert entry.mode == "fast"
-
-        entry2 = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="extended_thinking",
-        )
-        assert entry2.mode == "extended_thinking"
 
     def test_optional_fields(self):
         entry = CoPilotExecutionEntry(
@@ -63,7 +108,6 @@ class TestCoPilotExecutionEntry:
             session_id="s1",
             user_id="u1",
             message="hello",
-            mode="fast",
         )
         json_str = entry.model_dump_json()
         restored = CoPilotExecutionEntry.model_validate_json(json_str)
@@ -85,7 +129,7 @@ class TestCreateCopilotQueueConfig:
     def test_returns_valid_config(self):
         config = create_copilot_queue_config()
         assert len(config.exchanges) == 2
-        assert len(config.queues) == 2
+        assert len(config.queues) == 1
 
     def test_execution_queue_properties(self):
         config = create_copilot_queue_config()
@@ -96,13 +140,32 @@ class TestCreateCopilotQueueConfig:
         assert exec_queue.exchange == COPILOT_EXECUTION_EXCHANGE
         assert exec_queue.routing_key == COPILOT_EXECUTION_ROUTING_KEY
 
-    def test_cancel_queue_uses_fanout(self):
+    def test_config_declares_no_shared_cancel_queue(self):
+        """A queue in this config is declared by every holder, the publishing
+        API included, and shared by every consumer — which is what made the
+        fanout deliver each cancel to one pod."""
         config = create_copilot_queue_config()
-        cancel_queue = next(
-            q for q in config.queues if q.name != COPILOT_EXECUTION_QUEUE_NAME
+        assert COPILOT_CANCEL_EXCHANGE in config.exchanges
+        assert all(q.exchange != COPILOT_CANCEL_EXCHANGE for q in config.queues)
+
+
+class TestDeclarePodCancelQueue:
+    def test_queue_is_exclusive_auto_delete_and_bound_to_the_fanout(self):
+        channel = MagicMock()
+        name = declare_pod_cancel_queue(channel, "executor-1")
+        channel.queue_declare.assert_called_once_with(
+            queue=name, durable=False, exclusive=True, auto_delete=True
         )
-        assert cancel_queue.exchange is not None
-        assert cancel_queue.exchange.type.value == "fanout"
+        channel.queue_bind.assert_called_once_with(
+            queue=name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+        )
+
+    def test_each_pod_gets_its_own_queue(self):
+        names = {
+            declare_pod_cancel_queue(MagicMock(), executor_id)
+            for executor_id in ("executor-1", "executor-2", "executor-1")
+        }
+        assert len(names) == 3
 
 
 class TestCoPilotLogMetadata:
@@ -121,3 +184,121 @@ class TestCoPilotLogMetadata:
             base_logger, session_id="s1", user_id=None, turn_id="t1"
         )
         assert log is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> None:
+    # The services dedup the dispatched message against the row saved here.
+    # When the two diverged, the turn was saved twice — once with the prefix
+    # and once without.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+            voice=True,
+        )
+
+    persisted = append.await_args.args[1].content
+    assert persisted == dispatch.await_args.kwargs["message"]
+    assert persisted.startswith(f"<{VOICE_TURN_TAG}>")
+    assert persisted.endswith("what did I run yesterday")
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+        )
+
+    assert append.await_args.args[1].content == "what did I run yesterday"
+    assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
+    # The row was saved by an earlier call; prefixing now would put the two
+    # out of step again, which is the duplicate this guard exists to prevent.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kick it off",
+            message_already_persisted=True,
+            voice=True,
+        )
+
+    assert dispatch.await_args.kwargs["message"] == "kick it off"
+
+
+class TestNarrowPermissions:
+    """The envelope's tool set becomes the turn's whitelist. The encoding of
+    "no tools at all" is the trap: it is a blacklist of every tool, and a
+    merge that hardcodes the whitelist flag reads it back as its opposite.
+    """
+
+    def test_a_locked_envelope_stays_locked_when_merged_with_a_block_filter(
+        self,
+    ) -> None:
+        locked = root_envelope("t").model_copy(update={"tools": frozenset()})
+        caller = CopilotPermissions(blocks=["some-block"], blocks_exclude=False)
+
+        merged = utils._narrow_permissions(caller, locked)
+
+        assert merged is not None
+        # Deny-all is encoded as "blacklist everything"; flipping the flag
+        # would turn the same list into "whitelist everything".
+        assert merged.tools_exclude is True
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == set()
+        assert merged.blocks == ["some-block"]
+
+    def test_a_narrowed_envelope_merges_as_a_whitelist(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"read_workspace_file"})}
+        )
+        caller = CopilotPermissions(blocks=["some-block"], blocks_exclude=False)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        assert merged.tools_exclude is False
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}

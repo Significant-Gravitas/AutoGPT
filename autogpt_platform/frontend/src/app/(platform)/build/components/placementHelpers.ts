@@ -1,4 +1,5 @@
 import { XYPosition } from "@xyflow/react";
+import { BlockUIType } from "./types";
 
 export interface NodeDimensions {
   x: number;
@@ -16,11 +17,20 @@ export type FlowViewportBounds = {
 
 export type ExistingNodeForPlacement = {
   position: XYPosition;
-  measured?: { width: number; height: number };
+  width?: number;
+  height?: number;
+  measured?: { width?: number; height?: number };
+  data?: { uiType?: string };
 };
 
-const DEFAULT_NODE_WIDTH = 500;
+const DEFAULT_NODE_WIDTH = 350;
 const DEFAULT_NODE_HEIGHT = 400;
+
+export function getBlockPlacementDimensions(uiType?: string) {
+  return uiType === BlockUIType.NOTE
+    ? { width: 304, height: 304 }
+    : { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+}
 
 function rectanglesOverlap(a: NodeDimensions, b: NodeDimensions): boolean {
   return !(
@@ -35,8 +45,7 @@ function nodeToRect(node: ExistingNodeForPlacement): NodeDimensions {
   return {
     x: node.position.x,
     y: node.position.y,
-    width: node.measured?.width ?? DEFAULT_NODE_WIDTH,
-    height: node.measured?.height ?? DEFAULT_NODE_HEIGHT,
+    ...getNodeDimensions(node),
   };
 }
 
@@ -47,7 +56,7 @@ function overlapsAnyNode(
   return nodes.some((n) => rectanglesOverlap(candidate, nodeToRect(n)));
 }
 
-function fitsInViewport(
+export function fitsInViewport(
   rect: NodeDimensions,
   bounds: FlowViewportBounds,
 ): boolean {
@@ -64,13 +73,25 @@ export function getFlowViewportBounds(
   screenWidth: number,
   screenHeight: number,
   padding = 40,
-): FlowViewportBounds {
+): FlowViewportBounds | undefined {
   const { x, y, zoom } = viewport;
+  if (
+    ![x, y, zoom, screenWidth, screenHeight, padding].every(Number.isFinite) ||
+    zoom <= 0 ||
+    screenWidth <= 0 ||
+    screenHeight <= 0
+  ) {
+    return undefined;
+  }
+  const inset = Math.max(
+    0,
+    Math.min(padding, screenWidth / 4, screenHeight / 4),
+  );
   return {
-    minX: (-x + padding) / zoom,
-    minY: (-y + padding) / zoom,
-    maxX: (screenWidth - x - padding) / zoom,
-    maxY: (screenHeight - y - padding) / zoom,
+    minX: (-x + inset) / zoom,
+    minY: (-y + inset) / zoom,
+    maxX: (screenWidth - x - inset) / zoom,
+    maxY: (screenHeight - y - inset) / zoom,
   };
 }
 
@@ -83,9 +104,11 @@ function scanViewportGrid(
 ): XYPosition | null {
   const stepX = width + margin;
   const stepY = height + margin;
+  let attempts = 0;
 
   for (let y = bounds.minY; y + height <= bounds.maxY; y += stepY) {
     for (let x = bounds.minX; x + width <= bounds.maxX; x += stepX) {
+      if (attempts++ >= 1000) return null;
       const candidate: NodeDimensions = { x, y, width, height };
       if (!overlapsAnyNode(candidate, nodes)) {
         return { x, y };
@@ -96,14 +119,13 @@ function scanViewportGrid(
   return null;
 }
 
-function getAdjacentPositions(
+function findAdjacentPosition(
   nodes: ExistingNodeForPlacement[],
   width: number,
   height: number,
   margin: number,
-): XYPosition[] {
-  const positions: XYPosition[] = [];
-
+  bounds?: FlowViewportBounds,
+): XYPosition | undefined {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const rect = nodeToRect(nodes[i]);
 
@@ -114,26 +136,29 @@ function getAdjacentPositions(
     ];
 
     for (const pos of candidates) {
-      if (!overlapsAnyNode({ ...pos, width, height }, nodes)) {
-        positions.push(pos);
+      const rect = { ...pos, width, height };
+      if (
+        (!bounds || fitsInViewport(rect, bounds)) &&
+        !overlapsAnyNode(rect, nodes)
+      ) {
+        return pos;
       }
     }
   }
 
-  return positions;
+  return undefined;
 }
 
-export function getNodeDimensions(
-  node: {
-    width?: number;
-    height?: number;
-    measured?: { width?: number; height?: number };
-  },
-  fallbackWidth = DEFAULT_NODE_WIDTH,
-): { width: number; height: number } {
+export function getNodeDimensions(node: {
+  width?: number;
+  height?: number;
+  measured?: { width?: number; height?: number };
+  data?: { uiType?: string };
+}): { width: number; height: number } {
+  const fallback = getBlockPlacementDimensions(node.data?.uiType);
   return {
-    width: node.width ?? node.measured?.width ?? fallbackWidth,
-    height: node.height ?? node.measured?.height ?? DEFAULT_NODE_HEIGHT,
+    width: node.width ?? node.measured?.width ?? fallback.width,
+    height: node.height ?? node.measured?.height ?? fallback.height,
   };
 }
 
@@ -147,8 +172,20 @@ export function findFreePosition(
   if (existingNodes.length === 0) {
     if (viewportBounds) {
       return {
-        x: viewportBounds.minX + margin,
-        y: viewportBounds.minY + margin,
+        x: Math.max(
+          viewportBounds.minX,
+          Math.min(
+            viewportBounds.minX + margin,
+            viewportBounds.maxX - newNodeWidth,
+          ),
+        ),
+        y: Math.max(
+          viewportBounds.minY,
+          Math.min(
+            viewportBounds.minY + margin,
+            viewportBounds.maxY - newNodeHeight,
+          ),
+        ),
       };
     }
     return { x: 100, y: 100 };
@@ -167,45 +204,22 @@ export function findFreePosition(
   }
 
   // Second try: adjacent to existing nodes (right, left, below)
-  const adjacent = getAdjacentPositions(
+  const adjacent = findAdjacentPosition(
     existingNodes,
     newNodeWidth,
     newNodeHeight,
     margin,
+    viewportBounds,
   );
-
-  if (viewportBounds && adjacent.length > 0) {
-    const visibleAdj = adjacent.find((pos) =>
-      fitsInViewport(
-        { ...pos, width: newNodeWidth, height: newNodeHeight },
-        viewportBounds,
-      ),
-    );
-    if (visibleAdj) return visibleAdj;
-  } else if (adjacent.length > 0) {
-    return adjacent[0];
-  }
-
-  // Last resort: scan below the viewport
-  if (viewportBounds) {
-    const x = viewportBounds.minX + margin;
-    let y = viewportBounds.maxY + margin;
-
-    while (
-      overlapsAnyNode(
-        { x, y, width: newNodeWidth, height: newNodeHeight },
-        existingNodes,
-      )
-    ) {
-      y += newNodeHeight + margin;
-    }
-
-    return { x, y };
-  }
+  if (adjacent) return adjacent;
 
   const lastRect = nodeToRect(existingNodes[existingNodes.length - 1]);
+  const bottom = existingNodes.reduce((max, node) => {
+    const rect = nodeToRect(node);
+    return Math.max(max, rect.y + rect.height);
+  }, viewportBounds?.maxY ?? -Infinity);
   return {
-    x: lastRect.x + lastRect.width + margin,
-    y: lastRect.y,
+    x: viewportBounds ? viewportBounds.minX + margin : lastRect.x,
+    y: bottom + margin,
   };
 }

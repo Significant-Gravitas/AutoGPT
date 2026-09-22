@@ -126,6 +126,14 @@ Key models (defined in `schema.prisma`):
 
 ## Common Development Tasks
 
+### Adding / editing / retiring an LLM model
+
+Model definitions, costs, and AutoPilot routing are catalog-as-code in `backend/data/llm_registry/catalog.py` — edit the file, open a PR (catalog-only diffs may ride `hotfix/*`→`master` for incident-speed changes). The catalog is the single source: metadata and billing dicts are derived from it at import. A block-selectable model additionally needs one `LLMModel` name line in `backend/data/llm_registry/llm_models.py` (an import-time check enforces the pairing); copilot-only models need just the catalog entry. Retire a model with a catalog PR (`is_enabled: False`) plus `python -m backend.data.llm_registry.retire <slug> --replacement <slug> --yes` to migrate existing graph nodes (dry-run by default, revertable). Full reference: [Managing LLM Models](@../../docs/platform/contributing/managing-llm-models.md).
+
+### Adding or changing a roster expert
+
+The seeded expert roster is `ROSTER` in `backend/api/features/experts/seed.py`. Adding, renaming or removing an entry turns the expert style eval red (`backend/copilot/eval/style/`), which scores what each expert would write against its own style spec and reads the result against a stored `baseline.json`. Two artefacts have to follow the roster edit. The first is a reference fixture, `backend/copilot/eval/style/fixtures/<name>.json`, holding 27 prompts across every kind — copy a sibling and rewrite it; this costs nothing. The second is a regenerated baseline: `poetry run expert-style-eval --write-baseline`, a paid run against the live models at roughly $1-2 per expert (the twenty-four-expert run on 2026-09-18 cost $26.89, recorded as `cost_usd` in the file). It takes the whole roster and refuses `--experts`/`--kinds`, because a filtered run would store part of the set under a whole-set fingerprint. Start with `poetry run expert-style-eval --dry-run`, which names the fingerprint components that moved and makes no calls. Regenerating also moves the per-expert scored counts — turns that hit the round cap are stored as errors — so the count `runner_test.py` pins for Max needs updating to match the new file.
+
 ### Adding a new block
 
 Follow the comprehensive [Block SDK Guide](@../../docs/platform/block-sdk-guide.md) which covers:

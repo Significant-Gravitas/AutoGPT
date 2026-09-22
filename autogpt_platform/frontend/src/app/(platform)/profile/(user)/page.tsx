@@ -1,15 +1,15 @@
 "use client";
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
-import { ProfileInfoForm } from "@/components/__legacy__/ProfileInfoForm";
+import { ProfileInfoForm } from "@/components/contextual/ProfileInfoForm/ProfileInfoForm";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { ProfileLoading } from "./ProfileLoading";
 
 export default function UserProfilePage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const logoutInProgress = isLogoutInProgress();
 
   const {

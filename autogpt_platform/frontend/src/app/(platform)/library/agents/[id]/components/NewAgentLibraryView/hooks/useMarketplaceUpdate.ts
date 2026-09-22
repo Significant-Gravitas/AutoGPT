@@ -9,7 +9,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { okData } from "@/app/api/helpers";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";
@@ -23,7 +23,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const user = useSupabaseStore((state) => state.user);
+  const user = useAuthStore((state) => state.user);
 
   // Get marketplace data if agent has marketplace listing
   const { data: storeAgentData } = useGetV2GetSpecificAgent(

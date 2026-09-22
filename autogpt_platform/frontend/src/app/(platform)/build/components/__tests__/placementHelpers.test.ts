@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BlockUIType } from "../types";
 import {
   findFreePosition,
   getFlowViewportBounds,
@@ -6,7 +7,7 @@ import {
   type ExistingNodeForPlacement,
 } from "../placementHelpers";
 
-const viewport = getFlowViewportBounds({ x: 0, y: 0, zoom: 1 }, 1000, 800, 0);
+const viewport = getFlowViewportBounds({ x: 0, y: 0, zoom: 1 }, 1000, 800, 0)!;
 
 function node(
   x: number,
@@ -21,6 +22,20 @@ function node(
 }
 
 describe("getFlowViewportBounds", () => {
+  it.each([0, -1, Infinity, NaN])(
+    "falls back before the viewport has a usable zoom %s",
+    (zoom) => {
+      expect(
+        getFlowViewportBounds({ x: 0, y: 0, zoom }, 1000, 800),
+      ).toBeUndefined();
+    },
+  );
+
+  it("falls back before the canvas has dimensions", () => {
+    expect(
+      getFlowViewportBounds({ x: 0, y: 0, zoom: 1 }, 0, 0),
+    ).toBeUndefined();
+  });
   it("maps screen corners to flow coordinates", () => {
     expect(
       getFlowViewportBounds({ x: -100, y: -50, zoom: 0.5 }, 1200, 900, 0),
@@ -34,6 +49,17 @@ describe("getFlowViewportBounds", () => {
 });
 
 describe("findFreePosition", () => {
+  it("anchors an oversized first block inside a small viewport", () => {
+    expect(
+      findFreePosition(
+        [],
+        350,
+        30,
+        { minX: 40, minY: 40, maxX: 200, maxY: 200 },
+        400,
+      ),
+    ).toEqual({ x: 40, y: 40 });
+  });
   it("returns default origin when there are no nodes", () => {
     expect(findFreePosition([])).toEqual({ x: 100, y: 100 });
   });
@@ -70,7 +96,7 @@ describe("findFreePosition", () => {
 
     const position = findFreePosition(gridNodes, 400, 30, viewport);
 
-    expect(position).toEqual({ x: 30, y: 1260 });
+    expect(position).toEqual({ x: 30, y: 1290 });
   });
 
   it("uses adjacent placement without viewport bounds when canvas is not crowded", () => {
@@ -86,7 +112,7 @@ describe("findFreePosition", () => {
     };
     const position = findFreePosition([unmeasuredNode], 400, 30);
 
-    expect(position).toEqual({ x: 530, y: 0 });
+    expect(position).toEqual({ x: 380, y: 0 });
   });
 
   it("picks an adjacent candidate visible in the viewport", () => {
@@ -96,7 +122,7 @@ describe("findFreePosition", () => {
       900,
       900,
       0,
-    );
+    )!;
     const position = findFreePosition(nodes, 400, 30, smallViewport, 400);
 
     expect(position.x + 400).toBeLessThanOrEqual(smallViewport.maxX);
@@ -123,7 +149,7 @@ describe("findFreePosition", () => {
       350,
       350,
       0,
-    );
+    )!;
     const position = findFreePosition(
       [smallNode],
       200,
@@ -152,11 +178,11 @@ describe("getNodeDimensions", () => {
 
   it("falls back to default dimensions for unmeasured nodes", () => {
     const dims = getNodeDimensions({});
-    expect(dims).toEqual({ width: 500, height: 400 });
+    expect(dims).toEqual({ width: 350, height: 400 });
   });
 
-  it("uses custom fallback width when provided", () => {
-    const dims = getNodeDimensions({}, 300);
-    expect(dims.width).toBe(300);
+  it("uses the note dimensions until measured", () => {
+    const dims = getNodeDimensions({ data: { uiType: BlockUIType.NOTE } });
+    expect(dims).toEqual({ width: 304, height: 304 });
   });
 });

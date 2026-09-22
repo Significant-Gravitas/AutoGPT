@@ -6,7 +6,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, DotsThreeVertical } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
@@ -17,6 +16,8 @@ import {
   MASKED_KEY_LENGTH,
   providerIcons,
 } from "../../helpers";
+import { ArrowDown01Icon, MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type CredentialRowProps = {
   credential: {
@@ -140,7 +141,10 @@ export function CredentialRow({
         )}
       </div>
       {(showCaret || (asSelectTrigger && !readOnly)) && (
-        <CaretDownIcon className="h-4 w-4 shrink-0 text-gray-400" />
+        <Icon
+          icon={ArrowDown01Icon}
+          className="h-4 w-4 shrink-0 text-gray-400"
+        />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
@@ -149,7 +153,7 @@ export function CredentialRow({
               className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+              <Icon icon={MoreVerticalIcon} className="h-5 w-5 text-gray-400" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

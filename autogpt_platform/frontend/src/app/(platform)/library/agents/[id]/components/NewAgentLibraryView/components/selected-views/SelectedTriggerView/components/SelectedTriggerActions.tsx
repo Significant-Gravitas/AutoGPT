@@ -12,10 +12,11 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { FloppyDiskIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";
+import { Delete02Icon, FloppyDiskIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -94,7 +95,7 @@ export function SelectedTriggerActions({
           {isSaving ? (
             <LoadingSpinner size="small" />
           ) : (
-            <FloppyDiskIcon weight="bold" size={18} className="text-zinc-700" />
+            <Icon icon={FloppyDiskIcon} size={18} className="text-zinc-700" />
           )}
         </Button>
         <Button
@@ -107,7 +108,7 @@ export function SelectedTriggerActions({
           {deleteMutation.isPending ? (
             <LoadingSpinner size="small" />
           ) : (
-            <TrashIcon weight="bold" size={18} />
+            <Icon icon={Delete02Icon} size={18} />
           )}
         </Button>
         <AgentActionsDropdown agent={agent} />

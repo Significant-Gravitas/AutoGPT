@@ -4,21 +4,21 @@ import { useCopilotUIStore } from "../../store";
 
 export function useContextPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
-  const setActiveTab = useCopilotUIStore((s) => s.setActiveTab);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const contextPanelWidth = useCopilotUIStore((s) => s.contextPanelWidth);
   const setContextPanelWidth = useCopilotUIStore((s) => s.setContextPanelWidth);
 
-  // The artifact takes over the right region while it's open, so the Context
-  // Panel is hidden then (you return to it by closing the artifact).
+  // The artifact or the computer takes over the right region while it's
+  // open, so the Context Panel is hidden then (you return to it by closing
+  // the artifact or turning the panel back to its document face).
   const hasArtifact = artifactPanel.activeArtifact != null;
-  const showExpanded = artifactPanel.isOpen && !hasArtifact;
+  const showExpanded =
+    artifactPanel.isOpen && !hasArtifact && !artifactPanel.isComputerOpen;
 
   return {
     isOpen: artifactPanel.isOpen,
     activeTab: artifactPanel.activeTab,
     showExpanded,
-    setActiveTab,
     closeArtifactPanel,
     contextPanelWidth,
     setContextPanelWidth,

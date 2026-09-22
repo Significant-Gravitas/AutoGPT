@@ -24,10 +24,16 @@ buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 import json
 import logging
 import time
+import uuid
 from typing import Any, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.copilot.response_model import (
+    StreamPendingDrained,
+    StreamPendingDrainedMessage,
+)
+from backend.copilot.stream_registry import get_session, publish_chunk
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
 
@@ -65,12 +71,21 @@ class PendingMessageContext(BaseModel):
 class PendingMessage(BaseModel):
     """A user message queued for injection into an in-flight turn."""
 
+    # Stable identity so the mid-turn drain hint can key the UI bubble it
+    # renders for this message. Defaulted rather than required: entries
+    # written by older workers are still sitting in Redis and must validate.
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     content: str = Field(min_length=1, max_length=32_000)
     file_ids: list[str] = Field(default_factory=list, max_length=20)
     context: PendingMessageContext | None = None
     # Enqueue time (unix seconds) so the turn-start drain can order pending
     # messages relative to the turn's ``current`` message.
     enqueued_at: float = Field(default_factory=time.time)
+    # Persisted onto the user row this message becomes (e.g. the
+    # ``from_session_id`` / ``from_expert_id`` provenance of a message another
+    # session sent).  Set only by internal callers; the HTTP pending route
+    # never forwards it, so a human message stays metadata-free.
+    metadata: dict[str, Any] | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -212,7 +227,48 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             len(messages),
             session_id,
         )
+        await _notify_pending_drained(session_id, messages)
     return messages
+
+
+async def _notify_pending_drained(
+    session_id: str, drained: list[PendingMessage]
+) -> None:
+    """Emit a ``data-pending-drained`` hint onto the session's live SSE
+    stream so the frontend promotes its queued chips to bubbles right away
+    instead of waiting for its backstop poll.
+
+    Best-effort by design: the frontend re-reads the authoritative buffer
+    count on the hint (and keeps a slow poll as a safety net), so a failed
+    or dropped emit only delays the chip→bubble swap — it never loses data.
+    The active turn is looked up from the session so the chunk lands on the
+    correct per-turn Redis stream.
+
+    The hint also carries the drained text so the client can render the
+    follow-up bubble exactly where the backend injected it, between the
+    tool chain that ran before the drain and the work that follows it.
+    """
+    try:
+        active = await get_session(session_id)
+        if active is None or not active.turn_id:
+            return
+        await publish_chunk(
+            active.turn_id,
+            StreamPendingDrained(
+                drainedCount=len(drained),
+                messages=[
+                    StreamPendingDrainedMessage(id=m.id, content=m.content)
+                    for m in drained
+                ],
+            ),
+            session_id=session_id,
+        )
+    except Exception:
+        logger.debug(
+            "pending_messages: drain hint emit failed for session=%s",
+            session_id,
+            exc_info=True,
+        )
 
 
 async def peek_pending_count(session_id: str) -> int:
