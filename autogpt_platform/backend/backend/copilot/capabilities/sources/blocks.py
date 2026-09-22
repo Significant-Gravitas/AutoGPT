@@ -70,7 +70,15 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
         klass=block.capability_kind,
         name=block.name,
         purpose=clip_purpose(block.optimized_description or block.description),
-        description=normalize_text(block.description),
+        # The optimized description is curated for retrieval (it is loaded from
+        # the database at runtime), so the index sees it as well as the source.
+        description=normalize_text(
+            " ".join(
+                text
+                for text in (block.optimized_description, block.description)
+                if text
+            )
+        ),
         tags=tags,
         context="graph" if graph_only else "both",
         implementations=[Implementation(kind="block", ref=block.id, name=block.name)],
