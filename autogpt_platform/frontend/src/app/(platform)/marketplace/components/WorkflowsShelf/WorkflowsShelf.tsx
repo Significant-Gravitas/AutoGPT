@@ -35,7 +35,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
     >
       <SectionHeader
         size="small"
-        titleIcon={<Icon icon={UserAiIcon} size="3.75rem" aria-hidden />}
+        titleIcon={<Icon icon={UserAiIcon} size="2.2rem" aria-hidden />}
         title="Workflows"
         titleId={HEADING_ID}
         subtitle="Automations your experts can run — or install one yourself."

@@ -97,7 +97,7 @@ export const MainMarkeplacePage = () => {
                 <AgentsSection
                   sectionTitle="All AI Workflows"
                   titleIcon={
-                    <Icon icon={UserAiIcon} size="3.75rem" aria-hidden />
+                    <Icon icon={UserAiIcon} size="2.2rem" aria-hidden />
                   }
                   subtitle="Ready-made automations from the community."
                   agents={topAgents.agents}
