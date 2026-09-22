@@ -125,6 +125,7 @@ function makeProvider(
     isSystemProvider: false,
     oAuthCallback: async () => codexCredential,
     mcpOAuthCallback: async () => codexCredential,
+    mcpStoreToken: async () => codexCredential,
     createAPIKeyCredentials: async () => codexCredential,
     createUserPasswordCredentials: async () => codexCredential,
     createHostScopedCredentials: async () => codexCredential,
@@ -403,6 +404,7 @@ describe("An optional discriminator is still gated", () => {
         credentials_types: ["oauth2"],
         discriminator: "transport",
         discriminator_mapping: { codex_app_server: "codex" },
+        credential_free_discriminator_values: ["platform"],
         properties: {
           id: { type: "string" },
           provider: { enum: ["codex"], type: "string" },
@@ -514,13 +516,13 @@ describe("LLM blocks keep every model option", () => {
         type: "string",
       },
       credentials: {
+        credential_free_discriminator_values: ["llama3.3"],
         credentials_provider: ["openai", "anthropic", "ollama"],
         credentials_types: ["api_key"],
         discriminator: "model",
         discriminator_mapping: {
           "gpt-4o": "openai",
           "claude-opus-4-5-20251101": "anthropic",
-          "llama3.3": "ollama",
         },
         properties: {
           id: { type: "string" },
@@ -535,7 +537,7 @@ describe("LLM blocks keep every model option", () => {
         type: "object",
       },
     },
-    required: ["prompt", "credentials"],
+    required: ["prompt"],
   } as unknown as RJSFSchema;
 
   it("keeps all models when every LLM provider is present, as list_providers guarantees", () => {
@@ -574,5 +576,13 @@ describe("LLM blocks keep every model option", () => {
     expect(
       Array.from(model.querySelectorAll("option")).map((o) => o.textContent),
     ).toEqual(["gpt-4o", "claude-opus-4-5-20251101", "llama3.3"]);
+    expect(screen.getByText(/openai credential/i)).not.toBeNull();
+
+    const localModel = Array.from(model.querySelectorAll("option")).find(
+      (option) => option.textContent === "llama3.3",
+    );
+    if (!localModel) throw new Error("expected the local model option");
+    fireEvent.change(model, { target: { value: localModel.value } });
+    expect(screen.queryByText(/credential/i)).toBeNull();
   });
 });

@@ -60,6 +60,24 @@ describe("isInternalToolOutput", () => {
     return generated(name, `/sessions/s1/tool-outputs/${name}`);
   }
 
+  test("recognizes explicit tool-output provenance after a file is renamed or moved", () => {
+    expect(
+      isInternalToolOutput({
+        ...generated("renamed.json"),
+        metadata: { purpose: "tool-output" },
+      }),
+    ).toBe(true);
+  });
+
+  test("respects explicit deliverable provenance even in a legacy scratch directory", () => {
+    expect(
+      isInternalToolOutput({
+        ...toolOutput("report.json"),
+        metadata: { purpose: "deliverable" },
+      }),
+    ).toBe(false);
+  });
+
   test("matches whatever is parked in the session tool-output dir", () => {
     expect(isInternalToolOutput(toolOutput("toolu_01ABCdef.json"))).toBe(true);
     expect(isInternalToolOutput(toolOutput("mcp_a1b2-c3d4.json"))).toBe(true);

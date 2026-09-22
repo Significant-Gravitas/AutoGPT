@@ -8,9 +8,21 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { Key, storage } from "@/services/storage/local-storage";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
 import { useSessionFiles } from "../components/FilesTab/useSessionFiles";
+import { useWorkspaceFileCards } from "../../WorkspaceFileCards/useWorkspaceFileCards";
+import { WorkspaceFileCard } from "../../WorkspaceFileCards/components/WorkspaceFileCard";
+import { ArtifactsTab } from "../components/ArtifactsTab/ArtifactsTab";
+
+let mobile = false;
+function setMobile(value: boolean) {
+  mobile = value;
+}
+vi.mock("../../../useIsMobile", () => ({
+  useIsMobile: () => mobile,
+}));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -39,22 +51,36 @@ function panelState() {
 }
 
 beforeEach(() => {
+  server.use(
+    getListWorkspaceFilesMockHandler200({
+      files: [],
+      offset: 0,
+      has_more: false,
+    }),
+  );
   setPanel({
     isOpen: false,
     activeArtifact: null,
     activeTab: "files",
     lastArtifact: null,
     history: [],
+    mode: "artifact",
+    isComputerOpen: false,
+    computer: null,
   });
 });
 
 afterEach(() => {
+  setMobile(false);
   setPanel({
     isOpen: false,
     activeArtifact: null,
     activeTab: "files",
     lastArtifact: null,
     history: [],
+    mode: "artifact",
+    isComputerOpen: false,
+    computer: null,
   });
 });
 
@@ -100,6 +126,166 @@ describe("ContextPanelToggle", () => {
 
     expect(screen.getByLabelText("Hide artifacts")).toBeDefined();
   });
+
+  test("sidebar toggle turns the computer face back to the artifact under it", () => {
+    setPanel({
+      activeArtifact: ARTIFACT,
+      isOpen: true,
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().mode).toBe("artifact");
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(panelState().isOpen).toBe(true);
+  });
+
+  test("sidebar toggle turns the computer face back to the remembered preview", () => {
+    setPanel({
+      lastArtifact: ARTIFACT,
+      isOpen: true,
+      activeTab: "files",
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().mode).toBe("artifact");
+  });
+
+  test("a panel the computer opened is stored as open once turned to the library", () => {
+    storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "false");
+    setPanel({ isOpen: false, activeTab: "artifacts" });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().isOpen).toBe(true);
+    expect(storage.get(Key.COPILOT_CONTEXT_PANEL_OPEN)).toBe("true");
+  });
+
+  test("sidebar toggle turns the computer face to the library when nothing is under it", () => {
+    setPanel({
+      isOpen: true,
+      activeTab: "artifacts",
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().activeTab).toBe("artifacts");
+  });
+});
+
+describe("ContextPanelToggle computer button", () => {
+  test("is there for a chat with a session and absent without one", () => {
+    const { unmount } = render(<ContextPanelToggle />);
+    expect(screen.queryByLabelText("Open computer")).toBeNull();
+    unmount();
+
+    render(<ContextPanelToggle sessionId="s1" />);
+    expect(screen.getByLabelText("Open computer")).toBeDefined();
+  });
+
+  test("opens the computer face with no artifact and no desktop started", () => {
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().mode).toBe("computer");
+    expect(panelState().isComputerOpen).toBe(true);
+  });
+
+  test("opens the computer face over an artifact without dropping it", () => {
+    setPanel({ activeArtifact: ARTIFACT, isOpen: true });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+
+    expect(panelState().mode).toBe("computer");
+    expect(panelState().isComputerOpen).toBe(true);
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(screen.getByLabelText("Hide computer")).toBeDefined();
+    expect(screen.getByLabelText("Open artifacts")).toBeDefined();
+  });
+
+  test("hiding the computer closes the panel it opened over, keeping the remembered preview", () => {
+    setPanel({ isOpen: false, lastArtifact: ARTIFACT });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+    fireEvent.click(screen.getByLabelText("Hide computer"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(false);
+    expect(panelState().lastArtifact).toEqual(ARTIFACT);
+  });
+
+  test("hiding the computer returns to the tab that was open under it", () => {
+    setPanel({ isOpen: true, activeTab: "artifacts" });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Open computer"));
+    fireEvent.click(screen.getByLabelText("Hide computer"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().activeTab).toBe("artifacts");
+    expect(screen.getByLabelText("Hide artifacts")).toBeDefined();
+  });
+
+  test("hiding the computer reveals the preview it was covering, history intact", () => {
+    const earlier = { ...ARTIFACT, id: "f0", title: "earlier.md" };
+    setPanel({
+      activeArtifact: ARTIFACT,
+      history: [earlier],
+      isOpen: true,
+      mode: "computer",
+      isComputerOpen: true,
+    });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Hide computer"));
+
+    expect(panelState().isComputerOpen).toBe(false);
+    expect(panelState().mode).toBe("artifact");
+    expect(panelState().isOpen).toBe(true);
+    expect(panelState().activeArtifact).toEqual(ARTIFACT);
+    expect(panelState().history).toEqual([earlier]);
+  });
+
+  test("stays while the workspace files card is open, alone", () => {
+    setPanel({ isOpen: true, activeTab: "files" });
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    expect(screen.queryByLabelText("Open artifacts")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Open computer"));
+
+    expect(panelState().isComputerOpen).toBe(true);
+    expect(panelState().mode).toBe("computer");
+  });
+
+  test("is hidden on mobile, whose sheet has no computer face", () => {
+    setMobile(true);
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    expect(screen.queryByLabelText("Open computer")).toBeNull();
+    expect(screen.getByLabelText("Open artifacts")).toBeDefined();
+  });
 });
 
 const SESSION = "session-1";
@@ -115,6 +301,24 @@ interface Props {
 function LoadedFilesProbe({ sessionId }: Props) {
   const { generated } = useSessionFiles(sessionId);
   return <div data-testid="generated-count">{generated.length}</div>;
+}
+
+function WorkspaceFilesProbe({ sessionId }: Props) {
+  const { files, handleOpen, handleDownload, setPendingDelete } =
+    useWorkspaceFileCards(sessionId);
+  return (
+    <>
+      {files.map((file) => (
+        <WorkspaceFileCard
+          key={file.item.id}
+          file={file}
+          onOpen={handleOpen}
+          onDownload={handleDownload}
+          onRequestDelete={setPendingDelete}
+        />
+      ))}
+    </>
+  );
 }
 
 function realFile(): ListFilesResponse["files"][number] {
@@ -185,6 +389,45 @@ function listing(files: ListFilesResponse["files"]): ListFilesResponse {
 }
 
 describe("ContextPanelToggle internal tool output", () => {
+  test("uses provenance after an internal output is renamed, while retaining file access", async () => {
+    const internal = {
+      ...toolOutputs()[0],
+      name: "renamed.json",
+      path: "/sessions/session-1/renamed.json",
+      metadata: { purpose: "tool-output" },
+    };
+    server.use(
+      getListWorkspaceFilesMockHandler200(listing([realFile(), internal])),
+    );
+    render(
+      <>
+        <ContextPanelToggle sessionId={SESSION} />
+        <ArtifactsTab sessionId={SESSION} />
+        <WorkspaceFilesProbe sessionId={SESSION} />
+      </>,
+    );
+
+    expect(await screen.findByLabelText("Open result.csv")).toBeDefined();
+    expect(await screen.findByLabelText("Download renamed.json")).toBeDefined();
+    expect(screen.getAllByText("renamed.json")).toHaveLength(1);
+    fireEvent.click(screen.getByTitle("renamed.json"));
+    expect(panelState().activeArtifact?.id).toBe(internal.id);
+  });
+
+  test("promotes an explicitly marked deliverable in the legacy tool-output directory", async () => {
+    const deliverable = {
+      ...toolOutputs()[0],
+      metadata: { purpose: "deliverable" },
+    };
+    server.use(
+      getListWorkspaceFilesMockHandler200(listing([realFile(), deliverable])),
+    );
+    render(<ContextPanelToggle sessionId={SESSION} />);
+
+    expect(
+      await screen.findByLabelText(`Open ${deliverable.name}`),
+    ).toBeDefined();
+  });
   test("wears the newest user-facing file, not a newer tool output", async () => {
     server.use(
       getListWorkspaceFilesMockHandler200(

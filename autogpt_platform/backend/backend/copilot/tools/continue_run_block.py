@@ -12,6 +12,7 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
@@ -24,13 +25,16 @@ logger = logging.getLogger(__name__)
 class ContinueRunBlockTool(BaseTool):
     """Tool for continuing a block execution after human review approval."""
 
+    # Returns execute_block's result, same as run_capability.
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "continue_run_block"
 
     @property
     def description(self) -> str:
-        return "Resume block execution after a run_block call returned review_required. Pass the review_id."
+        return "Resume block execution after a run_capability call returned review_required. Pass the review_id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -77,7 +81,7 @@ class ContinueRunBlockTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Review '{review_id}' not found or already executed. "
-                    "It may have been consumed by a previous continue_run_block call."
+                    "It may have been consumed by a previous resume_capability call."
                 ),
                 session_id=session_id,
             )
@@ -113,6 +117,8 @@ class ContinueRunBlockTool(BaseTool):
                 message=f"Block '{block_id}' not found", session_id=session_id
             )
 
+        emit_tool_display_name(block.name)
+
         input_data: dict[str, Any] = (
             review.payload if isinstance(review.payload, dict) else {}
         )
@@ -126,7 +132,7 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
-            user_id, block, input_data
+            user_id, block, input_data, session.expert_id, session_id=session_id
         )
         if missing_creds:
             return ErrorResponse(
@@ -134,8 +140,8 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
-        # skips HITL entirely, so continue_run_block is never called during a
+        # dry_run=False is safe here: run_capability's dry-run fast-path skips
+        # HITL entirely, so resume_capability is never called during a
         # dry run — only real executions reach the human review gate.
         result = await execute_block(
             block=block,
@@ -148,6 +154,7 @@ class ContinueRunBlockTool(BaseTool):
             dry_run=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
         # Delete review record after successful execution (one-time use)

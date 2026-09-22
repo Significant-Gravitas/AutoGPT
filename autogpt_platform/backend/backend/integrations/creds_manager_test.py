@@ -1,11 +1,11 @@
 """Tests for credential hooks and provider-runtime credential leases."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import OAuth2Credentials
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
@@ -18,16 +18,22 @@ from backend.integrations.creds_manager import (
 def _reset_hook():
     """Ensure global hook state is clean before and after every test."""
     unregister_creds_changed_hook()
-    yield
+    # The broadcast half is covered in creds_events_test; keep these tests off Redis.
+    with patch(
+        "backend.integrations.creds_manager.publish_creds_changed",
+        new_callable=AsyncMock,
+    ):
+        yield
     unregister_creds_changed_hook()
 
 
 class TestRegisterCredsChangedHook:
-    def test_register_and_invoke(self):
+    @pytest.mark.asyncio
+    async def test_register_and_invoke(self):
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
         assert calls == [("user-1", "github")]
 
     def test_double_register_raises(self):
@@ -43,24 +49,39 @@ class TestRegisterCredsChangedHook:
 
 
 class TestInvokeCredsChangedHook:
-    def test_noop_when_no_hook_registered(self):
+    @pytest.mark.asyncio
+    async def test_noop_when_no_hook_registered(self):
         # Must not raise even when no hook is registered.
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
 
-    def test_hook_exception_is_swallowed(self):
+    @pytest.mark.asyncio
+    async def test_hook_exception_is_swallowed(self):
         def bad_hook(user_id: str, provider: str) -> None:
             raise ValueError("boom")
 
         register_creds_changed_hook(bad_hook)
         # Must not propagate the exception.
-        _invoke_creds_changed_hook("user-1", "github")
+        await _invoke_creds_changed_hook("user-1", "github")
 
-    def test_hook_receives_correct_args(self):
+    @pytest.mark.asyncio
+    async def test_broadcast_happens_even_when_the_hook_raises(self):
+        register_creds_changed_hook(MagicMock(side_effect=ValueError("boom")))
+
+        with patch(
+            "backend.integrations.creds_manager.publish_creds_changed",
+            new_callable=AsyncMock,
+        ) as publish:
+            await _invoke_creds_changed_hook("user-1", "github")
+
+        publish.assert_awaited_once_with("user-1", "github")
+
+    @pytest.mark.asyncio
+    async def test_hook_receives_correct_args(self):
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _invoke_creds_changed_hook("user-a", "github")
-        _invoke_creds_changed_hook("user-b", "slack")
+        await _invoke_creds_changed_hook("user-a", "github")
+        await _invoke_creds_changed_hook("user-b", "slack")
 
         assert calls == [("user-a", "github"), ("user-b", "slack")]
 
@@ -84,21 +105,99 @@ async def test_provider_runtime_refresh_never_resolves_generic_handler(mocker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing", [False, True])
-async def test_failed_acquire_releases_owned_lock(mocker, missing):
+async def test_acquire_refreshes_before_taking_the_long_lived_lock(mocker):
     manager = IntegrationCredentialsManager()
+    credentials = _provider_runtime_credentials()
     lock = _owned_lock()
     mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
-    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=lock))
-    failure = None if missing else RuntimeError("failed")
-    get = AsyncMock(return_value=failure) if missing else AsyncMock(side_effect=failure)
+    acquire_lock = mocker.patch.object(
+        manager, "_acquire_lock", AsyncMock(return_value=lock)
+    )
+    get = AsyncMock(return_value=credentials)
     mocker.patch.object(manager, "get", get)
+    stored = mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=credentials),
+    )
 
-    expected = ValueError if missing else RuntimeError
-    with pytest.raises(expected):
+    acquired, acquired_lock = await manager.acquire("user-a", "cred-id")
+
+    assert acquired is credentials
+    assert acquired_lock is lock
+    get.assert_awaited_once_with("user-a", "cred-id")
+    stored.assert_awaited_once_with("user-a", "cred-id")
+    acquire_lock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_acquire_releases_lock_if_credential_disappears_after_refresh(mocker):
+    manager = IntegrationCredentialsManager()
+    lock = _owned_lock()
+    mocker.patch.object(
+        manager, "get", AsyncMock(return_value=_provider_runtime_credentials())
+    )
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(manager, "_acquire_lock", AsyncMock(return_value=lock))
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=None),
+    )
+
+    with pytest.raises(ValueError):
         await manager.acquire("user-a", "cred-id")
 
     lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker):
+    manager = IntegrationCredentialsManager()
+    stale = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    fresh = stale.model_copy(update={"access_token_expires_at": 4_000_000_000})
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=fresh),
+    )
+    handler = MagicMock()
+    handler.needs_refresh.return_value = False
+    handler.refresh_tokens = AsyncMock()
+    acquire_lock = mocker.patch.object(manager, "_acquire_lock", AsyncMock())
+
+    result = await manager._refresh_locked("user-a", stale, handler=handler)
+
+    assert result is fresh
+    handler.needs_refresh.assert_called_once_with(fresh)
+    handler.refresh_tokens.assert_not_awaited()
+    acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_locked_refresh_reports_a_credential_type_change(mocker):
+    manager = IntegrationCredentialsManager()
+    stale = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    changed = APIKeyCredentials(
+        id=stale.id,
+        provider=stale.provider,
+        title=stale.title,
+        api_key=SecretStr("replacement"),
+    )
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=changed),
+    )
+
+    with pytest.raises(TypeError, match="changed type to 'api_key'"):
+        await manager._refresh_locked("user-a", stale)
 
 
 @pytest.mark.asyncio
@@ -142,6 +241,27 @@ async def test_update_acquired_rejects_provider_change(mocker):
             current.model_copy(update={"provider": "other"}),
             _owned_lock(),
         )
+
+
+@pytest.mark.asyncio
+async def test_update_acquired_allows_codex_to_move_refresh_to_http_handler(mocker):
+    manager = IntegrationCredentialsManager()
+    current = _provider_runtime_credentials()
+    migrated = current.model_copy(update={"refresh_strategy": "oauth_handler"})
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=current),
+    )
+    update = mocker.patch.object(
+        manager.store,
+        "update_creds",
+        new_callable=AsyncMock,
+    )
+
+    await manager.update_acquired("user-a", migrated, _owned_lock())
+
+    update.assert_awaited_once_with("user-a", migrated)
 
 
 @pytest.mark.asyncio

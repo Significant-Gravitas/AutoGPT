@@ -47,6 +47,7 @@ class ResponseType(str, Enum):
     TOOL_INPUT_START = "tool-input-start"
     TOOL_INPUT_AVAILABLE = "tool-input-available"
     TOOL_OUTPUT_AVAILABLE = "tool-output-available"
+    TOOL_DISPLAY_AVAILABLE = "data-tool-display"
 
     # Other
     ERROR = "error"
@@ -66,6 +67,7 @@ class ResponseType(str, Enum):
     # deltas.  Transient (never persisted); the durable record is the
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
+    PROVIDER_FAILURE = "data-provider-failure"
 
 
 class StreamBaseResponse(BaseModel):
@@ -197,6 +199,19 @@ class StreamToolInputAvailable(StreamBaseResponse):
     input: dict[str, Any] = Field(
         default_factory=dict, description="Tool input arguments"
     )
+
+
+class ToolDisplayData(BaseModel):
+    toolCallId: str
+    displayName: str
+
+
+class StreamToolDisplayAvailable(StreamBaseResponse):
+    """Resolved display name, retained as an AI SDK data part on replay."""
+
+    type: ResponseType = ResponseType.TOOL_DISPLAY_AVAILABLE
+    id: str
+    data: ToolDisplayData
 
 
 _MAX_TOOL_OUTPUT_SIZE = 100_000  # ~100 KB; truncate to avoid bloating SSE/DB
@@ -363,6 +378,28 @@ class StreamModeChanged(StreamBaseResponse):
         return f"data: {json.dumps(data)}\n\n"
 
 
+class StreamProviderFailure(StreamBaseResponse):
+    """The typed reason a provider refused this turn.
+
+    Rides alongside ``StreamError`` rather than replacing it. The AI SDK
+    pins error frames to ``z.strictObject({type, errorText})``, which is why
+    ``StreamError.details`` never reaches the client and ``code`` has to
+    travel disguised as a ``[code:x]`` text prefix. A data part has no such
+    ceiling, so the envelope arrives whole -- and every existing consumer of
+    the error frame keeps working untouched.
+    """
+
+    type: ResponseType = ResponseType.PROVIDER_FAILURE
+    failure: dict[str, Any] = Field(
+        ..., description="ProviderFailure.as_part() payload"
+    )
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {"type": self.type.value, "data": self.failure}
+        return f"data: {json_dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
@@ -436,6 +473,13 @@ class StreamCompactionProgress(StreamBaseResponse):
         return f"data: {json.dumps({'type': self.type.value, 'data': data})}\n\n"
 
 
+class StreamPendingDrainedMessage(BaseModel):
+    """One user follow-up carried by a ``data-pending-drained`` hint."""
+
+    id: str = Field(description="Stable id of the drained pending message")
+    content: str = Field(description="Raw text the user typed mid-turn")
+
+
 class StreamPendingDrained(StreamBaseResponse):
     """Hint that the pending-message buffer was drained mid-turn.
 
@@ -446,11 +490,22 @@ class StreamPendingDrained(StreamBaseResponse):
     for its slower backstop poll. ``drainedCount`` is informational only —
     correctness comes from the client's re-read, so a dropped hint just
     delays the chip→bubble swap until the next poll.
+
+    ``messages`` carries the drained text (with a stable id per message) so
+    the client can render the follow-up bubble at the exact point in the
+    stream where the backend injected it — between the tool chain that ran
+    before the drain and the work that follows it. Older clients ignore the
+    field; older backends omit it and the client falls back to its buffer
+    re-read.
     """
 
     type: ResponseType = ResponseType.PENDING_DRAINED
     drainedCount: int = Field(
         default=0, description="How many messages were drained in this batch"
+    )
+    messages: list[StreamPendingDrainedMessage] = Field(
+        default_factory=list,
+        description="The drained messages, in enqueue order (oldest first)",
     )
 
     def to_sse(self) -> str:
@@ -459,6 +514,9 @@ class StreamPendingDrained(StreamBaseResponse):
         it as an unknown chunk type."""
         data = {
             "type": self.type.value,
-            "data": {"drainedCount": self.drainedCount},
+            "data": {
+                "drainedCount": self.drainedCount,
+                "messages": [m.model_dump() for m in self.messages],
+            },
         }
         return f"data: {json.dumps(data)}\n\n"

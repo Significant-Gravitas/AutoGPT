@@ -3,7 +3,7 @@
 Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
 ``raise_expert``, ``update_expert``) write nothing and park the exact proposal
 in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
-loads it bound to the same Autopilot session, consumes it single-use, and
+loads it bound to the same Otto session, consumes it single-use, and
 applies it.
 """
 
@@ -53,7 +53,7 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
 _LOG_ID_PREFIX_LENGTH = 12
-_PREVIEW_TOOLS = "hire_expert, raise_expert or update_expert"
+_PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
 
 
 class ExpertSoulSnapshot(BaseModel):
@@ -103,7 +103,7 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
             "This confirmation_id is unknown or has expired — previews last "
             f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
             "earlier in this conversation, that change is APPLIED and the "
-            "expert exists — call list_team to check before doing anything "
+            "expert exists — call tool:list_team to check before doing anything "
             f"else. Only call {_PREVIEW_TOOLS} again for a genuinely new "
             "change."
         ),
@@ -116,7 +116,7 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
         message=(
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
-            "confirm_expert_change only after they reply approving it."
+            "tool:confirm_expert_change only after they reply approving it."
         ),
         session_id=session_id,
     )
@@ -180,7 +180,7 @@ async def store_proposal(
 def autopilot_session_guard(
     user_id: str | None, session: ChatSession
 ) -> ErrorResponse | None:
-    """Team changes belong to the user, typing in their own Autopilot chat.
+    """Team changes belong to the user, typing in their own Otto chat.
 
     Two things have to hold, and "no ``expert_id``" only proves the first:
     an expert must not staff its own team, AND the conversation has to be one
@@ -205,7 +205,7 @@ def autopilot_session_guard(
         return ErrorResponse(
             message=(
                 "Only the user can change the team, and only from the "
-                "Autopilot chat. Tell them what you'd add and let them do it "
+                "Otto chat. Tell them what you'd add and let them do it "
                 "there."
             ),
             session_id=session.session_id,
@@ -221,7 +221,7 @@ def autopilot_session_guard(
                 "This session was started by an automation, or predates the "
                 "check that tells them apart, so it cannot hire, raise, or "
                 "edit a teammate. Report what the team would need and let the "
-                "user make the change in a new Autopilot chat."
+                "user make the change in a new Otto chat."
             ),
             session_id=session.session_id,
         )
@@ -380,7 +380,10 @@ async def _apply_raise(
             preview.name,
             preview.role or None,
             preview.voice_preferences or None,
+            job_title=preview.job_title or None,
+            avatar_url=preview.avatar_url,
             color=preview.color or None,
+            tagline=preview.tagline or None,
             about=preview.about or None,
             boundaries=preview.boundaries or None,
             weekly_budget=preview.weekly_budget,
@@ -452,7 +455,7 @@ def _stale_expert_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "That expert is gone or was edited somewhere else since this "
-            "preview, so nothing was changed. Call update_expert again to "
+            "preview, so nothing was changed. Call tool:update_expert again to "
             "preview the current version."
         ),
         session_id=session_id,
@@ -538,7 +541,7 @@ def _unexpected_failure(
     return ErrorResponse(
         message=(
             "Couldn't complete that change, and the proposal has been "
-            f"discarded. Call {tool_name} again to re-preview and retry."
+            f"discarded. Call tool:{tool_name} again to re-preview and retry."
         ),
         session_id=session_id,
     )
@@ -549,6 +552,11 @@ def _summary(expert: Expert) -> ExpertSummary:
         id=expert.id,
         name=expert.name,
         role=expert.role,
+        tagline=expert.tagline,
+        about=expert.identity,
+        boundaries=expert.boundaries,
+        voice_preferences=expert.voice_preferences,
+        weekly_budget=expert.weekly_budget,
         avatar_url=expert.avatar_url,
         color=expert.color,
     )
@@ -560,7 +568,7 @@ def _discarded_proposal_error(
     return ErrorResponse(
         message=(
             f"That proposal is missing the {missing} it referred to and has "
-            f"been discarded. Call {tool_name} again to re-preview."
+            f"been discarded. Call tool:{tool_name} again to re-preview."
         ),
         session_id=session_id,
     )

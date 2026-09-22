@@ -63,9 +63,10 @@ afterEach(() => {
 
 test("renders restored conversation messages instantly after reload", async () => {
   saveDraft({
-    step: "color",
+    step: "avatar",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name: "Nova",
     color: null,
     avatarUrl: null,
@@ -90,9 +91,7 @@ test("renders restored conversation messages instantly after reload", async () =
   const visible = visibleBubbleText();
   expect(
     visible.some((text) =>
-      text.includes(
-        "Hello, I'm Autopilot. I'll help you raise your own expert.",
-      ),
+      text.includes("Hello, I'm Otto. I'll help you raise your own expert."),
     ),
   ).toBe(true);
   expect(
@@ -106,6 +105,6 @@ test("renders restored conversation messages instantly after reload", async () =
     ),
   ).toBe(true);
   expect(
-    visible.some((text) => text.includes("Nice. Now choose a color for them.")),
+    visible.some((text) => text.includes("Now give Nova a face and a color.")),
   ).toBe(true);
 });

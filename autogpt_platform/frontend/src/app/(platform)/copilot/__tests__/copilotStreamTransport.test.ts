@@ -125,6 +125,42 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
     expect(body1.body.message_id).toMatch(UUID_RE);
   });
 
+  it("sends the tier the picker holds, so the turn runs on what was chosen", async () => {
+    // Regression: the tier was gated on CHAT_MODE_OPTION on the way to the
+    // request while the picker that sets it was not gated at all. With the
+    // flag off the control still moved and the turn still ran on the other
+    // tier -- the label said Advanced and the reply came back from the
+    // Balanced model. Whatever the ref holds has to reach the body.
+    const transport = createCopilotTransport({
+      sessionId: "sess-tier",
+      ...makeRefs(),
+      copilotModelRef: { current: "advanced" as const },
+    });
+    const prepared = await (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: ReturnType<typeof lastMessage>;
+        }) => Promise<{ body: { model?: string | null } }>;
+      }
+    ).prepareSendMessagesRequest({ messages: lastMessage("hi") });
+    expect(prepared.body.model).toBe("advanced");
+  });
+
+  it("sends a null tier when nothing is chosen, leaving the call to the server", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-tier-default",
+      ...makeRefs(),
+    });
+    const prepared = await (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: ReturnType<typeof lastMessage>;
+        }) => Promise<{ body: { model?: string | null } }>;
+      }
+    ).prepareSendMessagesRequest({ messages: lastMessage("hi") });
+    expect(prepared.body.model).toBeNull();
+  });
+
   it(
     "emits a different message_id per call so distinct user clicks dedupe " +
       "as distinct sends server-side",

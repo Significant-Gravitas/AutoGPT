@@ -64,7 +64,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       hydratedMessages,
       hasActiveStream,
       refetchSession: sessionQuery.refetch,
-      copilotMode: undefined,
       copilotModel: undefined,
     });
 

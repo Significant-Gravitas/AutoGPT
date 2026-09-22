@@ -2,7 +2,7 @@ import logging
 import queue
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import (
     Annotated,
     Any,
@@ -147,6 +147,29 @@ class BlockErrorStats(BaseModel):
 
 
 ExecutionStatus = AgentExecutionStatus
+
+
+class ExecutionTrigger(StrEnum):
+    """How a graph execution was started. Persisted on the execution row.
+
+    ``manual``   a person clicked run (UI surface in triggerRef) or ran a preset
+    ``api``      external API key (key id in triggerRef)
+    ``schedule`` a cron/one-shot schedule fired (schedule id in triggerRef)
+    ``webhook``  an integration webhook fired (webhook id in triggerRef)
+    ``copilot``  the copilot run_agent tool (chat session id in triggerRef)
+    ``subgraph`` nested run started by an AgentExecutorBlock (parent exec id)
+    ``admin``    reserved for future admin-initiated executions
+    """
+
+    MANUAL = "manual"
+    API = "api"
+    SCHEDULE = "schedule"
+    WEBHOOK = "webhook"
+    COPILOT = "copilot"
+    SUBGRAPH = "subgraph"
+    ADMIN = "admin"
+
+
 NodeInputMask = Mapping[str, JsonValue]
 NodesInputMasks = Mapping[str, NodeInputMask]
 
@@ -180,6 +203,7 @@ VALID_STATUS_TRANSITIONS = {
     ],
     ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
+        ExecutionStatus.INCOMPLETE,  # Parked for spend approval, never published
     ],
 }
 
@@ -214,6 +238,15 @@ class GraphExecutionMeta(BaseDbModel):
     # Expert attribution, surfaced from the DB row for the same
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
+
+    # How the run was started (ExecutionTrigger value) and by what. Null on
+    # rows created before the columns existed.
+    trigger_source: Optional[str] = None
+    trigger_ref: Optional[str] = None
+    # What started this run, when it was not a person: the scheduler job or
+    # the webhook that fired. Soft references; either may be gone by now.
+    schedule_id: Optional[str] = None
+    webhook_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -366,6 +399,10 @@ class GraphExecutionMeta(BaseDbModel):
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
             expert_id=_graph_exec.expertId,
+            trigger_source=_graph_exec.triggerSource,
+            trigger_ref=_graph_exec.triggerRef,
+            schedule_id=_graph_exec.scheduleId,
+            webhook_id=_graph_exec.webhookId,
         )
 
 
@@ -593,6 +630,7 @@ async def get_graph_executions(
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
+    expert_id: Optional[str] = None,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -624,6 +662,8 @@ async def get_graph_executions(
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
         where_filter["agentGraphVersion"] = graph_version
+    if expert_id:
+        where_filter["expertId"] = expert_id
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
@@ -919,6 +959,10 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    trigger_source: Optional[ExecutionTrigger] = None,
+    trigger_ref: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -973,6 +1017,10 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"expertId": expert_id} if expert_id else {}),
+            **({"triggerSource": trigger_source.value} if trigger_source else {}),
+            **({"triggerRef": trigger_ref} if trigger_ref else {}),
+            **({"scheduleId": schedule_id} if schedule_id else {}),
+            **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -1213,10 +1261,16 @@ async def update_graph_execution_stats(
                 f"This status can only be set at creation or is not a valid target status."
             )
 
-    await AgentGraphExecution.prisma().update_many(
+    updated = await AgentGraphExecution.prisma().update_many(
         where=where_clause,
         data=update_data,
     )
+    if status is not None and updated == 0:
+        # The row exists but is not in a state this status may be reached
+        # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
+        # the run already finished. Nothing changed, so do not score it,
+        # cascade its children, or hand back a row that suggests it did.
+        return None
 
     if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Score the finished run for the Briefing while its stats are fresh.

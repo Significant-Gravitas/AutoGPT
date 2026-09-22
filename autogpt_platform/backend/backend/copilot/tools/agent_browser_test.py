@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
 
 from .agent_browser import (
@@ -16,9 +17,11 @@ from .agent_browser import (
     BrowserNavigateTool,
     BrowserScreenshotTool,
     _ensure_session,
+    _fire_and_forget_save,
     _has_local_session,
     _restore_browser_state,
     _save_browser_state,
+    close_browser_daemon,
     close_browser_session,
 )
 from .models import (
@@ -43,6 +46,9 @@ def _reset_and_mock_state(monkeypatch):
 
     _mod._alive_sessions.clear()
     _mod._session_locks.clear()
+    _mod._touched_sessions.clear()
+    _mod._pending_saves.clear()
+    _mod._closing_sessions.clear()
     monkeypatch.setattr(
         "backend.copilot.tools.agent_browser._ensure_session", AsyncMock()
     )
@@ -52,6 +58,9 @@ def _reset_and_mock_state(monkeypatch):
     yield
     _mod._alive_sessions.clear()
     _mod._session_locks.clear()
+    _mod._touched_sessions.clear()
+    _mod._pending_saves.clear()
+    _mod._closing_sessions.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1278,6 +1287,212 @@ class TestCloseBrowserSession:
         ):
             # Should not raise
             await close_browser_session("bad-sess")
+
+
+# ---------------------------------------------------------------------------
+# close_browser_daemon (turn-end teardown on the executor pod)
+# ---------------------------------------------------------------------------
+
+
+class TestCloseBrowserDaemon:
+    @pytest.mark.asyncio
+    async def test_untouched_session_is_left_alone(self):
+        """No daemon to close: skip the subprocess on every non-browser turn."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.discard("never-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+        ) as mock_run:
+            assert await close_browser_daemon("never-sess") is False
+
+        mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_command_kills_its_cli_process(self):
+        """Teardown cancels saves that overrun the drain; the CLI process a
+        save was waiting on must go with it, as it does on a timeout."""
+        from . import agent_browser as _mod
+
+        started = asyncio.Event()
+        killed = asyncio.Event()
+
+        async def communicate():
+            started.set()
+            await killed.wait()
+            return b"", b""
+
+        proc = MagicMock(returncode=None, communicate=communicate)
+        proc.kill = MagicMock(side_effect=killed.set)
+        with patch(
+            "backend.copilot.tools.agent_browser.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=proc,
+        ):
+            task = asyncio.create_task(_mod._run("cancel-sess", "get", "url"))
+            await started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_any_command_marks_the_session_touched(self):
+        """A bare probe starts the daemon too, so `_run` itself must record it."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.discard("probe-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser.asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError,
+        ):
+            await _mod._run("probe-sess", "get", "url", timeout=5)
+
+        assert "probe-sess" in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_touched_session_is_closed_and_forgotten(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("turn-sess")
+        _mod._alive_sessions.add("turn-sess")
+        _mod._session_locks["turn-sess"] = asyncio.Lock()
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            return_value=_run_result(rc=0),
+        ) as mock_run:
+            assert await close_browser_daemon("turn-sess") is True
+
+        mock_run.assert_called_once_with(
+            "turn-sess", "close", timeout=_mod._TURN_END_CLOSE_TIMEOUT
+        )
+        assert "turn-sess" not in _mod._touched_sessions
+        assert "turn-sess" not in _mod._alive_sessions
+        assert "turn-sess" not in _mod._session_locks
+
+    @pytest.mark.asyncio
+    async def test_persisted_state_is_kept(self):
+        """Unlike session deletion, turn end must leave the workspace state
+        file: the next browser turn restores cookies from it."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("keep-sess")
+        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr:
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_daemon("keep-sess")
+
+        mock_get_mgr.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_failure_is_swallowed_and_session_still_forgotten(self):
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("bad-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._run",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("gone"),
+        ):
+            assert await close_browser_daemon("bad-sess") is True
+
+        assert "bad-sess" not in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_close_waits_for_a_pending_state_save(self):
+        """The save reads the daemon; run after the close, its `get url`
+        would start a new one that nothing stops."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("late-sess")
+        release = asyncio.Event()
+        order: list[str] = []
+
+        async def slow_save(*_):
+            await release.wait()
+            order.append("saved")
+
+        async def run(_session, *args, **_kwargs):
+            order.append(args[0])
+            return _run_result(rc=0)
+
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._save_browser_state",
+                slow_save,
+            ),
+            patch("backend.copilot.tools.agent_browser._run", run),
+        ):
+            _fire_and_forget_save("late-sess", "user1", make_session("late-sess"))
+            closing = asyncio.create_task(close_browser_daemon("late-sess"))
+            await asyncio.sleep(0.01)
+            assert order == [], "close must not run while a save is pending"
+            release.set()
+            assert await closing is True
+
+        assert order == ["saved", "close"]
+        assert "late-sess" not in _mod._pending_saves
+
+    @pytest.mark.asyncio
+    async def test_no_save_is_scheduled_once_the_session_is_closing(self):
+        from . import agent_browser as _mod
+
+        _mod._closing_sessions.add("closing-sess")
+        with patch(
+            "backend.copilot.tools.agent_browser._save_browser_state",
+            new_callable=AsyncMock,
+        ) as save:
+            _fire_and_forget_save("closing-sess", "user1", make_session())
+            await asyncio.sleep(0)
+
+        save.assert_not_awaited()
+        assert not _mod._pending_saves.get("closing-sess")
+
+    def test_teardown_fits_inside_the_cancel_grace(self):
+        """Past the grace the worker re-cancels the turn task: the teardown
+        is interrupted before it reaps, and the cluster lock is released while
+        it is still running. The other turn cleanup shares the same window."""
+        from . import agent_browser as _mod
+
+        budget = _mod._SAVE_DRAIN_TIMEOUT + _mod._TURN_END_CLOSE_TIMEOUT
+        assert budget < _CANCEL_GRACE_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_a_cancel_during_setup_still_clears_the_closing_flag(self):
+        """Left set, the session would never persist state again on this pod."""
+        from . import agent_browser as _mod
+
+        _mod._touched_sessions.add("cancel-sess")
+        mutex = MagicMock()
+        mutex.__aenter__ = AsyncMock(side_effect=asyncio.CancelledError)
+        mutex.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(_mod, "_session_locks_mutex", mutex):
+            with pytest.raises(asyncio.CancelledError):
+                await close_browser_daemon("cancel-sess")
+
+        assert "cancel-sess" not in _mod._closing_sessions
+        assert "cancel-sess" not in _mod._touched_sessions
+
+    @pytest.mark.asyncio
+    async def test_session_deletion_forgets_the_session(self):
+        """The deletion path's own `close` records the session through `_run`;
+        without a discard afterwards every deleted session stays forever."""
+        from . import agent_browser as _mod
+
+        async def run(session_name, *_args, **_kwargs):
+            _mod._touched_sessions.add(session_name)
+            return _run_result(rc=0)
+
+        with patch("backend.copilot.tools.agent_browser._run", run):
+            await close_browser_session("deleted-sess")
+
+        assert "deleted-sess" not in _mod._touched_sessions
 
 
 # ---------------------------------------------------------------------------

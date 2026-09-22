@@ -4,11 +4,16 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import {
+  findRoleOption,
+  isValidCustomRole,
+  normalizeCustomRole,
+} from "./components/RoleStep/helpers";
 
 export type RaiseStep =
   | "role"
+  | "jobTitle"
   | "name"
-  | "color"
   | "avatar"
   | "about"
   | "voice"
@@ -19,8 +24,8 @@ export type RaiseStep =
 
 export const STEP_ORDER: RaiseStep[] = [
   "role",
+  "jobTitle",
   "name",
-  "color",
   "avatar",
   "about",
   "voice",
@@ -55,12 +60,12 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
+  jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
-  colorQuestion: "Nice. Now choose a color for them.",
   avatarQuestion: (name: string) =>
-    `Want to give ${name || "them"} a face? Upload a picture, let me generate one, or skip it.`,
+    `Now give ${name || "them"} a face and a color. Shuffle until one feels right, or upload a picture.`,
   aboutQuestion: (name: string) =>
     `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
@@ -70,7 +75,7 @@ export const RAISE_PROMPTS = {
   marketplaceQuestion: (name: string) =>
     `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
   skillsQuestion: (name: string) =>
-    `Should ${name || "your expert"} have extra skills? Add from your library, or a marketplace agent as a skill — or skip.`,
+    `Should ${name || "your expert"} have extra skills? Add one from the marketplace or your own library — or skip.`,
 };
 
 // Beat before each question lands, so the control that triggered it settles
@@ -83,6 +88,7 @@ export interface RaiseDraft {
   step: RaiseStep;
   hasStarted: boolean;
   role: string | null;
+  jobTitle: string | null;
   name: string;
   color: string | null;
   // "" once the user skips, so the question is not asked again on restore.
@@ -100,6 +106,7 @@ export const EMPTY_DRAFT: RaiseDraft = {
   step: "role",
   hasStarted: false,
   role: null,
+  jobTitle: null,
   name: "",
   color: null,
   avatarUrl: null,
@@ -121,7 +128,10 @@ export function loadDraft(): RaiseDraft {
     const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
       step?: string;
     };
-    const step = parsed.step === "kit" ? "budget" : parsed.step;
+    if (parsed.role && parsed.jobTitle == null) {
+      return reopenedAtJobTitle(parsed.role);
+    }
+    const step = migrateStep(parsed.step);
     return backfillSkippedVoice({
       ...EMPTY_DRAFT,
       ...parsed,
@@ -132,10 +142,24 @@ export function loadDraft(): RaiseDraft {
   }
 }
 
+// A draft written before the job title beat existed has a role and no title.
+// Every later beat waits on the title, so the draft resumes there.
+function reopenedAtJobTitle(role: string): RaiseDraft {
+  return { ...EMPTY_DRAFT, hasStarted: true, role, step: "jobTitle" };
+}
+
 // A draft written by an earlier build recorded a skipped voice as a null
 // label. The flow now treats null as "not answered", which would leave a
 // restored session parked on the voice beat with no way forward, so a draft
 // that has already moved past voice gets the sentinel back.
+// Steps that existed in earlier builds map onto the beat that absorbed them,
+// so a restored draft resumes where it left off instead of resetting.
+function migrateStep(step: string | undefined): string | undefined {
+  if (step === "kit") return "budget";
+  if (step === "color") return "avatar";
+  return step;
+}
+
 function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
   if (draft.voiceLabel !== null) return draft;
   if (STEP_ORDER.indexOf(draft.step) <= STEP_ORDER.indexOf("voice")) {
@@ -175,6 +199,32 @@ export function assembledKit(draft: RaiseDraft): RaiseKit | null {
   return {
     weeklyBudget: draft.budget?.credits ?? null,
     attachments: [...(draft.marketplace ?? []), ...(draft.skills ?? [])],
+  };
+}
+
+/** Every field still at its initial value — an untouched wizard, safe to
+ *  seed from a link without overwriting work in progress. */
+export function isEmptyDraft(draft: RaiseDraft): boolean {
+  return (Object.keys(EMPTY_DRAFT) as (keyof RaiseDraft)[]).every(
+    (key) => draft[key] === EMPTY_DRAFT[key],
+  );
+}
+
+/** `/raise?role=…` from the greeting page's raise door: answers the role
+ *  beat exactly as `pickRole` would, so the flow opens on the job title
+ *  question instead of asking again for something already chosen. */
+export function draftWithPrefilledRole(
+  draft: RaiseDraft,
+  role: string | null,
+): RaiseDraft {
+  if (!role || !isEmptyDraft(draft)) return draft;
+  const preset = findRoleOption(role);
+  if (!preset && !isValidCustomRole(role)) return draft;
+  return {
+    ...draft,
+    hasStarted: true,
+    role: preset ? preset.id : normalizeCustomRole(role),
+    step: "jobTitle",
   };
 }
 

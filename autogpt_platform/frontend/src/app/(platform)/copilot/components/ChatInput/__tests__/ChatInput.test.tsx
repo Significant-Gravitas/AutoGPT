@@ -10,11 +10,6 @@ import {
   NEW_SKILL_PROMPT,
 } from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
-import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
-import {
-  CredentialsProvidersContext,
-  type CredentialsProviderData,
-} from "@/providers/agent-credentials/credentials-provider";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
@@ -25,31 +20,48 @@ const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
-  useGetV2ListChatTransports: () => ({
+  // A lone platform connection whose tiers resolve to one model: the picker
+  // presents nothing, which keeps these tests about the composer itself.
+  useGetV2ListChatConnections: () => ({
     data: {
       status: 200,
       data: {
-        transports: [
+        offers: [
           {
-            auth_provider: "platform",
+            offer_id: "platform:deployment",
+            provider_family: "autogpt",
+            display_name: "AutoGPT Platform",
+            auth_method: "deployment",
             credential_id: null,
-            label: "AutoGPT Platform",
-            available: true,
-            default: true,
+            backed_by_label: "Your AutoGPT plan",
+            description: "New chats are backed by your AutoGPT plan.",
+            state: "ready",
+            selectable: true,
+            is_default: true,
+            tiers: [
+              {
+                tier: "standard",
+                label: "Balanced",
+                selectable: true,
+                display_model: "one-model",
+              },
+              {
+                tier: "advanced",
+                label: "Advanced",
+                selectable: true,
+                display_model: "one-model",
+              },
+            ],
+            limitations: [],
           },
         ],
       },
     },
+    isLoading: false,
     isPending: false,
     isError: false,
   }),
 }));
-
-let mockCopilotMode = "extended_thinking";
-let mockCopilotModePinned = false;
-const mockSetCopilotChatMode = vi.fn((mode: string) => {
-  mockCopilotMode = mode;
-});
 
 let mockCopilotLlmModel = "standard";
 const mockSetCopilotLlmModel = vi.fn((model: string) => {
@@ -65,11 +77,6 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
-    copilotMode: mockCopilotMode,
-    setCopilotMode: mockSetCopilotChatMode,
-    copilotChatMode: mockCopilotMode,
-    setCopilotChatMode: mockSetCopilotChatMode,
-    copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
     copilotLlmAuth: {
@@ -103,10 +110,22 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }));
 
+const voiceRetry = vi.fn();
+const voiceDownload = vi.fn();
+const voiceDismiss = vi.fn();
+let mockTranscriptionError: string | null = null;
+let mockHasFailedRecording = false;
+let mockIsTranscribing = false;
+
 vi.mock("../useVoiceRecording", () => ({
   useVoiceRecording: () => ({
     isRecording: false,
-    isTranscribing: false,
+    isTranscribing: mockIsTranscribing,
+    transcriptionError: mockTranscriptionError,
+    hasFailedRecording: mockHasFailedRecording,
+    retryTranscription: voiceRetry,
+    downloadFailedRecording: voiceDownload,
+    dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
@@ -218,36 +237,17 @@ vi.mock("../components/DryRunToggleButton", () => ({
 
 const mockOnSend = vi.fn();
 
-const codexCredential: CredentialsMetaResponse = {
-  id: "codex-credential-1",
-  provider: "codex",
-  type: "oauth2",
-  title: "Personal ChatGPT",
-  scopes: [],
-};
-
-const codexProvider: CredentialsProviderData = {
-  provider: "codex",
-  providerName: "Codex",
-  savedCredentials: [codexCredential],
-  isSystemProvider: false,
-  oAuthCallback: async () => codexCredential,
-  mcpOAuthCallback: async () => codexCredential,
-  createAPIKeyCredentials: async () => codexCredential,
-  createUserPasswordCredentials: async () => codexCredential,
-  createHostScopedCredentials: async () => codexCredential,
-  deleteCredentials: async () => ({ deleted: true, revoked: null }),
-};
-
 afterEach(() => {
   vi.clearAllMocks();
   mockCancel.mockReset();
-  mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+  mockTranscriptionError = null;
+  mockHasFailedRecording = false;
+  mockIsTranscribing = false;
 });
 
 describe("ChatInput composer row", () => {
@@ -311,28 +311,7 @@ describe("ChatInput token devtool badge", () => {
   });
 });
 
-describe("ChatInput mode toggle", () => {
-  it("does not render mode toggle when flag is disabled", () => {
-    mockFlagValue = false;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.queryByLabelText(/switch to/i)).toBeNull();
-  });
-
-  it("renders mode toggle when flag is enabled", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
-  });
-
-  it("shows Codex mode and model controls backed by the model catalog", () => {
-    mockFlagValue = true;
-    mockCopilotLlmAuthProvider = "codex";
-    render(<ChatInput onSend={mockOnSend} />);
-
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
-  });
-
+describe("ChatInput Codex route", () => {
   it("keeps Claude SDK file attachments available for the Codex route", () => {
     mockCopilotLlmAuthProvider = "codex";
     render(<ChatInput onSend={mockOnSend} />);
@@ -356,114 +335,11 @@ describe("ChatInput mode toggle", () => {
 
   it("hides the route selector when only one subsidized transport is connected", () => {
     mockFlagValue = true;
-    const { rerender } = render(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} />
-      </CredentialsProvidersContext.Provider>,
-    );
+    const { rerender } = render(<ChatInput onSend={mockOnSend} />);
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
 
-    rerender(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} hasSession />
-      </CredentialsProvidersContext.Provider>,
-    );
+    rerender(<ChatInput onSend={mockOnSend} hasSession />);
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
-  });
-
-  // The toggles are icon-only in the composer row, so the mode reaches
-  // assistive tech through the label rather than visible text.
-  it("names the switch out of extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText("Switch to Fast mode")).toBeDefined();
-  });
-
-  it("names the switch out of fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(
-      screen.getByLabelText("Switch to Extended Thinking mode"),
-    ).toBeDefined();
-  });
-
-  it("keeps the mode locked while pinned (building mode)", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    mockCopilotModePinned = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/mode locked to extended thinking/i);
-    expect(button.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(button);
-    expect(mockSetCopilotChatMode).not.toHaveBeenCalled();
-    mockCopilotModePinned = false;
-  });
-
-  it("toggles from extended_thinking to fast on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("fast");
-  });
-
-  it("toggles from fast to extended_thinking on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to extended thinking/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("extended_thinking");
-  });
-
-  it("hides toggle buttons when streaming", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).toBeNull();
-    expect(
-      screen.queryByLabelText(/switch to (advanced|balanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("shows mode toggle when hasSession is true and not streaming", () => {
-    // Mode is per-message — can be changed between turns even in an existing session.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).not.toBeNull();
-  });
-
-  it("exposes aria-pressed=true in extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to fast mode/i);
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("sets aria-pressed=false in fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to extended thinking/i);
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("shows a toast when the user toggles mode", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to fast mode/i),
-      }),
-    );
   });
 });
 
@@ -555,95 +431,6 @@ describe("ChatInput dry-run toggle", () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Test mode enabled",
-      }),
-    );
-  });
-});
-
-describe("ChatInput model toggle", () => {
-  it("renders model toggle button when flag is enabled", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeDefined();
-  });
-
-  it("does not render model toggle when flag is disabled", () => {
-    mockFlagValue = false;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("toggles from standard to advanced on click", () => {
-    mockFlagValue = true;
-    mockCopilotLlmModel = "standard";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
-    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("advanced");
-  });
-
-  it("toggles from advanced to standard on click", () => {
-    mockFlagValue = true;
-    mockCopilotLlmModel = "advanced";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
-    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("standard");
-  });
-
-  it("hides model toggle when streaming", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("shows model toggle when hasSession is true and not streaming", () => {
-    // Model is per-message — can be changed between turns even in an existing session.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(
-      screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).not.toBeNull();
-  });
-
-  it("hides dry-run toggle when hasSession is true", () => {
-    // DryRun button is only for new chats — once a session exists its dry_run
-    // flag is immutable and shown via the CopilotPage banner, not this button.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
-  });
-
-  it("shows dry-run toggle when no session", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByTestId("dry-run-toggle")).toBeTruthy();
-  });
-
-  it("shows a toast when switching to advanced", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotLlmModel = "standard";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to advanced model/i),
-      }),
-    );
-  });
-
-  it("shows a toast when switching to standard", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotLlmModel = "advanced";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to balanced model/i),
       }),
     );
   });
@@ -1307,3 +1094,114 @@ describe("ChatInput stop button", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 });
+
+describe("ChatInput voice mode", () => {
+  it("hands the composer over to the voice bar", () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} sessionId="session-1" />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    expect(isShown(textarea)).toBe(true);
+
+    rerender(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+
+    // Typing, attaching and sending do nothing hands-free, so the whole
+    // control row goes rather than each button being disabled in place.
+    expect(screen.getByTestId("voice-bar")).toBeDefined();
+    expect(isShown(textarea)).toBe(false);
+  });
+
+  it("gives the composer back, with the draft intact", () => {
+    const { rerender } = render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "half a thought" } });
+
+    rerender(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByTestId("voice-bar")).toBeNull();
+    expect(isShown(textarea)).toBe(true);
+    expect(textarea.value).toBe("half a thought");
+  });
+});
+
+describe("ChatInput transcription failure", () => {
+  const mockOnSend = vi.fn();
+
+  it("offers a retry and the recording itself when transcription fails", () => {
+    mockTranscriptionError = "Transcription service unavailable";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription service unavailable",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Download recording/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(voiceRetry).toHaveBeenCalledTimes(1);
+    expect(voiceDownload).toHaveBeenCalledTimes(1);
+    expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the row up while the retry is in flight", () => {
+    // It must not blink away and back: that takes the Retry button with it
+    // and makes a slow retry look like it did nothing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    mockIsTranscribing = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^Retry$/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("renders in the card composer too", () => {
+    // The empty-state composer stacks its rows and supplies its own spacing.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(<ChatInput onSend={mockOnSend} stacked />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Transcription failed",
+    );
+  });
+
+  it("says nothing when there is no failed recording to act on", () => {
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("stays out of voice mode's way", () => {
+    // Voice mode replaces the composer's controls; a dictation error from
+    // before it was entered must not squat on top of the voice bar.
+    mockTranscriptionError = "Transcription failed";
+    mockHasFailedRecording = true;
+    render(
+      <ChatInput onSend={mockOnSend} voiceBar={<div data-testid="bar" />} />,
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+/** `display: none` on an ancestor, which `toBeVisible` cannot see in jsdom. */
+function isShown(element: HTMLElement): boolean {
+  return !element.closest(".hidden");
+}

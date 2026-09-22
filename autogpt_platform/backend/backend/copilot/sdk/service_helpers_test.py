@@ -1690,6 +1690,40 @@ class TestStampTurnMessages:
         ), "pre_turn_message_count must be captured AFTER error-marker cleanup"
 
 
+class TestSdkServingSegment:
+    def test_platform_turn_is_not_read_from_mutable_session_metadata(self):
+        from backend.copilot.sdk.service import _sdk_serving_segment
+
+        segment = _sdk_serving_segment(None)
+
+        assert segment.auth_provider == "platform"
+        assert segment.credential_id is None
+        assert segment.is_segment_zero is False
+
+    def test_codex_turn_is_attributed_to_the_credential_that_served_it(self):
+        from backend.copilot.sdk.service import _sdk_serving_segment
+
+        lease = MagicMock()
+        lease.credentials.id = "cred-that-served-the-turn"
+
+        segment = _sdk_serving_segment(lease)
+
+        assert segment.auth_provider == "codex"
+        assert segment.credential_id == "cred-that-served-the-turn"
+        assert segment.is_segment_zero is False
+
+    def test_finalizer_stamps_the_captured_serving_segment(self):
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        source = inspect.getsource(stream_chat_completion_sdk)
+
+        assert "turn_segment = _sdk_serving_segment(credential_lease)" in source
+        assert "pre_turn_message_count,\n                turn_segment," in source
+        assert "session_segment(session)" not in source
+
+
 class TestChatMessageStampRoundTrip:
     """model survives client-facing serialization; routing_source is
     deliberately EXCLUDED from payloads (clients could infer LD cohort

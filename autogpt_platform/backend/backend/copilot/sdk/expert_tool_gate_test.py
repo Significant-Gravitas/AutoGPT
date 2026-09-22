@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 
 _SVC = "backend.copilot.sdk.service"
@@ -60,6 +60,10 @@ def _make_session() -> ChatSession:
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         messages=[ChatMessage(role="user", content="hello")],
+        # Stated, not defaulted: the staffing tools this file asserts on are
+        # also hidden off an interactive origin, so a session that left it
+        # unset would pass the flag-off case for the wrong reason.
+        metadata=ChatSessionMetadata(origin="interactive"),
     )
 
 
@@ -212,7 +216,7 @@ class TestSdkExpertsFlagGuard:
 
         is_feature_enabled_mock.assert_awaited_once()
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
-        # Plain Autopilot session (no session.expert_id): loses the
+        # Plain Otto session (no session.expert_id): loses the
         # expert-session tools, keeps the staffing ("expert_admin") tools.
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden

@@ -32,13 +32,14 @@ from backend.util.settings import Settings
 
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
-    COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
+    declare_pod_cancel_queue,
     get_session_lock_key,
+    start_legacy_cancel_queue_reaper,
 )
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
@@ -291,12 +292,16 @@ class CoPilotExecutor(AppProcess):
             return
 
         cancel_channel = self.cancel_client.get_channel()
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        cancel_queue_name = declare_pod_cancel_queue(cancel_channel, self.executor_id)
         cancel_channel.basic_consume(
-            queue=COPILOT_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info("Starting to consume cancel messages...")
+        logger.info(f"Starting to consume cancel messages on {cancel_queue_name}...")
+        start_legacy_cancel_queue_reaper(cancel_channel)
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_tasks:
             raise RuntimeError("Cancel message consumer stopped unexpectedly")
@@ -674,7 +679,9 @@ def _dispatch_engine_switch_continuation(
             turn_id=str(uuid.uuid4()),
             message=engine_switch.CONTINUATION_MESSAGE,
             is_user_message=False,
-            mode="extended_thinking",
+            # No engine is named here: the processor pins a building-mode
+            # session to the SDK from its message history, which is what made
+            # this argument redundant even while it existed.
             organization_id=switch.organization_id,
             team_id=switch.team_id,
             llm_auth_provider=session.metadata.llm_auth_provider,
