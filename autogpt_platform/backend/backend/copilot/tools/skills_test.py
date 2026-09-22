@@ -51,6 +51,7 @@ from backend.copilot.tools.skills import (
     _read_skills_cache,
     _validate_name,
     _write_skills_cache,
+    budget_origin,
     build_skills_context,
     build_skills_update_notice,
     copy_skill_to_expert,
@@ -702,6 +703,30 @@ async def test_an_install_never_replaces_the_owners_own_skill():
 
 
 @pytest.mark.asyncio
+async def test_an_install_may_claim_a_skill_stored_before_origins_were_recorded():
+    """A row with no recorded origin counts against the owner's budget but is
+    nobody's to defend: a re-install of a skill installed before origins were
+    recorded must succeed and stamp the row, or it could never migrate."""
+    fake = _FakeWorkspaceManager()
+    path = "/skills/legacy/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(name="legacy", description="old", body="old")
+    ).encode()
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+        assert skills[0].origin is None and budget_origin(skills[0]) == "user"
+        stored = await store_user_skill(
+            "user-1",
+            name="legacy",
+            description="new",
+            body="new",
+            origin=SKILL_ORIGIN_MARKETPLACE,
+        )
+    assert stored.origin == SKILL_ORIGIN_MARKETPLACE
+    assert fake.metadata[path]["skill_origin"] == "marketplace"
+
+
+@pytest.mark.asyncio
 async def test_a_row_read_back_from_its_file_keeps_the_rows_origin():
     """A row without a usable description in its metadata is rebuilt from the
     file; the origin still comes from the row, never defaults to the owner's."""
@@ -773,7 +798,7 @@ async def test_origin_survives_the_index_cache():
     with patch(
         "backend.copilot.tools.skills.get_redis_async",
         new=AsyncMock(return_value=_FakeRedis()),
-    ) as redis:
+    ):
         await _write_skills_cache(
             "user-1",
             [
@@ -783,15 +808,18 @@ async def test_origin_survives_the_index_cache():
                     body="",
                     origin=SKILL_ORIGIN_MARKETPLACE,
                 ),
-                ParsedSkill(name="mine", description="d", body=""),
+                ParsedSkill(
+                    name="mine", description="d", body="", origin=SKILL_ORIGIN_USER
+                ),
+                ParsedSkill(name="legacy", description="d", body=""),
             ],
         )
-        redis.return_value = redis.return_value  # same fake for the read
         cached = await _read_skills_cache("user-1")
     assert cached is not None
     assert {s.name: s.origin for s in cached} == {
         "bundled": SKILL_ORIGIN_MARKETPLACE,
         "mine": SKILL_ORIGIN_USER,
+        "legacy": None,
     }
 
 

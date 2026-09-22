@@ -124,7 +124,9 @@ def skill_folder(expert_id: str | None) -> str:
 # 60s TTL with explicit invalidation gives near-zero index latency on warm
 # turns without unbounded staleness for cross-instance edits.
 SKILLS_INDEX_CACHE_TTL_S = 60
-SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:{user_id}"
+# Versioned: an entry cached before origins were recorded would count every
+# installed skill as the owner's for a TTL after deploy.
+SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
 
 # A skill name on an expert's row that resolves to no folder in Otto's
 # library — a marketplace attachment, or a skill deleted after assignment —
@@ -231,9 +233,17 @@ class ParsedSkill:
     triggers: tuple[str, ...] = ()
     version: str | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
-    # Recorded at store time, never parsed from the file: a skill stored
-    # before origins were recorded counts as the owner's own, as it did then.
-    origin: str = SKILL_ORIGIN_USER
+    # Recorded on the row at store time, never parsed from the file.  ``None``
+    # is a row stored before origins were recorded: it counts against the
+    # owner's budget (see :func:`budget_origin`) but is nobody's to defend,
+    # so a platform install may claim it.
+    origin: str | None = None
+
+
+def budget_origin(skill: ParsedSkill) -> str:
+    """The budget a stored skill fills: its recorded origin, or the owner's
+    for a row that has none."""
+    return skill.origin or SKILL_ORIGIN_USER
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -793,7 +803,7 @@ async def store_user_skill(
         # skill, or a rewrite of the owner's own, consumes nothing.  The
         # owner may take over a bundled name (it becomes theirs); the
         # platform never replaces something the owner wrote.
-        same_origin = {s.name for s in existing if s.origin == origin}
+        same_origin = {s.name for s in existing if budget_origin(s) == origin}
         if origin == SKILL_ORIGIN_MARKETPLACE and any(
             s.name == name and s.origin == SKILL_ORIGIN_USER for s in existing
         ):
@@ -953,15 +963,13 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
     )
 
 
-def _skill_origin(meta: Mapping[str, Any]) -> str:
-    """The origin recorded at store time, or the owner's own for a skill
-    stored before origins were recorded — which is what it counted as then."""
-    origin = meta.get(_META_SKILL_ORIGIN)
-    return (
-        origin
-        if isinstance(origin, str) and origin in _SKILL_ORIGINS
-        else SKILL_ORIGIN_USER
-    )
+def _skill_origin(meta: Mapping[str, Any]) -> str | None:
+    """The origin recorded on a row, or ``None`` when none was."""
+    return _normalize_origin(meta.get(_META_SKILL_ORIGIN))
+
+
+def _normalize_origin(value: object) -> str | None:
+    return value if isinstance(value, str) and value in _SKILL_ORIGINS else None
 
 
 async def _list_user_skills_from_workspace(
@@ -1048,7 +1056,7 @@ async def _read_skills_cache(
                 body="",
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
-                origin=_skill_origin({_META_SKILL_ORIGIN: item.get("origin")}),
+                origin=_normalize_origin(item.get("origin")),
             )
             for item in payload
             if isinstance(item, dict) and "name" in item and "description" in item
@@ -1417,7 +1425,7 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         extra=source.extra,
         files=await _read_package_files(manager, SKILL_FOLDER, slug),
         expert_id=expert_id,
-        origin=_skill_origin(meta),
+        origin=_skill_origin(meta) or SKILL_ORIGIN_USER,
     )
     return stored.name
 
@@ -2214,7 +2222,7 @@ class ListSkillsTool(BaseTool):
                 "description": s.description,
                 "triggers": list(s.triggers),
                 "is_default": s.name in _DEFAULT_SKILLS_BY_NAME,
-                "origin": s.origin,
+                "origin": budget_origin(s),
             }
             for s in skills
         ]
