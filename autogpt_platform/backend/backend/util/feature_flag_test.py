@@ -88,7 +88,7 @@ async def test_is_feature_enabled_not_initialized(ld_client):
     """Test is_feature_enabled when LaunchDarkly is not initialized."""
     ld_client.is_initialized.return_value = False
 
-    result = await is_feature_enabled(Flag.AGENT_ACTIVITY, "user123", default=True)
+    result = await is_feature_enabled(Flag.AUTOMOD, "user123", default=True)
     assert result is True  # Should return default
 
     ld_client.variation.assert_not_called()
@@ -102,7 +102,7 @@ async def test_is_feature_enabled_exception(mocker):
         side_effect=Exception("Client error"),
     )
 
-    result = await is_feature_enabled(Flag.AGENT_ACTIVITY, "user123", default=True)
+    result = await is_feature_enabled(Flag.AUTOMOD, "user123", default=True)
     assert result is True  # Should return default
 
 
@@ -110,8 +110,6 @@ def test_flag_enum_values():
     """Test that Flag enum has expected values."""
     assert Flag.AUTOMOD == "AutoMod"
     assert Flag.AI_ACTIVITY_STATUS == "ai-agent-execution-summary"
-    assert Flag.BETA_BLOCKS == "beta-blocks"
-    assert Flag.AGENT_ACTIVITY == "agent-activity"
 
 
 @pytest.mark.asyncio
@@ -130,37 +128,37 @@ async def test_is_feature_enabled_with_flag_enum(mocker):
 
 class TestEnvFlagOverride:
     def test_force_flag_true(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "true")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_force_flag_false(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
-        assert _env_flag_override(Flag.CHAT) is False
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "false")
+        assert _env_flag_override(Flag.AUTOMOD) is False
 
     def test_next_public_prefix_true(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_CHAT", "true")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_AUTOMOD", "true")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_unset_returns_none(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("FORCE_FLAG_CHAT", raising=False)
-        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_CHAT", raising=False)
-        assert _env_flag_override(Flag.CHAT) is None
+        monkeypatch.delenv("FORCE_FLAG_AUTOMOD", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_AUTOMOD", raising=False)
+        assert _env_flag_override(Flag.AUTOMOD) is None
 
     def test_invalid_value_returns_false(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "notaboolean")
-        assert _env_flag_override(Flag.CHAT) is False
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "notaboolean")
+        assert _env_flag_override(Flag.AUTOMOD) is False
 
     def test_numeric_one_returns_true(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "1")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "1")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_yes_returns_true(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "yes")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "yes")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_on_returns_true(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "on")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "on")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_hyphenated_flag_converts_to_underscore(
         self, monkeypatch: pytest.MonkeyPatch
@@ -171,17 +169,17 @@ class TestEnvFlagOverride:
     def test_force_flag_takes_precedence_over_next_public(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
-        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_CHAT", "true")
-        assert _env_flag_override(Flag.CHAT) is False
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "false")
+        monkeypatch.setenv("NEXT_PUBLIC_FORCE_FLAG_AUTOMOD", "true")
+        assert _env_flag_override(Flag.AUTOMOD) is False
 
     def test_whitespace_is_stripped(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "  true  ")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "  true  ")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_case_insensitive_value(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "TRUE")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "TRUE")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
 
 def _flags_read_via_get_feature_flag_value() -> set[str]:
@@ -226,26 +224,26 @@ class TestForceAllFlags:
         for name in (
             "FORCE_ALL_FLAGS",
             "NEXT_PUBLIC_FORCE_ALL_FLAGS",
-            "FORCE_FLAG_CHAT",
-            "NEXT_PUBLIC_FORCE_FLAG_CHAT",
+            "FORCE_FLAG_AUTOMOD",
+            "NEXT_PUBLIC_FORCE_FLAG_AUTOMOD",
         ):
             monkeypatch.delenv(name, raising=False)
 
     def test_off_by_default(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         assert _force_all_flags_enabled() is False
-        assert _env_flag_override(Flag.CHAT) is None
+        assert _env_flag_override(Flag.AUTOMOD) is None
 
     def test_forces_boolean_flag_on(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
         assert _force_all_flags_enabled() is True
-        assert _env_flag_override(Flag.CHAT) is True
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_next_public_master_switch(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         monkeypatch.setenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", "1")
-        assert _env_flag_override(Flag.CHAT) is True
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_skips_non_boolean_flags(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
@@ -277,19 +275,19 @@ class TestForceAllFlags:
     def test_per_flag_false_wins_over_force_all(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
-        assert _env_flag_override(Flag.CHAT) is False
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "false")
+        assert _env_flag_override(Flag.AUTOMOD) is False
 
     def test_accepts_raw_string_key(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
-        assert _env_flag_override(Flag.CHAT.value) is True
+        assert _env_flag_override(Flag.AUTOMOD.value) is True
 
     def test_falsey_value_does_not_force(self, monkeypatch: pytest.MonkeyPatch):
         self._clear(monkeypatch)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "false")
         assert _force_all_flags_enabled() is False
-        assert _env_flag_override(Flag.CHAT) is None
+        assert _env_flag_override(Flag.AUTOMOD) is None
 
     def test_ignored_in_production(
         self, monkeypatch: pytest.MonkeyPatch, mocker, caplog: pytest.LogCaptureFixture
@@ -302,7 +300,7 @@ class TestForceAllFlags:
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
         with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
             assert _force_all_flags_enabled() is False
-            assert _env_flag_override(Flag.CHAT) is None
+            assert _env_flag_override(Flag.AUTOMOD) is None
         assert "FORCE_ALL_FLAGS is set but app_env is prod, not local" in caplog.text
 
     def test_ignored_in_shared_development(
@@ -322,7 +320,7 @@ class TestForceAllFlags:
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
         with caplog.at_level(logging.ERROR, logger="backend.util.feature_flag"):
             assert _force_all_flags_enabled() is False
-            assert _env_flag_override(Flag.CHAT) is None
+            assert _env_flag_override(Flag.AUTOMOD) is None
         assert "FORCE_ALL_FLAGS is set but app_env is dev, not local" in caplog.text
 
     def test_per_flag_override_still_works_in_development(
@@ -333,8 +331,8 @@ class TestForceAllFlags:
         mocker.patch.object(
             feature_flag_module.settings.config, "app_env", AppEnvironment.DEVELOPMENT
         )
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "true")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_per_flag_override_still_works_in_production(
         self, monkeypatch: pytest.MonkeyPatch, mocker
@@ -343,8 +341,8 @@ class TestForceAllFlags:
         mocker.patch.object(
             feature_flag_module.settings.config, "app_env", AppEnvironment.PRODUCTION
         )
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "true")
-        assert _env_flag_override(Flag.CHAT) is True
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "true")
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_honoured_in_local(self, monkeypatch: pytest.MonkeyPatch, mocker):
         self._clear(monkeypatch)
@@ -352,7 +350,7 @@ class TestForceAllFlags:
             feature_flag_module.settings.config, "app_env", AppEnvironment.LOCAL
         )
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
-        assert _env_flag_override(Flag.CHAT) is True
+        assert _env_flag_override(Flag.AUTOMOD) is True
 
     def test_warns_once_when_honoured(
         self, monkeypatch: pytest.MonkeyPatch, mocker, caplog: pytest.LogCaptureFixture
@@ -385,8 +383,8 @@ class TestEnvOverrideWiring:
             "NEXT_PUBLIC_FORCE_ALL_FLAGS",
             "FORCE_FLAG_TEST_FLAG",
             "NEXT_PUBLIC_FORCE_FLAG_TEST_FLAG",
-            "FORCE_FLAG_CHAT",
-            "NEXT_PUBLIC_FORCE_FLAG_CHAT",
+            "FORCE_FLAG_AUTOMOD",
+            "NEXT_PUBLIC_FORCE_FLAG_AUTOMOD",
         ):
             monkeypatch.delenv(name, raising=False)
 
@@ -427,7 +425,7 @@ class TestEnvOverrideWiring:
         mocker.patch("backend.util.feature_flag.is_configured", return_value=False)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
 
-        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD)
         assert await check_feature_flag(user_id=None) is None
 
     @pytest.mark.asyncio
@@ -436,11 +434,11 @@ class TestEnvOverrideWiring:
     ):
         mocker.patch("backend.util.feature_flag.is_configured", return_value=False)
         monkeypatch.setenv("FORCE_ALL_FLAGS", "true")
-        monkeypatch.setenv("FORCE_FLAG_CHAT", "false")
+        monkeypatch.setenv("FORCE_FLAG_AUTOMOD", "false")
 
         # default=True so the 404 can only come from the override, not the
         # unconfigured-SDK fallback.
-        check_feature_flag = create_feature_flag_dependency(Flag.CHAT, default=True)
+        check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD, default=True)
         with pytest.raises(HTTPException) as exc_info:
             await check_feature_flag(user_id=None)
         assert exc_info.value.status_code == 404
@@ -497,7 +495,7 @@ class TestEnvOverrideWiring:
         ld_client.is_initialized.return_value = True
         ld_client.variation.return_value = False
 
-        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD)
         with pytest.raises(HTTPException) as exc_info:
             await check_feature_flag(user_id="test-user")
         assert exc_info.value.status_code == 404
@@ -511,7 +509,7 @@ class TestEnvOverrideWiring:
         mocker.patch("backend.util.feature_flag.is_configured", return_value=True)
         ld_client.is_initialized.return_value = False
 
-        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD)
         with pytest.raises(HTTPException) as exc_info:
             await check_feature_flag(user_id="test-user")
         assert exc_info.value.status_code == 404
@@ -528,7 +526,7 @@ class TestEnvOverrideWiring:
             new=mocker.AsyncMock(side_effect=RuntimeError("LD exploded")),
         )
 
-        check_feature_flag = create_feature_flag_dependency(Flag.CHAT)
+        check_feature_flag = create_feature_flag_dependency(Flag.AUTOMOD)
         with pytest.raises(HTTPException) as exc_info:
             await check_feature_flag(user_id="test-user")
         assert exc_info.value.status_code == 500
