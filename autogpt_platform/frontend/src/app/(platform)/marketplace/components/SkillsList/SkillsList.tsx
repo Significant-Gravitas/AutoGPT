@@ -117,17 +117,21 @@ export function SkillsList({ category }: Props) {
         </ul>
       )}
       {total > SHELF_PREVIEW_SIZE ? (
-        <ShelfMoreButton
-          isExpanded={isExpanded}
-          count={Math.min(total, SHELF_MAX_SIZE)}
-          isAll={total <= SHELF_MAX_SIZE}
-          noun="skills"
-          onToggle={() =>
-            setPageSize(
-              isExpanded ? SHELF_PREVIEW_SIZE : Math.min(total, SHELF_MAX_SIZE),
-            )
-          }
-        />
+        <div className="mt-6">
+          <ShelfMoreButton
+            isExpanded={isExpanded}
+            count={Math.min(total, SHELF_MAX_SIZE)}
+            isAll={total <= SHELF_MAX_SIZE}
+            noun="skills"
+            onToggle={() =>
+              setPageSize(
+                isExpanded
+                  ? SHELF_PREVIEW_SIZE
+                  : Math.min(total, SHELF_MAX_SIZE),
+              )
+            }
+          />
+        </div>
       ) : null}
       {openSlug ? (
         <SkillDialog

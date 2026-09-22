@@ -55,11 +55,22 @@ export function ExpertsSection({ category }: Props) {
         titleIcon={<Icon icon={UserAiIcon} size="2.2rem" aria-hidden />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
-        action={
-          isLoggedIn ? { label: "View your team", href: "/team" } : undefined
-        }
-        secondaryAction={
-          isLoggedIn ? { label: RAISE_LABEL, href: RAISE_HREF } : undefined
+        actions={
+          isLoggedIn ? (
+            <div className="flex items-center gap-2">
+              <Button
+                as="NextLink"
+                href="/team"
+                variant="secondary"
+                size="small"
+              >
+                View your team
+              </Button>
+              <Button as="NextLink" href={RAISE_HREF} size="small">
+                {RAISE_LABEL}
+              </Button>
+            </div>
+          ) : undefined
         }
       />
       {isLoading ? (

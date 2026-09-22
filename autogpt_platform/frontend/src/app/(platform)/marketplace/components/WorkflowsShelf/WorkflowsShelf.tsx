@@ -1,6 +1,7 @@
 "use client";
 
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { UserAiIcon } from "@hugeicons/core-free-icons";
@@ -45,7 +46,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
           <WorkflowTile key={agent.slug} agent={agent} />
         ))}
       </ul>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         {ordered.length > SHELF_PREVIEW_SIZE ? (
           <ShelfMoreButton
             isExpanded={isExpanded}
@@ -61,12 +62,9 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
             workflows is the whole invitation. */}
         <PublishAgentModal
           trigger={
-            <button
-              type="button"
-              className="text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-900 hover:underline"
-            >
+            <Button variant="secondary" size="small">
               Publish your workflows
-            </button>
+            </Button>
           }
         />
       </div>

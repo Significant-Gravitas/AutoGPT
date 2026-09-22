@@ -15,6 +15,9 @@ interface Props {
   action?: { label: string; href: string };
   /** A control row above the actions, e.g. a shelf's own filter chips. */
   filters?: ReactNode;
+  /** Buttons of the section's own making, when `action` and `secondaryAction`
+   *  are the wrong shape — e.g. two side by side. */
+  actions?: ReactNode;
   /** A button above the text action, for the section's second door. */
   secondaryAction?: { label: string; href: string };
   size?: "default" | "small";
@@ -29,6 +32,7 @@ export function SectionHeader({
   subtitle,
   action,
   filters,
+  actions,
   secondaryAction,
   size = "default",
 }: Props) {
@@ -62,14 +66,14 @@ export function SectionHeader({
           <p
             className={cn(
               "text-zinc-500",
-              size === "small" ? "mt-1 text-sm" : "mt-2 text-base",
+              size === "small" ? "mt-1 text-sm" : "mt-2 text-lg",
             )}
           >
             {subtitle}
           </p>
         ) : null}
       </div>
-      {action || secondaryAction || filters ? (
+      {action || secondaryAction || filters || actions ? (
         <div
           className={cn(
             "flex flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2",
@@ -79,6 +83,7 @@ export function SectionHeader({
           )}
         >
           {filters}
+          {actions}
           {secondaryAction ? (
             <Button
               as="NextLink"
