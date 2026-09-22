@@ -46,6 +46,7 @@ _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
 _CHARTER = {
     "name": "Otto",
     "role": "Inbox triage",
+    "job_title": "Executive Assistant",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
     "avatar_glasses": "glasses",
@@ -585,6 +586,7 @@ class TestConfirm:
             _CHARTER["name"],
             _CHARTER["role"],
             None,
+            job_title=_CHARTER["job_title"],
             avatar_url=preview.preview.avatar_url,
             color=_CHARTER["color"],
             tagline=_CHARTER["tagline"],

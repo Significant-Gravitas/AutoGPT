@@ -86,7 +86,7 @@ class RunSubSessionTool(BaseTool):
             "executor queue — survives tab-close AND worker restarts. Waits "
             f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
             "If not done, returns status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "tool:get_sub_session_result."
         )
 
     @property
@@ -499,7 +499,7 @@ def response_from_outcome(
                 f"Target session already had a turn in flight; the message "
                 f"was queued ({result.pending_buffer_length} now pending) and "
                 "will be processed by the existing turn on its next drain. "
-                f"Call get_sub_session_result to poll progress"
+                f"Call tool:get_sub_session_result to poll progress"
                 f"{f' or watch live at {link}' if link else ''}."
             ),
             session_id=parent_session_id,
@@ -515,7 +515,7 @@ def response_from_outcome(
             message=(
                 f"{actor} is still running after {elapsed:.0f}s."
                 f"{f' Watch live at {link}.' if link else ''} "
-                "Call get_sub_session_result (optionally with "
+                "Call tool:get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
             ),
             session_id=parent_session_id,

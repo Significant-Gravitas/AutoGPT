@@ -28,7 +28,7 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
-from backend.copilot.service import strip_server_injected_tags
+from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace_scope import (
@@ -152,8 +152,8 @@ _NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
-# Default skills — migrated from the legacy ``get_agent_building_guide`` /
-# ``get_mcp_guide`` tools so users get a uniform discovery surface.  These
+# Default skills — migrated from the legacy ``get_agent_building_guide``
+# tool so users get a uniform discovery surface.  These
 # are *read-only* — store_skill / delete_skill refuse to touch them.  Body
 # is loaded from disk lazily so adding more defaults is a drop-in.
 # ---------------------------------------------------------------------------
@@ -184,15 +184,6 @@ DEFAULT_SKILLS: tuple[_DefaultSkill, ...] = (
             "fix_agent_graph",
         ),
     ),
-    _DefaultSkill(
-        name="mcp_tool_guide",
-        description=(
-            "MCP server URLs and auth setup — load before calling "
-            "run_mcp_tool when you need server URLs or auth details."
-        ),
-        body_path=_SDK_DIR / "mcp_tool_guide.md",
-        triggers=("run_mcp_tool",),
-    ),
 )
 
 _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_SKILLS}
@@ -205,9 +196,16 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
-# Spec frontmatter the platform has no use for.  Dropping it rewrites the
-# author's SKILL.md on every store, so it rides through parse and render.
-_CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
+# Frontmatter outside the core skill fields. Dropping it rewrites the author's
+# SKILL.md on every store, so it rides through parse and render.
+_CARRIED_FRONTMATTER_KEYS = (
+    "license",
+    "compatibility",
+    "allowed-tools",
+    "metadata",
+    "source",
+    "source_url",
+)
 
 
 @dataclass(frozen=True)
@@ -288,6 +286,37 @@ def _validate_name(name: str) -> str | None:
     if name in _DEFAULT_SKILLS_BY_NAME:
         return f"'{name}' is a built-in skill and cannot be overwritten"
     return None
+
+
+def validate_skill_content(
+    description: str, body: str, triggers: Iterable[str]
+) -> None:
+    trigger_list = list(triggers)
+    if not description:
+        raise ValueError("description is required")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValueError(
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
+            "(it appears in every turn's skills index)"
+        )
+    if not body:
+        raise ValueError("body is required")
+    if len(body) > MAX_BODY_CHARS:
+        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
+    if len(trigger_list) > MAX_TRIGGERS:
+        raise ValueError(
+            f"triggers must be ≤{MAX_TRIGGERS} entries "
+            "(they are inlined in <available_skills> every turn)"
+        )
+    oversized_trigger = next(
+        (trigger for trigger in trigger_list if len(trigger) > MAX_TRIGGER_CHARS),
+        None,
+    )
+    if oversized_trigger is not None:
+        raise ValueError(
+            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -671,28 +700,7 @@ async def store_user_skill(
     name_err = _validate_name(name)
     if name_err:
         raise ValueError(name_err)
-    if not description:
-        raise ValueError("description is required")
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        raise ValueError(
-            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
-            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
-            "(it appears in every turn's skills index)"
-        )
-    if not body:
-        raise ValueError("body is required")
-    if len(body) > MAX_BODY_CHARS:
-        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
-    if len(triggers) > MAX_TRIGGERS:
-        raise ValueError(
-            f"triggers must be ≤{MAX_TRIGGERS} entries "
-            "(they are inlined in <available_skills> every turn)"
-        )
-    oversized_trigger = next((t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None)
-    if oversized_trigger is not None:
-        raise ValueError(
-            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
-        )
+    validate_skill_content(description, body, triggers)
 
     parsed = ParsedSkill(
         name=name,
@@ -1526,12 +1534,98 @@ async def build_skills_context(
     if not index:
         return ""
     return (
-        "Skills are reusable procedures available via `read_skill(name)`. "
+        "Skills are reusable procedures loaded with "
+        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
         "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and call `read_skill(name=...)` to load the "
-        "full body before acting; distill a new one with `store_skill` "
+        "close paraphrase) and load the "
+        "full body before acting; distill a new one with `tool:store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
+    )
+
+
+# Non-greedy: history holds at most one ``<available_skills>`` block (the
+# first-turn injection), but a greedy match across two blocks would swallow
+# the user text between them.
+_SKILLS_BLOCK_RE = re.compile(r"<available_skills>(.*?)</available_skills>", re.DOTALL)
+# One index line per skill: ``- name: <slug> — <description> …``.
+_SKILLS_INDEX_LINE_RE = re.compile(r"^- name:\s*(\S+)", re.MULTILINE)
+
+# How many added/removed slugs to name inline before falling back to a
+# count — the notice is a nudge to call ``list_skills``, not the index.
+_MAX_UPDATE_NAMES = 10
+
+
+def previously_seen_skill_slugs(contents: Iterable[str]) -> set[str]:
+    """Slugs from every ``<available_skills>`` block in *contents*.
+
+    Pure parser over already-persisted session text — what the model saw at
+    session start. ``Iterable`` (not ``ChatMessage``) so callers pass plain
+    message contents without importing the chat model here.
+    """
+    seen: set[str] = set()
+    for content in contents:
+        if not content:
+            continue
+        for block in _SKILLS_BLOCK_RE.findall(content):
+            seen.update(_SKILLS_INDEX_LINE_RE.findall(block))
+    return seen
+
+
+async def build_skills_update_notice(
+    user_id: str | None,
+    expert_id: str | None = None,
+    prior_contents: Iterable[str] = (),
+) -> str:
+    """Per-turn ``<skills_update>`` notice, or ``""`` when nothing drifted.
+
+    Compares the registry now (``list_all_skills``: defaults plus the
+    session owner's own skills) against the ``<available_skills>`` index
+    baked into the session history at session start. Same set → ``""`` so
+    steady-state turns pay nothing. Any add or removal renders a small
+    notice naming the delta and pointing at ``list_skills`` — query-only
+    context the engines prepend to the current turn's model input without
+    persisting, mirroring the builder-context pattern.
+
+    Never raises: a registry or flag lookup failure degrades to ``""`` so
+    a skills hiccup can't block the turn.
+    """
+    if not user_id:
+        return ""
+    try:
+        if not await is_skills_feature_enabled(user_id):
+            return ""
+        current = await list_all_skills(user_id, expert_id)
+    except Exception:
+        logger.exception("[skills] failed to diff skills for update notice")
+        return ""
+    current_slugs = {s.name for s in current}
+    seen = previously_seen_skill_slugs(prior_contents)
+    added = sorted(slug for slug in current_slugs if slug not in seen)
+    removed = sorted(slug for slug in seen if slug not in current_slugs)
+    if not added and not removed:
+        return ""
+
+    def _names(slugs: list[str]) -> str:
+        if len(slugs) > _MAX_UPDATE_NAMES:
+            head = ", ".join(slugs[:_MAX_UPDATE_NAMES])
+            return f"{head}, and {len(slugs) - _MAX_UPDATE_NAMES} more"
+        return ", ".join(slugs)
+
+    lines = [
+        "Your available skills changed since this conversation started, "
+        "so the <available_skills> index in the first message is stale."
+    ]
+    if added:
+        lines.append(f"New skills: {_names(added)}.")
+    if removed:
+        lines.append(f"Removed skills: {_names(removed)}.")
+    lines.append(
+        "Call `tool:list_skills` to see the current list, then "
+        "`tool:read_skill` to load a new skill's body before using it."
+    )
+    return (
+        f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
 
 
@@ -1610,7 +1704,7 @@ class StoreSkillTool(BaseTool):
     def description(self) -> str:
         return (
             "Save a reusable procedure as a skill. Surfaces in "
-            "<available_skills> next turn; loads via read_skill(name)."
+            "<available_skills> next turn; loads via tool:read_skill."
         )
 
     @property
@@ -1841,7 +1935,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (non-UTF-8 contents). "
-                    "Re-create it with store_skill."
+                    "Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -1850,7 +1944,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (missing/invalid "
-                    "frontmatter). Re-create it with store_skill."
+                    "frontmatter). Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )

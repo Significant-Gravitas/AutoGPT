@@ -131,7 +131,7 @@ class ListPresetsTool(BaseTool):
         return (
             "List the user's presets (saved run configurations and webhook "
             "triggers). Optionally filter by library_agent_id or graph_id. Use "
-            "before update_preset/delete_preset to find a preset_id."
+            "before tool:update_preset / tool:delete_preset to find a preset_id."
         )
 
     @property
@@ -270,7 +270,7 @@ class UpdatePresetTool(BaseTool):
             "resume it (is_active=false/true), or change its inputs. 'inputs' are "
             "the agent's graph inputs; a webhook trigger's config is "
             "'trigger_config', and changing that re-registers the webhook. Find "
-            "preset_id via list_presets."
+            "preset_id via tool:list_presets."
         )
 
     @property
@@ -416,7 +416,7 @@ class DeletePresetTool(BaseTool):
     def description(self) -> str:
         return (
             "Delete a preset by preset_id. If it's a webhook trigger, its webhook "
-            "is deregistered and cleaned up. Find preset_id via list_presets."
+            "is deregistered and cleaned up. Find preset_id via tool:list_presets."
         )
 
     @property
