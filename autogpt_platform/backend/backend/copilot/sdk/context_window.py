@@ -1,11 +1,22 @@
-"""Per-route SDK context window + compaction trigger resolution.
+"""Per-route SDK context window, compaction trigger, and compression budgets.
 
 ``build_sdk_env`` pins the CLI's perceived window explicitly
 (``CLAUDE_CODE_AUTO_COMPACT_WINDOW``) so the compaction trigger is a
 deliberate value rather than an emergent property of whichever bundled CLI
-we ship. Each route is held to its coding engine's default window (or the
-engine max where no default is published); the platform (openrouter) route
-keeps the CLI's own 200K default.
+we ship — and every compressor the copilot runs itself sizes its output from
+that same pin.  One window per route, one trigger, one set of numbers.
+
+- direct_anthropic: the engine default, 1M.  The CLI clamps a pin *above*
+  its own model-table window (measured, 2.1.274), so on this route the pin
+  can only lower; 1M means "let the table decide".
+- subscription: 200K.  The turns draw on the subscriber's plan, and a chat
+  resending 700K per turn drains a usage window in a few messages.
+- codex: the Codex engine default (272K, 90% trigger), with
+  ``CLAUDE_CODE_MAX_CONTEXT_TOKENS`` raised alongside so the pin is not
+  clamped at the 200K the CLI assumes for a slug it does not recognise.
+- openrouter (platform): 200K, the CLI default — context past 200K is
+  where Anthropic cache-creation cost dominates the bill.
+- local: no SDK pin on this transport.
 
 Lives here rather than in ``env.py`` to keep that module under the
 300-line guideline. Import-safe: only depends on ``config`` (constants)
@@ -26,6 +37,26 @@ from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 
 if TYPE_CHECKING:
     from backend.copilot.config import ChatConfig
+
+# The CLI keeps this much of the window back for the summary it writes.
+_CLI_COMPACT_BUFFER_TOKENS = 13_000
+
+# Headroom below the CLI's autocompact threshold when sizing the copilot's
+# own compressors.  Without it the post-compaction context lands just under
+# the threshold and the next assistant message tips it back over: the CLI
+# re-compacts at once, and again, until its rapid-refill breaker ends the
+# turn.
+COMPACTION_HEADROOM_TOKENS = 20_000
+
+# Some history must always survive a compaction, however small the window.
+_COMPACTION_TARGET_FLOOR_TOKENS = 10_000
+
+# Below this budget the context is so tight that injecting any history would
+# likely exceed the limit whatever it contains; ``_build_query_message`` sends
+# the bare message instead.  The last retry budget sits exactly here so a
+# session whose stored history exceeds the window falls through to that
+# escape hatch instead of exhausting every attempt (SENTRY-1207).
+BARE_MESSAGE_TOKEN_FLOOR = 5_000
 
 
 def pinned_context_window(
@@ -91,7 +122,72 @@ def autocompact_pct(config: ChatConfig, model: str | None, *, codex_route: bool)
     return pct
 
 
+def cli_autocompact_threshold(
+    config: ChatConfig, model: str | None, *, codex_route: bool
+) -> int:
+    """Tokens at which the pinned subprocess will auto-compact.
+
+    Mirrors the bundled CLI's formula, ``min(window * pct/100, window -
+    13K)``, against the same window and pct ``build_sdk_env`` pins.  The
+    Codex route always runs the percentage trigger (a moonshot-shaped slug
+    there still runs on Codex infra); elsewhere a Moonshot route omits the
+    override and takes the CLI's default trigger.
+    """
+    window = pinned_context_window(config, model, codex_route=codex_route)
+    pct = autocompact_pct(config, model, codex_route=codex_route)
+    if pct > 0 and (codex_route or not is_moonshot_model(model)):
+        return min(window * pct // 100, window - _CLI_COMPACT_BUFFER_TOKENS)
+    return window - _CLI_COMPACT_BUFFER_TOKENS
+
+
+def compaction_target_tokens(
+    config: ChatConfig, model: str | None, *, codex_route: bool
+) -> int:
+    """Output budget for the copilot's own compressors, pre-query and retry.
+
+    The CLI's threshold less ``COMPACTION_HEADROOM_TOKENS``, floored so some
+    history always survives.  Every compressor the copilot runs reads this
+    and never the model catalog: a target derived from a different window
+    than the pin is a second threshold authority, and it either fires early
+    forever or lands over the pin.
+    """
+    threshold = cli_autocompact_threshold(config, model, codex_route=codex_route)
+    return max(_COMPACTION_TARGET_FLOOR_TOKENS, threshold - COMPACTION_HEADROOM_TOKENS)
+
+
+def retry_target_tokens(
+    config: ChatConfig, model: str | None, *, codex_route: bool
+) -> tuple[int, int]:
+    """Budgets for the no-transcript fallback: first retry, then any later one.
+
+    A quarter of the pinned window first — 50K at the 200K platform default,
+    which is what it was as a constant, and scaling with the route's window
+    instead of assuming 200K everywhere.  The last budget is the bare-message
+    floor itself, on every route: that is what makes the final retry send
+    the message alone rather than fail "Prompt is too long".
+    """
+    window = pinned_context_window(config, model, codex_route=codex_route)
+    return window // 4, BARE_MESSAGE_TOKEN_FLOOR
+
+
+def seed_target_tokens(
+    config: ChatConfig, model: str | None, *, codex_route: bool
+) -> int:
+    """Budget for seeding the transcript builder on a turn with no CLI session.
+
+    Fifteen percent of the pinned window (30K at 200K), below the first retry
+    budget so the seeded upload stays compact and later gap fills small.
+    """
+    return pinned_context_window(config, model, codex_route=codex_route) * 3 // 20
+
+
 __all__ = [
+    "BARE_MESSAGE_TOKEN_FLOOR",
+    "COMPACTION_HEADROOM_TOKENS",
     "autocompact_pct",
+    "cli_autocompact_threshold",
+    "compaction_target_tokens",
     "pinned_context_window",
+    "retry_target_tokens",
+    "seed_target_tokens",
 ]
