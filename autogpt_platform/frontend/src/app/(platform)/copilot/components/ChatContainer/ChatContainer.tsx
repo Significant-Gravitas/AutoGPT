@@ -40,6 +40,7 @@ import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
+import type { SentFrom } from "../../sentFrom";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -53,6 +54,7 @@ export interface ChatContainerProps {
   error: Error | undefined;
   sessionId: string | null;
   sessionChatStatus?: string;
+  sessionSentFrom?: SentFrom | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -120,6 +122,7 @@ export const ChatContainer = ({
   error,
   sessionId,
   sessionChatStatus,
+  sessionSentFrom,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -314,6 +317,7 @@ export const ChatContainer = ({
                   activeStreamStartedAt={activeStreamStartedAt}
                   sessionID={sessionId}
                   sessionChatStatus={sessionChatStatus}
+                  sessionSentFrom={sessionSentFrom}
                   hasMoreMessages={hasMoreMessages}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={onLoadMore}

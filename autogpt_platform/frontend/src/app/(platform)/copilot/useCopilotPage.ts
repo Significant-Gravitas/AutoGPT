@@ -142,6 +142,7 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -435,6 +436,7 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

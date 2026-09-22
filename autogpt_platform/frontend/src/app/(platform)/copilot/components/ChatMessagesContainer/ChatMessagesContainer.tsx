@@ -57,6 +57,13 @@ import {
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
+import { SentFromBadge } from "./components/SentFromBadge";
+import { getVisibleUserMessageParts } from "./userMessageParts";
+import {
+  getSentFromMetadata,
+  isSessionOpeningMessage,
+  type SentFrom,
+} from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -114,6 +121,10 @@ interface Props {
   /** The roster is still loading for an expert-scoped session, so the
    *  header must not yet claim the thread is Otto's. */
   isResolvingExpertIdentity?: boolean;
+  /** Where this thread's opening task came from (session-level delegation
+   *  metadata). Shown on the row that opened the thread (DB sequence 0) when
+   *  that row carries no provenance of its own. */
+  sessionSentFrom?: SentFrom | null;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
@@ -331,6 +342,7 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
   isResolvingExpertIdentity = false,
+  sessionSentFrom = null,
   hasFloatingControls = false,
   canOpenActivity = false,
   areFilesOpen = false,
@@ -611,9 +623,11 @@ export function ChatMessagesContainer({
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
             // ThinkingIndicator; data-compaction via CompactionCard.
-            const renderableParts = withToolDisplayNames(message.parts).filter(
-              (p) => !isBookkeepingPart(p),
-            );
+            const renderableParts = withToolDisplayNames(
+              message.role === "user"
+                ? getVisibleUserMessageParts(message.parts)
+                : message.parts,
+            ).filter((p) => !isBookkeepingPart(p));
             // Only a message that is actively streaming can have a live
             // compaction phase — a stopped or failed turn must not leave an
             // eternal progress bar. Replayed/settled messages never carry
@@ -655,6 +669,11 @@ export function ChatMessagesContainer({
               (p): p is FileUIPart => p.type === "file",
             );
 
+            const sentFrom = readOnly
+              ? null
+              : (getSentFromMetadata(message.metadata) ??
+                (isSessionOpeningMessage(message) ? sessionSentFrom : null));
+
             return (
               <Message
                 from={message.role}
@@ -688,7 +707,11 @@ export function ChatMessagesContainer({
                       liveCompactionStats={liveCompactionStats}
                     />
                   ) : (
-                    <UserMessageClamp>
+                    <UserMessageClamp
+                      trailing={
+                        sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null
+                      }
+                    >
                       {renderableParts.map((part, i) => (
                         <MessagePartRenderer
                           key={`${message.id}-${i}`}
