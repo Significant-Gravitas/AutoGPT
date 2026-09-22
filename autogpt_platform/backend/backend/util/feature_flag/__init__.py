@@ -494,17 +494,24 @@ async def _evaluate_flag_value(
         result = await _evaluate_dual(flag_key, user_id, default)
     else:
         result = await _evaluate_launchdarkly(flag_key, user_id, default)
-    _record_flag_for_sentry(flag_key, result[0])
+    _record_flag_for_sentry(flag_key, *result)
     return result
 
 
-def _record_flag_for_sentry(flag_key: str, value: Any) -> None:
-    """Put a served flag on Sentry's scope so errors show which flags were on."""
-    # Sentry's flag context holds booleans only; JSON and string flags are skipped.
-    if not isinstance(value, bool):
-        return
+def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
+    """Put a served flag on Sentry's scope so errors show which flags were on,
+    and which of them were a stand-in rather than the vendor's answer."""
     try:
-        sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+        # Sentry's flag context holds booleans only; JSON and string flags are skipped.
+        if isinstance(value, bool):
+            sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+        if not evaluated:
+            scope = sentry_sdk.get_isolation_scope()
+            # No public getter for contexts; the keys accumulate per scope.
+            known = scope._contexts.get("feature_flags", {}).get("fallback_keys", [])
+            keys = sorted({*known, flag_key})
+            scope.set_context("feature_flags", {"fallback_keys": keys})
+            scope.set_tag("feature_flags.fallback", "true")
     except Exception:
         logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 
