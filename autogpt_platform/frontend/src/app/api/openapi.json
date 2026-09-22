@@ -16222,7 +16222,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to what that hired expert may read: its\nown conversations plus the user's own files (everything outside\n``/sessions/``, ``/experts/`` and ``/skills/``). It conflicts with\n``session_id`` — both name which conversations to show — but composes with\nthe folder filters, which select across the whole workspace. An expert the\ncaller does not own (or no longer has) yields an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16318,10 +16318,22 @@
                 { "type": "string", "minLength": 1 },
                 { "type": "null" }
               ],
-              "description": "Only return files this hired expert can read: its own conversations plus the user's own files. Combines with folder_id and root_only; cannot be combined with session_id.",
+              "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id.",
               "title": "Expert Id"
             },
-            "description": "Only return files this hired expert can read: its own conversations plus the user's own files. Combines with folder_id and root_only; cannot be combined with session_id."
+            "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id."
+          },
+          {
+            "name": "include_user_files",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id.",
+              "default": false,
+              "title": "Include User Files"
+            },
+            "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
           }
         ],
         "responses": {

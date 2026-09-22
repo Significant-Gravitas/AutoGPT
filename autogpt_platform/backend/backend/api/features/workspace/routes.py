@@ -507,9 +507,17 @@ async def list_workspace_files(
         default=None,
         min_length=1,
         description=(
-            "Only return files this hired expert can read: its own "
-            "conversations plus the user's own files. Combines with "
-            "folder_id and root_only; cannot be combined with session_id."
+            "Only return files from this hired expert's own conversations. "
+            "Combines with folder_id, root_only and include_user_files; "
+            "cannot be combined with session_id."
+        ),
+    ),
+    include_user_files: bool = Query(
+        default=False,
+        description=(
+            "With expert_id, also return the user's own files — everything "
+            "outside /sessions/, /experts/ and /skills/ — which the expert "
+            "may read but which are not its own. Requires expert_id."
         ),
     ),
 ) -> ListFilesResponse:
@@ -528,12 +536,17 @@ async def list_workspace_files(
     ``root_only`` likewise conflict; passing conflicting filters returns a 400
     rather than silently yielding an empty list.
 
-    ``expert_id`` narrows the listing to what that hired expert may read: its
-    own conversations plus the user's own files (everything outside
-    ``/sessions/``, ``/experts/`` and ``/skills/``). It conflicts with
-    ``session_id`` — both name which conversations to show — but composes with
-    the folder filters, which select across the whole workspace. An expert the
-    caller does not own (or no longer has) yields an empty list.
+    ``expert_id`` narrows the listing to that hired expert's own
+    conversations. It conflicts with ``session_id`` — both name which
+    conversations to show — but composes with the folder filters, which select
+    across the whole workspace. An expert the caller does not own (or no
+    longer has) yields an empty list.
+
+    ``include_user_files`` widens an ``expert_id`` listing with the user's own
+    files, which an expert may read but which are nobody's conversation. It is
+    opt-in so that a view already filtered to one expert keeps showing that
+    expert's files and nothing else; the composer's picker sends it when its
+    "only this expert" filter is switched off.
     """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
@@ -559,6 +572,13 @@ async def list_workspace_files(
         raise fastapi.HTTPException(
             status_code=400,
             detail="expert_id cannot be combined with session_id",
+        )
+    if include_user_files and expert_id is None:
+        # Without an expert there is no scope to widen: an unscoped listing
+        # already spans the whole workspace, so this could only mislead.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="include_user_files requires expert_id",
         )
 
     workspace = await get_or_create_workspace(user_id)
@@ -598,7 +618,9 @@ async def list_workspace_files(
         list_kwargs["allowed_path_prefixes"] = [
             session_path_prefix(sid) for sid in scope.session_ids
         ]
-        list_kwargs["include_user_files"] = scope.reads_user_files
+        list_kwargs["include_user_files"] = (
+            include_user_files and scope.reads_user_files
+        )
     files = await manager.list_files(**list_kwargs)
     has_more = len(files) > limit
     page = files[:limit]
