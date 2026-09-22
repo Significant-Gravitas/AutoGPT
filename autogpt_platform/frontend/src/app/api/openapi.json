@@ -28349,7 +28349,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
-          "name": { "type": "string", "title": "Name" },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "inputs": {
             "additionalProperties": true,
