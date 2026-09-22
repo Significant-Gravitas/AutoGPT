@@ -14023,7 +14023,7 @@
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
-        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
+        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-expert cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15726,7 +15726,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Skill or expert not found" },
-          "409": { "description": "Per-user skill limit reached" },
+          "409": {
+            "description": "Skill limit reached, or the skill name is already used by an owner-saved skill"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16494,7 +16496,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "File not found" },
-          "409": { "description": "A file with this name already exists here" },
+          "409": {
+            "description": "File name conflict or skill capacity reached"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -21990,7 +21994,7 @@
           "skills": {
             "items": { "type": "string" },
             "type": "array",
-            "maxItems": 50,
+            "maxItems": 150,
             "title": "Skills"
           },
           "marketplace_listing_ids": {
@@ -28375,7 +28379,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
-          "name": { "type": "string", "title": "Name" },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "inputs": {
             "additionalProperties": true,

@@ -107,7 +107,7 @@ describe("Dictionary input preservation", () => {
   it("removes an entry only through its remove action", async () => {
     render(<DictionaryForm values={{ title: "Remove this value" }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /remove item/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
 
     await waitFor(() => {
       expect(readDictionary()).toEqual({});
