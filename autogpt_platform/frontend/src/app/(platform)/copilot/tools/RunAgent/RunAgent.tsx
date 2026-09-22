@@ -2,18 +2,13 @@
 
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import {
-  ContentGrid,
-  ContentHint,
-  ContentMessage,
-} from "../../components/ToolAccordion/AccordionContent";
-import { MiniGame } from "../../components/MiniGame/MiniGame";
+import { ContentMessage } from "../../components/ToolAccordion/AccordionContent";
 import {
   getAccordionMeta,
   getAnimationText,
   getRunAgentToolOutput,
+  getStreamingLoadingText,
   isRunAgentAgentDetailsOutput,
   isRunAgentAgentOutputResponse,
   isRunAgentErrorOutput,
@@ -103,23 +98,15 @@ export function RunAgentTool({ part }: Props) {
       {isCorrupted && (
         <p className="mt-1 text-sm text-red-500">
           The result data arrived corrupted, so any sign-in or setup card it
-          contained can&apos;t be shown. Ask AutoPilot to retry this step.
+          contained can&apos;t be shown. Ask your expert to retry this step.
         </p>
       )}
 
       {isStreaming && !output && (
-        <ToolAccordion
-          icon={<ScaleLoader size={14} />}
-          title="Running agent, this may take a few minutes. Play while you wait."
-          expanded={true}
-        >
-          <ContentGrid>
-            <MiniGame />
-            <ContentHint>
-              This could take a few minutes — play while you wait!
-            </ContentHint>
-          </ContentGrid>
-        </ToolAccordion>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ToolIcon isStreaming isError={isError} />
+          <MorphingTextAnimation text={getStreamingLoadingText(part)} />
+        </div>
       )}
 
       {setupRequirementsOutput && (

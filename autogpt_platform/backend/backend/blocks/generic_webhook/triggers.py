@@ -27,6 +27,18 @@ class GenericWebhookTriggerBlock(Block):
             description="The constants to be set when the block is put on the graph",
             default_factory=dict,
         )
+        secret_token: str | None = SchemaField(
+            title="Secret token",
+            description=(
+                "Optional. If set, the platform will only accept incoming "
+                "webhook requests that include this exact value in the "
+                "'X-Webhook-Secret' header. Leave empty for unauthenticated "
+                "webhooks (the URL itself is the only credential)."
+            ),
+            default=None,
+            secret=True,
+            advanced=False,
+        )
 
     class Output(BlockSchemaOutput):
         payload: dict = SchemaField(

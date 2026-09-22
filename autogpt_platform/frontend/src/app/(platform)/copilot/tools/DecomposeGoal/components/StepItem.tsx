@@ -1,8 +1,9 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { CubeIcon } from "@phosphor-icons/react";
 import { StepStatusIcon } from "../helpers";
+import { CubeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index: number;
@@ -23,7 +24,7 @@ export function StepItem({ index, description, blockName, status }: Props) {
         </Text>
         {blockName && (
           <div className="mt-0.5 flex items-center gap-1">
-            <CubeIcon size={12} className="text-muted-foreground" />
+            <Icon icon={CubeIcon} size={12} className="text-muted-foreground" />
             <Text
               variant="small"
               className="font-mono text-xs text-muted-foreground"

@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldAccessibility } from "../../../../field-accessibility";
+
 import { useState } from "react";
 import { WidgetProps } from "@rjsf/utils";
 import {
@@ -14,12 +16,19 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "./TextInputExpanderModal";
+import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
   const { size, uiType } = registry.formContext;
+  const accessibility = useFieldAccessibility(
+    props.id,
+    schema.title || props.label,
+    registry.formContext,
+    props["aria-describedby"],
+  );
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -104,10 +113,10 @@ export default function TextWidget(props: WidgetProps) {
   if (uiType === BlockUIType.NOTE) {
     return (
       <Input
-        id={props.id}
+        {...accessibility}
         hideLabel={true}
         type={"textarea"}
-        label={""}
+        label={schema.title || props.label || "Note"}
         size="small"
         wrapperClassName="mb-0"
         value={displayValue}
@@ -124,10 +133,10 @@ export default function TextWidget(props: WidgetProps) {
     <>
       <div className="nodrag relative flex items-center gap-2">
         <Input
-          id={props.id}
+          {...accessibility}
           hideLabel={true}
           type={config.htmlType as any}
-          label={""}
+          label={schema.title || props.label || ""}
           size={inputSize as any}
           wrapperClassName="mb-0 flex-1"
           value={displayValue}
@@ -146,8 +155,9 @@ export default function TextWidget(props: WidgetProps) {
                 onClick={handleModalOpen}
                 type="button"
                 className="p-1"
+                aria-label="Expand input"
               >
-                <ArrowsOutIcon className="size-4" />
+                <Icon icon={ArrowExpandIcon} className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Expand input</TooltipContent>

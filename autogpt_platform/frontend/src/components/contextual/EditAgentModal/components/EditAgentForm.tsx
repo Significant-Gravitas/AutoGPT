@@ -1,15 +1,6 @@
 "use client";
 
 import * as React from "react";
-import {
-  CheckCircleIcon,
-  ImagesIcon,
-  InfoIcon,
-  SparkleIcon,
-  StorefrontIcon,
-  WarningCircleIcon,
-} from "@phosphor-icons/react";
-
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
@@ -28,6 +19,15 @@ import { CharCountedTextarea } from "../../PublishAgentModal/components/AgentInf
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 
 import { useEditAgentForm } from "./useEditAgentForm";
+import {
+  Album01Icon,
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+  SparklesIcon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const DESCRIPTION_MAX = 1000;
 const CHANGES_SUMMARY_MAX = 500;
@@ -50,6 +50,8 @@ export function EditAgentForm({
     form,
     images,
     categoryOptions,
+    categoriesUnavailable,
+    categoryPlaceholder,
     isSubmitting,
     handleFormSubmit,
     handleImagesChange,
@@ -93,7 +95,7 @@ export function EditAgentForm({
           <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4">
             <div className="mb-4 flex items-start gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-                <InfoIcon size={18} weight="duotone" />
+                <Icon icon={InformationCircleIcon} size={18} />
               </div>
               <div className="flex min-w-0 flex-col gap-1">
                 <Text variant="body-medium" as="h3" className="text-amber-950">
@@ -141,22 +143,22 @@ export function EditAgentForm({
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <StorefrontIcon
+                  <Icon
+                    icon={Store01Icon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Listing basics
                   {basicsHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : basicsComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}
@@ -208,7 +210,8 @@ export function EditAgentForm({
                       labelVariant="body"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      placeholder={categoryPlaceholder}
+                      disabled={categoriesUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}
@@ -222,22 +225,22 @@ export function EditAgentForm({
             <AccordionItem value="thumbnails" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <ImagesIcon
+                  <Icon
+                    icon={Album01Icon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : thumbnailsComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}
@@ -259,22 +262,22 @@ export function EditAgentForm({
             <AccordionItem value="experience" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <span className="flex items-center gap-2 text-sm font-medium text-textBlack">
-                  <SparkleIcon
+                  <Icon
+                    icon={SparklesIcon}
                     size={18}
-                    weight="duotone"
                     className="text-zinc-500"
                   />
                   Experience details
                   {experienceHasError ? (
-                    <WarningCircleIcon
+                    <Icon
+                      icon={AlertCircleIcon}
                       size={16}
-                      weight="fill"
                       className="text-rose-500"
                     />
                   ) : experienceComplete ? (
-                    <CheckCircleIcon
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
                       size={16}
-                      weight="fill"
                       className="text-purple-500"
                     />
                   ) : null}

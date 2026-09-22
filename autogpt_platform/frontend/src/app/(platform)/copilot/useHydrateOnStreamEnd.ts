@@ -7,8 +7,49 @@ import {
   hasInProgressAssistantParts,
   resolveInterruptedMessage,
 } from "./helpers";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
+import { CANCELLED_MARKER } from "./useCopilotStop";
 
 const PROMOTED_BUBBLE_ID_PREFIX = "promoted-";
+
+/**
+ * The hydrated payload is only the backend's most-recent tail window (the
+ * `GET /sessions` endpoint returns the latest ~50 messages). That window
+ * slides forward as the conversation grows, so a blind force-replace would
+ * drop every in-memory message older than the new window's oldest sequence —
+ * tearing a hole between the live state and any older history the user
+ * already scrolled back to (`pagedMessages`), which scroll-back can't refill
+ * (it only fetches messages older than what's loaded). See SECRT-2424.
+ *
+ * Keep the `prev` messages whose DB sequence predates the window so the
+ * force-hydrated result stays contiguous with the older history. Both arrays
+ * are in ascending DB-sequence order, so the window's oldest sequence is the
+ * first `-seq-N` row in `hydrated`, and the older `prev` messages are the
+ * leading run before that boundary — a single slice. Streaming / idx-fallback
+ * rows (no `-seq-N` id) carry no sequence and mark the end of that run; they
+ * are excluded because they already live inside the refetched window.
+ */
+function retainOlderHistory(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  let oldestHydratedSeq: number | null = null;
+  for (const message of hydrated) {
+    oldestHydratedSeq = extractDbSequence(message);
+    if (oldestHydratedSeq !== null) break;
+  }
+  if (oldestHydratedSeq === null) return hydrated;
+  const windowStart = oldestHydratedSeq;
+
+  const windowStartIndex = prev.findIndex((message) => {
+    const seq = extractDbSequence(message);
+    return seq === null || seq >= windowStart;
+  });
+  const olderCount = windowStartIndex === -1 ? prev.length : windowStartIndex;
+  if (olderCount === 0) return hydrated;
+
+  return [...prev.slice(0, olderCount), ...hydrated];
+}
 
 function getMessageText(message: UIMessage): string {
   return message.parts
@@ -52,6 +93,27 @@ function preservePromotedUserBubbles(
   return [...hydrated, ...orphans];
 }
 
+/**
+ * A stopped turn is finalised client-side — ``useCopilotStop`` appends the
+ * cancellation marker — and the backend persists nothing for it, so a blind
+ * force-replace drops the partial answer and the marker with it, and the error
+ * banner that marker suppresses takes the stopped card's place. Re-attach the
+ * local bubble while the hydrated view still ends on the user's prompt.
+ */
+function preserveStoppedAssistantMessage(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  const stopped = prev[prev.length - 1];
+  if (stopped?.role !== "assistant") return hydrated;
+  const isStopped = stopped.parts.some(
+    (part) => part.type === "text" && part.text.includes(CANCELLED_MARKER),
+  );
+  if (!isStopped) return hydrated;
+  if (hydrated[hydrated.length - 1]?.role !== "user") return hydrated;
+  return [...hydrated, stopped];
+}
+
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
 // Survive remount on session re-entry: useRef would reset every time
@@ -80,6 +142,15 @@ interface Args {
    * resend.
    */
   hasActiveStream: boolean;
+  /**
+   * True while the post-finish probe (`handleFinish` in `useCopilotStream`)
+   * is still deciding whether the backend is starting a continuation turn.
+   * Applying the force-hydrate in that window swaps every message id (AI-SDK
+   * uuid → DB `-seq-N`), remounting the whole list and replaying the entrance
+   * animation — the visible mid-conversation flash — only for the resume to
+   * immediately take over. Hold the replace until the probe settles.
+   */
+  isFinishProbing: boolean;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -120,6 +191,7 @@ export function useHydrateOnStreamEnd({
   hydratedMessages,
   isReconnectScheduled,
   hasActiveStream,
+  isFinishProbing,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
@@ -177,12 +249,36 @@ export function useHydrateOnStreamEnd({
       });
     }
 
+    // Hold ALL message replacement while the post-finish probe decides
+    // whether a continuation turn is starting — replacing now would swap
+    // every message id and remount the list mid-conversation. This gate is
+    // deliberately wider than the `hasActiveStream` one below (which only
+    // holds the force-hydrate): it also holds the length-gated top-up. The
+    // interrupted toast above is NOT held — an interrupted turn must surface
+    // immediately, not after the probe loop finishes.
+    if (isFinishProbing) return;
+
     if (needsForceHydrateRef.current) {
       if (isStaleForceHydrateSnapshot) {
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
-      setMessages((prev) => preservePromotedUserBubbles(prev, finalized));
+      // The fresh session data shows the backend still has a live stream
+      // (continuation turn dispatching, or a resume about to start). The
+      // resume effect in `useCopilotStream` reconnects while the backend
+      // reports an active stream, and a merely-stale flag clears on the next
+      // session refetch — either way this effect re-fires and the replace
+      // lands once the backend goes idle, so no timeout fallback is needed.
+      if (hasActiveStream) return;
+      setMessages((prev) =>
+        preservePromotedUserBubbles(
+          prev,
+          preserveStoppedAssistantMessage(
+            prev,
+            retainOlderHistory(prev, finalized),
+          ),
+        ),
+      );
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
       return;
@@ -196,5 +292,6 @@ export function useHydrateOnStreamEnd({
     status,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
   ]);
 }

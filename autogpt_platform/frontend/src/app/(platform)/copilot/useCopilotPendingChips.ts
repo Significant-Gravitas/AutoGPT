@@ -3,8 +3,13 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import { v4 as uuidv4 } from "uuid";
+import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 
-const MID_TURN_POLL_MS = 2_000;
+// Backstop only. Promotion is normally driven instantly by the backend's
+// ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
+// slow poll just catches a dropped hint so a chip can't get stuck mid-turn.
+const MID_TURN_BACKSTOP_POLL_MS = 10_000;
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
@@ -76,13 +81,17 @@ export function useCopilotPendingChips({
   useMidTurnDrainPromotion({
     sessionId,
     status,
+    messages,
     queue,
     setMessages,
     setQueue,
   });
 
   const queueMessage = useCallback((text: string) => {
-    setQueue((prev) => [...prev, { id: crypto.randomUUID(), text }]);
+    // Options force uuid's getRandomValues path: crypto.randomUUID does not
+    // exist on a plain-HTTP LAN origin, and this updater runs during render,
+    // so there it took the whole chat page down instead of queueing.
+    setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
   }, []);
 
   return { queuedMessages, queueMessage };
@@ -190,7 +199,7 @@ function usePeekOnBoundary({
       // disappears.
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
-          id: crypto.randomUUID(),
+          id: uuidv4({}),
           text,
         }));
         const queuedDuringWindow = current.filter(
@@ -335,25 +344,28 @@ function promoteBeforeAssistant(
 }
 
 // ── 3. Mid-turn drain promotion ────────────────────────────────────────
-// The MCP tool wrapper can drain the buffer at a tool boundary without
-// emitting an SSE event, so the client doesn't know until we poll. On
-// every poll, if the backend count dropped below our local chip count,
-// promote the difference and keep the remainder as chips.
+// The executor drains the buffer at a tool boundary while the turn is
+// still streaming.  It now pushes a ``data-pending-drained`` SSE hint at
+// drain time, so the fast path promotes chips the instant the hint lands.
+// A slow backstop poll covers a dropped hint so a chip can't get stuck.
 //
-// TODO(followup): replace the 2s poll with an SSE event pushed from the
-// backend at drain time — the MCP wrapper already knows when it drains,
-// so a single "pending:drained" event would let us drop this effect
-// entirely.  Tracked separately from this PR.
+// Both paths funnel through the same ``pollBackendAndPromote`` (the GET
+// stays the source of truth: it re-reads the authoritative buffer count
+// and promotes only the difference).  Promotion dedupes bubbles by a
+// stable id, so the hint and the poll firing for the same drain is a
+// harmless no-op rather than a double-render.
 
 function useMidTurnDrainPromotion({
   sessionId,
   status,
+  messages,
   queue,
   setMessages,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
+  messages: UIMessage[];
   queue: QueuedMessage[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
@@ -368,6 +380,44 @@ function useMidTurnDrainPromotion({
     latestSessionIdRef.current = sessionId;
   }, [sessionId]);
 
+  // Fast path: promote the moment the backend signals a drain.  We count
+  // ``data-pending-drained`` parts across messages and react to the count
+  // increasing — replays (AI SDK resume re-emits the parts) leave the
+  // count unchanged on a stable render, and the GET re-read keeps a
+  // replayed hint idempotent regardless.
+  const drainHintCount = countPendingDrainedHints(messages);
+  // Baseline is tracked per session: on a session switch the old session's
+  // chips can still be in `queue` for the current commit, so a higher hint
+  // count in the new session must not promote stale chips into the new chat.
+  // Re-baseline (and bail) when sessionId changes before comparing counts.
+  const prevHintStateRef = useRef({ sessionId, count: drainHintCount });
+  useEffect(() => {
+    if (prevHintStateRef.current.sessionId !== sessionId) {
+      prevHintStateRef.current = { sessionId, count: drainHintCount };
+      return;
+    }
+
+    const isActive = status === "streaming" || status === "submitted";
+    if (!sessionId || !isActive || queue.length === 0) {
+      prevHintStateRef.current = { sessionId, count: drainHintCount };
+      return;
+    }
+    if (drainHintCount <= prevHintStateRef.current.count) return;
+    prevHintStateRef.current = { sessionId, count: drainHintCount };
+
+    const requestSessionId = sessionId;
+    const isCurrentSession = () =>
+      latestSessionIdRef.current === requestSessionId;
+    void pollBackendAndPromote(
+      sessionId,
+      queue,
+      setMessages,
+      setQueue,
+      isCurrentSession,
+    );
+  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
+
+  // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
     if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
@@ -384,9 +434,22 @@ function useMidTurnDrainPromotion({
         setQueue,
         isCurrentSession,
       );
-    }, MID_TURN_POLL_MS);
+    }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId, status, queue, setMessages, setQueue]);
+}
+
+// Count ``data-pending-drained`` hint parts the backend emits at each
+// mid-turn drain.  A rising count across renders means a fresh drain the
+// fast path should react to.
+function countPendingDrainedHints(messages: UIMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === PENDING_DRAINED_PART_TYPE) count++;
+    }
+  }
+  return count;
 }
 
 async function pollBackendAndPromote(
@@ -415,21 +478,22 @@ async function pollBackendAndPromote(
   const drained = snapshotQueue.slice(0, drainedCount);
   const drainedIds = new Set(drained.map((entry) => entry.id));
 
-  // Splice the promoted bubble at ``len-1`` so the trailing streaming
-  // assistant stays at ``messages[-1]``.  AI SDK's ``useChat`` streams
-  // every SSE text/tool delta into the last message; pushing the user
-  // bubble onto the tail makes ``[-1]`` the user bubble and every
-  // subsequent chunk lands in the wrong slot (silently) until a page
-  // refresh.  Inserting before the assistant keeps the stream flowing.
+  // Every drained chip becomes a fallback bubble, whether or not the
+  // ``data-pending-drained`` hint carried its text. A backend that ships the
+  // text lets the transcript draw the bubble at the drain point instead
+  // (``splitMessagesAtDrainHints``), and the render-time split then drops
+  // the fallback row it matches — so deciding here from the transcript's
+  // hints is unnecessary, and unsafe: the poll cannot tell which hint was
+  // this drain's, so an earlier drain's text would suppress a later chip
+  // with the same words (count-only hint, dropped hint) and lose its bubble.
   //
-  // The one tradeoff: during streaming the promoted bubbles cluster
-  // just above the current streaming assistant — which is earlier in
-  // the chronological order than the DB-canonical spot (between the
-  // tool result they rode in on and the continuing assistant).  AI SDK's
-  // single-message-per-turn model can't represent that mid-turn split
-  // client-side.  ``useHydrateOnStreamEnd`` replaces the in-memory
-  // messages with the DB-canonical order once the stream ends, so the
-  // bubbles snap to the correct position.
+  // Why not simply append the bubble? ``useChat`` streams every SSE delta
+  // into ``messages[-1]``; pushing the user bubble onto the tail makes
+  // ``[-1]`` the user bubble and every subsequent chunk lands in the wrong
+  // slot (silently) until a page refresh. Inserting before the assistant
+  // keeps the stream flowing, at the cost of showing a count-only follow-up
+  // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
+  // the list to the DB order at the end of the turn.
   setMessages((prev) => {
     const newBubbles = drained
       .map((entry) =>

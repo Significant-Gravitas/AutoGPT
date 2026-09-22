@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import (
     ExecutionMode,
     OrchestratorBlock,
@@ -57,7 +57,7 @@ class TestExecutionModeEnum:
 
 
 def _make_model_stub(provider: str, value: str):
-    """Create a lightweight stub that behaves like LlmModel for validation."""
+    """Create a lightweight stub that behaves like LLMModel for validation."""
     metadata = MagicMock()
     metadata.provider = provider
     stub = MagicMock()
@@ -103,14 +103,14 @@ class TestExtendedThinkingProviderValidation:
         assert not model_name.startswith("claude")
 
     def test_real_gpt4o_model_rejected(self):
-        """Verify a real LlmModel enum member (GPT4O) fails the provider check."""
-        model = LlmModel.GPT4O
+        """Verify a real LLMModel enum member (GPT4O) fails the provider check."""
+        model = LLMModel.GPT4O
         provider = model.metadata.provider
         assert provider not in ("anthropic", "open_router")
 
     def test_real_claude_model_passes(self):
-        """Verify a real LlmModel enum member (CLAUDE_4_6_SONNET) passes."""
-        model = LlmModel.CLAUDE_4_6_SONNET
+        """Verify a real LLMModel enum member (CLAUDE_4_6_SONNET) passes."""
+        model = LLMModel.CLAUDE_4_6_SONNET
         provider = model.metadata.provider
         model_name = model.value
         assert provider in ("anthropic", "open_router")
@@ -150,7 +150,7 @@ class TestExtendedThinkingValidationRaisesInBlock:
     async def test_non_anthropic_provider_raises_valueerror(self):
         """EXTENDED_THINKING + openai provider raises ValueError."""
         block = OrchestratorBlock()
-        input_data = _make_input_data(model=LlmModel.GPT4O)
+        input_data = _make_input_data(model=LLMModel.GPT4O)
 
         with (
             patch.object(

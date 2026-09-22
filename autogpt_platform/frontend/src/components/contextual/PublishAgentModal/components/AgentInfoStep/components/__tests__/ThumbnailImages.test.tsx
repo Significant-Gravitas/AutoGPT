@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  getPostV2GenerateSubmissionImageMockHandler,
-  getPostV2UploadSubmissionMediaMockHandler,
-  getPostV2UploadSubmissionMediaMockHandler422,
-} from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getPostV2GenerateSubmissionImageMockHandler } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -30,6 +26,20 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
     }),
   };
 });
+
+const uploadSpy = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/direct-upload", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/direct-upload")>();
+  return {
+    ...actual,
+    uploadSubmissionMediaDirect: uploadSpy,
+  };
+});
+
+function selectFile(input: HTMLInputElement, file: File) {
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
+  fireEvent.change(input);
+}
 
 describe("ThumbnailImages", () => {
   it("renders the empty state with an Add image label and Generate button", () => {
@@ -77,11 +87,7 @@ describe("ThumbnailImages", () => {
   });
 
   it("uploads a file via the empty-state input and shows the new image", async () => {
-    server.use(
-      getPostV2UploadSubmissionMediaMockHandler(
-        "https://cdn.test/uploaded.png",
-      ),
-    );
+    uploadSpy.mockResolvedValueOnce("https://cdn.test/uploaded.png");
 
     const onImagesChange = vi.fn();
     render(
@@ -93,9 +99,7 @@ describe("ThumbnailImages", () => {
     );
 
     const input = document.getElementById("image-upload") as HTMLInputElement;
-    const file = new File(["data"], "thumb.png", { type: "image/png" });
-    Object.defineProperty(input, "files", { value: [file] });
-    fireEvent.change(input);
+    selectFile(input, new File(["data"], "thumb.png", { type: "image/png" }));
 
     await waitFor(() => {
       expect(onImagesChange).toHaveBeenCalledWith([
@@ -104,9 +108,9 @@ describe("ThumbnailImages", () => {
     });
   });
 
-  it("shows a destructive toast when the upload endpoint fails", async () => {
+  it("shows a destructive toast when the upload fails", async () => {
     toastSpy.mockClear();
-    server.use(getPostV2UploadSubmissionMediaMockHandler422());
+    uploadSpy.mockRejectedValueOnce(new Error("Upload failed on server"));
 
     render(
       <ThumbnailImages
@@ -117,9 +121,7 @@ describe("ThumbnailImages", () => {
     );
 
     const input = document.getElementById("image-upload") as HTMLInputElement;
-    const file = new File(["data"], "thumb.png", { type: "image/png" });
-    Object.defineProperty(input, "files", { value: [file] });
-    fireEvent.change(input);
+    selectFile(input, new File(["data"], "thumb.png", { type: "image/png" }));
 
     await waitFor(() => {
       expect(toastSpy).toHaveBeenCalledWith(
@@ -129,6 +131,34 @@ describe("ThumbnailImages", () => {
         }),
       );
     });
+  });
+
+  it("rejects an oversized file before uploading and explains the size limit", async () => {
+    toastSpy.mockClear();
+    uploadSpy.mockClear();
+
+    render(
+      <ThumbnailImages
+        agentId="agent-1"
+        onImagesChange={() => {}}
+        initialImages={[]}
+      />,
+    );
+
+    const input = document.getElementById("image-upload") as HTMLInputElement;
+    const bigFile = new File(["x"], "big.png", { type: "image/png" });
+    Object.defineProperty(bigFile, "size", { value: 51 * 1024 * 1024 });
+    selectFile(input, bigFile);
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File too large",
+          variant: "destructive",
+        }),
+      );
+    });
+    expect(uploadSpy).not.toHaveBeenCalled();
   });
 
   it("generates an image when the Generate button is clicked", async () => {

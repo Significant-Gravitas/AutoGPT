@@ -1,6 +1,12 @@
 "use client";
 
-import { FieldProps, getTemplate, getUiOptions } from "@rjsf/utils";
+import {
+  getFieldDomId,
+  useFieldAccessibilityContext,
+} from "../../field-accessibility";
+import { FieldError } from "../../base/standard/FieldError";
+
+import { FieldProps, getTemplate, getUiOptions, titleId } from "@rjsf/utils";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import {
@@ -8,11 +14,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "../../base/standard/widgets/TextInput/TextInputExpanderModal";
-import { getHandleId, updateUiOption } from "../../helpers";
+import { getHandleId, updateUiOption, cleanUpHandleId } from "../../helpers";
 import { useJsonTextField } from "./useJsonTextField";
 import { getPlaceholder } from "./helpers";
+import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const JsonTextField = (props: FieldProps) => {
   const {
@@ -61,11 +68,18 @@ export const JsonTextField = (props: FieldProps) => {
 
   const placeholder = getPlaceholder(schema);
   const title = schema.title || name || "JSON Value";
+  const domId = getFieldDomId(fieldId, registry.formContext);
+  const fieldAccessibility = useFieldAccessibilityContext(fieldId);
+  const labelId = getFieldDomId(titleId(fieldId), registry.formContext);
+  const errorId = fieldAccessibility?.errorId ?? `${domId}-error`;
+  const descriptionId = schema.description
+    ? `${domId}-json-description`
+    : undefined;
 
   return (
     <div className="flex flex-col gap-2">
       <TitleFieldTemplate
-        id={fieldId}
+        id={titleId(fieldId)}
         title={title}
         required={required}
         schema={schema}
@@ -74,10 +88,17 @@ export const JsonTextField = (props: FieldProps) => {
       />
       <div className="nodrag relative flex items-center gap-2">
         <Input
-          id={fieldId}
+          id={domId}
+          aria-labelledby={labelId}
+          aria-describedby={[
+            descriptionId ?? fieldAccessibility?.descriptionId,
+            errorId,
+          ]
+            .filter(Boolean)
+            .join(" ")}
           hideLabel={true}
           type="textarea"
-          label=""
+          label={title}
           size="small"
           wrapperClassName="mb-0 flex-1 "
           value={textValue}
@@ -96,17 +117,27 @@ export const JsonTextField = (props: FieldProps) => {
               onClick={handleModalOpen}
               type="button"
               className="p-1"
+              aria-label="Expand JSON input"
             >
-              <ArrowsOutIcon className="size-4" />
+              <Icon icon={ArrowExpandIcon} className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Expand input</TooltipContent>
         </Tooltip>
       </div>
       {schema.description && (
-        <span className="text-xs text-gray-500">{schema.description}</span>
+        <span id={descriptionId} className="text-xs text-gray-500">
+          {schema.description}
+        </span>
       )}
 
+      {!fieldAccessibility && (
+        <FieldError
+          nodeId={registry.formContext.nodeId}
+          fieldId={cleanUpHandleId(fieldId)}
+          id={errorId}
+        />
+      )}
       <InputExpanderModal
         isOpen={isModalOpen}
         onClose={handleModalClose}

@@ -25,6 +25,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -188,9 +189,11 @@ class ClaudeCodeBlock(Block):
         )
         files: list[SandboxFileOutput] = SchemaField(
             description=(
-                "List of text files created/modified by Claude Code during this execution. "
+                "List of files created/modified by Claude Code during this execution. "
+                "Includes text files and binary files (images, PDFs, etc.). "
                 "Each file has 'path', 'relative_path', 'name', 'content', and 'workspace_ref' fields. "
-                "workspace_ref contains a workspace:// URI if the file was stored to workspace."
+                "workspace_ref contains a workspace:// URI for workspace storage. "
+                "For binary files, content contains a placeholder; use workspace_ref to access the file."
             )
         )
         conversation_history: str = SchemaField(
@@ -219,6 +222,7 @@ class ClaudeCodeBlock(Block):
     def __init__(self):
         super().__init__(
             id="4e34f4a5-9b89-4326-ba77-2dd6750b7194",
+            capability_kind="primitive",
             description=(
                 "Execute tasks using Claude Code in an E2B sandbox. "
                 "Claude Code can create files, install tools, run commands, "
@@ -321,7 +325,19 @@ class ClaudeCodeBlock(Block):
         try:
             # Either reconnect to existing sandbox or create a new one
             if existing_sandbox_id:
-                # Reconnect to existing sandbox for conversation continuation
+                # Reconnect to existing sandbox for conversation continuation.
+                # The id is caller-supplied and any id connects under our key,
+                # so the box must be stamped with this user before it is used.
+                # The stamp is read before connecting: a connect resumes a
+                # paused box on its owner's bill, so a foreign id is refused
+                # without waking it.
+                info = await BaseAsyncSandbox.get_info(
+                    existing_sandbox_id, api_key=e2b_api_key
+                )
+                if not owned_by_user(info.metadata, execution_context.user_id):
+                    raise PermissionError(
+                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                    )
                 sandbox = await BaseAsyncSandbox.connect(
                     sandbox_id=existing_sandbox_id,
                     api_key=e2b_api_key,
@@ -333,6 +349,9 @@ class ClaudeCodeBlock(Block):
                     api_key=e2b_api_key,
                     timeout=timeout,
                     envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    metadata=SandboxMetadata.for_block(
+                        execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
+                    ).as_e2b(),
                 )
 
                 # Install Claude Code from npm (ensures we get the latest version)
@@ -454,13 +473,15 @@ class ClaudeCodeBlock(Block):
                 else:
                     new_conversation_history = turn_entry
 
-            # Extract files created/modified during this run and store to workspace
+            # Extract files created/modified during this run and store to workspace.
+            # Binary files (images, PDFs, etc.) are stored via store_media_file
+            # which handles virus scanning and workspace storage.
             sandbox_files = await extract_and_store_sandbox_files(
                 sandbox=sandbox,
                 working_directory=working_directory,
                 execution_context=execution_context,
                 since_timestamp=start_timestamp,
-                text_only=True,
+                text_only=False,
             )
 
             return (

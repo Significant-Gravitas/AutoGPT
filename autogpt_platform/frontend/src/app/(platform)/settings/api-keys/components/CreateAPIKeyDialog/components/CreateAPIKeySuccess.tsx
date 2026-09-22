@@ -1,10 +1,9 @@
 "use client";
-
-import { CopyIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   plainTextKey: string;
@@ -38,7 +37,7 @@ export function CreateAPIKeySuccess({ plainTextKey, onClose }: Props) {
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<CopyIcon size={16} />}
+          leftIcon={<Icon icon={Copy01Icon} size={16} />}
           onClick={handleCopy}
         >
           Copy

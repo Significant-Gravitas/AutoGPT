@@ -4,7 +4,7 @@ import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/sto
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 export interface Agent {
   name: string;
@@ -57,7 +57,7 @@ export function useAgentSelectStep({
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
   const isDebouncingSearch = searchInput.trim() !== debouncedSearch;
   const queryPage = searchResetPending ? 1 : page;
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   React.useEffect(() => {
     setPage(1);
@@ -105,7 +105,7 @@ export function useAgentSelectStep({
               id: agent.graph_id,
               version: agent.graph_version,
               lastEdited: agent.last_edited.toLocaleDateString(),
-              imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+              imageSrc: agent.agent_image || "",
               description: agent.description || "",
               recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
             }),

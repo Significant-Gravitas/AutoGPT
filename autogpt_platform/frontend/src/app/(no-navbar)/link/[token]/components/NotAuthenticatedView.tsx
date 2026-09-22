@@ -15,7 +15,7 @@ export function NotAuthenticatedView({ token, loginRedirect }: Props) {
           variant="body-medium"
           className="text-center text-muted-foreground"
         >
-          Sign in to your AutoGPT account to finish setting up AutoPilot.
+          Sign in to your AutoGPT account to finish setting up AutoGPT.
         </Text>
         <Button as="NextLink" href={loginRedirect} className="w-full">
           Sign in

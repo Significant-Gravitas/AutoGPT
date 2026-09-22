@@ -1,6 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon, CaretRightIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
@@ -16,6 +15,12 @@ import { getTypeDisplayInfo } from "./helpers";
 import { BlockUIType } from "../../types";
 import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
+import {
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const OutputHandler = ({
   outputSchema,
@@ -104,9 +109,9 @@ export const OutputHandler = ({
                   aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                   {isExpanded ? (
-                    <CaretDownIcon size={12} weight="bold" />
+                    <Icon icon={ArrowDown01Icon} size={12} />
                   ) : (
-                    <CaretRightIcon size={12} weight="bold" />
+                    <Icon icon={ArrowRight01Icon} size={12} />
                   )}
                 </button>
               )}
@@ -119,7 +124,7 @@ export const OutputHandler = ({
                         aria-label="info"
                         tabIndex={0}
                       >
-                        <InfoIcon />
+                        <Icon icon={InformationCircleIcon} />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>{fieldSchema?.description}</TooltipContent>
@@ -183,9 +188,9 @@ export const OutputHandler = ({
           className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Output{" "}
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={16}
-            weight="bold"
             className={`transition-transform ${isOutputVisible ? "rotate-180" : ""}`}
           />
         </Text>

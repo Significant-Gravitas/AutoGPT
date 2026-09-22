@@ -224,6 +224,35 @@ class TestFlushOrphanToolUses:
         adapter.flush_unresolved_tool_calls.assert_not_called()
         assert events == []
 
+    def test_persists_tool_name_on_synthetic_rows(self):
+        session = _make_session()
+        state = _adapter_with_unresolved([_tool_output("t1", "r1")])
+        _flush_orphan_tool_uses_to_session(session, state)
+        assert session.messages[0].name == "t"
+
+    def test_nameless_output_falls_back_to_matching_tool_call(self):
+        session = _make_session(
+            [
+                ChatMessage(
+                    role="assistant",
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "t1",
+                            "type": "function",
+                            "function": {"name": "web_search", "arguments": "{}"},
+                        }
+                    ],
+                )
+            ]
+        )
+        flushed = [
+            StreamToolOutputAvailable(toolCallId="t1", toolName=None, output="r1")
+        ]
+        state = _adapter_with_unresolved(flushed)
+        _flush_orphan_tool_uses_to_session(session, state)
+        assert session.messages[-1].name == "web_search"
+
 
 class TestClassifyFinalFailure:
     """Ensures the history marker (via finalize) and the SSE StreamError yield
@@ -340,6 +369,3 @@ class TestRetryableStreamErrorCodes:
     def test_unknown_codes_are_not_retryable(self):
         assert "sdk_error" not in _RETRYABLE_STREAM_ERROR_CODES
         assert "all_attempts_exhausted" not in _RETRYABLE_STREAM_ERROR_CODES
-
-    def test_budget_below_viable_is_retryable(self):
-        assert "budget_below_viable" in _RETRYABLE_STREAM_ERROR_CODES

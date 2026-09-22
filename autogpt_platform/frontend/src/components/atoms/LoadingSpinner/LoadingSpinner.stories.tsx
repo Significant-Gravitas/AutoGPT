@@ -10,7 +10,7 @@ const meta: Meta<typeof LoadingSpinner> = {
     docs: {
       description: {
         component:
-          "Animated loading indicator using the Phosphor CircleNotch icon. Provide a `size` prop or custom classes to fit different contexts.",
+          "Animated loading indicator using the Hugeicons Loading03 icon. Provide a `size` prop or custom classes to fit different contexts.",
       },
     },
   },

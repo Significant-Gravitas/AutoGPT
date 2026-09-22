@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import {
   OutputRenderer,
   OutputMetadata,
   DownloadContent,
   CopyContent,
 } from "../types";
+import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function canRenderJSON(value: unknown, _metadata?: OutputMetadata): boolean {
   if (_metadata?.type === "json") {
@@ -134,9 +135,9 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <CaretRight className="size-3" />
+              <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
-              <CaretDown className="size-3" />
+              <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">
               Array({itemCount})
@@ -171,9 +172,9 @@ function JSONViewer({ data }: { data: any }) {
             className="inline-flex items-center rounded px-1 hover:bg-muted"
           >
             {isCollapsed ? (
-              <CaretRight className="size-3" />
+              <Icon icon={ArrowRight01Icon} className="size-3" />
             ) : (
-              <CaretDown className="size-3" />
+              <Icon icon={ArrowDown01Icon} className="size-3" />
             )}
             <span className="ml-1 text-muted-foreground">Object</span>
           </button>

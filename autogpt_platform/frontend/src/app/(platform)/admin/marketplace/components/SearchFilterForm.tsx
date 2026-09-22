@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { isKey } from "@/lib/keyboard";
 
 export function SearchAndFilterAdminMarketplace({
   initialSearch,
@@ -64,7 +65,7 @@ export function SearchAndFilterAdminMarketplace({
           placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          onKeyDown={(e) => isKey(e, "Enter") && handleSearch()}
         />
         <Button variant="outline" onClick={handleSearch}>
           <Search className="h-4 w-4" />
