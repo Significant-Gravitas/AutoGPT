@@ -3456,6 +3456,28 @@ async def test_seed_roster_round_trip(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_archives_a_retired_template(
+    server: SpinTestServer,
+    fixture_roster: dict[str, seed.RosterEntry],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A template folded into another entry keeps its row — hires point at it
+    through sourceTemplateId — so the seed archives it off the Team page
+    instead of deleting it, and leaves every live template alone."""
+    await _load_roster_store_assets()
+    retired = await _seed_template(name="Retired", preload_listings=[])
+    monkeypatch.setattr(seed, "RETIRED_TEMPLATES", [retired.name])
+
+    ids = await seed.seed_roster()
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": retired.id})
+    assert row is not None and row.isArchived
+    listed = {t.id for t in await experts_db.list_templates()}
+    assert retired.id not in listed
+    assert set(ids) <= listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ):
