@@ -2288,6 +2288,12 @@ model SkillListingVersion {
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
 
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
+
   isDeleted   Boolean @default(false)
   isAvailable Boolean @default(true)
 

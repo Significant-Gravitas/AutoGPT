@@ -161,4 +161,59 @@ describe("RateLimitResetDialog", () => {
 
     expect(screen.queryByText("Daily usage limit reached")).toBeNull();
   });
+
+  it("offers nothing to continue on by default", () => {
+    render(
+      <RateLimitResetDialog isOpen={true} onClose={vi.fn()} resetsAt={null} />,
+    );
+
+    expect(screen.queryByText(/Continue on/)).toBeNull();
+    expect(screen.queryByText(/Or continue on/)).toBeNull();
+  });
+
+  it("offers a linked subscription beside the upgrade, never instead of it", () => {
+    const onClose = vi.fn();
+    const onContinue = vi.fn();
+    render(
+      <RateLimitResetDialog
+        isOpen={true}
+        onClose={onClose}
+        resetsAt={null}
+        tier="MAX"
+        alternative={{ display_name: "ChatGPT" }}
+        onContinue={onContinue}
+      />,
+    );
+
+    // The cap is still ours, so every answer it always had is still here.
+    expect(screen.getByText("Wait for reset")).toBeDefined();
+    expect(screen.getByText("Contact us")).toBeDefined();
+    expect(screen.getByText(/Or continue on ChatGPT/)).toBeDefined();
+
+    fireEvent.click(screen.getByText("Continue on ChatGPT"));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    // Closing is the switch's job once it lands, not the click's: the
+    // composer still holds the refused message for the user to resend.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockWindowOpen).not.toHaveBeenCalled();
+  });
+
+  it("keeps the upgrade path working with a switch on offer", () => {
+    const onClose = vi.fn();
+    render(
+      <RateLimitResetDialog
+        isOpen={true}
+        onClose={onClose}
+        resetsAt={null}
+        tier="PRO"
+        alternative={{ display_name: "ChatGPT" }}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Upgrade plan"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/settings/billing");
+  });
 });

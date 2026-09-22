@@ -47,6 +47,7 @@ from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
     safe_caller_name,
+    sent_from_metadata,
     unknown_target_message,
 )
 from .models import (
@@ -239,6 +240,7 @@ class HandoffToExpertTool(BaseTool):
             tool_name="handoff_to_expert",
             spawn=SpawnRequest(may_spawn=True),
             allow_queue=False,
+            message_metadata=sent_from_metadata(session, caller),
         )
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:

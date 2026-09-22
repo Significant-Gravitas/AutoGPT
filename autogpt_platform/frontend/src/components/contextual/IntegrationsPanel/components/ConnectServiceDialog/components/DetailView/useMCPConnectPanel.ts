@@ -8,7 +8,7 @@ import { getErrorMessage } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { OAUTH_ERROR_FLOW_CANCELED } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
-import { connectMCPOAuth } from "./mcpOAuth";
+import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { storeMCPToken } from "./storeMCPToken";
 import { useMCPManualAuth } from "./useMCPManualAuth";
 
@@ -53,7 +53,11 @@ export function useMCPConnectPanel({
     manual.token.trim().length > 0;
 
   async function handleConnect() {
-    if (!canConnect) return;
+    if (
+      !canConnect ||
+      (activeRequest.current && !activeRequest.current.signal.aborted)
+    )
+      return;
     setError(null);
     setIsSubmitting(true);
     const signal = startRequest();
@@ -103,12 +107,19 @@ export function useMCPConnectPanel({
           : message,
       );
     } finally {
-      if (!signal.aborted) setIsSubmitting(false);
+      if (activeRequest.current?.signal === signal) {
+        activeRequest.current = null;
+        if (!signal.aborted) setIsSubmitting(false);
+      }
     }
   }
 
   async function handleSubmitToken() {
-    if (!canSubmitToken) return;
+    if (
+      !canSubmitToken ||
+      (activeRequest.current && !activeRequest.current.signal.aborted)
+    )
+      return;
     const invalid = manual.validateToken();
     if (invalid) {
       setError(invalid);
@@ -132,7 +143,10 @@ export function useMCPConnectPanel({
       if (signal.aborted) return;
       setError(getErrorMessage(error));
     } finally {
-      if (!signal.aborted) setIsSubmitting(false);
+      if (activeRequest.current?.signal === signal) {
+        activeRequest.current = null;
+        if (!signal.aborted) setIsSubmitting(false);
+      }
     }
   }
 
