@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ErrorPage from "../page";
 
@@ -30,6 +36,8 @@ describe("ErrorPage", () => {
       isLoggedIn: false,
     };
     replaceMock.mockClear();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("redirects logged-out users away from the session expired screen", async () => {
@@ -49,10 +57,10 @@ describe("ErrorPage", () => {
       isLoggedIn: true,
     };
 
-    const { container } = render(<ErrorPage />);
+    render(<ErrorPage />);
 
     await waitFor(() => {
-      expect(container.querySelector(".min-h-screen")).not.toBeNull();
+      expect(screen.queryByText(/Your session has expired/)).not.toBeNull();
     });
 
     expect(replaceMock).not.toHaveBeenCalled();
@@ -77,6 +85,46 @@ describe("ErrorPage", () => {
     expect(
       screen.queryByText(/Our servers are experiencing issues/),
     ).not.toBeNull();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "session-expired",
+    "auth-failed",
+    "auth-token-invalid",
+    "user-creation-failed",
+  ])("sends the %s retry action to login", (message) => {
+    searchMessage = message;
+    authState = { isUserLoading: false, isLoggedIn: true };
+    render(<ErrorPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    expect(replaceMock).toHaveBeenCalledExactlyOnceWith("/login");
+  });
+
+  it("returns home when retrying a general server error", () => {
+    searchMessage = "server-error";
+    render(<ErrorPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    expect(replaceMock).toHaveBeenCalledExactlyOnceWith("/");
+  });
+
+  it("waits before retrying a rate-limited request", () => {
+    vi.useFakeTimers();
+    const reload = vi
+      .spyOn(window.location, "reload")
+      .mockImplementation(() => {});
+    searchMessage = "rate-limited";
+    render(<ErrorPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+    expect(reload).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(2000));
+
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(replaceMock).not.toHaveBeenCalled();
   });
 });
