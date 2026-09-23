@@ -265,6 +265,27 @@ describe("proxy route — handler pass-through", () => {
     expect(acceptEncoding.toLowerCase()).toMatch(/gzip|br|deflate/);
   });
 
+  it("forwards the Expert appearance purpose on uploads", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('"https://cdn.test/avatar.png"', { status: 200 }),
+    );
+    const body = new FormData();
+    body.append(
+      "file",
+      new Blob(["image"], { type: "image/png" }),
+      "avatar.png",
+    );
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/store/submissions/media?purpose=expert-avatar",
+      { method: "POST", body },
+    );
+    await POST(req, makeParams(["api", "store", "submissions", "media"]));
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${BACKEND}/api/store/submissions/media?purpose=expert-avatar`,
+    );
+    expect(vi.mocked(fetch).mock.calls[0][1]!.method).toBe("POST");
+  });
+
   it("forwards query string to the backend URL", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("{}", {

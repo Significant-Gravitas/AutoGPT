@@ -24,6 +24,7 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 import asyncio
 import logging
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
@@ -126,7 +127,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
+        f"<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n"
         f"<standing_work>\n"
         f"Part of your job is the work that repeats. A colleague who only "
         f"ever acts when asked is half a colleague: when you notice something "
