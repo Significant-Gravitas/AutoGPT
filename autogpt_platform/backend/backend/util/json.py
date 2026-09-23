@@ -297,9 +297,8 @@ def sanitize_string(value: str) -> str:
 def _sanitize_encoded(value: Any) -> Any:
     """Strip control characters from a structure to_dict has already encoded.
 
-    Everything here is a plain dict, list, str, int, float, bool or None, so
-    this only has to walk the tree; it does not need to repeat the type
-    conversion to_dict just did.
+    Most values are plain JSON types. If an encoder leaves an unexpected leaf,
+    pass it through FastAPI's encoder as the previous second pass did.
     """
     kind = type(value)
     if kind is str:
@@ -312,7 +311,9 @@ def _sanitize_encoded(value: Any) -> Any:
         # A str subclass. re.sub returns a plain str, which is what the second
         # to_dict pass used to produce here, so keep it unconditional.
         return _strip_control_chars("", value)
-    return value
+    if kind in (int, float, bool, type(None)):
+        return value
+    return to_dict(value, custom_encoder={str: sanitize_string})
 
 
 def sanitize_json(data: Any) -> Any:
