@@ -227,6 +227,19 @@ async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     asks.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "tool", ["web_search", "write_workspace_file", "connect_integration"]
+)
+async def test_calls_that_always_run_never_query_the_review_store(
+    gate_on, clean_session_state, tool
+):
+    find = AsyncMock(return_value=None)
+    with patch(f"{_GATE}.review_store.find_decision", find):
+        decision = await check_action(tool, {}, "u", _session("ask_first"))
+    assert decision.allowed
+    find.assert_not_awaited()
+
+
 async def test_only_one_action_waits_at_a_time(gate_on, clean_session_state):
     open_review = AsyncMock(return_value=True)
     with (
