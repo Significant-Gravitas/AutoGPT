@@ -212,22 +212,48 @@ async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
     assert "posted flaky" in delivered.content
 
 
+@pytest.mark.parametrize(
+    "status, expect",
+    [(ReviewStatus.APPROVED, "posted keep"), (ReviewStatus.REJECTED, "declined")],
+)
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_result_lost_after_the_call_ran_says_it_ran(
+async def test_a_failed_cap_still_delivers_the_real_outcome(
+    setup_test_user, test_user_id, gate_on, post_tool, status, expect
+):
+    """A refusal stays a refusal, and a run is reported with its result."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "keep")
+    await _answer(review_id, status)
+
+    def broken_cap(_text: str) -> str:
+        raise RuntimeError("cap failed")
+
+    [delivered] = await held.resolve_answered(test_user_id, session, cap=broken_cap)
+
+    assert expect in delivered.content
+    assert "may have run" not in delivered.content
+    assert post_tool.runs == (
+        [{"text": "keep"}] if status == ReviewStatus.APPROVED else []
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Re-storing it would report "no longer open" for an action that ran."""
+    """Re-storing it would report "no longer open" for a call that reached the gate."""
     session = await _new_session(test_user_id)
-    review_id = await _hold(session, test_user_id, "ran once")
+    review_id = await _hold(session, test_user_id, "spent")
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    def lose(_text: str) -> str:
-        raise RuntimeError("result lost")
+    async def spend_then_fail(user_id, *_args):
+        await review_store.consume(review_id, user_id)
+        raise RuntimeError("lost after the gate")
 
-    [delivered] = await held.resolve_answered(test_user_id, session, cap=lose)
+    with patch.object(held, "_outcome", spend_then_fail):
+        [delivered] = await held.resolve_answered(test_user_id, session)
 
-    assert post_tool.runs == [{"text": "ran once"}]
-    assert "ran, but its result was lost" in delivered.content
+    assert "may have run" in delivered.content
     assert await held.answered(test_user_id, session.session_id) == []
 
 

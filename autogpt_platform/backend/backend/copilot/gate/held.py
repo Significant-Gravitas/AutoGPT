@@ -212,15 +212,21 @@ async def _deliver(
 ) -> PendingMessage:
     from backend.copilot.tools import get_tool
 
-    output = cap(await _outcome(user_id, session, call, get_tool(call.tool_name)))
-    return _result_row(call, output)
+    output = await _outcome(user_id, session, call, get_tool(call.tool_name))
+    try:
+        return _result_row(call, cap(output))
+    except Exception:
+        # The outcome is known and may be a refusal; only the engine's cut
+        # failed, so deliver it trimmed rather than let recovery guess.
+        logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
+        return _result_row(call, output[: _MAX_RESULT_CHARS // 2])
 
 
 async def _recover(
     user_id: str, session_id: str, call: HeldCall
 ) -> list[PendingMessage]:
-    """A card still open goes back for the next turn; one whose approval was
-    spent ran, so the model is told that rather than "no longer open" later."""
+    """``_outcome`` failed. A card still open goes back for the next turn; a
+    spent approval means the call reached the gate, so it may have run."""
     try:
         rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
         spent = call.review_id not in rows
@@ -232,8 +238,9 @@ async def _recover(
     return [
         _result_row(
             call,
-            "The approved action ran, but its result was lost before it reached "
-            "you. Tell the user, and check the outcome before relying on it.",
+            "The approved action may have run, but its result was lost before it "
+            "reached you. Tell the user, and check the outcome before relying "
+            "on it.",
         )
     ]
 
