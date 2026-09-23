@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from prisma.enums import ReviewStatus
 
@@ -27,6 +27,9 @@ from backend.copilot.model import ChatSession
 # add an alias, which shifts a docstring the secrets baseline trips on.
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
+
+if TYPE_CHECKING:
+    from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
@@ -65,17 +68,34 @@ def review_id_for(
     return f"{node_id_for(tool_name)}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
 
 
-def review_payload(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Nest the arguments one level down, and redact secret-shaped keys."""
+def review_payload(
+    tool_name: str, args: dict[str, Any], subject: "Subject | None" = None
+) -> dict[str, Any]:
+    """Nest the arguments one level down, and redact secret-shaped keys.
+
+    The subject is kept as decided when the card opened, so its answer acts on
+    what the user saw rather than on a tree that has moved since.
+    """
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
     # the one that matters off the card while the approval still binds it.
     per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
     shown = {key: _clip(value, per_value) for key, value in redacted.items()}
-    return {"tool": tool_name, "arguments": shown}
+    payload: dict[str, Any] = {"tool": tool_name, "arguments": shown}
+    if subject is not None:
+        payload["subject"] = subject.model_dump(mode="json", exclude={"reason"})
+    return payload
 
 
-def instructions_for(tool_name: str, reason: str) -> str:
+def rule_key(review: PendingHumanReviewModel, tool_name: str) -> str:
+    """What a rejection of this row sets to ask: its subject, else its tool."""
+    payload = review.payload if isinstance(review.payload, dict) else {}
+    subject = payload.get("subject")
+    key = subject.get("key") if isinstance(subject, dict) else None
+    return key if isinstance(key, str) and key else tool_name
+
+
+def instructions_for(tool_name: str, reason: str, label: str | None = None) -> str:
     """Compose the card headline ourselves rather than trusting the reason.
 
     ``PendingReviewsList`` uses ``instructions`` AS the headline, so a model
@@ -87,7 +107,7 @@ def instructions_for(tool_name: str, reason: str) -> str:
     lower-cased rather than stripped, which would mangle the sentence.
     """
     cleaned = " ".join(reason.split())[:200].strip(" :—-") or "needs your approval"
-    label = tool_name.replace("_", " ").capitalize()
+    label = label or tool_name.replace("_", " ").capitalize()
     return f"{label} — {cleaned}".replace("Block", "block")
 
 
@@ -150,14 +170,15 @@ async def open_review(
     tool_name: str,
     args: dict[str, Any],
     reason: str,
+    subject: "Subject | None" = None,
 ) -> bool:
     """Park the call for approval. False means nothing was recorded."""
     return await open_review_row(
         review_id,
         user_id,
         session,
-        review_payload(tool_name, args),
-        instructions_for(tool_name, reason),
+        review_payload(tool_name, args, subject),
+        instructions_for(tool_name, reason, subject.name if subject else None),
     )
 
 

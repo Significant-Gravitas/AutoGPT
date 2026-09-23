@@ -3,11 +3,12 @@
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.gate.subject import NO_OP, Subject, workflow_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
@@ -35,7 +36,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import BaseTool
+from .base import GATE_APPROVED, BaseTool
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -163,9 +164,81 @@ class RunAgentTool(BaseTool):
     The response tells the caller what's missing or confirms execution.
     """
 
+    has_gate_subject = True
+
     @property
     def name(self) -> str:
         return "run_agent"
+
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """The workflow this call runs, with its sub-graphs; NO_OP for a dry
+        run, a trigger workflow (which only returns its trigger details) or a
+        call that names no workflow the tool would find."""
+        try:
+            params = RunAgentInput(**args)
+        except ValidationError:
+            return NO_OP
+        if params.dry_run or session.dry_run:
+            return NO_OP
+        graph = await self._subject_graph(user_id, session, params)
+        if graph is None or graph.has_external_trigger:
+            return NO_OP
+        return workflow_subject(
+            graph, schedules=bool(params.schedule_name or params.cron)
+        )
+
+    async def _subject_graph(
+        self, user_id: str, session: ChatSession, params: RunAgentInput
+    ) -> GraphModel | None:
+        """The graph ``_execute`` would run, resolved the same way."""
+        if params.preset_id:
+            preset = await library_db().get_preset(
+                user_id=user_id, preset_id=params.preset_id
+            )
+            if preset is None or preset.expert_id != session.expert_id:
+                return None
+            return await graph_db().get_graph(
+                preset.graph_id,
+                preset.graph_version,
+                user_id=user_id,
+                include_subgraphs=True,
+            )
+        library_agent_id = params.library_agent_id
+        builder_graph_id = session.metadata.builder_graph_id
+        if (
+            builder_graph_id
+            and not library_agent_id
+            and "/" not in (params.username_agent_slug)
+        ):
+            library_agent_id = builder_graph_id
+        if library_agent_id:
+            try:
+                library_agent = await library_db().get_library_agent(
+                    library_agent_id, user_id
+                )
+            except NotFoundError:
+                library_agent = None
+            library_agent = (
+                library_agent
+                or await library_db().get_library_agent_by_graph_id(
+                    user_id, library_agent_id
+                )
+            )
+            if library_agent is None:
+                return None
+            return await graph_db().get_graph(
+                library_agent.graph_id,
+                library_agent.graph_version,
+                user_id=user_id,
+                include_subgraphs=True,
+            )
+        if "/" in params.username_agent_slug:
+            username, agent_name = params.username_agent_slug.split("/", 1)
+            graph, _ = await fetch_graph_from_store_slug(username, agent_name)
+            return graph
+        return None
 
     @property
     def description(self) -> str:
@@ -258,6 +331,7 @@ class RunAgentTool(BaseTool):
         validation because the parameter set is complex with cross-field
         validators defined in the Pydantic model.
         """
+        approved = bool(kwargs.pop(GATE_APPROVED, False))
         params = RunAgentInput(**kwargs)
         # Session-level dry_run forces all runs to be dry. In normal sessions
         # the LLM may still request dry_run=True on individual calls.
@@ -269,7 +343,7 @@ class RunAgentTool(BaseTool):
         # graph + inputs + credentials). Handle it before agent-identifier
         # resolution below.
         if params.preset_id:
-            return await self._handle_preset_run(user_id, session, params)
+            return await self._handle_preset_run(user_id, session, params, approved)
 
         # Validate at least one identifier is provided
         has_slug = params.username_agent_slug and "/" in params.username_agent_slug
@@ -444,6 +518,7 @@ class RunAgentTool(BaseTool):
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
                     dry_run=params.dry_run,
+                    gate_approved=approved,
                 )
 
             # Step 4: persist the validated config as a reusable preset — only
@@ -778,6 +853,7 @@ class RunAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         params: RunAgentInput,
+        approved: bool = False,
     ) -> ToolResponseBase:
         """Run a saved preset by id (mirrors POST /presets/{id}/execute)."""
         session_id = session.session_id
@@ -884,6 +960,7 @@ class RunAgentTool(BaseTool):
             wait_for_result=params.wait_for_result,
             dry_run=params.dry_run,
             preset_id=preset.id,
+            gate_approved=approved,
         )
 
     async def _maybe_save_preset(
@@ -926,8 +1003,13 @@ class RunAgentTool(BaseTool):
         dry_run: bool,
         wait_for_result: int = 0,
         preset_id: str | None = None,
+        gate_approved: bool = False,
     ) -> ToolResponseBase:
-        """Execute an agent immediately, optionally waiting for completion."""
+        """Execute an agent immediately, optionally waiting for completion.
+
+        ``gate_approved``: the user approved this run on a card, so it runs
+        under the graph's own safe-mode setting rather than pausing again.
+        """
         session_id = session.session_id
 
         # Check rate limits (dry runs don't count against the session limit)
@@ -975,7 +1057,9 @@ class RunAgentTool(BaseTool):
                 trigger=ExecutionTrigger.COPILOT,
                 trigger_ref=session_id,
                 pause_irreversible_actions=(
-                    not dry_run and session.metadata.pauses_irreversible_actions
+                    not dry_run
+                    and not gate_approved
+                    and session.metadata.pauses_irreversible_actions
                 ),
             )
         except GraphValidationError as e:

@@ -46,6 +46,8 @@ class HeldCall(BaseModel):
     tool_name: str
     tool_call_id: str
     args: dict[str, Any]
+    # What a rejection sets to ask for the rest of the chat; the tool when None.
+    rule_key: str | None = None
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -217,7 +219,7 @@ async def _outcome(
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
-        await chat_rules.set_ask(session.session_id, call.tool_name)
+        await chat_rules.set_ask(session.session_id, call.rule_key or call.tool_name)
         return (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."

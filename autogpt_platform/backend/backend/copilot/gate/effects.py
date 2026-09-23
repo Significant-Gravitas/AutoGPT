@@ -56,12 +56,24 @@ def graph_effect(graph: "GraphModel") -> Resolved:
             )
             if effect is None:
                 return Resolved(None, block)
-            if RANK[effect] > RANK[worst.effect or BlockEffect.NONE]:
+            if _worse(effect, block, worst):
                 worst = Resolved(effect, block)
     return worst
 
 
 RANK = {effect: rank for rank, effect in enumerate(BlockEffect)}
+
+
+def _worse(effect: BlockEffect, block: Block, than: Resolved) -> bool:
+    """Among equals an irreversible node names the run: it is what the card warns of."""
+    current = than.effect or BlockEffect.NONE
+    if RANK[effect] != RANK[current]:
+        return RANK[effect] > RANK[current]
+    held_by = than.decided_by
+    return block.is_irreversible_action and not (
+        held_by is not None and held_by.is_irreversible_action
+    )
+
 
 # Input, output, note and human-in-the-loop nodes do nothing; a trigger receives.
 # A nested workflow (AGENT) is resolved through its sub-graph instead.
