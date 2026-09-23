@@ -25,7 +25,7 @@ from prisma.models import (
     User,
 )
 
-from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.constants import COPILOT_NODE_PREFIX
 from backend.copilot.db import create_chat_session
 from backend.data.human_review import get_pending_reviews_for_user
 from backend.util.json import SafeJson
@@ -122,7 +122,6 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
             f"sess-{uuid4().hex[:8]}", user_id, expert_id=ana.id
         )
         session_ids.append(session.session_id)
-        copilot_exec_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
 
         await PendingHumanReview.prisma().create(
             data={
@@ -140,9 +139,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
             data={
                 "nodeExecId": f"{COPILOT_NODE_PREFIX}some-block:{uuid4().hex[:8]}",
                 "userId": user_id,
-                "graphExecId": copilot_exec_id,
-                "graphId": copilot_exec_id,
-                "graphVersion": 1,
+                "sessionId": session.session_id,
                 "payload": SafeJson({"foo": "bar"}),
                 "editable": True,
                 "status": ReviewStatus.WAITING,
@@ -150,9 +147,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
         )
 
         reviews = await get_pending_reviews_for_user(user_id, 1, 25)
-        by_exec = {r.graph_exec_id: r for r in reviews}
-
-        real = by_exec[real_exec_id]
+        real = next(r for r in reviews if r.graph_exec_id == real_exec_id)
         assert real.expert_id == ana.id
         assert real.expert_name == "Ana"
         assert real.expert_avatar_url == "https://example.com/ana.png"
@@ -160,8 +155,8 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
         assert real.library_agent_id == lib_agent.id
         assert real.session_id is None
 
-        copilot = by_exec[copilot_exec_id]
-        assert copilot.session_id == session.session_id
+        copilot = next(r for r in reviews if r.session_id == session.session_id)
+        assert copilot.graph_exec_id is None
         assert copilot.expert_id == ana.id
         assert copilot.expert_name == "Ana"
     finally:

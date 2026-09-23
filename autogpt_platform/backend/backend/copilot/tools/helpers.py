@@ -1007,13 +1007,12 @@ async def check_hitl_review(
     """
     block = prep.block
     block_id = prep.block_id
-    synthetic_graph_id = prep.synthetic_graph_id
     synthetic_node_id = prep.synthetic_node_id
     input_data = prep.input_data
 
     # Reuse an existing WAITING review for identical input (LLM retry guard)
-    existing_reviews = await review_db().get_pending_reviews_for_execution(
-        synthetic_graph_id, user_id
+    existing_reviews = await review_db().get_pending_reviews_for_session(
+        session_id, user_id
     )
     existing_review = next(
         (
@@ -1036,7 +1035,6 @@ async def check_hitl_review(
             block_id=block_id,
             block_name=block.name,
             review_id=existing_review.node_exec_id,
-            graph_exec_id=synthetic_graph_id,
             input_data=input_data,
         )
 
@@ -1046,11 +1044,9 @@ async def check_hitl_review(
 
     review_context = ExecutionContext(
         user_id=user_id,
-        graph_id=synthetic_graph_id,
-        graph_exec_id=synthetic_graph_id,
-        graph_version=1,
         node_id=synthetic_node_id,
         node_exec_id=synthetic_node_exec_id,
+        session_id=session_id,
         sensitive_action_safe_mode=True,
         organization_id=organization_id,
         team_id=team_id,
@@ -1060,9 +1056,9 @@ async def check_hitl_review(
         user_id=user_id,
         node_id=synthetic_node_id,
         node_exec_id=synthetic_node_exec_id,
-        graph_exec_id=synthetic_graph_id,
-        graph_id=synthetic_graph_id,
-        graph_version=1,
+        graph_exec_id=None,
+        graph_id=None,
+        graph_version=None,
         execution_context=review_context,
         is_graph_execution=False,
     )
@@ -1077,7 +1073,6 @@ async def check_hitl_review(
             block_id=block_id,
             block_name=block.name,
             review_id=synthetic_node_exec_id,
-            graph_exec_id=synthetic_graph_id,
             input_data=input_data,
         )
 
@@ -1118,7 +1113,6 @@ async def check_spend_approval(
         block_id=prep.block_id,
         block_name=prep.block.name,
         review_id=review_id,
-        graph_exec_id=prep.synthetic_graph_id,
         input_data=prep.input_data,
     )
 

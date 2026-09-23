@@ -19,7 +19,6 @@ from pydantic import BaseModel
 
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
-    COPILOT_SESSION_PREFIX,
     COPILOT_SYNTHETIC_ID_PREFIX,
 )
 from backend.data.db_accessors import review_db
@@ -79,11 +78,10 @@ async def open_mcp_review(
     An identical pending call (same server, tool and arguments) reuses its
     review so a retried ``run_capability`` does not stack approvals.
     """
-    graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     node_id = mcp_review_node_id(host)
     data = payload.model_dump()
-    for review in await review_db().get_pending_reviews_for_execution(
-        graph_exec_id, user_id
+    for review in await review_db().get_pending_reviews_for_session(
+        session_id, user_id
     ):
         if (
             review.node_id == node_id
@@ -95,9 +93,7 @@ async def open_mcp_review(
     await review_db().get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        graph_exec_id=graph_exec_id,
-        graph_id=graph_exec_id,
-        graph_version=1,
+        session_id=session_id,
         input_data=data,
         message=(
             f"Run MCP tool '{payload.tool}' on {host} with the shown arguments? "

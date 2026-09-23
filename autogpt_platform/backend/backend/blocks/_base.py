@@ -817,9 +817,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: str,
-        graph_id: str,
-        graph_version: int,
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         execution_context: "ExecutionContext",
         is_graph_execution: bool = True,
         **kwargs,
@@ -853,6 +853,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             is_graph_execution=is_graph_execution,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            session_id=None if is_graph_execution else execution_context.session_id,
         )
 
         if decision is None:

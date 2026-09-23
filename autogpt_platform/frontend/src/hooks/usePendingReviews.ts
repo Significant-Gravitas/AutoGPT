@@ -1,5 +1,6 @@
 import {
   useGetV2GetPendingReviews,
+  useGetV2GetPendingReviewsForChatSession,
   useGetV2GetPendingReviewsForExecution,
 } from "@/app/api/__generated__/endpoints/executions/executions";
 import { okData } from "@/app/api/helpers";
@@ -27,6 +28,26 @@ export function usePendingReviewsForExecution(
   const query = useGetV2GetPendingReviewsForExecution(graphExecId, {
     query: {
       enabled: options?.enabled ?? !!graphExecId,
+      refetchInterval: options?.refetchInterval,
+      refetchIntervalInBackground: !!options?.refetchInterval,
+    },
+  });
+
+  return {
+    pendingReviews: okData(query.data) || [],
+    isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
+  };
+}
+
+export function usePendingReviewsForSession(
+  sessionId: string,
+  options?: UsePendingReviewsForExecutionOptions,
+) {
+  const query = useGetV2GetPendingReviewsForChatSession(sessionId, {
+    query: {
+      enabled: options?.enabled ?? !!sessionId,
       refetchInterval: options?.refetchInterval,
       refetchIntervalInBackground: !!options?.refetchInterval,
     },

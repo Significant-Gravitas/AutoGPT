@@ -26,6 +26,7 @@ from backend.api.features.graph_executions.review.model import (
 from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     is_copilot_synthetic_id,
+    legacy_chat_session_id,
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import get_graph_execution_meta
@@ -48,7 +49,9 @@ class ReviewResult(BaseModel):
     node_exec_id: str
 
 
-async def _sync_awaiting_review_safely(user_id: str, graph_id: str) -> None:
+async def _sync_awaiting_review_safely(
+    user_id: str, graph_id: str | None, session_id: str | None = None
+) -> None:
     """Keep the awaiting-review alert from deciding whether a review succeeds.
 
     The alert is a notification side effect. Raising here would report failure
@@ -57,26 +60,28 @@ async def _sync_awaiting_review_safely(user_id: str, graph_id: str) -> None:
     the caller back over a notification problem.
     """
     try:
-        await sync_awaiting_review(user_id, graph_id)
+        await sync_awaiting_review(user_id, graph_id, session_id=session_id)
     except Exception:
         logger.warning(
-            "Could not sync the awaiting-review alert for graph %s",
-            graph_id,
+            "Could not sync the awaiting-review alert for %s",
+            session_id or graph_id,
             exc_info=True,
         )
 
 
-def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
-    """Generate the special nodeExecId key for auto-approval records."""
-    return f"auto_approve_{graph_exec_id}_{node_id}"
+def get_auto_approve_key(scope_id: str, node_id: str) -> str:
+    """The nodeExecId of an auto-approval record; ``scope_id`` is the graph
+    execution or the chat session the approval holds for."""
+    return f"auto_approve_{scope_id}_{node_id}"
 
 
 async def check_approval(
     node_exec_id: str,
-    graph_exec_id: str,
     node_id: str,
     user_id: str,
     input_data: SafeJsonData | None = None,
+    graph_exec_id: str | None = None,
+    session_id: str | None = None,
 ) -> Optional[ReviewResult]:
     """
     Check if there's an existing approval for this node execution.
@@ -87,15 +92,18 @@ async def check_approval(
 
     Args:
         node_exec_id: ID of the node execution
-        graph_exec_id: ID of the graph execution
         node_id: ID of the node definition (not execution)
         user_id: ID of the user (for data isolation)
         input_data: Current input data (used for auto-approvals to avoid stale data)
+        graph_exec_id / session_id: the graph execution or chat asking; one of them
 
     Returns:
         ReviewResult if approval found (either normal or auto), None otherwise
     """
-    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+    graph_exec_id, session_id = _review_scope(graph_exec_id, session_id)
+    scope_id = graph_exec_id or session_id
+    assert scope_id
+    auto_approve_key = get_auto_approve_key(scope_id, node_id)
 
     # Check for either normal approval or auto-approval in a single query
     existing_review = await PendingHumanReview.prisma().find_first(
@@ -113,7 +121,7 @@ async def check_approval(
         is_auto_approval = existing_review.nodeExecId == auto_approve_key
         logger.info(
             f"Found {'auto-' if is_auto_approval else ''}approval for node {node_id} "
-            f"(exec: {node_exec_id}) in execution {graph_exec_id}"
+            f"(exec: {node_exec_id}) in {scope_id}"
         )
         # For auto-approvals, use current input_data to avoid replaying stale payload
         # For normal approvals, use the stored payload (which may have been edited)
@@ -138,11 +146,12 @@ async def check_approval(
 
 async def create_auto_approval_record(
     user_id: str,
-    graph_exec_id: str,
-    graph_id: str,
-    graph_version: int,
     node_id: str,
     payload: SafeJsonData,
+    graph_exec_id: str | None = None,
+    graph_id: str | None = None,
+    graph_version: int | None = None,
+    session_id: str | None = None,
 ) -> None:
     """
     Create an auto-approval record for a node in this execution.
@@ -153,18 +162,19 @@ async def create_auto_approval_record(
     Raises:
         ValueError: If the graph execution doesn't belong to the user
     """
-    # Validate ownership: if a graph execution record exists, it must belong
-    # to this user. Non-graph executions (e.g. CoPilot) won't have a record.
-    if not is_copilot_synthetic_id(
-        graph_exec_id
-    ) and not await get_graph_execution_meta(
+    graph_exec_id, session_id = _review_scope(graph_exec_id, session_id)
+    # A chat review's session is the caller's by construction (the review row
+    # was looked up by userId); a graph execution is checked here.
+    if graph_exec_id is not None and not await get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
         raise ValueError(
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
 
-    auto_approve_key = get_auto_approve_key(graph_exec_id, node_id)
+    scope_id = graph_exec_id or session_id
+    assert scope_id
+    auto_approve_key = get_auto_approve_key(scope_id, node_id)
 
     await PendingHumanReview.prisma().upsert(
         where={"nodeExecId": auto_approve_key},
@@ -172,9 +182,7 @@ async def create_auto_approval_record(
             "create": {
                 "nodeExecId": auto_approve_key,
                 "userId": user_id,
-                "graphExecId": graph_exec_id,
-                "graphId": graph_id,
-                "graphVersion": graph_version,
+                **_scope_columns(graph_exec_id, graph_id, graph_version, session_id),
                 "payload": SafeJson(payload),
                 "instructions": "Auto-approval record",
                 "editable": False,
@@ -190,12 +198,13 @@ async def create_auto_approval_record(
 async def get_or_create_human_review(
     user_id: str,
     node_exec_id: str,
-    graph_exec_id: str,
-    graph_id: str,
-    graph_version: int,
     input_data: SafeJsonData,
     message: str,
     editable: bool,
+    graph_exec_id: str | None = None,
+    graph_id: str | None = None,
+    graph_version: int | None = None,
+    session_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> Optional[ReviewResult]:
@@ -207,16 +216,18 @@ async def get_or_create_human_review(
     Args:
         user_id: ID of the user who owns this review
         node_exec_id: ID of the node execution
-        graph_exec_id: ID of the graph execution
-        graph_id: ID of the graph template
-        graph_version: Version of the graph template
         input_data: The data to be reviewed
         message: Instructions for the reviewer
         editable: Whether the data can be edited
+        graph_exec_id, graph_id, graph_version: the graph execution asking, or
+        session_id: the chat asking — exactly one of the two
 
     Returns:
         ReviewResult if the review is complete, None if waiting for human input
     """
+    graph_exec_id, session_id = _review_scope(graph_exec_id, session_id)
+    if session_id:
+        graph_id = graph_version = None
     try:
         logger.debug(f"Getting or creating review for node {node_exec_id}")
 
@@ -227,9 +238,9 @@ async def get_or_create_human_review(
                 "create": {
                     "userId": user_id,
                     "nodeExecId": node_exec_id,
-                    "graphExecId": graph_exec_id,
-                    "graphId": graph_id,
-                    "graphVersion": graph_version,
+                    **_scope_columns(
+                        graph_exec_id, graph_id, graph_version, session_id
+                    ),
                     "payload": SafeJson(input_data),
                     "instructions": message,
                     "editable": editable,
@@ -258,7 +269,7 @@ async def get_or_create_human_review(
     if review.status == ReviewStatus.WAITING:
         # Nothing sends until a human acts, which is exactly the shape of an
         # Alert. The engine debounces and coalesces from here.
-        await _sync_awaiting_review_safely(user_id, graph_id)
+        await _sync_awaiting_review_safely(user_id, graph_id, session_id)
         return None
     else:
         return ReviewResult(
@@ -268,6 +279,37 @@ async def get_or_create_human_review(
             processed=review.processed,
             node_exec_id=review.nodeExecId,
         )
+
+
+def _review_scope(
+    graph_exec_id: str | None, session_id: str | None
+) -> tuple[str | None, str | None]:
+    """``(graph_exec_id, session_id)`` with exactly one set.
+
+    Callers that still pass a chat as ``copilot-session-<id>`` in
+    ``graph_exec_id`` are converted here, so their rows land in the chat shape.
+    """
+    legacy_session_id = legacy_chat_session_id(graph_exec_id)
+    if legacy_session_id:
+        return None, session_id or legacy_session_id
+    if (graph_exec_id is None) == (session_id is None):
+        raise ValueError("A review needs a graph execution or a chat session")
+    return graph_exec_id, session_id
+
+
+def _scope_columns(
+    graph_exec_id: str | None,
+    graph_id: str | None,
+    graph_version: int | None,
+    session_id: str | None,
+) -> dict:
+    if session_id:
+        return {"sessionId": session_id}
+    return {
+        "graphExecId": graph_exec_id,
+        "graphId": graph_id,
+        "graphVersion": graph_version,
+    }
 
 
 async def get_pending_review_by_node_exec_id(
@@ -427,18 +469,11 @@ async def _enrich_pending_reviews(
       - expert attribution (from the graph execution, or from the chat
         session for CoPilot run_capability reviews)
       - the requesting agent's display name and library agent id
-      - the chat session id, for CoPilot run_capability reviews
 
     Mutates and returns the given models in place.
     """
-    real_exec_ids = [
-        r.graph_exec_id for r in reviews if not is_copilot_synthetic_id(r.graph_exec_id)
-    ]
-    session_ids = [
-        r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
-        for r in reviews
-        if r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX)
-    ]
+    real_exec_ids = [r.graph_exec_id for r in reviews if r.graph_exec_id]
+    session_ids = [r.session_id for r in reviews if r.session_id]
     real_node_exec_ids = [
         r.node_exec_id for r in reviews if not is_copilot_synthetic_id(r.node_exec_id)
     ]
@@ -484,7 +519,7 @@ async def _enrich_pending_reviews(
         else:
             r.node_id = node_id_by_exec.get(r.node_exec_id, r.node_exec_id)
 
-        execution = exec_by_id.get(r.graph_exec_id)
+        execution = exec_by_id.get(r.graph_exec_id) if r.graph_exec_id else None
         if execution:
             r.expert_id = execution.expertId
             if execution.Expert:
@@ -497,10 +532,8 @@ async def _enrich_pending_reviews(
             r.agent_name = (lib_agent.name if lib_agent else None) or (
                 execution.AgentGraph.name if execution.AgentGraph else None
             )
-        elif r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
-            session_id = r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
-            r.session_id = session_id
-            session = session_by_id.get(session_id)
+        elif r.session_id:
+            session = session_by_id.get(r.session_id)
             if session:
                 r.expert_id = session.expertId
                 if session.Expert:
@@ -559,9 +592,6 @@ async def get_pending_reviews_for_execution(
     Returns:
         List of pending review models with node_id included
     """
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
-
     reviews = await PendingHumanReview.prisma().find_many(
         where={
             "userId": user_id,
@@ -570,6 +600,33 @@ async def get_pending_reviews_for_execution(
         },
         order={"createdAt": "asc"},
     )
+    return await _with_node_ids(reviews)
+
+
+async def get_pending_reviews_for_session(
+    session_id: str, user_id: str
+) -> list[PendingHumanReviewModel]:
+    """The reviews a chat is waiting on, oldest first."""
+    reviews = await PendingHumanReview.prisma().find_many(
+        where={
+            "userId": user_id,
+            "OR": [
+                {"sessionId": session_id},
+                # Rows an older deploy wrote in the synthetic-graph shape.
+                {"graphExecId": f"{COPILOT_SESSION_PREFIX}{session_id}"},
+            ],
+            "status": ReviewStatus.WAITING,
+        },
+        order={"createdAt": "asc"},
+    )
+    return await _with_node_ids(reviews)
+
+
+async def _with_node_ids(
+    reviews: list[PendingHumanReview],
+) -> list[PendingHumanReviewModel]:
+    # Local import to avoid event loop conflicts in tests
+    from backend.data.execution import get_node_execution
 
     # Fetch node_id for each review from NodeExecution
     result = []
@@ -676,8 +733,11 @@ async def process_all_reviews_for_execution(
 
     # Re-derive the "waiting on your review" alert from the live queue, so
     # clearing the last item resolves it rather than leaving a stale alert.
-    for review in {(r.userId, r.graphId) for r in reviews_to_process}:
-        await _sync_awaiting_review_safely(review[0], review[1])
+    for scope in {
+        (r.userId, r.graphId, r.sessionId or legacy_chat_session_id(r.graphExecId))
+        for r in reviews_to_process
+    }:
+        await _sync_awaiting_review_safely(*scope)
 
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)

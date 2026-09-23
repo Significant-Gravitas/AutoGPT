@@ -154,6 +154,106 @@ async def test_get_pending_reviews_for_execution_not_available(
     assert "not found" in response.json()["detail"]
 
 
+_ROUTES = "backend.api.features.graph_executions.review.routes"
+
+
+def _chat_review(user_id: str, status: ReviewStatus) -> PendingHumanReviewModel:
+    return PendingHumanReviewModel(
+        node_exec_id="copilot-node-blk:ab12",
+        node_id="copilot-node-blk",
+        user_id=user_id,
+        session_id="chat-1",
+        payload={"path": "/reports"},
+        editable=True,
+        status=status,
+        created_at=FIXED_NOW,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_pending_reviews_for_session(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    lookup = mocker.patch(
+        f"{_ROUTES}.get_pending_reviews_for_session",
+        return_value=[_chat_review(test_user_id, ReviewStatus.WAITING)],
+    )
+
+    response = await client.get("/api/review/session/chat-1")
+
+    assert response.status_code == 200
+    [review] = response.json()
+    assert review["session_id"] == "chat-1"
+    assert review["graph_exec_id"] is None
+    lookup.assert_awaited_once_with("chat-1", test_user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_old_synthetic_execution_id_is_answered_from_the_chat(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    by_session = mocker.patch(
+        f"{_ROUTES}.get_pending_reviews_for_session", return_value=[]
+    )
+    by_execution = mocker.patch(f"{_ROUTES}.get_pending_reviews_for_execution")
+    graph_exec_meta = mocker.patch(f"{_ROUTES}.get_graph_execution_meta")
+
+    response = await client.get("/api/review/execution/copilot-session-chat-1")
+
+    assert response.status_code == 200
+    by_session.assert_awaited_once_with("chat-1", test_user_id)
+    by_execution.assert_not_called()
+    graph_exec_meta.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_approving_a_chat_review_resumes_no_graph_and_scopes_auto_approval(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    waiting = _chat_review(test_user_id, ReviewStatus.WAITING)
+    mocker.patch(
+        f"{_ROUTES}.get_reviews_by_node_exec_ids",
+        return_value={waiting.node_exec_id: waiting},
+    )
+    mocker.patch(
+        f"{_ROUTES}.process_all_reviews_for_execution",
+        return_value={
+            waiting.node_exec_id: _chat_review(test_user_id, ReviewStatus.APPROVED)
+        },
+    )
+    auto_approve = mocker.patch(f"{_ROUTES}.create_auto_approval_record")
+    graph_exec_meta = mocker.patch(f"{_ROUTES}.get_graph_execution_meta")
+    resume = mocker.patch(f"{_ROUTES}.add_graph_execution")
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": waiting.node_exec_id,
+                    "approved": True,
+                    "auto_approve_future": True,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["approved_count"] == 1
+    graph_exec_meta.assert_not_called()
+    resume.assert_not_called()
+    auto_approve.assert_awaited_once()
+    kwargs = auto_approve.await_args.kwargs
+    assert (kwargs["session_id"], kwargs["graph_exec_id"]) == ("chat-1", None)
+    assert kwargs["node_id"] == "copilot-node-blk"
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_approve_success(
     client: httpx.AsyncClient,
@@ -712,6 +812,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
+        session_id=None,
         node_id="test_node_def_456",
         payload={"data": "test payload"},
     )
@@ -1012,6 +1113,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
+        session_id=None,
         node_id="test_node_def_approved",
         payload={"data": "approved"},
     )

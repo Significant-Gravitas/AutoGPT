@@ -3,27 +3,34 @@
 import { useCallback } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import {
+  usePendingReviewsForExecution,
+  usePendingReviewsForSession,
+} from "@/hooks/usePendingReviews";
 import { okData } from "@/app/api/helpers";
 
-interface Props {
-  graphExecId: string;
-}
+type Props = { graphExecId: string } | { sessionId: string };
+
+const POLL = { refetchInterval: 2000 };
 
 /**
- * Renders a single consolidated PendingReviewsList for all pending copilot
- * reviews in a session — mirrors the non-copilot review page behavior.
- * Works for both run_capability (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
+ * Renders a single consolidated PendingReviewsList for the chat's own reviews
+ * (run_capability, MCP, spend approval) or for an agent run the chat started
+ * — mirrors the non-copilot review page behavior.
  */
-export function CopilotPendingReviews({ graphExecId }: Props) {
+export function CopilotPendingReviews(props: Props) {
   const { onSend } = useCopilotChatActions();
-  const { pendingReviews, refetch } = usePendingReviewsForExecution(
-    graphExecId,
-    { enabled: !!graphExecId, refetchInterval: 2000 },
-  );
-
-  // Graph executions auto-resume after approval; capability reviews need resume_capability.
-  const isGraphExecution = !graphExecId.startsWith("copilot-session-");
+  const graphExecId = "graphExecId" in props ? props.graphExecId : "";
+  const sessionId = "sessionId" in props ? props.sessionId : "";
+  const forRun = usePendingReviewsForExecution(graphExecId, {
+    ...POLL,
+    enabled: !!graphExecId,
+  });
+  const forChat = usePendingReviewsForSession(sessionId, {
+    ...POLL,
+    enabled: !!sessionId,
+  });
+  const { pendingReviews, refetch } = graphExecId ? forRun : forChat;
 
   const handleReviewComplete = useCallback(async () => {
     // Brief delay for the server to propagate the approval
@@ -33,7 +40,8 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
 
     if (remaining.length > 0) return;
 
-    if (isGraphExecution) {
+    // Graph executions auto-resume after approval; chat reviews need resume_capability.
+    if (graphExecId) {
       onSend(
         `All pending reviews have been processed. ` +
           `The agent execution will resume automatically for approved reviews. ` +
@@ -46,7 +54,7 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
           `For rejected reviews, no further action is needed.`,
       );
     }
-  }, [refetch, onSend, isGraphExecution, graphExecId]);
+  }, [refetch, onSend, graphExecId]);
 
   if (pendingReviews.length === 0) return null;
 
