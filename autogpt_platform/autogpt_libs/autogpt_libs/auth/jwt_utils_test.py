@@ -71,6 +71,7 @@ def create_token(payload, private_key=None, kid: str = _SIGNING_KID) -> str:
     """Helper to create ES256 JWT tokens signed by the active JWKS key."""
     if private_key is None:
         private_key = _signing_key
+    assert private_key is not None
     return jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": kid})
 
 

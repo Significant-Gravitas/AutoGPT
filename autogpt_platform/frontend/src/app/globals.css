@@ -167,3 +167,9 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 [data-streamdown="table-wrapper"] td {
   padding: 0.875rem 1rem; /* py-3.5 px-4 */
 }
+
+/* KaTeX sets .katex to 1.21em, which makes inline formulas outgrow the prose
+   around them; display blocks keep KaTeX's size. */
+:not(.katex-display) > .katex {
+  font-size: 1.1em;
+}

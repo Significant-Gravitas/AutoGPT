@@ -413,6 +413,19 @@ async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
         return _anonymous_context(user_id), False
 
 
+def _with_request_attributes(context: Context, attributes: dict[str, str]) -> Context:
+    """*context* plus facts known only for this request, such as the country.
+
+    The user context is cached for a day, so anything that can change between
+    requests has to be layered on per evaluation rather than baked into it.
+    A copy is returned; the cached context is never modified. ``key`` and
+    ``kind`` are identity and cannot be overridden this way.
+    """
+    merged = {**context.to_dict(), **attributes}
+    merged.update(key=context.key, kind=context.kind)
+    return Context.from_dict(merged)
+
+
 def _anonymous_context(user_id: str) -> Context:
     """Build a minimal anonymous LD context carrying only the user key."""
     return Context.builder(user_id).kind("user").anonymous(True).build()
@@ -464,6 +477,8 @@ async def get_feature_flag_value(
     flag_key: str,
     user_id: str,
     default: Any = None,
+    *,
+    attributes: dict[str, str] | None = None,
 ) -> Any:
     """
     Get the raw value of a feature flag for a user.
@@ -479,25 +494,36 @@ async def get_feature_flag_value(
     Returns:
         The flag value from the configured backend
     """
-    value, _ = await _evaluate_flag_value(flag_key, user_id, default)
+    value, _ = await _evaluate_flag_value(
+        flag_key, user_id, default, attributes=attributes
+    )
     return value
 
 
 async def _evaluate_flag_value(
-    flag_key: str, user_id: str, default: Any = None
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    *,
+    attributes: dict[str, str] | None = None,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` for one raw flag read, from the configured vendor.
 
     ``evaluated`` is False whenever *default* is standing in for an answer the
     vendor could not give.
     """
+    context = None
+    if attributes:
+        # Layered once, so every vendor evaluates the same per-request facts.
+        user_context, context_resolved = await _fetch_user_context_status(user_id)
+        context = (_with_request_attributes(user_context, attributes), context_resolved)
     backend = settings.config.feature_flag_backend
     if backend is FeatureFlagBackend.POSTHOG:
-        result = await _evaluate_posthog(flag_key, user_id, default)
+        result = await _evaluate_posthog(flag_key, user_id, default, context)
     elif backend is FeatureFlagBackend.DUAL:
-        result = await _evaluate_dual(flag_key, user_id, default)
+        result = await _evaluate_dual(flag_key, user_id, default, context)
     else:
-        result = await _evaluate_launchdarkly(flag_key, user_id, default)
+        result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
     _record_flag_for_sentry(flag_key, *result)
     return result
 
@@ -523,7 +549,10 @@ def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
 
 
 async def _evaluate_dual(
-    flag_key: str, user_id: str, default: Any = None
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    context: tuple[Context, bool] | None = None,
 ) -> tuple[Any, bool]:
     """Evaluate both vendors, serve LaunchDarkly's answer, log disagreements.
 
@@ -532,7 +561,7 @@ async def _evaluate_dual(
     """
     # One lookup for both vendors: the failure path is deliberately uncached,
     # so evaluating them independently would double its database reads.
-    context = await _fetch_user_context_status(user_id)
+    context = context or await _fetch_user_context_status(user_id)
     ld_result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
     _probe_posthog(flag_key, user_id, default, context, ld_result)
     return ld_result
@@ -691,7 +720,7 @@ def _person_properties(context: Context) -> dict[str, Any]:
         return {}
     return {
         attribute: context.get(attribute)
-        for attribute in ("role", "email_domain", "created_at")
+        for attribute in ("role", "email_domain", "created_at", "country")
         if context.get(attribute) is not None
     }
 

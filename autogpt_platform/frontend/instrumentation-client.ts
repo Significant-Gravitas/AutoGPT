@@ -38,7 +38,11 @@ Sentry.init({
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
     Sentry.replayCanvasIntegration(),
-    Sentry.reportingObserverIntegration(),
+    // Deprecation reports are browser platform notices about the web platform
+    // itself (e.g. Chrome's "Attribution Reporting is deprecated"), not bugs in
+    // our code, and they bury real issues. Crash and intervention reports still
+    // come through.
+    Sentry.reportingObserverIntegration({ types: ["crash", "intervention"] }),
     // Sentry.feedbackIntegration({
     //   // Additional SDK configuration goes in here, for example:
     //   colorScheme: "system",

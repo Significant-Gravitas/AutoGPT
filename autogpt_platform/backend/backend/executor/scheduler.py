@@ -43,6 +43,7 @@ from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
@@ -2108,7 +2109,10 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc),
+                next_run_time=datetime.now(timezone.utc)
+                + timedelta(
+                    hours=0 if config.scheduler_startup_embedding_backfill else 6
+                ),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
                 misfire_grace_time=None,
@@ -2227,6 +2231,8 @@ class Scheduler(AppService):
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        name = normalize_schedule_name(name)
+
         if expert_id is not None:
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
