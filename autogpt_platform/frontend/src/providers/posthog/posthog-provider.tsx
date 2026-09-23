@@ -14,7 +14,7 @@ import posthog from "posthog-js";
 import { ReactNode, useEffect, useRef } from "react";
 import {
   followAnalyticsConsent,
-  forgetWithdrawnPostHogConsent,
+  forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
 } from "./posthog-consent";
 
@@ -32,7 +32,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       // every tool lands on the same person once identify() runs. Without
       // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
-      forgetWithdrawnPostHogConsent();
+      forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
         api_host: postHogCredentials.host,
         defaults: "2025-11-30",
