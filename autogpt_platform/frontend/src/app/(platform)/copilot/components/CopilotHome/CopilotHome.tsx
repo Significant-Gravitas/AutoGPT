@@ -3,18 +3,13 @@
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { BriefingCard } from "@/components/organisms/BriefingCard/BriefingCard";
 import { hasRecapContent } from "@/components/organisms/BriefingCard/helpers";
-import type { ReactNode } from "react";
 import { useCopilotHome } from "./useCopilotHome";
-
-interface Props {
-  fallback: ReactNode;
-}
 
 // The short briefing recap under the composer. It is a recap only — the
 // decisions inbox and team status live on /home — so the copilot's empty
 // state keeps its onboarding surface (welcome dialog, greeting flow,
 // suggestion themes) and the composer's recipient picker.
-export function CopilotHome({ fallback }: Props) {
+export function CopilotHome() {
   const { briefing, isLoadingBriefing, isBriefingError, refetchBriefing } =
     useCopilotHome();
 
@@ -35,8 +30,9 @@ export function CopilotHome({ fallback }: Props) {
 
   // Not just "no briefing": a briefing of nothing but pending decisions has
   // no runs to recap, and the card would render null. The inbox that used to
-  // carry that case lives on /home now, so the fallback has to.
-  if (!hasRecapContent(briefing)) return <>{fallback}</>;
+  // carry that case lives on /home now, as does the workflow-runs strip that
+  // once stood in here, so the empty state simply stays quiet.
+  if (!hasRecapContent(briefing)) return null;
 
   return <BriefingCard briefing={briefing} />;
 }

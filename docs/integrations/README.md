@@ -77,14 +77,15 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Reverse List Order](block-integrations/basic.md#reverse-list-order) | Reverses the order of elements in a list |
 | [Search Memory](block-integrations/basic.md#search-memory) | Search memories in Mem0 by user |
 | [Search Store Agents](block-integrations/system/store_operations.md#search-store-agents) | Search for agents in the store |
-| [Slant3D Cancel Order](block-integrations/slant3d/order.md#slant3d-cancel-order) | Cancel an existing order |
-| [Slant3D Create Order](block-integrations/slant3d/order.md#slant3d-create-order) | Create a new print order |
-| [Slant3D Estimate Order](block-integrations/slant3d/order.md#slant3d-estimate-order) | Get order cost estimate |
-| [Slant3D Estimate Shipping](block-integrations/slant3d/order.md#slant3d-estimate-shipping) | Get shipping cost estimate |
-| [Slant3D Filament](block-integrations/slant3d/filament.md#slant3d-filament) | Get list of available filaments |
-| [Slant3D Get Orders](block-integrations/slant3d/order.md#slant3d-get-orders) | Get all orders for the account |
-| [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
-| [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
+| [Slant3D Cancel Order](block-integrations/slant3d/order_status.md#slant3d-cancel-order) | Cancel an order before production starts |
+| [Slant3D Create Order](block-integrations/slant3d/order.md#slant3d-create-order) | Order physical 3D-printed parts from Slant3D for manufacturing and delivery |
+| [Slant3D Estimate Order](block-integrations/slant3d/order.md#slant3d-estimate-order) | Quote a 3D-printed parts order including shipping by creating an uncharged Slant3D draft |
+| [Slant3D Estimate Shipping](block-integrations/slant3d/order.md#slant3d-estimate-shipping) | Estimate delivery costs for physical 3D-printed parts by creating an uncharged Slant3D order draft |
+| [Slant3D Filament](block-integrations/slant3d/filament.md#slant3d-filament) | Find available materials and colors for quoting or ordering physical 3D-printed parts from Slant3D |
+| [Slant3D Get Orders](block-integrations/slant3d/order_status.md#slant3d-get-orders) | Get all orders for the account |
+| [Slant3D Process Order](block-integrations/slant3d/order_status.md#slant3d-process-order) | Submit an approved Slant3D draft to order physical 3D-printed parts for manufacturing and delivery |
+| [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Get a live 3D printing quote for physical parts from STL URLs or attached workspace files |
+| [Slant3D Tracking](block-integrations/slant3d/order_status.md#slant3d-tracking) | Track order status and shipping |
 | [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
@@ -180,6 +181,25 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
+| [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG, a manufacturer that makes and ships real sheet-metal and tube-laser parts, and returns its analyzed parts: the first step before a live quote, cart or order |
+| [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for one or more configured designs, priced live with shipping and tax once an address is set |
+| [RMFG Create DFM Report](block-integrations/rmfg/dfm.md#rmfg-create-dfm-report) | Runs an RMFG manufacturability (DFM) check on a configured design |
+| [RMFG Create Quote](block-integrations/rmfg/quotes.md#rmfg-create-quote) | Gets a live price from RMFG, a manufacturer that laser-cuts, bends and ships real sheet-metal and tube parts, plus manufacturability findings |
+| [RMFG Create Review Link](block-integrations/rmfg/review_links.md#rmfg-create-review-link) | Creates an RMFG review link so a person can inspect and adjust a design |
+| [RMFG Get Cart](block-integrations/rmfg/carts.md#rmfg-get-cart) | Fetches an RMFG cart and its latest quote by ID |
+| [RMFG Get DFM Report](block-integrations/rmfg/dfm.md#rmfg-get-dfm-report) | Fetches an RMFG DFM report by ID |
+| [RMFG Get Design](block-integrations/rmfg/designs.md#rmfg-get-design) | Fetches an RMFG design and its analyzed parts by ID |
+| [RMFG Get Order](block-integrations/rmfg/orders.md#rmfg-get-order) | Fetches an RMFG order's status and shipment tracking |
+| [RMFG Get Quote](block-integrations/rmfg/quotes.md#rmfg-get-quote) | Fetches an RMFG quote by ID |
+| [RMFG Get Review Link](block-integrations/rmfg/review_links.md#rmfg-get-review-link) | Fetches an RMFG review link and the configuration a person saved on it |
+| [RMFG List Finishes](block-integrations/rmfg/catalog.md#rmfg-list-finishes) | Lists the finishes RMFG can apply to sheet or tube parts |
+| [RMFG List Hardware](block-integrations/rmfg/catalog.md#rmfg-list-hardware) | Lists the taps, studs, nuts or standoffs RMFG can install |
+| [RMFG List Materials](block-integrations/rmfg/catalog.md#rmfg-list-materials) | Lists the sheet-metal stock RMFG can cut and bend, with thickness in mm and inches |
+| [RMFG List Orders](block-integrations/rmfg/orders.md#rmfg-list-orders) | Lists the RMFG account's manufacturing orders |
+| [RMFG List Powder Coat Colors](block-integrations/rmfg/catalog.md#rmfg-list-powder-coat-colors) | Lists the powder-coat colors RMFG offers |
+| [RMFG List Tube Profiles](block-integrations/rmfg/catalog.md#rmfg-list-tube-profiles) | Lists the tube stock profiles RMFG can laser-cut |
+| [RMFG Pay Cart](block-integrations/rmfg/pay_cart.md#rmfg-pay-cart) | Pays an RMFG cart with the saved card and places a real production order |
+| [RMFG Update Cart](block-integrations/rmfg/carts.md#rmfg-update-cart) | Updates an open RMFG cart's address, shipping option or items |
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
@@ -241,6 +261,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
+| [Jev Ask Many](block-integrations/typesafe/ask_many.md#jev-ask-many) | Ask multiple Choice, Score, or Noul questions of one shared state with Jev in a single call |
+| [Jev Choice](block-integrations/typesafe/choice.md#jev-choice) | Make a typed choice with Jev |
+| [Jev Filter](block-integrations/typesafe/filter.md#jev-filter) | Filter items with sequential Jev scores, one call per item |
+| [Jev Pick Best](block-integrations/typesafe/pick_best.md#jev-pick-best) | Choose the best candidate using Jev and rank candidates directly by its probabilities |
+| [Jev Route](block-integrations/typesafe/route.md#jev-route) | Route data using Jev's typed choice |
+| [Jev Score](block-integrations/typesafe/score.md#jev-score) | Score evidence with Jev using an explicit ordered scale |
+| [Jev Yes No](block-integrations/typesafe/yes_no.md#jev-yes-no) | Ask Jev a plain-language yes/no question and forward data to the chosen pin, or unsure below your confidence threshold |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
 | [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
@@ -320,6 +347,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Approve Reddit Post](block-integrations/misc.md#approve-reddit-post) | Approves a Reddit post or comment from the mod queue |
+| [Ban Subreddit User](block-integrations/misc.md#ban-subreddit-user) | Bans a user from a subreddit |
 | [Create Discord Thread](block-integrations/discord/bot_blocks.md#create-discord-thread) | Creates a new thread in a Discord channel |
 | [Create Reddit Post](block-integrations/misc.md#create-reddit-post) | Create a new post on a subreddit |
 | [Delete Reddit Comment](block-integrations/misc.md#delete-reddit-comment) | Delete a Reddit comment that you own |
@@ -346,6 +375,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get User Posts](block-integrations/misc.md#get-user-posts) | Fetch posts by a specific Reddit user |
 | [Linkedin Person Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-person-lookup) | Look up LinkedIn profiles by person information using Enrichlayer |
 | [Linkedin Role Lookup](block-integrations/enrichlayer/linkedin.md#linkedin-role-lookup) | Look up LinkedIn profiles by role in a company using Enrichlayer |
+| [Lock Reddit Post](block-integrations/misc.md#lock-reddit-post) | Locks or unlocks a Reddit post or comment to prevent or allow replies |
+| [Mod Queue](block-integrations/misc.md#mod-queue) | Fetches the mod queue for a subreddit |
 | [Post Reddit Comment](block-integrations/misc.md#post-reddit-comment) | This block posts a Reddit comment on a specified Reddit post |
 | [Post To Bluesky](block-integrations/ayrshare/post_to_bluesky.md#post-to-bluesky) | Post to Bluesky using Ayrshare |
 | [Post To Facebook](block-integrations/ayrshare/post_to_facebook.md#post-to-facebook) | Post to Facebook using Ayrshare |
@@ -363,6 +394,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
+| [Remove Reddit Post](block-integrations/misc.md#remove-reddit-post) | Removes a Reddit post or comment as a moderator |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
 | [Reply To Telegram Message](block-integrations/telegram/blocks.md#reply-to-telegram-message) | Reply to a specific message in a Telegram chat |
@@ -371,6 +403,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Send Discord Embed](block-integrations/discord/bot_blocks.md#send-discord-embed) | Sends a rich embed message to a Discord channel |
 | [Send Discord File](block-integrations/discord/bot_blocks.md#send-discord-file) | Sends a file attachment to a Discord channel |
 | [Send Discord Message](block-integrations/discord/bot_blocks.md#send-discord-message) | Sends a message to a Discord channel using a bot token |
+| [Send Mod Mail](block-integrations/misc.md#send-mod-mail) | Sends a modmail message from a subreddit to a user |
 | [Send Reddit Message](block-integrations/misc.md#send-reddit-message) | Send a private message (DM) to a Reddit user |
 | [Send Slack Message](block-integrations/slack/blocks.md#send-slack-message) | Send a text message to any Slack channel, DM, or thread |
 | [Send Telegram Audio](block-integrations/telegram/blocks.md#send-telegram-audio) | Send an audio file to a Telegram chat |
@@ -433,6 +466,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Unmute User](block-integrations/twitter/mutes.md#twitter-unmute-user) | This block unmutes a specified Twitter user |
 | [Twitter Unpin List](block-integrations/twitter/pinned_lists.md#twitter-unpin-list) | This block allows the authenticated user to unpin a specified List |
 | [Twitter Update List](block-integrations/twitter/manage_lists.md#twitter-update-list) | This block updates a specified Twitter List owned by the authenticated user |
+| [Unban Subreddit User](block-integrations/misc.md#unban-subreddit-user) | Unbans a user from a subreddit |
 
 ## Communication
 
@@ -549,7 +583,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Read File](block-integrations/github/repo_files.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
 | [Github Read Folder](block-integrations/github/repo_files.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
 | [Github Read Issue](block-integrations/github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
-| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
+| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, changes, and full raw object of a specified GitHub pull request |
 | [Github Release Trigger](block-integrations/github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
@@ -687,3 +721,5 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Compass AI Trigger](block-integrations/compass/triggers.md#compass-ai-trigger) | This block will output the contents of the compass transcription |
+| [RMFG Event Trigger](block-integrations/rmfg/triggers.md#rmfg-event-trigger) | Triggers when an RMFG design, quote, cart or order changes |
+| [RMFG Get Image](block-integrations/rmfg/images.md#rmfg-get-image) | Downloads RMFG's rendered picture of a design or part, with holes and bends labelled |

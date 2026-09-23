@@ -184,3 +184,36 @@ class TestContinueRunBlock:
         mock_db.delete_review_by_node_exec_id.assert_called_once_with(
             review_id, _TEST_USER_ID
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_continuation_resolves_credentials_under_the_experts_grants():
+    """The approved continuation re-resolves credentials, so it must be held
+    to the expert's grants like the original run_block call."""
+    tool = ContinueRunBlockTool()
+    session = make_session(user_id=_TEST_USER_ID, expert_id="expert-a")
+    review_id = "copilot-node-some-block:abc12345"
+    review = _make_review_model(
+        review_id, graph_exec_id=f"copilot-session-{session.session_id}"
+    )
+    mock_db = MagicMock()
+    mock_db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    block = MagicMock()
+    block.name = "Some Block"
+
+    with (
+        patch(
+            "backend.copilot.tools.continue_run_block.review_db",
+            return_value=mock_db,
+        ),
+        patch("backend.copilot.tools.continue_run_block.get_block", return_value=block),
+        patch(
+            "backend.copilot.tools.continue_run_block.resolve_block_credentials",
+            new_callable=AsyncMock,
+            return_value=({}, {"credentials": {}}),
+        ) as resolve,
+    ):
+        await tool._execute(user_id=_TEST_USER_ID, session=session, review_id=review_id)
+
+    resolve.assert_awaited_once()
+    assert resolve.await_args_list[0].args[3] == "expert-a"

@@ -20,7 +20,12 @@ from backend.copilot.briefing.outcome import (
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
-from .models import HomeBriefing, HomeBriefingOutcome, HomeExpert
+from .models import (
+    AUTOPILOT_BRIEFING_AUTHOR,
+    HomeBriefing,
+    HomeBriefingOutcome,
+    HomeExpert,
+)
 
 _MAX_OUTCOMES = 4
 _BRIEFING_WINDOW = timedelta(hours=24)
@@ -46,7 +51,7 @@ def compose_briefing(
         )
 
     generated_at = as_utc(persisted.generated_at)
-    anchored = [_outcome(item, expert_by_id) for item in persisted.run_items]
+    anchored = [to_outcome(item, expert_by_id) for item in persisted.run_items]
     anchored_ids = {outcome.id for outcome in anchored}
     fresh = [
         outcome
@@ -125,6 +130,7 @@ def _briefing(
     shown = outcomes[:_MAX_OUTCOMES]
     shown_completed = sum(outcome.status == "completed" for outcome in shown)
     return HomeBriefing(
+        author=AUTOPILOT_BRIEFING_AUTHOR,
         generated_at=generated_at,
         window_started_at=window_started_at,
         completed_count=completed,
@@ -143,6 +149,21 @@ def _live_outcomes(
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
 ) -> list[HomeBriefingOutcome]:
+    return [
+        to_outcome(item, expert_by_id)
+        for item in live_run_items(executions, since, now, expert_by_id, agent_by_graph)
+    ]
+
+
+def live_run_items(
+    executions: list[GraphExecutionMeta],
+    since: datetime,
+    now: datetime,
+    expert_by_id: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef],
+) -> list[BriefingRunItem]:
+    """Every run that reached a terminal state inside the window, failures
+    first and most recent first within each status."""
     terminal = [
         execution
         for execution in executions
@@ -157,8 +178,7 @@ def _live_outcomes(
         )
     )
     return [
-        _outcome(_run_item(execution, expert_by_id, agent_by_graph), expert_by_id)
-        for execution in terminal
+        _run_item(execution, expert_by_id, agent_by_graph) for execution in terminal
     ]
 
 
@@ -176,7 +196,7 @@ def _run_item(
     )
 
 
-def _outcome(
+def to_outcome(
     item: BriefingRunItem, expert_by_id: dict[str, Expert]
 ) -> HomeBriefingOutcome:
     failed = item.status == "FAILED"
@@ -198,7 +218,16 @@ def _outcome(
         duration_seconds=item.duration_seconds,
         cost_cents=item.cost_cents,
         link=item.link,
+        trigger=_trigger(item),
     )
+
+
+def _trigger(item: BriefingRunItem) -> Literal["schedule", "webhook", "manual"]:
+    if item.schedule_id:
+        return "schedule"
+    if item.webhook_id:
+        return "webhook"
+    return "manual"
 
 
 def _expert(

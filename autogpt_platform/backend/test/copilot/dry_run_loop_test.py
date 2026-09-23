@@ -48,6 +48,7 @@ from backend.copilot.prompting import get_sdk_supplement
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.run_agent import RunAgentInput
+from backend.copilot.tools.run_block import RunBlockTool
 
 # Resolved once for the whole module so individual tests stay fast.
 _SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False)
@@ -96,8 +97,8 @@ class TestToolDescriptionsDryRunLoop:
         )
 
     def test_run_block_dry_run_not_in_llm_schema(self):
-        """dry_run must NOT be in the run_block LLM schema — it is session-level."""
-        schema = TOOL_REGISTRY["run_block"].as_openai_tool()
+        """dry_run must NOT be in the block-run LLM schema — it is session-level."""
+        schema = RunBlockTool().as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         assert "dry_run" not in params.get("properties", {}), (
             "dry_run must not be exposed in the run_block LLM schema; "
@@ -113,10 +114,10 @@ class TestPromptingSupplementContent:
     """
 
     def test_includes_tool_discovery_priority(self):
-        assert "Tool Discovery Priority" in _SDK_SUPPLEMENT
+        assert "Discovery" in _SDK_SUPPLEMENT and "MANDATORY" in _SDK_SUPPLEMENT
 
-    def test_includes_find_block_first(self):
-        assert "find_block first" in _SDK_SUPPLEMENT or "find_block" in _SDK_SUPPLEMENT
+    def test_includes_find_capability_first(self):
+        assert "find_capability" in _SDK_SUPPLEMENT
 
     def test_includes_send_authenticated_web_request(self):
         assert "SendAuthenticatedWebRequestBlock" in _SDK_SUPPLEMENT
@@ -214,7 +215,7 @@ class TestRunBlockToolSchema:
 
     @pytest.fixture
     def schema(self) -> ChatCompletionToolParam:
-        return TOOL_REGISTRY["run_block"].as_openai_tool()
+        return RunBlockTool().as_openai_tool()
 
     def test_schema_is_valid_openai_tool(self, schema: ChatCompletionToolParam):
         assert schema["type"] == "function"

@@ -24,6 +24,11 @@ class BriefingRunItem(BaseModel):
     occurred_at: datetime | None = None
     duration_seconds: float = 0
     cost_cents: int = 0
+    # What started the run when it was not a person: the scheduler job or
+    # the webhook. Both None for a run started by hand and for rows stored
+    # before the fields existed.
+    schedule_id: str | None = None
+    webhook_id: str | None = None
 
 
 class BriefingDecisionItem(BaseModel):

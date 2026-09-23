@@ -9,6 +9,8 @@ import psutil
 from backend.util.process import AppProcess
 
 from .chat import chat
+from .rotate_key import rotate_encryption_key
+from .store import store
 from .test import test
 
 
@@ -19,6 +21,8 @@ def main():
 
 
 main.add_command(chat)
+main.add_command(rotate_encryption_key)
+main.add_command(store)
 main.add_command(test)
 
 

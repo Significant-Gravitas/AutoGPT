@@ -1,408 +1,179 @@
-import uuid
-from typing import List
-
-from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import BlockOutput, BlockSchemaOutput
+from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util.settings import BehaveAs, Settings
 
-from ._api import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    CustomerDetails,
-    OrderItem,
-    Slant3DCredentialsField,
-    Slant3DCredentialsInput,
-)
+from ._api import TEST_CREDENTIALS
+from ._order import TEST_DRAFT, TEST_ORDER_INPUT, OrderInput
 from .base import Slant3DBlockBase
-
-settings = Settings()
 
 
 class Slant3DCreateOrderBlock(Slant3DBlockBase):
-    """Block for creating new orders"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(
-            description="Your custom order number (or leave blank for a random one)",
-            default_factory=lambda: str(uuid.uuid4()),
-        )
-        customer: CustomerDetails = SchemaField(
-            description="Customer details for where to ship the item",
-            advanced=False,
-        )
-        items: List[OrderItem] = SchemaField(
-            description="List of items to print",
-            advanced=False,
-        )
+    Input = OrderInput
 
     class Output(BlockSchemaOutput):
-        order_id: str = SchemaField(description="Slant3D order ID")
+        order_id: str = SchemaField(description="Slant3D public order ID")
 
     def __init__(self):
         super().__init__(
             id="f73007d6-f48f-4aaf-9e6b-6883998a09b4",
-            description="Create a new print order",
+            description=(
+                "Order physical 3D-printed parts from Slant3D for manufacturing and delivery. "
+                "Accepts multiple STL URLs, workspace attachments, or uploaded file IDs with per-part material and quantity, "
+                "including complete project part sets. Creates a draft, charges the connected payment method, "
+                "and submits the parts to production. Use only with real customer shipping details and order approval. "
+                "For a printing-only quote without shipping or billing details, use Slant3D Slicer first."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "order_number": "TEST-001",
-                "customer": {
-                    "name": "John Doe",
-                    "email": "john@example.com",
-                    "phone": "123-456-7890",
-                    "address": "123 Test St",
-                    "city": "Test City",
-                    "state": "TS",
-                    "zip": "12345",
-                },
-                "items": [
-                    {
-                        "file_url": "https://example.com/model.stl",
-                        "quantity": "1",
-                        "color": "black",
-                        "profile": "PLA",
-                    }
-                ],
-            },
+            test_input=TEST_ORDER_INPUT,
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("order_id", "314144241")],
+            test_output=[("order_id", "SLANT_1234567890")],
             test_mock={
-                "_make_request": lambda *args, **kwargs: {"orderId": "314144241"},
-                "_convert_to_color": lambda *args, **kwargs: "black",
+                "_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT},
+                "_process_order": lambda *args, **kwargs: {
+                    "data": {"publicId": "SLANT_1234567890"}
+                },
             },
             is_sensitive_action=True,
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
+        api_key = credentials.api_key.get_secret_value()
+        order_data = await self._format_order_data(
+            input_data.customer,
+            input_data.order_number,
+            input_data.items,
+            api_key,
+            input_data.platform_id,
+            execution_context=execution_context,
+        )
+        result = await self._make_request("POST", "orders", api_key, json=order_data)
+        order_id = result["data"]["order"]["publicId"]
         try:
-            order_data = await self._format_order_data(
-                input_data.customer,
-                input_data.order_number,
-                input_data.items,
-                credentials.api_key.get_secret_value(),
-            )
-            result = await self._make_request(
-                "POST", "order", credentials.api_key.get_secret_value(), json=order_data
-            )
-            yield "order_id", result["orderId"]
-        except Exception as e:
-            yield "error", str(e)
-            raise
+            await self._process_order(order_id, api_key)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not confirm processing of draft {order_id}. "
+                "Check its status before retrying to avoid a duplicate order."
+            ) from exc
+        yield "order_id", order_id
 
 
 class Slant3DEstimateOrderBlock(Slant3DBlockBase):
-    """Block for getting order cost estimates"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(
-            description="Your custom order number (or leave blank for a random one)",
-            default_factory=lambda: str(uuid.uuid4()),
-        )
-        customer: CustomerDetails = SchemaField(
-            description="Customer details for where to ship the item",
-            advanced=False,
-        )
-        items: List[OrderItem] = SchemaField(
-            description="List of items to print",
-            advanced=False,
-        )
+    Input = OrderInput
 
     class Output(BlockSchemaOutput):
         total_price: float = SchemaField(description="Total price in USD")
-        shipping_cost: float = SchemaField(description="Shipping cost")
-        printing_cost: float = SchemaField(description="Printing cost")
+        shipping_cost: float = SchemaField(description="Shipping cost in USD")
+        printing_cost: float = SchemaField(description="Printing cost in USD")
+        order_id: str = SchemaField(
+            description="Uncharged draft ID; pass to Process Order to place it"
+        )
 
     def __init__(self):
         super().__init__(
             id="bf8823d6-b42a-48c7-b558-d7c117f2ae85",
-            description="Get order cost estimate",
+            description=(
+                "Quote a 3D-printed parts order including shipping by creating an uncharged Slant3D draft. "
+                "Accepts multiple STL files or uploaded file IDs with per-part quantities. "
+                "Requires real customer shipping details and an account payment method; do not invent an address. "
+                "For printing-only part or project quotes without shipping details, use Slant3D Slicer for each file instead. "
+                "Returns a draft ID that Process Order can submit after approval."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "order_number": "TEST-001",
-                "customer": {
-                    "name": "John Doe",
-                    "email": "john@example.com",
-                    "phone": "123-456-7890",
-                    "address": "123 Test St",
-                    "city": "Test City",
-                    "state": "TS",
-                    "zip": "12345",
-                },
-                "items": [
-                    {
-                        "file_url": "https://example.com/model.stl",
-                        "quantity": "1",
-                        "color": "black",
-                        "profile": "PLA",
-                    }
-                ],
-            },
+            test_input=TEST_ORDER_INPUT,
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("total_price", 9.31),
                 ("shipping_cost", 5.56),
                 ("printing_cost", 3.75),
+                ("order_id", "SLANT_1234567890"),
             ],
-            test_mock={
-                "_make_request": lambda *args, **kwargs: {
-                    "totalPrice": 9.31,
-                    "shippingCost": 5.56,
-                    "printingCost": 3.75,
-                },
-                "_convert_to_color": lambda *args, **kwargs: "black",
-            },
+            test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
+        api_key = credentials.api_key.get_secret_value()
         order_data = await self._format_order_data(
             input_data.customer,
             input_data.order_number,
             input_data.items,
-            credentials.api_key.get_secret_value(),
+            api_key,
+            input_data.platform_id,
+            execution_context=execution_context,
         )
-        result = await self._make_request(
-            "POST",
-            "order/estimate",
-            credentials.api_key.get_secret_value(),
-            json=order_data,
-        )
-        yield "total_price", result["totalPrice"]
-        yield "shipping_cost", result["shippingCost"]
-        yield "printing_cost", result["printingCost"]
+        result = await self._make_request("POST", "orders", api_key, json=order_data)
+        draft = result["data"]
+        yield "total_price", float(draft["totals"]["totalCost"])
+        yield "shipping_cost", float(draft["totals"]["deliveryCost"])
+        yield "printing_cost", float(draft["totals"]["printingCost"])
+        yield "order_id", draft["order"]["publicId"]
 
 
 class Slant3DEstimateShippingBlock(Slant3DBlockBase):
-    """Block for getting shipping cost estimates"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_number: str = SchemaField(
-            description="Your custom order number (or leave blank for a random one)",
-            default_factory=lambda: str(uuid.uuid4()),
-        )
-        customer: CustomerDetails = SchemaField(
-            description="Customer details for where to ship the item"
-        )
-        items: List[OrderItem] = SchemaField(
-            description="List of items to print",
-            advanced=False,
-        )
+    Input = OrderInput
 
     class Output(BlockSchemaOutput):
-        shipping_cost: float = SchemaField(description="Estimated shipping cost")
-        currency_code: str = SchemaField(description="Currency code (e.g., 'usd')")
+        shipping_cost: float = SchemaField(description="Estimated shipping cost in USD")
+        currency_code: str = SchemaField(description="Currency code")
+        order_id: str = SchemaField(
+            description="Uncharged draft ID; pass to Process Order to place it"
+        )
 
     def __init__(self):
         super().__init__(
             id="00aae2a1-caf6-4a74-8175-39a0615d44e1",
-            description="Get shipping cost estimate",
+            description=(
+                "Estimate delivery costs for physical 3D-printed parts by creating an uncharged Slant3D order draft. "
+                "Requires real customer shipping details and an account payment method. "
+                "For printing-only quotes without an address or billing setup, use Slant3D Slicer instead. "
+                "Returns shipping cost and the draft ID; does not charge or submit the order."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "order_number": "TEST-001",
-                "customer": {
-                    "name": "John Doe",
-                    "email": "john@example.com",
-                    "phone": "123-456-7890",
-                    "address": "123 Test St",
-                    "city": "Test City",
-                    "state": "TS",
-                    "zip": "12345",
-                },
-                "items": [
-                    {
-                        "file_url": "https://example.com/model.stl",
-                        "quantity": "1",
-                        "color": "black",
-                        "profile": "PLA",
-                    }
-                ],
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[("shipping_cost", 4.81), ("currency_code", "usd")],
-            test_mock={
-                "_make_request": lambda *args, **kwargs: {
-                    "shippingCost": 4.81,
-                    "currencyCode": "usd",
-                },
-                "_convert_to_color": lambda *args, **kwargs: "black",
-            },
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            order_data = await self._format_order_data(
-                input_data.customer,
-                input_data.order_number,
-                input_data.items,
-                credentials.api_key.get_secret_value(),
-            )
-            result = await self._make_request(
-                "POST",
-                "order/estimateShipping",
-                credentials.api_key.get_secret_value(),
-                json=order_data,
-            )
-            yield "shipping_cost", result["shippingCost"]
-            yield "currency_code", result["currencyCode"]
-        except Exception as e:
-            yield "error", str(e)
-            raise
-
-
-class Slant3DGetOrdersBlock(Slant3DBlockBase):
-    """Block for retrieving all orders"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-
-    class Output(BlockSchemaOutput):
-        orders: List[str] = SchemaField(description="List of orders with their details")
-
-    def __init__(self):
-        super().__init__(
-            id="42283bf5-8a32-4fb4-92a2-60a9ea48e105",
-            description="Get all orders for the account",
-            input_schema=self.Input,
-            output_schema=self.Output,
-            # This block is disabled for cloud hosted because it allows access to all orders for the account
-            disabled=settings.config.behave_as == BehaveAs.CLOUD,
-            test_input={"credentials": TEST_CREDENTIALS_INPUT},
+            test_input=TEST_ORDER_INPUT,
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                (
-                    "orders",
-                    [
-                        "1234567890",
-                    ],
-                )
+                ("shipping_cost", 5.56),
+                ("currency_code", "usd"),
+                ("order_id", "SLANT_1234567890"),
             ],
-            test_mock={
-                "_make_request": lambda *args, **kwargs: {
-                    "ordersData": [
-                        {
-                            "orderId": 1234567890,
-                            "orderTimestamp": {
-                                "_seconds": 1719510986,
-                                "_nanoseconds": 710000000,
-                            },
-                        }
-                    ]
-                }
-            },
+            test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
-        try:
-            result = await self._make_request(
-                "GET", "order", credentials.api_key.get_secret_value()
-            )
-            yield "orders", [str(order["orderId"]) for order in result["ordersData"]]
-        except Exception as e:
-            yield "error", str(e)
-            raise
-
-
-class Slant3DTrackingBlock(Slant3DBlockBase):
-    """Block for tracking order status and shipping"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_id: str = SchemaField(description="Slant3D order ID to track")
-
-    class Output(BlockSchemaOutput):
-        status: str = SchemaField(description="Order status")
-        tracking_numbers: List[str] = SchemaField(
-            description="List of tracking numbers"
+        api_key = credentials.api_key.get_secret_value()
+        order_data = await self._format_order_data(
+            input_data.customer,
+            input_data.order_number,
+            input_data.items,
+            api_key,
+            input_data.platform_id,
+            execution_context=execution_context,
         )
-
-    def __init__(self):
-        super().__init__(
-            id="dd7c0293-c5af-4551-ba3e-fc162fb1fb89",
-            description="Track order status and shipping",
-            input_schema=self.Input,
-            output_schema=self.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "order_id": "314144241",
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[("status", "awaiting_shipment"), ("tracking_numbers", [])],
-            test_mock={
-                "_make_request": lambda *args, **kwargs: {
-                    "status": "awaiting_shipment",
-                    "trackingNumbers": [],
-                }
-            },
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            result = await self._make_request(
-                "GET",
-                f"order/{input_data.order_id}/get-tracking",
-                credentials.api_key.get_secret_value(),
-            )
-            yield "status", result["status"]
-            yield "tracking_numbers", result["trackingNumbers"]
-        except Exception as e:
-            yield "error", str(e)
-            raise
-
-
-class Slant3DCancelOrderBlock(Slant3DBlockBase):
-    """Block for canceling orders"""
-
-    class Input(BlockSchemaInput):
-        credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        order_id: str = SchemaField(description="Slant3D order ID to cancel")
-
-    class Output(BlockSchemaOutput):
-        status: str = SchemaField(description="Cancellation status message")
-
-    def __init__(self):
-        super().__init__(
-            id="54de35e1-407f-450b-b5fa-3b5e2eba8185",
-            description="Cancel an existing order",
-            input_schema=self.Input,
-            output_schema=self.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "order_id": "314144241",
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[("status", "Order cancelled")],
-            test_mock={
-                "_make_request": lambda *args, **kwargs: {"status": "Order cancelled"}
-            },
-        )
-
-    async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            result = await self._make_request(
-                "DELETE",
-                f"order/{input_data.order_id}",
-                credentials.api_key.get_secret_value(),
-            )
-            yield "status", result["status"]
-        except Exception as e:
-            yield "error", str(e)
-            raise
+        result = await self._make_request("POST", "orders", api_key, json=order_data)
+        yield "shipping_cost", float(result["data"]["totals"]["deliveryCost"])
+        yield "currency_code", "usd"
+        yield "order_id", result["data"]["order"]["publicId"]

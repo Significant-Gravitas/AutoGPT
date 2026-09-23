@@ -2,7 +2,7 @@ import urllib.parse
 from typing import ClassVar, Optional
 
 from backend.data.model import OAuth2Credentials, ProviderName
-from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.util.request import Requests
 
 
@@ -66,7 +66,9 @@ class TodoistOAuthHandler(BaseOAuthHandler):
             refresh_token=None,
             access_token_expires_at=None,
             refresh_token_expires_at=None,
-            scopes=scopes,
+            # Todoist's token response documents no `scope`; the request is then
+            # all we know about the grant.
+            scopes=parse_granted_scopes(tokens.get("scope"), fallback=scopes),
         )
 
     async def _refresh_tokens(

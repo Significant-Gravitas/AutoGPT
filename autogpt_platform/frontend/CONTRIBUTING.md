@@ -505,8 +505,8 @@ Check a flag in a client component:
 ```tsx
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-export function AgentActivityPanel() {
-  const enabled = useGetFlag(Flag.AGENT_ACTIVITY);
+export function SkillsPanel() {
+  const enabled = useGetFlag(Flag.SKILLS_HUB);
   if (!enabled) return null;
   return <div>Feature is enabled!</div>;
 }
@@ -834,6 +834,7 @@ Common scripts (see `package.json` for full list):
 - `pnpm lint` — ESLint + Prettier check
 - `pnpm format` — Format code
 - `pnpm types` — Type-check
+- `pnpm knip` — Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` — Run integration/unit tests (Vitest + RTL + MSW)
 - `pnpm test:unit:watch` — Watch mode for integration tests
 - `pnpm test` — Run Playwright E2E tests

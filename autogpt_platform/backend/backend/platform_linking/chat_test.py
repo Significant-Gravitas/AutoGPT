@@ -509,7 +509,7 @@ class TestUploadWorkspaceFile:
         ):
             await upload_workspace_file(self._req(session_id="sess-1"))
         # Session-scoped manager (like the web upload) plus a flat filename —
-        # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
+        # write_file defaults the path to /sessions/<id>/<name> where Otto
         # reads it. No explicit uploads/<uuid> path.
         mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
         kwargs = write.await_args.kwargs
@@ -790,6 +790,10 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "paywalled"
+        assert denial.message == (
+            "Chatting with experts requires an active subscription. "
+            "Upgrade your plan to start chatting."
+        )
         assert denial.button_url == "https://app/settings/billing"
         assert denial.button_label == "Subscribe"
 
@@ -833,6 +837,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio
@@ -847,6 +854,9 @@ class TestEvaluateTurnGate:
 
         assert denial is not None
         assert denial.reason == "unavailable"
+        assert denial.message == (
+            "Chat is temporarily unavailable — please try again in a moment."
+        )
         assert denial.button_url is None
 
     @pytest.mark.asyncio

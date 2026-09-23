@@ -130,7 +130,8 @@ class RunClaim:
                 detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
                 "in flight. Retry once it completes.",
             )
-        return stored
+        # The client decodes responses; the redis stubs still admit bytes.
+        return stored if isinstance(stored, str) else stored.decode()
 
     async def record(self, run_id: str) -> None:
         """Point the key at the run, so a later retry gets this one back."""

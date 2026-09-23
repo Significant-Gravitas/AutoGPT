@@ -1,0 +1,37 @@
+import { ProfileEntry } from "../../[expertId]/components/ProfileEntry";
+import { AUTOPILOT_BLURB } from "../../helpers";
+
+const ENTRIES = [
+  { label: "Bio", value: AUTOPILOT_BLURB },
+  {
+    label: "Identity",
+    value:
+      "Otto is the generalist at the head of your team. It talks with you directly, answers questions, and runs your workflows on request.",
+  },
+  {
+    label: "Works with",
+    value:
+      "Every expert you hire. Otto knows what each one can do and hands work to the right expert, then reports back to you.",
+  },
+  {
+    label: "Boundaries",
+    value:
+      "Otto asks before taking external actions on your behalf and never edits an expert's Soul for you.",
+  },
+] as const;
+
+export function AutopilotAboutSection() {
+  return (
+    <section className="space-y-5">
+      <dl className="space-y-4">
+        {ENTRIES.map((entry) => (
+          <ProfileEntry
+            key={entry.label}
+            label={entry.label}
+            value={entry.value}
+          />
+        ))}
+      </dl>
+    </section>
+  );
+}

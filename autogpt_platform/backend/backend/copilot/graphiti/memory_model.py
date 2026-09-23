@@ -93,6 +93,10 @@ class MemoryEnvelope(BaseModel):
     ``ProcedureMemory`` for structured steps.
     """
 
+    user: str | None = Field(
+        default=None,
+        description="Display name of the person the memory is about",
+    )
     content: str = Field(
         description="The memory content — the actual fact, rule, or finding"
     )

@@ -39,7 +39,7 @@ from backend.api.external.v2.pagination import (
     single_page_request,
 )
 from backend.api.external.v2.tenancy import TenantContext, require_auth
-from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -348,7 +348,7 @@ async def test_reviews_are_refused_on_a_run_that_is_not_awaiting_them(
     mocker: pytest_mock.MockFixture,
 ):
     """v2 had no status check where the internal route answers 409."""
-    from backend.api.features.executions.review import service as review_service
+    from backend.api.features.graph_executions.review import service as review_service
     from backend.data.execution import ExecutionStatus
 
     _mock_review_db(
@@ -373,7 +373,7 @@ async def test_an_auto_approved_review_records_the_node_and_ignores_edits(
     mocker: pytest_mock.MockFixture,
 ):
     """The internal route has always supported this; v2 dropped it silently."""
-    from backend.api.features.executions.review import service as review_service
+    from backend.api.features.graph_executions.review import service as review_service
 
     approved = _review("node-a", ReviewStatus.APPROVED)
     _mock_review_db(
@@ -856,7 +856,7 @@ def _mock_review_db(
     processed: dict[str, PendingHumanReviewModel],
     still_pending: bool,
 ) -> None:
-    from backend.api.features.executions.review import service as review_service
+    from backend.api.features.graph_executions.review import service as review_service
     from backend.data import execution as execution_db
     from backend.data.execution import ExecutionStatus
 
@@ -892,7 +892,7 @@ def _mock_review_db(
 
 def _mock_resume_path(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
     """Stub everything the resume needs; returns the enqueue mock to assert on."""
-    from backend.api.features.executions.review import service as review_service
+    from backend.api.features.graph_executions.review import service as review_service
     from backend.data.graph import GraphSettings
 
     mocker.patch.object(

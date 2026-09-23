@@ -1,10 +1,9 @@
-// Shared resolution of the wizard's "Other" / "Something else" sentinels into
-// real values. Both `useSubscriptionStep` (pre-Stripe-redirect) and
-// `useOnboardingPage` (Preparing-step submit) post the profile, and label or
-// mapping changes must stay in sync across the two.
+import type { User } from "@/lib/auth/types";
+
+// Resolution of the wizard's "Other" / "Something else" sentinels into real
+// values for the Preparing-step profile submit.
 
 interface ProfileSource {
-  name: string;
   role: string;
   otherRole: string;
   painPoints: string[];
@@ -12,9 +11,18 @@ interface ProfileSource {
 }
 
 interface NormalizedProfile {
-  name: string;
   role: string;
   painPoints: string[];
+}
+
+// The wizard no longer asks for a name; the profile carries whatever the
+// account already knows — the same precedence the copilot greeting uses.
+export function accountDisplayName(user: User | null | undefined): string {
+  const preferred = user?.user_metadata.preferred_name?.trim();
+  if (preferred) return preferred;
+  const name = user?.user_metadata.name?.trim();
+  if (name) return name.split(" ")[0];
+  return user?.email.split("@")[0] ?? "";
 }
 
 export function normalizeOnboardingProfile(
@@ -29,7 +37,6 @@ export function normalizeOnboardingProfile(
         : [],
     );
   return {
-    name: state.name,
     role: resolvedRole,
     painPoints: resolvedPainPoints,
   };

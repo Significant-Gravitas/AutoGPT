@@ -10,9 +10,14 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -28,6 +33,7 @@ from backend.util.exceptions import (
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
+    validate_timezone,
 )
 
 from .base import BaseTool
@@ -38,7 +44,13 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
-from .helpers import get_inputs_from_schema
+from .expert_scope import (
+    annotate_expert_grants,
+    provider_slug,
+    require_installed_workflow,
+    ungranted_credential_hint,
+)
+from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -117,7 +129,7 @@ class RunAgentInput(BaseModel):
     use_defaults: bool = False
     schedule_name: str = ""
     cron: str = ""
-    timezone: str = "UTC"
+    timezone: str = ""
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
     save_as_preset: bool = False
@@ -183,7 +195,7 @@ class RunAgentTool(BaseTool):
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Library agent ID.",
+                    "description": "Library agent ID or graph ID from your library.",
                 },
                 "preset_id": {
                     "type": "string",
@@ -212,7 +224,7 @@ class RunAgentTool(BaseTool):
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone (default: UTC).",
+                    "description": "IANA timezone for the cron expression. Omit to use the user's configured timezone.",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -317,9 +329,19 @@ class RunAgentTool(BaseTool):
 
             # Priority: library_agent_id if provided
             if has_library_id:
-                library_agent = await library_db().get_library_agent(
-                    params.library_agent_id, user_id
-                )
+                try:
+                    library_agent = await library_db().get_library_agent(
+                        params.library_agent_id, user_id
+                    )
+                except NotFoundError:
+                    # get_library_agent raises rather than returning None, so
+                    # the graph-id fallback this tool documents is only
+                    # reachable from here.
+                    library_agent = None
+                if not library_agent:
+                    library_agent = await library_db().get_library_agent_by_graph_id(
+                        user_id, params.library_agent_id
+                    )
                 if not library_agent:
                     return ErrorResponse(
                         message=f"Library agent '{params.library_agent_id}' not found",
@@ -347,6 +369,15 @@ class RunAgentTool(BaseTool):
                     message=f"Agent '{identifier}' not found",
                     session_id=session_id,
                 )
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=graph.id,
+                library_agent_id=library_agent.id if library_agent else None,
+                name=graph.name,
+            )
+            if scope_error is not None:
+                return scope_error
 
             # Builder-bound sessions can only run their bound agent.  We
             # resolve the graph first so the user sees a precise error that
@@ -365,7 +396,7 @@ class RunAgentTool(BaseTool):
             # Webhook-trigger agents can't be run or scheduled directly — they
             # fire on incoming HTTP events. Hand off to the trigger-setup tool,
             # surfacing the same AgentDetails (with trigger_info) that run_agent
-            # uses elsewhere so AutoPilot has the provider + config schema ready.
+            # uses elsewhere so Otto has the provider + config schema ready.
             if graph.has_external_trigger:
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
@@ -374,7 +405,7 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Agent '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
-                        "setup_agent_webhook_trigger using the trigger block's "
+                        "tool:setup_agent_webhook_trigger using the trigger block's "
                         "config (see trigger_info.config_schema). For provider "
                         "webhooks (e.g. GitHub), ask the user which connected "
                         "account to register the webhook under — never auto-pick."
@@ -527,11 +558,14 @@ class RunAgentTool(BaseTool):
             trigger_info=trigger_info,
         )
 
-    def _build_setup_requirements_from_validation_error(
+    async def _build_setup_requirements_from_validation_error(
         self,
         graph: GraphModel,
         error: GraphValidationError,
         session_id: str,
+        user_id: str,
+        expert_id: str | None,
+        inputs: dict[str, Any] | None = None,
     ) -> SetupRequirementsResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
@@ -551,7 +585,9 @@ class RunAgentTool(BaseTool):
         # creds are now invalid, so narrowing to `error.node_errors` would
         # leak the stale mapping. Passing ``None`` means no field is
         # treated as "already connected".
-        credentials_dict = build_missing_credentials_from_graph(graph, None)
+        credentials_dict = await annotate_expert_grants(
+            user_id, expert_id, build_missing_credentials_from_graph(graph, None)
+        )
         return SetupRequirementsResponse(
             message=(
                 f"Agent '{graph.name}' has credentials that are missing or "
@@ -569,7 +605,9 @@ class RunAgentTool(BaseTool):
                 ),
                 requirements={
                     "credentials": list(credentials_dict.values()),
-                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "inputs": get_picker_inputs_from_schema(
+                        graph.input_schema, input_data=inputs
+                    ),
                     "execution_modes": self._get_execution_modes(graph),
                 },
             ),
@@ -577,13 +615,15 @@ class RunAgentTool(BaseTool):
             graph_version=graph.version,
         )
 
-    def _handle_graph_validation_race(
+    async def _handle_graph_validation_race(
         self,
         error: GraphValidationError,
         graph: GraphModel,
         user_id: str,
         session_id: str,
         action_verb: str,
+        expert_id: str | None = None,
+        inputs: dict[str, Any] | None = None,
     ) -> ToolResponseBase:
         """Handle a ``GraphValidationError`` that slipped past the prereq check.
 
@@ -598,10 +638,13 @@ class RunAgentTool(BaseTool):
             graph.id,
             {node_id: list(fields) for node_id, fields in error.node_errors.items()},
         )
-        creds_setup = self._build_setup_requirements_from_validation_error(
+        creds_setup = await self._build_setup_requirements_from_validation_error(
             graph=graph,
             error=error,
             session_id=session_id,
+            user_id=user_id,
+            expert_id=expert_id,
+            inputs=inputs,
         )
         if creds_setup is not None:
             return creds_setup
@@ -632,7 +675,7 @@ class RunAgentTool(BaseTool):
             (graph_credentials, error_response) — error_response is None when ready.
         """
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph, expert_id
+            user_id, graph, expert_id, session_id=session_id
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
@@ -660,11 +703,22 @@ class RunAgentTool(BaseTool):
         # --- Credential gate ---
         if missing_creds:
             requirements_creds_dict = build_missing_credentials_from_graph(graph, None)
-            missing_credentials_dict = build_missing_credentials_from_graph(
-                graph, graph_credentials
+            missing_credentials_dict = await annotate_expert_grants(
+                user_id,
+                expert_id,
+                build_missing_credentials_from_graph(graph, graph_credentials),
             )
             return graph_credentials, SetupRequirementsResponse(
-                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
+                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
+                + await ungranted_credential_hint(
+                    user_id,
+                    expert_id,
+                    {
+                        provider_slug(m.get("provider", ""))
+                        for m in missing_credentials_dict.values()
+                    }
+                    - {""},
+                ),
                 session_id=session_id,
                 setup_info=SetupInfo(
                     agent_id=graph.id,
@@ -676,7 +730,9 @@ class RunAgentTool(BaseTool):
                     ),
                     requirements={
                         "credentials": list(requirements_creds_dict.values()),
-                        "inputs": get_inputs_from_schema(graph.input_schema),
+                        "inputs": get_picker_inputs_from_schema(
+                            graph.input_schema, input_data=params.inputs
+                        ),
                         "execution_modes": self._get_execution_modes(graph),
                     },
                 ),
@@ -788,6 +844,11 @@ class RunAgentTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        scope_error = await require_installed_workflow(
+            user_id, session, graph_id=graph.id, name=graph.name
+        )
+        if scope_error is not None:
+            return scope_error
 
         # Builder-bound sessions can only run their bound agent — enforce the
         # same guard as the regular run path so a preset for a different graph
@@ -811,8 +872,8 @@ class RunAgentTool(BaseTool):
                 message=(
                     f"Preset '{params.preset_id}' is a webhook trigger — it runs "
                     "automatically when its event fires, so it can't be run on "
-                    "demand. Use update_preset to reconfigure or pause it "
-                    "(is_active=false), or delete_preset to remove it."
+                    "demand. Use tool:update_preset to reconfigure or pause it "
+                    "(is_active=false), or tool:delete_preset to remove it."
                 ),
                 error="preset_is_webhook_trigger",
                 session_id=session_id,
@@ -886,6 +947,7 @@ class RunAgentTool(BaseTool):
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Execute — ``add_graph_execution`` ultimately calls
         # ``validate_and_construct_node_execution_input`` which raises
@@ -915,14 +977,38 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                trigger=ExecutionTrigger.COPILOT,
+                trigger_ref=session_id,
             )
         except GraphValidationError as e:
-            return self._handle_graph_validation_race(
+            return await self._handle_graph_validation_race(
                 error=e,
                 graph=graph,
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="running",
+                expert_id=session.expert_id,
+                inputs=inputs,
+            )
+
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        if execution.status == ExecutionStatus.REVIEW:
+            # Parked for spend approval (SECRT-2599): it runs once the user
+            # approves it on Home or the run page. Not a successful run yet.
+            return ExecutionStartedResponse(
+                message=(
+                    f"Agent '{library_agent.name}' is waiting for the user's "
+                    "approval to spend more credits (spend threshold reached). "
+                    f"It runs once they approve it on Home or at "
+                    f"{library_agent_link}. {MSG_DO_NOT_RUN_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=execution.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=ExecutionStatus.REVIEW.value,
             )
 
         # Track successful run (dry runs don't count against the session limit)
@@ -940,8 +1026,6 @@ class RunAgentTool(BaseTool):
             execution_id=execution.id,
             library_agent_id=library_agent.id,
         )
-
-        library_agent_link = f"/library/agents/{library_agent.id}"
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:
@@ -1078,7 +1162,7 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
                         f"The user can approve or reject inline. After approval, "
-                        f"the execution resumes automatically. Use view_agent_output "
+                        f"the execution resumes automatically. Use tool:view_agent_output "
                         f"with execution_id='{execution.id}' to check the result."
                     ),
                     session_id=session_id,
@@ -1099,7 +1183,7 @@ class RunAgentTool(BaseTool):
                         f"Agent '{library_agent.name}' is still {status} after "
                         f"{wait_for_result}s. Check results later at "
                         f"{library_agent_link}. "
-                        f"Use view_agent_output with wait_if_running to check again."
+                        f"Use tool:view_agent_output with wait_if_running to check again."
                     ),
                     session_id=session_id,
                     execution_id=execution.id,
@@ -1134,12 +1218,13 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         schedule_name: str,
         cron: str,
-        timezone: str,
+        timezone: str | None,
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
 
         # Validate schedule params
+        schedule_name = schedule_name.strip()
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",
@@ -1161,12 +1246,30 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Precedence mirrors POST /graphs/{graph_id}/schedules: an explicit
+        # timezone wins over the user's stored preference, which wins over UTC.
+        # Resolved before the library agent, so a rejected timezone persists nothing.
+        if timezone:
+            # Never silently downgrade to UTC here — the model has already told
+            # the user which timezone it is scheduling in.
+            if not validate_timezone(timezone):
+                return ErrorResponse(
+                    message=(
+                        f"'{timezone}' is not a valid IANA timezone. Use a name "
+                        "like 'Europe/London', or omit it to use the user's "
+                        "configured timezone."
+                    ),
+                    error="invalid_timezone",
+                    session_id=session_id,
+                )
+            user_timezone = timezone
+        else:
+            user = await user_db().get_user_by_id(user_id)
+            user_timezone = get_user_timezone_or_utc(user.timezone)
+
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
-
-        # Get user timezone
-        user = await user_db().get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
+        emit_tool_display_name(library_agent.name)
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise
@@ -1204,12 +1307,14 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
             )
         except GraphValidationError as e:
-            return self._handle_graph_validation_race(
+            return await self._handle_graph_validation_race(
                 error=e,
                 graph=graph,
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="scheduling",
+                expert_id=session.expert_id,
+                inputs=inputs,
             )
 
         # Convert next_run_time to user timezone for display

@@ -15,6 +15,7 @@ from .agent_json_input import (
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import install_saved_agent
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,7 @@ class CustomizeAgentTool(BaseTool):
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
 
-        return await fix_validate_and_save(
+        saved = await fix_validate_and_save(
             agent_json,
             user_id=user_id,
             session_id=session_id,
@@ -128,3 +129,6 @@ class CustomizeAgentTool(BaseTool):
             library_agents=library_agents,
             folder_id=folder_id,
         )
+        if user_id:
+            return await install_saved_agent(user_id, session, saved)
+        return saved

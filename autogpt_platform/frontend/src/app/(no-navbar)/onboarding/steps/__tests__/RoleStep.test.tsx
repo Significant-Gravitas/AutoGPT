@@ -26,8 +26,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.useFakeTimers();
   useOnboardingWizardStore.getState().reset();
-  useOnboardingWizardStore.getState().setName("Alice");
-  useOnboardingWizardStore.getState().goToStep(2);
+  useOnboardingWizardStore.getState().goToStep(1);
 });
 
 describe("RoleStep", () => {
@@ -44,71 +43,62 @@ describe("RoleStep", () => {
     expect(screen.getByText("Other")).toBeDefined();
   });
 
-  test("displays the user name in the heading", () => {
+  test("asks what best describes the user", () => {
     render(<RoleStep />);
 
     expect(
-      screen.getAllByText(/what best describes you, alice/i).length,
-    ).toBeGreaterThan(0);
+      screen.getByRole("heading", { name: "What best describes you?" }),
+    ).toBeDefined();
   });
 
-  test("selecting a non-Other role auto-advances after delay", () => {
+  test("selecting a role does not advance on its own", () => {
     render(<RoleStep />);
 
     fireEvent.click(screen.getByRole("button", { name: /engineering/i }));
 
     expect(useOnboardingWizardStore.getState().role).toBe("Engineering");
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
-
-    vi.advanceTimersByTime(350);
-
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
+    vi.advanceTimersByTime(1000);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
   });
 
-  test("selecting 'Other' does not auto-advance", () => {
+  test("Next is disabled until a role is chosen, then advances", () => {
     render(<RoleStep />);
 
-    fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
+    const next = screen.getByRole("button", { name: "Next" });
+    expect(next.hasAttribute("disabled")).toBe(true);
 
-    vi.advanceTimersByTime(500);
+    fireEvent.click(screen.getByRole("button", { name: /engineering/i }));
+    expect(next.hasAttribute("disabled")).toBe(false);
 
+    fireEvent.click(next);
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  test("selecting 'Other' shows text input and Continue button", () => {
+  test("selecting 'Other' shows the text input", () => {
     render(<RoleStep />);
 
     fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
 
     expect(screen.getByPlaceholderText(/describe your role/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /continue/i })).toBeDefined();
   });
 
-  test("Continue button is disabled when Other input is empty", () => {
+  test("Next stays disabled for Other until the role is described", () => {
     render(<RoleStep />);
 
     fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
+    const next = screen.getByRole("button", { name: "Next" });
+    expect(next.hasAttribute("disabled")).toBe(true);
 
-    const continueBtn = screen.getByRole("button", { name: /continue/i });
-    expect(continueBtn.hasAttribute("disabled")).toBe(true);
-  });
-
-  test("Continue button advances when Other role text is filled", () => {
-    render(<RoleStep />);
-
-    fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe your role/i), {
       target: { value: "Designer" },
     });
+    expect(next.hasAttribute("disabled")).toBe(false);
 
-    const continueBtn = screen.getByRole("button", { name: /continue/i });
-    expect(continueBtn.hasAttribute("disabled")).toBe(false);
-
-    fireEvent.click(continueBtn);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
+    fireEvent.click(next);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
-  test("switching from Other to a regular role cancels Other and auto-advances", () => {
+  test("switching from Other to a regular role hides the input and keeps the step", () => {
     render(<RoleStep />);
 
     fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
@@ -117,7 +107,7 @@ describe("RoleStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /marketing/i }));
 
     expect(useOnboardingWizardStore.getState().role).toBe("Marketing");
-    vi.advanceTimersByTime(350);
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
+    vi.advanceTimersByTime(1000);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(1);
   });
 });

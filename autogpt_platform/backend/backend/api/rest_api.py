@@ -19,18 +19,29 @@ import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.test_data_routes
+import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.billing.credits.routes as credits_routes
+import backend.api.features.billing.subscriptions.routes as subscriptions_routes
+import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
-import backend.api.features.executions.review.routes
+import backend.api.features.chat.speech as chat_speech
+import backend.api.features.desktop_preview
+import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.graph_executions.review.routes
+import backend.api.features.graph_executions.routes as graph_executions_routes
+import backend.api.features.graphs.routes as graphs_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -38,6 +49,7 @@ import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding.routes as onboarding_routes
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
@@ -46,11 +58,15 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.store.skill_routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
-import backend.api.features.v1
+import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -157,7 +173,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.org_migration.run_migration()
 
     # Guarded, unlike its neighbours above: this backfill only corrects what
-    # the builder displays for AutoPilot nodes saved before `transport`
+    # the builder displays for Otto nodes saved before `transport`
     # existed. The block honours the connection either way, so a failure here
     # changes nothing about which account pays — and refusing to boot the
     # platform over a cosmetic migration would be the worse outcome.
@@ -167,7 +183,7 @@ async def lifespan_context(app: fastapi.FastAPI):
             timeout=30,
         )
     except Exception:
-        logger.error("AutoPilot transport backfill failed", exc_info=True)
+        logger.error("Otto transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
@@ -280,7 +296,60 @@ instrument_fastapi(
 
 add_exception_handlers(app)
 
-app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(
+    backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
+)
+app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(
+    api_keys_routes.router,
+    tags=["v1", "api-keys"],
+    prefix="/api/api-keys",
+)
+app.include_router(
+    skills_routes.router,
+    tags=["v1", "skills"],
+    prefix="/api/skills",
+)
+app.include_router(
+    schedules_routes.router,
+    tags=["v1", "schedules"],
+    prefix="/api",
+)
+app.include_router(
+    graph_executions_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    graphs_routes.router,
+    tags=["v1", "graphs"],
+    prefix="/api",
+)
+app.include_router(
+    credits_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    subscriptions_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    blocks_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    onboarding_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    user_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
 app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
@@ -297,7 +366,17 @@ app.include_router(
     tags=["analytics"],
 )
 app.include_router(
+    backend.api.features.experiments.router,
+    prefix="/api/experiments",
+    tags=["experiments"],
+)
+app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.api.features.store.skill_routes.router,
+    tags=["v2"],
+    prefix="/api/store/skills",
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"
@@ -321,6 +400,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.impersonation_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
 )
 app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
@@ -347,8 +431,17 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+# Dev-only surface: the test-data seeder is never mounted outside a local
+# app_env, matching how docs_url/metrics are gated above. The runtime
+# `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
+if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+    app.include_router(
+        backend.api.features.admin.test_data_routes.router,
+        tags=["v2", "admin"],
+        prefix="/api",
+    )
 app.include_router(
-    backend.api.features.executions.review.routes.router,
+    backend.api.features.graph_executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
 )
@@ -359,6 +452,7 @@ app.include_router(
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
 app.include_router(home_routes.router, prefix="/api")
@@ -379,6 +473,11 @@ app.include_router(
 app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_speech.router,
+    tags=["chat"],
     prefix="/api/chat",
 )
 app.include_router(
@@ -539,7 +638,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.execute_graph(
+        return await graphs_routes.execute_graph(
             user_id=user_id,
             ctx=ctx,
             graph_id=graph_id,
@@ -572,13 +671,13 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.get_graph(
+        return await graphs_routes.get_graph(
             graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
     async def test_create_graph(
-        create_graph: backend.api.features.v1.CreateGraph,
+        create_graph: graphs_routes.CreateGraph,
         user_id: str,
     ):
         from autogpt_libs.auth.models import RequestContext
@@ -598,9 +697,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.create_new_graph(
-            create_graph, user_id, ctx
-        )
+        return await graphs_routes.create_new_graph(create_graph, user_id, ctx)
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -636,7 +733,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
+        return await graphs_routes.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):

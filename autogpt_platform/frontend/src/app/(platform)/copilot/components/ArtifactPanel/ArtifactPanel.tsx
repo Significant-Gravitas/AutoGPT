@@ -7,6 +7,7 @@ import { MIN_ARTIFACT_PANEL_WIDTH, PANEL_RESERVED_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactContent } from "./components/ArtifactContent";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
+import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
 
 // Matched to the context panel so the two side rails move as one system.
@@ -15,13 +16,15 @@ const PANEL_DURATION = 0.3;
 
 interface Props {
   mobile?: boolean;
+  /** Enables the Computer face: the chat whose sandboxes the panel can show. */
+  sessionId?: string | null;
   /** The desktop copilot chat renders its own sidebar-right close control;
    *  standalone hosts (share viewer, tour, mobile drawer) do not, so their
    *  header keeps its Close button. */
   hasExternalClose?: boolean;
 }
 
-export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
+export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
   const {
     activeArtifact,
     history,
@@ -36,7 +39,11 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
     handleDownload,
     artifactPanelWidth,
     setArtifactPanelWidth,
+    mode,
+    isComputerOpen,
+    setArtifactPanelMode,
   } = useArtifactPanel();
+  const showComputer = !!sessionId && mode === "computer" && isComputerOpen;
 
   // Hold the last live artifact so both the mobile drawer and the desktop
   // panel can keep rendering its contents while the close animation plays —
@@ -59,7 +66,8 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const shouldReduceMotion = useReducedMotion();
-  const showDesktopPanel = !mobile && !!activeArtifact && !!classification;
+  const showDesktopPanel =
+    !mobile && ((!!activeArtifact && !!classification) || showComputer);
   useEffect(() => {
     if (!showDesktopPanel || typeof ResizeObserver === "undefined") return;
     const parent = panelRef.current?.parentElement;
@@ -155,7 +163,7 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
 
   return (
     <AnimatePresence initial={false}>
-      {showDesktopPanel && shown && (
+      {showDesktopPanel && (shown || showComputer) && (
         <motion.div
           ref={panelRef}
           data-artifact-panel
@@ -182,12 +190,23 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
               className="flex h-full min-h-0 flex-col overflow-hidden"
             >
               <ArtifactPanelHeader
-                artifact={shown.artifact}
-                classification={shown.classification}
+                artifact={
+                  showComputer
+                    ? (activeArtifact ?? null)
+                    : (shown?.artifact ?? null)
+                }
+                classification={
+                  showComputer
+                    ? classification
+                    : (shown?.classification ?? null)
+                }
+                mode={showComputer ? "computer" : "artifact"}
+                showModeSwitch={!!sessionId}
+                onModeChange={setArtifactPanelMode}
                 hasExternalClose={hasExternalClose}
                 canGoBack={history.length > 0}
                 isSourceView={isSourceView}
-                hasSourceToggle={shown.classification.hasSourceToggle}
+                hasSourceToggle={shown?.classification.hasSourceToggle ?? false}
                 canCopy={canCopy}
                 onBack={goBackArtifact}
                 onClose={clearArtifactPreview}
@@ -196,11 +215,15 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
                 onOpenFiles={showFilesTab}
                 onSourceToggle={setIsSourceView}
               />
-              <ArtifactContent
-                artifact={shown.artifact}
-                isSourceView={isSourceView}
-                classification={shown.classification}
-              />
+              {showComputer && sessionId ? (
+                <ComputerPanelContent sessionId={sessionId} />
+              ) : shown ? (
+                <ArtifactContent
+                  artifact={shown.artifact}
+                  isSourceView={isSourceView}
+                  classification={shown.classification}
+                />
+              ) : null}
             </div>
           </div>
         </motion.div>

@@ -65,6 +65,10 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "browser_navigate": "browser state is bound to the chat session",
     "browser_act": "browser state is bound to the chat session",
     "browser_screenshot": "browser state is bound to the chat session",
+    "expert_onboarding": "renders the expert intake card in a chat session",
+    "consult_teammate": "teammate checks run inside a chat session",
+    "find_session": "lists the caller's live chat sessions",
+    "message_session": "messages another live chat session",
     # Expert team flows: preview in one turn, confirm in the next; MCP calls
     # get a fresh session each time, and no expert API-key permission exists
     "hire_expert": "two-step confirm needs chat-session state",
@@ -76,6 +80,17 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "handoff_to_expert": "hands off between experts within a chat session",
     "delegate_to_expert": "no API-key permission for expert teams yet",
     "list_team": "no API-key permission for expert teams yet",
+    "list_expert_chats": "no API-key permission for expert teams yet",
+    "read_expert_chat": "no API-key permission for expert teams yet",
+    "install_expert_workflow": "no API-key permission for expert teams yet",
+    "remove_expert_workflow": "no API-key permission for expert teams yet",
+    "list_expert_workflows": "no API-key permission for expert teams yet",
+    "list_expert_credentials": "no API-key permission for expert teams yet",
+    "grant_expert_credential": "no API-key permission for expert teams yet",
+    "revoke_expert_credential": "no API-key permission for expert teams yet",
+    "request_credential_grant": "no API-key permission for expert teams yet",
+    "list_routines": "no API-key permission for expert teams yet",
+    "schedule_routine": "no API-key permission for expert teams yet",
     # Copilot-internal knowledge stores (feature-flagged / prompt-facing)
     "memory_store": "copilot Graphiti memory",
     "memory_search": "copilot Graphiti memory",
@@ -86,14 +101,21 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "list_skills": "copilot skill registry feeds copilot prompts",
     "delete_skill": "copilot skill registry feeds copilot prompts",
     # Capabilities the v2 REST API also leaves out, by decision
-    "run_block": "direct block execution is not part of v2",
-    "continue_run_block": "direct block execution is not part of v2",
+    "find_capability": "discovery for run_capability, which is not exposed",
+    "describe_capability": "discovery for run_capability, which is not exposed",
+    "run_capability": "runs blocks, MCP servers and any deferred tool by id, "
+    "past each tool's own permission",
+    "resume_capability": "resumes a run_capability review",
     "connect_integration": "OAuth flows are web-UI only in v2",
-    "run_mcp_tool": "proxies the user's third-party MCP servers; no permission model",
     "post_to_chat_platform": "posts as the platform bot; no permission model yet",
+    "edit_chat_platform_message": "posts as the platform bot; no permission model yet",
     "list_chat_platform_channels": "posts as the platform bot; no permission model yet",
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
+    "start_desktop": "sandboxed desktop on platform infrastructure",
+    # Not yet classified for external use
+    "pause_schedule": "not yet reviewed for external use",
+    "resume_schedule": "not yet reviewed for external use",
 }
 
 # Tools exposed without any permission, with the reason. A tool that spends
@@ -103,7 +125,6 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
 UNSCOPED_EXTERNAL_TOOLS: dict[str, str] = {
     "get_doc_page": "serves a published documentation page",
     "search_docs": "searches published documentation",
-    "get_mcp_guide": "returns static guidance text",
     "get_agent_building_guide": "returns static guidance text",
     "validate_agent_graph": "pure check over JSON the caller supplied",
     "fix_agent_graph": "pure rewrite of JSON the caller supplied",

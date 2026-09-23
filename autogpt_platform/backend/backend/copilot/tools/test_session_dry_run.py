@@ -393,7 +393,9 @@ class TestRunMCPToolToolSessionDryRun:
 
             # Execution should proceed
             mock_client.initialize.assert_called_once()
-            mock_client.call_tool.assert_called_once_with("some_tool", {"key": "value"})
+            mock_client.call_tool.assert_called_once_with(
+                "some_tool", {"key": "value"}, input_schema=None
+            )
             assert isinstance(result, MCPToolOutputResponse)
             assert result.success is True
 

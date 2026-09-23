@@ -1,5 +1,10 @@
 """Shared constants for the CoPilot module."""
 
+# Otto is the account's built-in helper — the identity every session
+# without an expert speaks as, and the fixed author of the morning briefing.
+AUTOPILOT_NAME = "Otto"
+AUTOPILOT_ROLE = "Head of AI"
+
 # Special message prefixes for text-based markers (parsed by frontend).
 # The hex suffix makes accidental LLM generation of these strings virtually
 # impossible, avoiding false-positive marker detection in normal conversation.
@@ -35,6 +40,12 @@ COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 # Sub-prefixes for session-scoped and node-scoped synthetic IDs.
 COPILOT_SESSION_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}session-"
 COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
+
+# Present in every spend-approval review id, on both the graph-execution
+# and the chat shape, so one ``contains`` lookup finds an expert's
+# decisions. Lives here rather than beside the approval flow so the
+# copilot can recognise one without importing the API layer.
+SPEND_REVIEW_MARKER = "expert-spend:"
 
 # Separator used in synthetic node_exec_id to encode node_id.
 # Format: "{node_id}:{random_hex}" — extract node_id via rsplit(":", 1)[0]

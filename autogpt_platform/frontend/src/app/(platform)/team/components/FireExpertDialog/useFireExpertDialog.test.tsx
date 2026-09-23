@@ -59,6 +59,8 @@ describe("useFireExpertDialog invalidation", () => {
     const client = makeClient();
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
     const onFired = vi.fn();
+    const datafast = vi.fn();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
 
     const { result } = renderHook(
       () =>
@@ -87,6 +89,9 @@ describe("useFireExpertDialog invalidation", () => {
       containsKey(calls, getGetV1ListExecutionSchedulesForAUserQueryKey()),
     ).toBe(true);
     expect(containsKey(calls, ["/api/library/agents"])).toBe(true);
+    expect(datafast).toHaveBeenCalledWith("expert_fired", {
+      expert_id: "expert-maria",
+    });
   });
 
   it("does not fire before the preview has resolved", async () => {

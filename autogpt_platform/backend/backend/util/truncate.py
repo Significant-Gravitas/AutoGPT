@@ -12,10 +12,29 @@ def _truncate_string_middle(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
 
-    head_len = max(1, limit // 2)
-    tail_len = limit - head_len  # ensures total == limit
-    omitted = len(value) - (head_len + tail_len)
-    return f"{value[:head_len]}… (omitted {omitted} chars)…{value[-tail_len:]}"
+    if limit == 0:
+        return ""
+
+    omitted = len(value)
+    marker = f"… (omitted {omitted} chars)…"
+    while len(marker) <= limit:
+        retained = limit - len(marker)
+        if retained < 2:
+            break
+        actual_omitted = len(value) - retained
+        if actual_omitted == omitted:
+            head_len = (retained + 1) // 2
+            tail_len = retained - head_len
+            tail = value[-tail_len:] if tail_len else ""
+            return f"{value[:head_len]}{marker}{tail}"
+        omitted = actual_omitted
+        marker = f"… (omitted {omitted} chars)…"
+
+    retained = limit - 1
+    head_len = (retained + 1) // 2
+    tail_len = retained - head_len
+    tail = value[-tail_len:] if tail_len else ""
+    return f"{value[:head_len]}…{tail}"
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +97,9 @@ def truncate(value: Any, size_limit: int) -> Any:
     does not exceed size_limit characters. Uses binary search to find the
     largest str_limit and list_limit that fit.
     """
+
+    if size_limit < 0:
+        raise ValueError("size_limit must be non-negative")
 
     # Fast path: plain strings don't need the binary search machinery.
     if isinstance(value, str):

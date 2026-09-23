@@ -12,11 +12,11 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
-import { getPendingQuestions } from "../QuestionDock/helpers";
-import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
@@ -26,11 +26,21 @@ import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
+import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
+import { useVoiceMode } from "../../voice/useVoiceMode";
+import { useVoiceSilenceTimeout } from "../../voice/useVoiceSilenceTimeout";
+import {
+  requestVoiceStart,
+  takeVoiceStart,
+} from "../../voice/pendingVoiceStart";
+import { unlockAudio } from "../../voice/speechPlayer";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
+import type { SentFrom } from "../../sentFrom";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -44,11 +54,14 @@ export interface ChatContainerProps {
   error: Error | undefined;
   sessionId: string | null;
   sessionChatStatus?: string;
+  sessionSentFrom?: SentFrom | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
+  /** True while a closed stream is being checked for a turn still running. */
+  isFinishProbing?: boolean;
   /** True while reopening an already-running session before stream replay is live. */
   isRestoringActiveSession?: boolean;
   /** Latest backend-emitted status for a replaying assistant while restore is active. */
@@ -72,6 +85,9 @@ export interface ChatContainerProps {
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
   isUploadingFiles?: boolean;
+  /** The message whose attachments are still uploading, shown as a
+   *  placeholder bubble until the real one lands in `messages`. */
+  pendingSend?: PendingUploadSend | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -106,10 +122,12 @@ export const ChatContainer = ({
   error,
   sessionId,
   sessionChatStatus,
+  sessionSentFrom,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
   isReconnecting,
+  isFinishProbing,
   isRestoringActiveSession,
   restoreStatusMessage,
   activeStreamStartedAt,
@@ -120,6 +138,7 @@ export const ChatContainer = ({
   onEnqueue,
   queuedMessages,
   isUploadingFiles,
+  pendingSend,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
@@ -132,7 +151,6 @@ export const ChatContainer = ({
   isKickoffStarting,
   hasFloatingControls,
 }: ChatContainerProps) => {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   // The composer and the message column only slide aside while the floating
   // files card is shown; this host is the one that mounts the card.
@@ -141,7 +159,6 @@ export const ChatContainer = ({
     sessionId,
     messages,
     isLoadingSession,
-    isArtifactsEnabled,
   });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
@@ -159,6 +176,7 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -175,6 +193,19 @@ export const ChatContainer = ({
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
+
+  const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const silenceTimeoutMs = useVoiceSilenceTimeout();
+  const voice = useVoiceMode({
+    enabled: isVoiceModeEnabled,
+    messages,
+    isStreaming,
+    isReconnecting,
+    isFinishProbing,
+    sessionId,
+    silenceTimeoutMs,
+    onSend: guardedOnSend,
+  });
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
@@ -209,6 +240,19 @@ export const ChatContainer = ({
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
   }, [sessionId, messages, isStreaming]);
+
+  // A chat has to exist before voice mode can send into it, and creating one
+  // re-keys this whole subtree — so ask for voice mode and let the new mount
+  // start it. The unlock has to happen here, in the click.
+  async function handleStartVoiceInNewChat() {
+    unlockAudio();
+    requestVoiceStart();
+    try {
+      await onCreateSession();
+    } catch {
+      takeVoiceStart();
+    }
+  }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
@@ -245,7 +289,7 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
+      <PendingAnswerContexts messages={messages}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
@@ -253,14 +297,10 @@ export const ChatContainer = ({
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isArtifactsEnabled && (
-                  <>
-                    <div className="absolute right-0 top-0 z-30">
-                      <ContextPanelToggle sessionId={sessionId} />
-                    </div>
-                    <WorkspaceFileCards sessionId={sessionId} />
-                  </>
-                )}
+                <div className="absolute right-0 top-0 z-30">
+                  <ContextPanelToggle sessionId={sessionId} />
+                </div>
+                <WorkspaceFileCards sessionId={sessionId} />
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -271,16 +311,19 @@ export const ChatContainer = ({
                   activeStreamStartedAt={activeStreamStartedAt}
                   sessionID={sessionId}
                   sessionChatStatus={sessionChatStatus}
+                  sessionSentFrom={sessionSentFrom}
                   hasMoreMessages={hasMoreMessages}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={onLoadMore}
                   onRetry={handleRetry}
                   turnStats={turnStats}
                   queuedMessages={queuedMessages}
+                  pendingSend={pendingSend}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
-                  canOpenActivity={isArtifactsEnabled}
+                  canOpenActivity
                   areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
@@ -325,7 +368,10 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
-                    <Tooltip open={isLimitReached ? undefined : false}>
+                    <Tooltip
+                      open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                      onOpenChange={setIsUsageTooltipOpen}
+                    >
                       <TooltipTrigger asChild>
                         <div>
                           <ChatInput
@@ -341,6 +387,38 @@ export const ChatContainer = ({
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
                             sessionId={sessionId}
+                            expertId={expertIdentity?.id ?? null}
+                            voiceToggle={
+                              isVoiceModeEnabled ? (
+                                <VoiceModeButton
+                                  isActive={voice.isActive}
+                                  disabled={
+                                    isInputDisabled ||
+                                    isSendLocked ||
+                                    voice.isStarting
+                                  }
+                                  onClick={voice.toggle}
+                                />
+                              ) : undefined
+                            }
+                            voiceBar={
+                              voice.isActive ? (
+                                <VoiceModeBar
+                                  state={voice.state}
+                                  statusLabel={voice.statusLabel}
+                                  failure={voice.failure}
+                                  onRetry={voice.retryFailedUtterance}
+                                  onDownload={voice.downloadFailedUtterance}
+                                  leaveButton={
+                                    <VoiceModeButton
+                                      isActive
+                                      speaking={voice.state === "speaking"}
+                                      onClick={voice.toggle}
+                                    />
+                                  }
+                                />
+                              ) : undefined
+                            }
                           />
                         </div>
                       </TooltipTrigger>
@@ -358,17 +436,29 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                voiceToggle={
+                  isVoiceModeEnabled ? (
+                    <VoiceModeButton
+                      isActive={false}
+                      disabled={
+                        isInputDisabled || isSendLocked || isCreatingSession
+                      }
+                      onClick={handleStartVoiceInNewChat}
+                    />
+                  ) : undefined
+                }
                 isUploadingFiles={isUploadingFiles}
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}
                 isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
                 isKickoffStarting={isKickoffStarting}
                 expertName={expertIdentity?.name}
+                expertId={expertIdentity?.id ?? null}
               />
             )}
           </div>
         </LayoutGroup>
-      </PendingQuestionsContext.Provider>
+      </PendingAnswerContexts>
     </CopilotChatActionsProvider>
   );
 };

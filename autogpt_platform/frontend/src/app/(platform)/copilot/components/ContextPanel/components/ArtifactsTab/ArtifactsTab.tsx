@@ -21,9 +21,9 @@ interface Props {
 
 export function ArtifactsTab({ sessionId }: Props) {
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const { uploaded, generated, isLoading, isError } =
+  const { uploaded, deliverables, isLoading, isError } =
     useSessionFiles(sessionId);
-  const files = [...generated, ...uploaded].slice(0, PREVIEWABLE_LIMIT);
+  const files = [...deliverables, ...uploaded].slice(0, PREVIEWABLE_LIMIT);
 
   function handleDownload(file: SessionFile) {
     downloadArtifact(fileItemToArtifactRef(file.item)).catch(() =>

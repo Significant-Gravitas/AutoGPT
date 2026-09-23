@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { classifyArtifact } from "../helpers";
+import { classifyArtifact, classifyArtifactRef } from "../helpers";
+
+describe("classifyArtifactRef", () => {
+  it("classifies an expert ref without touching the file tables", () => {
+    const c = classifyArtifactRef({
+      id: "expert:call-1",
+      title: "Otto",
+      mimeType: null,
+      sourceUrl: "",
+      origin: "agent",
+      expert: {
+        id: null,
+        kind: "raise",
+        name: "Otto",
+        role: null,
+        color: null,
+        tagline: null,
+        about: null,
+        boundaries: null,
+        voicePreferences: null,
+        weeklyBudget: null,
+        avatarUrl: null,
+        applied: false,
+      },
+    });
+    expect(c.type).toBe("expert");
+    expect(c.hasSourceToggle).toBe(false);
+  });
+
+  it("falls through to the file classifier otherwise", () => {
+    const c = classifyArtifactRef({
+      id: "f",
+      title: "report.pdf",
+      mimeType: null,
+      sourceUrl: "/x",
+      origin: "agent",
+    });
+    expect(c.type).toBe("pdf");
+  });
+});
 
 describe("classifyArtifact", () => {
   it("routes PDF by extension", () => {

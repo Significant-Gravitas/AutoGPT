@@ -13,8 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
 from starlette import status
 
-from backend.api.features.executions.review.model import ReviewItem
-from backend.api.features.executions.review.service import process_reviews
+from backend.api.features.graph_executions.review.model import ReviewItem
+from backend.api.features.graph_executions.review.service import process_reviews
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data.execution import ExecutionStatus
