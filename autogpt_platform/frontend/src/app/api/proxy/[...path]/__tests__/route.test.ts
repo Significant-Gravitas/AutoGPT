@@ -5,12 +5,17 @@ vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/country-token", () => ({
+  getCountryToken: vi.fn(),
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
   },
 }));
 
+import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
 
@@ -23,6 +28,10 @@ function makeParams(path: string[]) {
 describe("proxy route — handler pass-through", () => {
   beforeEach(() => {
     vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.mocked(getCountryToken).mockReset();
+    vi.mocked(getCountryToken).mockImplementation(
+      async (country) => `signed-${country}`,
+    );
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -213,6 +222,68 @@ describe("proxy route — handler pass-through", () => {
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("x-datafast-visitor-id")).toBe("visitor-123");
     expect(sentHeaders.get("x-datafast-session-id")).toBe("session-456");
+  });
+
+  it("sends the edge-observed country only as a signed token", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { "x-vercel-ip-country": "DE" },
+    });
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(getCountryToken).toHaveBeenCalledWith("DE");
+    expect(sentHeaders.get("x-client-country-token")).toBe("signed-DE");
+    expect(sentHeaders.get("x-client-country")).toBeNull();
+    expect(sentHeaders.get("x-vercel-ip-country")).toBeNull();
+  });
+
+  it("drops a browser-supplied country, plain or tokenised", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: {
+        "x-client-country": "US",
+        "x-client-country-token": "forged",
+      },
+    });
+    await GET(req, makeParams(["api", "v1", "items"]));
+
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("x-client-country")).toBeNull();
+    expect(sentHeaders.get("x-client-country-token")).toBeNull();
+    expect(getCountryToken).not.toHaveBeenCalled();
+  });
+
+  it("still proxies, without a country, when signing fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(getCountryToken).mockRejectedValueOnce(new Error("no jwks"));
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { "x-vercel-ip-country": "DE" },
+    });
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.status).toBe(200);
+    const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+    expect(sentHeaders.get("x-client-country-token")).toBeNull();
   });
 
   it("omits Authorization header when no token is available", async () => {

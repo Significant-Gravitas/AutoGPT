@@ -2,11 +2,17 @@
 
 from datetime import datetime
 
-from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, SubscriptionTrial
 from prisma.types import SubscriptionTrialWhereInput
 from pydantic import BaseModel, TypeAdapter
 
+from backend.data.db import transaction
+from backend.data.subscription_trial_capacity import (
+    TRIAL_FULL,
+    TrialCapacityReached,
+    lock_trial_capacity,
+    trial_seat_available,
+)
 from backend.data.subscription_trial_config import AcceptedTrialOffer, trial_is_active
 from backend.data.subscription_trial_rejection import TrialRejectionReason
 from backend.util.json import SafeJson
@@ -103,20 +109,38 @@ async def reserve_subscription_trial(
     cancel_url: str,
     metadata: dict[str, str],
 ) -> TrialState:
-    try:
-        row = await SubscriptionTrial.prisma().create(
+    """Take this user's seat under the offer's cap, or return the one they hold.
+
+    Raises :class:`TrialCapacityReached` when the trial is full.
+
+    The seat is read and taken inside its own short transaction rather than
+    the caller's: the caller keeps a transaction open across its Stripe
+    round-trips, and holding the global capacity lock for that long would
+    queue every other enrolment behind one person's network latency.
+    """
+    async with transaction() as tx:
+        await lock_trial_capacity(tx)
+        existing = await tx.subscriptiontrial.find_unique(where={"userId": user_id})
+        if existing:
+            # An enrolment already on file keeps whatever seat it has; it is
+            # resuming, not competing for a new one.
+            return TrialState.from_db(existing)
+        if not await trial_seat_available(offer, client=tx):
+            raise TrialCapacityReached(TRIAL_FULL)
+        row = await tx.subscriptiontrial.create(
             data={
                 "userId": user_id,
-                "offer": SafeJson(offer.model_dump(mode="json")),
+                # The cap is live capacity config, read from the flag each
+                # time, never from here. Leaving it out keeps these rows
+                # readable by code that predates it, so a revert is safe.
+                "offer": SafeJson(
+                    offer.model_dump(mode="json", exclude={"max_active_trials"})
+                ),
                 "stripeCustomerId": customer_id,
                 "checkoutSuccessUrl": success_url,
                 "checkoutCancelUrl": cancel_url,
                 "checkoutMetadata": SafeJson(metadata),
             },
-        )
-    except UniqueViolationError:
-        row = await SubscriptionTrial.prisma().find_unique_or_raise(
-            where={"userId": user_id}
         )
     return TrialState.from_db(row)
 
