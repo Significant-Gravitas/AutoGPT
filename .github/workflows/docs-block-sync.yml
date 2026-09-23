@@ -111,4 +111,4 @@ jobs:
           poetry run python scripts/generate_block_docs.py
           echo ""
           echo "Changes detected:"
-          git diff ../../docs/integrations/ || true
+          git diff ../../docs/integrations/

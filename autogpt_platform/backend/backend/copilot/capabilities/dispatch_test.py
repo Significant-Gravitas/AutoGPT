@@ -17,6 +17,7 @@ from backend.copilot.baseline.service import (
     _BaselineStreamState,
 )
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
+from backend.copilot.capabilities.models import SKILL_TOOL
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.response_model import (
@@ -90,11 +91,26 @@ def test_resolver_yields_the_inner_call():
         assert call.args == ARGS
 
 
+def test_resolver_turns_a_skill_id_into_the_read_skill_call():
+    """A skill found by search is loaded the way every skill is: the
+    dispatch is the ``read_skill`` call, named by the id, so the engine
+    records and gates that tool.  The id wins over a ``name`` in the input."""
+    tool = _StubTool(SKILL_TOOL)
+    with _dispatch_of(tool):
+        call = resolve_tool_dispatch(
+            "run_capability",
+            {"id": "skill:Triage-Tickets", "input": {"name": "other", "x": "1"}},
+        )
+    assert call is not None and call.tool is tool and call.name == SKILL_TOOL
+    assert call.args == {"name": "triage-tickets", "x": "1"}
+
+
 @pytest.mark.parametrize(
     "tool_name,args",
     [
         # validate_only describes the call; it must not run the tool.
         ("run_capability", {"id": f"tool:{INNER}", "input": {}, "validate_only": True}),
+        ("run_capability", {"id": "skill:", "input": {}}),
         ("run_capability", {"id": "block:1234", "input": {}}),
         ("run_capability", {"id": "https://mcp.example/sse", "input": {}}),
         ("run_capability", {"id": "", "input": {}}),
