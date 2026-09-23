@@ -46,7 +46,7 @@ export function useRaiseSubmission() {
       const result = response.data as RaiseResult;
       if (result.failed_attachments?.length) {
         toast({
-          title: `Raised ${draft.name || "your expert"}, but some tools didn't attach`,
+          title: `Created ${draft.name || "your expert"}, but some tools didn't attach`,
           description: failedAttachmentMessage(
             result.failed_attachments,
             kit.attachments,

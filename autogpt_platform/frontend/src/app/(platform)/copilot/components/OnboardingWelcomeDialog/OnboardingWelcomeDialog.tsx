@@ -74,7 +74,7 @@ const TEAM_CARDS: CapabilityCard[] = [
   },
   {
     title: "Hire an expert, or create your own.",
-    body: "Pick a ready-made expert for marketing, sales or ops, or describe a role and raise one from scratch.",
+    body: "Pick a ready-made expert for marketing, sales or ops, or describe a role and create one from scratch.",
     icon: UserGroupIcon,
   },
   {
