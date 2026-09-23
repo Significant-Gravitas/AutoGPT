@@ -22,6 +22,7 @@ from backend.api.features.library.exceptions import (
 )
 from backend.data.db import transaction
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
+from backend.data.workspace_scope import resolve_expert_workspace_scope
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -245,11 +246,12 @@ async def apply_folder_update(
     *parent_id* left at ``UNCHANGED`` keeps the folder where it is; ``None``
     moves it to the workspace root.
     """
+    moving = not isinstance(parent_id, _Unchanged)
     async with transaction() as tx:
-        await _lock_workspace_hierarchy(tx, workspace_id)
+        if moving or name is not None:
+            await _lock_workspace_hierarchy(tx, workspace_id)
 
         folder = await _get_folder_record(folder_id, workspace_id)
-        moving = not isinstance(parent_id, _Unchanged)
         destination = parent_id if moving else folder.parentId
 
         if moving and destination is not None:
@@ -392,16 +394,22 @@ async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:
 async def resolve_attachable_workspace_folders(
     user_id: str,
     folder_ids: list[str],
+    *,
+    expert_id: str | None,
 ) -> list[WorkspaceFolder]:
     """Return the caller's own live folders among *folder_ids*.
 
-    Folders are user-level, so an expert session attaches one on the same
-    terms as personal Otto; what it may then read inside is decided per file
-    by its :class:`~backend.data.workspace_scope.WorkspaceScope`. Unknown and
-    cross-user IDs are silently dropped, as ``resolve_workspace_files`` does.
+    Folders are user-level, so an expert session attaches one only if its
+    scope reads the owner's files; what it may read inside is still decided
+    per file. Unknown and cross-user IDs are silently dropped, as
+    ``resolve_workspace_files`` does.
     """
     if not folder_ids:
         return []
+    if expert_id is not None:
+        scope = await resolve_expert_workspace_scope(user_id, expert_id)
+        if not scope.reads_user_files:
+            return []
     workspace = await get_or_create_workspace(user_id)
     folders = await UserWorkspaceFolder.prisma().find_many(
         where={

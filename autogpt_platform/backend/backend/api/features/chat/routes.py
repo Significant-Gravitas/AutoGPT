@@ -1918,7 +1918,7 @@ async def stream_chat_post(
             expert_id=session.expert_id,
         )
         folders = await resolve_attachable_workspace_folders(
-            user_id, request.folder_ids or []
+            user_id, request.folder_ids or [], expert_id=session.expert_id
         )
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files, folders)

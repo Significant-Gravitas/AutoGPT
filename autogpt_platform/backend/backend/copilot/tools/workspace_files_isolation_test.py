@@ -37,7 +37,7 @@ def db():
     with (
         patch("backend.util.workspace.workspace_db", return_value=db),
         patch(
-            "backend.copilot.tools.workspace_files.workspace_folder_db",
+            "backend.util.workspace.workspace_folder_db",
             return_value=folders,
         ),
         patch(
@@ -130,7 +130,7 @@ def user_files_db():
     with (
         patch("backend.util.workspace.workspace_db", return_value=db),
         patch(
-            "backend.copilot.tools.workspace_files.workspace_folder_db",
+            "backend.util.workspace.workspace_folder_db",
             return_value=folders,
         ),
         patch(

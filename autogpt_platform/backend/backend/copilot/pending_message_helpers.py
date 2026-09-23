@@ -233,7 +233,9 @@ async def queue_pending_for_http(
         )
         sanitized_file_ids = [wf.id for wf in files] or None
     if folder_ids:
-        folders = await resolve_attachable_workspace_folders(user_id, folder_ids)
+        folders = await resolve_attachable_workspace_folders(
+            user_id, folder_ids, expert_id=expert_id
+        )
         message += build_files_block([], folders)
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so

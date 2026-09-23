@@ -9,12 +9,16 @@ import asyncio
 import logging
 import mimetypes
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db, workspace_skill_db
+from backend.data.db_accessors import (
+    workspace_db,
+    workspace_folder_db,
+    workspace_skill_db,
+)
 from backend.data.skill_capacity import (
     MAX_SKILLS_PER_EXPERT,
     SKILL_ORIGIN_LABELS,
@@ -35,6 +39,9 @@ from backend.data.workspace_skill import WorkspaceSkillWrite
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+
+if TYPE_CHECKING:
+    from backend.data.workspace_folder import WorkspaceFolder
 
 
 def format_bytes(n: int) -> str:
@@ -464,6 +471,13 @@ class WorkspaceManager:
             logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
 
         return file
+
+    async def list_folders(self) -> list["WorkspaceFolder"]:
+        """The folder tree; empty for a scope without the owner's files, whose
+        folders these are."""
+        if self.scope is not None and not self.scope.reads_user_files:
+            return []
+        return await workspace_folder_db().list_workspace_folders(self.workspace_id)
 
     async def list_files(
         self,
