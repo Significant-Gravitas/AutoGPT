@@ -464,6 +464,51 @@ def test_plan_names_a_cohort_it_has_yet_to_create_and_skips_undecided_flags():
     assert changes["big-only"].payload is None
 
 
+def test_plan_updates_a_change_hidden_by_redaction():
+    target = map_flag(
+        _flag("boolean", key="t", targets=[{"values": [ADA], "variation": 0}]), ENV, {}
+    )
+    existing = _payload(target)
+    existing = {
+        **existing,
+        "id": 5,
+        "filters": {
+            **existing["filters"],
+            "groups": [
+                {
+                    **existing["filters"]["groups"][0],
+                    "properties": [_prop("distinct_id", "exact", [BOB])],
+                }
+            ],
+        },
+    }
+
+    [change] = plan_sync([], [target], [], [existing])
+
+    assert change.action == "update"
+    assert change.diff == ["filters: changed (only in redacted values)"]
+
+
+def test_plan_updates_a_cohort_whose_redacted_members_changed():
+    cohort = map_segment({"key": "vip", "included": [ADA]}, ENV)
+    existing = {
+        **_payload(cohort),
+        "id": 8,
+        "filters": {
+            "properties": {
+                "type": "OR",
+                "values": [
+                    {"type": "AND", "values": [_prop("distinct_id", "exact", [BOB])]}
+                ],
+            }
+        },
+    }
+
+    [change] = plan_sync([cohort], [], [existing], [])
+
+    assert change.action == "update"
+
+
 def test_described_filters_never_show_addresses_or_user_ids():
     uid = "123e4567-e89b-12d3-a456-426614174000"
     flag = _flag(
@@ -473,7 +518,20 @@ def test_described_filters_never_show_addresses_or_user_ids():
         rules=[
             _rule(
                 [{"attribute": "email", "op": "in", "values": ["ops@example.org"]}], 0
-            )
+            ),
+            _rule(
+                [
+                    {
+                        "attribute": "email",
+                        "op": "startsWith",
+                        "values": ["ada@example.org"],
+                    }
+                ],
+                0,
+            ),
+            _rule(
+                [{"attribute": "key", "op": "matches", "values": ["^customer-123$"]}], 0
+            ),
         ],
         fallthrough=1,
     )
@@ -483,6 +541,7 @@ def test_described_filters_never_show_addresses_or_user_ids():
     )
 
     assert uid not in text and "ops@example.org" not in text
+    assert "ada@" not in text and "customer-123" not in text
     assert "[1 values]" in text
 
 

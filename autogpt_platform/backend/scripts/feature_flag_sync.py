@@ -41,6 +41,8 @@ _NUMERIC_OPS = {
 }
 _REDACTED_VALUE_KEYS = frozenset({"email", "distinct_id"})
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+# An address inside a regex has escaped dots the pattern above misses.
+_LOCAL_PART = re.compile(r"[A-Za-z0-9._%+-]+@(?=[A-Za-z0-9-])")
 _UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
 )
@@ -300,6 +302,8 @@ def describe_property(prop: dict[str, Any]) -> str:
     value = prop.get("value")
     if prop.get("key") in _REDACTED_VALUE_KEYS and isinstance(value, list):
         shown = f"[{len(value)} values]"
+    elif prop.get("key") == "distinct_id":
+        shown = "<user-id pattern>"
     else:
         shown = _redact(json.dumps(value))
     return f"{prop.get('key')} {prop.get('operator') or 'exact'} {shown}"
@@ -592,12 +596,15 @@ def _change(
     diff: list[str] = []
     for field, desired in payload.items():
         if field == "filters":
+            if _canonical(kind, existing) == _canonical(kind, payload):
+                continue
             before, after = _render(kind, existing), _render(kind, payload)
-            diff += [
+            lines = [
                 line
                 for line in difflib.unified_diff(before, after, lineterm="", n=0)
                 if not line.startswith(("---", "+++", "@@"))
             ]
+            diff += lines or ["filters: changed (only in redacted values)"]
         elif field != "key" and existing.get(field) != desired:
             diff.append(f"{field}: {existing.get(field)!r} -> {desired!r}")
     return Change(
@@ -608,6 +615,16 @@ def _change(
         diff=diff,
         existing_id=existing.get("id"),
     )
+
+
+def _canonical(kind: str, payload: dict[str, Any]) -> Any:
+    filters = payload.get("filters") or {}
+    if kind == "flag":
+        return _canonical_filters(filters)
+    return [
+        [_canonical_property(p) for p in g.get("values") or []]
+        for g in (filters.get("properties") or {}).get("values") or []
+    ]
 
 
 def _render(kind: str, payload: dict[str, Any]) -> list[str]:
@@ -625,8 +642,7 @@ def _canonical_filters(filters: dict[str, Any]) -> dict[str, Any]:
         "groups": [
             {
                 "properties": [
-                    {k: p.get(k) for k in ("key", "type", "operator", "value")}
-                    for p in g.get("properties") or []
+                    _canonical_property(p) for p in g.get("properties") or []
                 ],
                 "rollout_percentage": _rollout(g),
                 "variant": g.get("variant"),
@@ -636,6 +652,10 @@ def _canonical_filters(filters: dict[str, Any]) -> dict[str, Any]:
         "multivariate": filters.get("multivariate"),
         "payloads": filters.get("payloads") or {},
     }
+
+
+def _canonical_property(prop: dict[str, Any]) -> dict[str, Any]:
+    return {k: prop.get(k) for k in ("key", "type", "operator", "value")}
 
 
 def _rollout(group: dict[str, Any]) -> int:
@@ -659,4 +679,5 @@ def _short(value: Any, limit: int = 80) -> str:
 
 def _redact(text: str) -> str:
     """Payloads and patterns can carry addresses and user ids; the output never does."""
-    return _UUID.sub("<user-id>", _EMAIL.sub("<email>", text))
+    text = _LOCAL_PART.sub("<email>@", _EMAIL.sub("<email>", text))
+    return _UUID.sub("<user-id>", text)
