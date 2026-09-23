@@ -503,8 +503,9 @@ def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
     and which of them were a stand-in rather than the vendor's answer."""
     try:
         # Sentry's flag context holds booleans only; JSON and string flags are skipped.
-        if isinstance(value, bool):
-            sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+        if not isinstance(value, bool):
+            return
+        sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
         # A pseudo-flag in the same buffer, so it travels only where the values do;
         # a later real answer clears it rather than leaving a stale outage marker.
         marker = f"{flag_key}.fallback"

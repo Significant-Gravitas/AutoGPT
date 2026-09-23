@@ -643,12 +643,14 @@ class TestSentryFlagContext:
         assert sentry_flags.get() == [{"flag": Flag.HIRE_EXPERTS.value, "result": True}]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("initialized", [True, False])
     async def test_a_non_boolean_flag_records_nothing(
-        self, ld_client, user_context, sentry_flags
+        self, ld_client, user_context, sentry_flags, initialized
     ):
+        ld_client.is_initialized.return_value = initialized
         ld_client.variation.return_value = {"daily": 5}
 
-        await ff.get_feature_flag_value("copilot-cost-limits", "u-1")
+        await ff.get_feature_flag_value("copilot-cost-limits", "u-1", {"daily": 1})
         assert sentry_flags.get() == []
 
     @pytest.mark.asyncio
