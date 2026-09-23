@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
 import { CategoryTag } from "../../CategoryChip/CategoryTag";
-import { getCategoryAccent, getExpertAccent } from "../helpers";
+import { getCategoryAccent } from "../helpers";
 import { ExpertHireButton } from "./ExpertHireButton";
 
 /** Three named, then a count for the rest — enough to place the expert
@@ -35,7 +35,6 @@ interface Props {
  *  behind its contents: a card that is itself a link cannot hold the hire
  *  button, since an anchor may not contain one. */
 export function ExpertCard({ expert, isHired }: Props) {
-  const accent = getExpertAccent(expert.role);
   const skills = expert.bundled_skills ?? [];
   const named = skills.slice(0, NAMED_SKILLS);
   const restSkills = skills.slice(NAMED_SKILLS);
@@ -46,10 +45,12 @@ export function ExpertCard({ expert, isHired }: Props) {
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+      {/* A flat cover in the area's tint, which the avatar straddles the way
+          a profile picture straddles its banner. */}
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-28 opacity-60 transition-opacity duration-200 group-hover:opacity-100",
-          accent.wash,
+          "pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]",
+          areaAccent.accent.band,
         )}
       />
       <Link
@@ -77,6 +78,7 @@ export function ExpertCard({ expert, isHired }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={88}
+          className="rounded-full ring-4 ring-white"
         />
 
         <div>
