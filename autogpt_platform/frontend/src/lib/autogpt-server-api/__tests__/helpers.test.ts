@@ -257,6 +257,21 @@ describe("makeAuthenticatedFileUpload", () => {
     });
   });
 
+  it("provides recovery guidance when the error has no body or status text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 502 })),
+    );
+
+    await expect(
+      makeAuthenticatedFileUpload("/upload", new FormData()),
+    ).rejects.toMatchObject({
+      message: "Request failed (HTTP 502). Please try again.",
+      status: 502,
+      response: null,
+    });
+  });
+
   it("falls back to HTTP status text for a non-JSON error", async () => {
     vi.stubGlobal(
       "fetch",

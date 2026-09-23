@@ -247,7 +247,8 @@ export async function parseApiError(response: Response): Promise<string> {
   const fallbackMessage =
     response.status === 413
       ? "File is too large — max size is 256MB"
-      : response.statusText;
+      : response.statusText ||
+        `Request failed (HTTP ${response.status}). Please try again.`;
 
   try {
     const errorData = await response.clone().json();
