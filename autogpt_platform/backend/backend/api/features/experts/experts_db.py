@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -55,6 +55,7 @@ from backend.api.features.experts.models import (
     ExpertRun,
     ExpertRunSource,
     ExpertRunStatus,
+    ExpertSetupStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertTemplate,
@@ -115,6 +116,7 @@ from backend.data.expert_spend import get_weekly_spend
 from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import (
     ConflictError,
     ExpertNotFoundError,
@@ -127,6 +129,12 @@ from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
+
+# A setup job holding its lease longer than this died with its process; the
+# longest measured setup (8 skills) is ~25 s per attempt.
+SETUP_LEASE = timedelta(minutes=10)
+_SETUP_ATTEMPTS = 3
+_SETUP_RETRY_DELAY_SECONDS = 5
 
 
 def _raised_identity(name: str) -> str:
@@ -286,7 +294,19 @@ def _to_model(
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
         pod_id=row.podId,
+        setup_status=_setup_status(row),
+        setup_failures=row.setupFailures or [],
     )
+
+
+def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
+    # A job whose lease ran out died with its process; show it as retryable.
+    if row.setupStatus == prisma.enums.ExpertSetupStatus.INSTALLING and (
+        row.setupStartedAt is None
+        or row.setupStartedAt < datetime.now(timezone.utc) - SETUP_LEASE
+    ):
+        return "failed"
+    return cast(ExpertSetupStatus, row.setupStatus.lower())
 
 
 async def _latest_runs(
@@ -861,6 +881,14 @@ async def expert_row_exists(user_id: str, expert_id: str) -> bool:
     return count > 0
 
 
+async def expert_setup_status(user_id: str, expert_id: str) -> ExpertSetupStatus:
+    """Where the owner's expert is in its hire setup; "ready" if not found."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": expert_id, "ownerUserId": user_id}
+    )
+    return _setup_status(row) if row is not None else "ready"
+
+
 async def resolve_private_expert_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
@@ -890,6 +918,12 @@ async def resolve_private_expert_tenancy(
 
 
 async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+    """Hire *template_id* and return as soon as the expert's row exists.
+
+    Its workflows, skills and routines install afterwards (``_run_hire_setup``);
+    the expert reports progress through ``setup_status``. Re-hiring an expert
+    whose setup failed or was abandoned starts that setup again.
+    """
     try:
         result, state = await _hire_expert_impl(user_id, template_id, name)
     except Exception:
@@ -901,14 +935,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         raise
     # An idempotent re-hire of an already-active expert is not a hire.
     if state != "existing":
-        emit_funnel_event(
-            user_id,
-            "hire_completed",
-            {
-                "template_id": template_id,
-                "failed_preloads_count": len(result.failed_preloads),
-            },
-        )
+        emit_funnel_event(user_id, "hire_completed", {"template_id": template_id})
     return result
 
 
@@ -951,6 +978,8 @@ async def _hire_expert_impl(
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
+    create_data["setupStatus"] = prisma.enums.ExpertSetupStatus.INSTALLING
+    create_data["setupStartedAt"] = datetime.now(timezone.utc)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -960,22 +989,128 @@ async def _hire_expert_impl(
         # the same capacity-aware path.
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
 
-    if state == "existing":
-        return HireResult(expert=_to_model(expert), failed_preloads=[]), state
     if state == "revived":
         expert = await _resume_revived_hire(expert)
-        return HireResult(expert=_to_model(expert), failed_preloads=[]), state
+    if state == "created" or await _claim_setup(expert.id):
+        spawn_background_task(
+            _run_hire_setup(user_id, expert.id, template.id),
+            name=f"hire-setup-{expert.id}",
+        )
+        if state != "created":
+            expert = await _reload_expert(expert)
+    return HireResult(expert=_to_model(expert)), state
 
-    failed = await _install_preloads(expert.id, user_id, template.Workflows or [])
-    await _install_bundled_skills(user_id, expert.id, template.id)
-    await install_routines(expert.id, await _template_routines(template.id))
 
-    hydrated = await prisma.models.Expert.prisma().find_unique(
-        where={"id": expert.id}, include=_WORKFLOW_INCLUDE
+async def _reload_expert(row: prisma.models.Expert) -> prisma.models.Expert:
+    refreshed = await prisma.models.Expert.prisma().find_unique(
+        where={"id": row.id}, include=_WORKFLOW_INCLUDE
     )
-    if hydrated is None:
-        raise ExpertNotFoundError(expert.id)
-    return HireResult(expert=_to_model(hydrated), failed_preloads=failed), state
+    return refreshed or row
+
+
+async def _claim_setup(expert_id: str) -> bool:
+    """Take the setup lease of a hire whose setup failed or whose job died.
+
+    One conditional update, so two concurrent re-hires start one job.
+    """
+    now = datetime.now(timezone.utc)
+    claimed = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "OR": [
+                {"setupStatus": prisma.enums.ExpertSetupStatus.FAILED},
+                {
+                    "setupStatus": prisma.enums.ExpertSetupStatus.INSTALLING,
+                    "setupStartedAt": {"lt": now - SETUP_LEASE},
+                },
+            ],
+        },
+        data={
+            "setupStatus": prisma.enums.ExpertSetupStatus.INSTALLING,
+            "setupStartedAt": now,
+        },
+    )
+    return claimed == 1
+
+
+async def _run_hire_setup(user_id: str, expert_id: str, template_id: str) -> None:
+    """Install a hire's workflows, skills and routines, retrying what failed.
+
+    Every step skips what an earlier run installed, so a retry or a re-claimed
+    setup finishes the job instead of duplicating it.
+    """
+    failures: list[str] | None = None
+    for attempt in range(_SETUP_ATTEMPTS):
+        if attempt:
+            await asyncio.sleep(_SETUP_RETRY_DELAY_SECONDS * attempt)
+        try:
+            failures = await _install_hire_contents(user_id, expert_id, template_id)
+        except Exception:
+            logger.exception(f"Setup attempt {attempt + 1} failed for #{expert_id}")
+            failures = None
+            continue
+        if not failures:
+            break
+    ready = failures == []
+    await prisma.models.Expert.prisma().update(
+        where={"id": expert_id},
+        data={
+            "setupStatus": (
+                prisma.enums.ExpertSetupStatus.READY
+                if ready
+                else prisma.enums.ExpertSetupStatus.FAILED
+            ),
+            "setupFailures": failures or [],
+        },
+    )
+    emit_funnel_event(
+        user_id,
+        "hire_setup_finished",
+        {
+            "template_id": template_id,
+            "expert_id": expert_id,
+            "ready": ready,
+            "failed_count": len(failures or []),
+        },
+    )
+
+
+async def _install_hire_contents(
+    user_id: str, expert_id: str, template_id: str
+) -> list[str]:
+    """Install what the hire does not have yet; return what still failed."""
+    template = await prisma.models.Expert.prisma().find_unique(
+        where={"id": template_id}, include=_WORKFLOW_INCLUDE
+    )
+    expert = await prisma.models.Expert.prisma().find_unique(
+        where={"id": expert_id},
+        include={"Workflows": True, "Routines": True},
+    )
+    if template is None or expert is None:
+        raise ExpertNotFoundError(expert_id)
+    installed_listings = {w.storeListingVersionId for w in expert.Workflows or []}
+    installed_routines = {r.key for r in expert.Routines or []}
+    failed = await _install_preloads(
+        expert_id,
+        user_id,
+        [
+            w
+            for w in template.Workflows or []
+            if w.storeListingVersionId not in installed_listings
+        ],
+    )
+    failed += await _install_bundled_skills(
+        user_id, expert_id, template_id, installed=set(expert.skills or [])
+    )
+    failed += await install_routines(
+        expert_id,
+        [
+            r
+            for r in await _template_routines(template_id)
+            if r.key not in installed_routines
+        ],
+    )
+    return failed
 
 
 async def _reserve_hired_expert(
@@ -1784,15 +1919,19 @@ async def _template_routines(
 
 
 async def _install_bundled_skills(
-    user_id: str, expert_id: str, template_id: str
-) -> None:
-    """Install the Hub skills the template bundles into the new expert's folder.
+    user_id: str, expert_id: str, template_id: str, *, installed: set[str]
+) -> list[str]:
+    """Install the Hub skills the template bundles into the new expert's
+    folder, skipping names already *installed*; return the titles that failed.
 
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
+    failed: list[str] = []
     bundled = await _live_bundled_skills(user_id, [template_id])
     for skill in bundled.get(template_id, []):
+        if skill.slug in installed:
+            continue
         try:
             await skill_db.install_marketplace_skill(
                 user_id, skill.slug, expert_id=expert_id
@@ -1801,6 +1940,8 @@ async def _install_bundled_skills(
             logger.exception(
                 f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
             )
+            failed.append(skill.title)
+    return failed
 
 
 async def install_workflow(

@@ -570,6 +570,7 @@ class DatabaseManager(AppService):
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
     hire_expert = _(experts_db.hire_expert)
+    expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
@@ -975,6 +976,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
     hire_expert = d.hire_expert
+    expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
     count_raised_experts = d.count_raised_experts

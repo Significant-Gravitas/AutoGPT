@@ -1412,4 +1412,57 @@ describe("TeamPage - setup needed card", () => {
     expect(within(dialog).getByRole("button", { name: "Back" })).toBeDefined();
     expect(within(dialog).getAllByText(/Notion/).length).toBeGreaterThan(0);
   });
+
+  test("follows a fresh hire's setup until its skills land", async () => {
+    let reads = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        reads += 1;
+        return reads === 1
+          ? [{ ...hiredMaria, setup_status: "installing", skills: [] }]
+          : [{ ...hiredMaria, setup_status: "ready", skills: ["a", "b"] }];
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Setting up Maria's skills and workflows…"),
+    ).toBeDefined();
+    const card = screen.getByRole("link", { name: "View Maria" });
+    await waitFor(() => expect(getStatValue(card, "Skills")).toBe("2"), {
+      timeout: 5_000,
+    });
+    expect(
+      screen.queryByText("Setting up Maria's skills and workflows…"),
+    ).toBeNull();
+  });
+
+  test("a failed setup offers a retry that re-hires the template", async () => {
+    const hires: unknown[] = [];
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: "template-maria",
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+      http.post("/api/proxy/api/experts", async ({ request }) => {
+        hires.push(await request.json());
+        return HttpResponse.json({ expert: hiredMaria });
+      }),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Retry setup" }));
+    await waitFor(() =>
+      expect(hires).toEqual([{ template_id: "template-maria" }]),
+    );
+  });
 });
