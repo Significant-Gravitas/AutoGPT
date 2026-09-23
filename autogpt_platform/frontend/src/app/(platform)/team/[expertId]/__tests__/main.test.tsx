@@ -62,6 +62,7 @@ import {
 import { format, subDays } from "date-fns";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -1096,7 +1097,12 @@ describe("ExpertDetailPage", () => {
       }),
     );
 
-    render(<ExpertDetailPage />);
+    render(
+      <>
+        <ExpertDetailPage />
+        <Toaster />
+      </>,
+    );
 
     const button = await screen.findByRole("button", {
       name: "Change Maria's appearance",
@@ -1110,6 +1116,8 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(uploadAvatarSpy).toHaveBeenCalled());
     await waitFor(() => expect(button).not.toHaveProperty("disabled", true));
     expect(updateSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText("Couldn't update appearance")).toBeDefined();
+    expect(await screen.findByText("Unauthorized")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {
