@@ -1628,7 +1628,7 @@ async def cancel_session_task(
     # the "assistant encountered an error" banner over their own cancel.
     await stream_registry.mark_session_completed(
         session_id,
-        error_message="Operation cancelled",
+        error_message=stream_registry.CANCELLED_MESSAGE,
         skip_error_publish=True,
     )
     # Status is now force-flipped out of "running"; re-clear to drop any

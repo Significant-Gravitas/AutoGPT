@@ -111,6 +111,23 @@ async def test_two_held_calls_in_one_turn_both_wait(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_retry_of_a_waiting_call_keeps_the_first_call(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "again")
+
+    retry = await check_action(
+        _TOOL, {"text": "again"}, test_user_id, session, tool_call_id="call-2"
+    )
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    assert not retry.allowed and retry.review_id == review_id
+    [call] = await held.answered(test_user_id, session.session_id)
+    assert call.tool_call_id == "call-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_approval_runs_the_call_with_its_stored_arguments(
     setup_test_user, test_user_id, gate_on, post_tool
 ):

@@ -34,6 +34,7 @@ from .policy import (
 
 logger = logging.getLogger(__name__)
 
+_ALREADY_HELD = "This exact call is already waiting for the user's approval."
 _CONSUMED = (
     "This approval was already used by an identical call that ran. "
     "Do not retry; tell the user what ran."
@@ -112,6 +113,10 @@ async def check_action(
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(session_id, tool_name)
         return Decision(allowed=False, reason=_REJECTED)
+    if status == ReviewStatus.WAITING:
+        # The first call's card and stored call stand; re-storing would
+        # re-point the late result at the retry's tool call id.
+        return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
     mode = resolve_mode(session)
     verdict = verdict_for(mode, tool_name)
