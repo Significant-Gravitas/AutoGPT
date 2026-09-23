@@ -3,6 +3,7 @@
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   captureFirstLanding,
+  followAnalyticsConsentForIdentity,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
 import { useConsent } from "@/services/consent/useConsent";
@@ -22,11 +23,14 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
   const postHogCredentials = environment.getPostHogCredentials();
 
   useEffect(() => {
+    captureFirstLanding();
+    const unfollowIdentity = followAnalyticsConsentForIdentity();
     let unfollowConsent = () => {};
     if (postHogCredentials.key) {
       // Seed PostHog's anonymous identity with the first-party anonymous id
       // LaunchDarkly and the backend also use, so pre-signup activity from
-      // every tool lands on the same person once identify() runs.
+      // every tool lands on the same person once identify() runs. Without
+      // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
       forgetWithdrawnPostHogConsent();
       posthog.init(postHogCredentials.key, {
@@ -42,8 +46,10 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       });
       unfollowConsent = followAnalyticsConsent();
     }
-    captureFirstLanding();
-    return unfollowConsent;
+    return () => {
+      unfollowConsent();
+      unfollowIdentity();
+    };
   }, []);
 
   if (!isPostHogEnabled) return <>{children}</>;
