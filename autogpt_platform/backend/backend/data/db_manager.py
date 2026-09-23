@@ -189,6 +189,7 @@ from backend.data.workspace import (
     resolve_expert_workspace_scope,
     soft_delete_workspace_file,
 )
+from backend.data.workspace_folder import list_workspace_folders
 from backend.data.workspace_skill import publish_workspace_skill_file
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
@@ -453,6 +454,7 @@ class DatabaseManager(AppService):
     get_workspace_file_by_path = _(get_workspace_file_by_path)
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
+    list_workspace_folders = _(list_workspace_folders)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
     resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
@@ -872,6 +874,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_workspace_file_by_path = d.get_workspace_file_by_path
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
+    list_workspace_folders = d.list_workspace_folders
     soft_delete_workspace_file = d.soft_delete_workspace_file
     resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
