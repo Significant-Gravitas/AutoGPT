@@ -70,7 +70,7 @@ describe("RootLayout consent scripts", () => {
     expect(await renderedScripts()).toEqual([]);
   });
 
-  it("queues the Consent Mode defaults, then loads Cookiebot, before hydration", async () => {
+  it("queues the Consent Mode defaults before hydration and loads Cookiebot after it", async () => {
     vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "test-cbid");
 
     const [defaults, cookiebot, ...rest] = await renderedScripts();
@@ -89,7 +89,7 @@ describe("RootLayout consent scripts", () => {
       src: "https://consent.cookiebot.com/uc.js",
       "data-cbid": "test-cbid",
       "data-blockingmode": "manual",
-      strategy: "beforeInteractive",
+      strategy: "afterInteractive",
     });
     expect(cookiebot["data-georegions"]).toBeUndefined();
   });

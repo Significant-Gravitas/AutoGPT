@@ -12,7 +12,10 @@ import { SetupAnalytics } from "@/services/analytics";
 import { buildConsentDefaultsScript } from "@/services/analytics/consent-mode";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
 import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
-import { COOKIEBOT_SCRIPT_URL } from "@/services/consent/cookiebot";
+import {
+  COOKIEBOT_SCRIPT_ID,
+  COOKIEBOT_SCRIPT_URL,
+} from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -72,11 +75,13 @@ export default async function RootLayout({
     >
       <body className="min-h-screen">
         {/* Without a Cookiebot domain group there is no banner and every
-            optional category stays denied. With one, order matters: the
-            Consent Mode defaults must be queued before Cookiebot sends its
-            first update, and both run before the Google tag. Blocking stays
-            manual because the tools we gate are bundled npm SDKs Cookiebot's
-            auto-blocking cannot see; each asks services/consent instead. */}
+            optional category stays denied. With one, the Consent Mode
+            defaults are queued before anything else can reach the Google
+            tag. Cookiebot itself loads after hydration so a slow CDN cannot
+            hold the app back: blocking stays manual (the tools we gate are
+            bundled npm SDKs its auto-blocking cannot see), every one of them
+            asks services/consent, and until uc.js arrives that reads the same
+            stored answer uc.js reads when it starts. */}
         {cookiebotCBID ? (
           <>
             <Script
@@ -86,12 +91,12 @@ export default async function RootLayout({
               dangerouslySetInnerHTML={{ __html: buildConsentDefaultsScript() }}
             />
             <Script
-              id="Cookiebot"
+              id={COOKIEBOT_SCRIPT_ID}
               src={COOKIEBOT_SCRIPT_URL}
               data-cbid={cookiebotCBID}
               data-georegions={cookiebotGeoRegions || undefined}
               data-blockingmode="manual"
-              strategy="beforeInteractive"
+              strategy="afterInteractive"
             />
           </>
         ) : null}
