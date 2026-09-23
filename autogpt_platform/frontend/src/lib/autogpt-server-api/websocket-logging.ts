@@ -3,10 +3,9 @@ import * as Sentry from "@sentry/nextjs";
 /**
  * `captureConsoleIntegration` (see `instrumentation-client.ts`) turns every
  * console.error/warn into a Sentry event whose title is the console arguments
- * joined with a space. Passing a CloseEvent or an Event straight to console
- * therefore produced titles like "[object CloseEvent]", throwing away the close
- * code and reason and making every socket failure group into one issue. These
- * helpers flatten the events into a readable summary plus structured extras.
+ * `String()`-ed and joined with a space, so any object argument becomes
+ * "[object …]". These helpers flatten WebSocket events into a readable summary,
+ * which is logged as the only console argument, plus structured Sentry extras.
  */
 
 // RFC 6455 status codes, plus the 4xxx codes the backend sends itself

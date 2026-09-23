@@ -75,6 +75,32 @@ describe("describeCloseEvent", () => {
     expect(extra.ws_url).toBe("wss://ws.example.com/ws");
     expect(JSON.stringify(extra)).not.toContain("secret-token");
   });
+
+  it("strips the token wherever it sits in the query, even from a non-URL", () => {
+    const { summary, extra } = describeCloseEvent(
+      { code: 1000, reason: "", wasClean: true },
+      "not-a-url?x=1&token=secret-token",
+      "connected",
+    );
+
+    expect(extra.ws_url).toBe("not-a-url");
+    expect(summary + JSON.stringify(extra)).not.toContain("secret-token");
+  });
+
+  it("treats a missing reason as empty", () => {
+    const { summary, extra } = describeCloseEvent(
+      {
+        code: 1000,
+        reason: undefined as unknown as string,
+        wasClean: true,
+      },
+      "wss://ws.example.com/ws",
+      "connected",
+    );
+
+    expect(summary).toContain('reason "(none)"');
+    expect(extra.ws_close_reason).toBe("");
+  });
 });
 
 describe("describeErrorEvent", () => {
