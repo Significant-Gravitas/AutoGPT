@@ -75,6 +75,22 @@ describe("escapeCurrencyAmounts", () => {
     expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
   });
 
+  it.each([
+    ["```\n``` not a closer\necho $5 and $10\n```"],
+    ["~~~\n~~~ x\necho $5 and $10\n~~~"],
+  ])(
+    "keeps a fence open past a fence line with text after it: %j",
+    (markdown) => {
+      expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
+    },
+  );
+
+  it("does not open a backtick fence whose info string has a backtick", () => {
+    expect(escapeCurrencyAmounts("```a`b\n$5 and $10")).toBe(
+      "```a`b\n\\$5 and \\$10",
+    );
+  });
+
   it("does not open a fence indented by a tab, which is indented code", () => {
     expect(escapeCurrencyAmounts("\t```\nprose $5 and $10")).toBe(
       "\t```\nprose \\$5 and \\$10",

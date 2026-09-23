@@ -1,4 +1,6 @@
-const FENCE_RE = /^(`{3,}|~{3,})/;
+// A backtick fence's info string may not contain a backtick; a closer carries none.
+const OPENING_FENCE_RE = /^(?:(`{3,})[^`]*|(~{3,}).*)$/;
+const CLOSING_FENCE_RE = /^(`{3,}|~{3,})[ \t]*$/;
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
 const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
 const HEADING_RE = /^#{1,6}(?:\s|$)/;
@@ -25,7 +27,9 @@ export function escapeCurrencyAmounts(markdown: string): string {
 
       if (openFence) {
         const fence =
-          indent < listIndent() + 4 ? FENCE_RE.exec(content)?.[1] : undefined;
+          indent < listIndent() + 4
+            ? CLOSING_FENCE_RE.exec(content)?.[1]
+            : undefined;
         if (
           fence &&
           fence[0] === openFence[0] &&
@@ -54,7 +58,8 @@ export function escapeCurrencyAmounts(markdown: string): string {
 
       // Block markers may be indented up to three columns past the list item's content.
       const startsBlock = indent < listIndent() + 4;
-      const fence = startsBlock ? FENCE_RE.exec(content)?.[1] : undefined;
+      const opening = startsBlock ? OPENING_FENCE_RE.exec(content) : null;
+      const fence = opening ? (opening[1] ?? opening[2]) : undefined;
 
       if (fence) {
         openFence = fence;
