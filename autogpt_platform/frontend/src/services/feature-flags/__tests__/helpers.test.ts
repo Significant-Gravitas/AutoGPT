@@ -103,9 +103,8 @@ describe("buildLDContext", () => {
 });
 
 describe("buildFlagPersonProperties", () => {
-  it("carries every attribute the LaunchDarkly rules target on", () => {
+  it("carries the attributes the ported rules target on, never the raw email", () => {
     expect(buildFlagPersonProperties(userFixture())).toEqual({
-      email: "user@example.com",
       email_domain: "example.com",
       role: "authenticated",
       created_at: "2026-05-08T12:00:00Z",
@@ -117,9 +116,6 @@ describe("buildFlagPersonProperties", () => {
       userFixture({ role: undefined, created_at: undefined }),
     );
 
-    expect(properties).toEqual({
-      email: "user@example.com",
-      email_domain: "example.com",
-    });
+    expect(properties).toEqual({ email_domain: "example.com" });
   });
 });

@@ -31,14 +31,12 @@ export interface LDMultiContext {
 
 export type LDContext = LDUserContext | LDMultiContext;
 
-// The attributes the flag targeting rules match on, in the flat shape
-// PostHog person properties take. Same set as the LaunchDarkly user context
-// below, so a flag targeted on email domain or signup date evaluates the same
-// either way.
+// The attributes the ported flag targeting rules match on, in the flat shape
+// PostHog person properties take. No raw email: no rule reads it, and
+// individual targets key on the distinct id.
 export function buildFlagPersonProperties(user: User): Record<string, string> {
   return {
     ...(user.email && {
-      email: user.email,
       email_domain: user.email.split("@").at(-1) ?? "",
     }),
     ...(user.role && { role: user.role }),

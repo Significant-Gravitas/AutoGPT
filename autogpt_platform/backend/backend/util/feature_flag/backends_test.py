@@ -31,6 +31,13 @@ async def no_leaked_shadow_evaluations():
 
 
 @pytest.fixture(autouse=True)
+def no_unanswered_flags_reported():
+    ff._unanswered_flags_reported.clear()
+    yield
+    ff._unanswered_flags_reported.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_env_override(monkeypatch: pytest.MonkeyPatch):
     """`.env` may force flags; pin every flag under test to the vendors."""
     for name in list(os.environ):
@@ -219,7 +226,8 @@ class TestPostHogBackend:
     @pytest.mark.asyncio
     async def test_targeting_attributes_are_passed_as_person_properties(self, mocker):
         """Every attribute an LD rule targets on has to reach PostHog, or the
-        flag silently evaluates against a user without them."""
+        flag silently evaluates against a user without them — and nothing
+        more: the raw email is not one of them."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True)
         context = (
@@ -243,7 +251,6 @@ class TestPostHogBackend:
         _, kwargs = client.evaluate_flags.call_args
         assert kwargs["person_properties"] == {
             "role": "admin",
-            "email": "x@agpt.co",
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
         }
@@ -361,6 +368,59 @@ class TestDualBackend:
             "value": False,
             "evaluated": False,
         }
+
+    @pytest.mark.asyncio
+    async def test_an_unanswered_flag_is_reported_once_per_flag(
+        self, mocker, ld_client, user_context, caplog
+    ):
+        """Before phase 2 creates the flags PostHog answers nothing, so every
+        read would otherwise log the same record."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=None)
+
+        with caplog.at_level(
+            logging.WARNING, logger="backend.util.feature_flag.mismatch"
+        ):
+            for _ in range(3):
+                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+                await evaluate_feature_flag(Flag.CHAT_MODE_OPTION, "u-1")
+            await drain_shadow_evaluations()
+
+        flags = [
+            _mismatch_record(r.getMessage())["flag"]
+            for r in caplog.records
+            if r.name == "backend.util.feature_flag.mismatch"
+        ]
+        assert sorted(flags) == sorted(
+            [Flag.HIRE_EXPERTS.value, Flag.CHAT_MODE_OPTION.value]
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_answered_disagreement_is_reported_every_time(
+        self, mocker, ld_client, user_context, caplog
+    ):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=False)
+
+        with caplog.at_level(
+            logging.WARNING, logger="backend.util.feature_flag.mismatch"
+        ):
+            for _ in range(3):
+                await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await drain_shadow_evaluations()
+
+        assert (
+            len(
+                [
+                    r
+                    for r in caplog.records
+                    if r.name == "backend.util.feature_flag.mismatch"
+                ]
+            )
+            == 3
+        )
 
     @pytest.mark.asyncio
     async def test_a_posthog_failure_cannot_break_the_read(

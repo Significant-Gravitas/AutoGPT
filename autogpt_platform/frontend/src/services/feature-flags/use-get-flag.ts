@@ -220,11 +220,12 @@ const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
  * flag should branch on ``ready`` first — short-circuiting to
  * ``notFound()`` before the vendor responds 404s users that actually have
  * the flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS``
- * so an unregistered flag key doesn't spin forever.
+ * so an unregistered flag key doesn't spin forever; ``answered`` stays
+ * false then, for callers that must not act on a timeout.
  */
 export function useFlagStatus<T extends Flag>(
   flag: T,
-): { enabled: FlagValues[T]; ready: boolean } {
+): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
   const { value, resolved } = useFlagSource(flag);
   const areFlagsEnabled = areFeatureFlagsEnabled();
   const override = envFlagOverride(flag);
@@ -242,9 +243,13 @@ export function useFlagStatus<T extends Flag>(
   recordFlagForSentry(flag, override === undefined ? served : undefined);
 
   if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
-    return { enabled: served, ready: true };
+    return { enabled: served, ready: true, answered: true };
   }
-  return { enabled: served, ready: resolved || timedOut };
+  return {
+    enabled: served,
+    ready: resolved || timedOut,
+    answered: resolved,
+  };
 }
 
 function servedFlagValue<T extends Flag>(flag: T, value: unknown) {

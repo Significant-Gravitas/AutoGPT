@@ -7,6 +7,7 @@ module dispatches to this one, so a back-import would be a cycle.
 import asyncio
 import functools
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -28,6 +29,9 @@ _read_executor = ThreadPoolExecutor(
 )
 
 _client: Posthog | None = None
+# The executor evaluates flags from two event loops on two threads; a second
+# client built by a racing first read would leak its poller thread.
+_client_lock = threading.Lock()
 _init_attempted = False
 _shut_down = False
 
@@ -100,14 +104,15 @@ def initialize_posthog_flags() -> None:
 
 def shutdown_posthog_flags() -> None:
     global _client, _init_attempted, _shut_down
-    client = _client
-    _client = None
-    # Clear the "did we try" gate even when no client was built, or an
-    # unconfigured first attempt latches it shut for the life of the process.
-    _init_attempted = False
-    # A shadow read runs in a worker thread that outlives the cancelled task,
-    # so refuse to rebuild here: that client's poller would have no closer.
-    _shut_down = True
+    with _client_lock:
+        client = _client
+        _client = None
+        # Clear the "did we try" gate even when no client was built, or an
+        # unconfigured first attempt latches it shut for the life of the process.
+        _init_attempted = False
+        # A shadow read runs in a worker thread that outlives the cancelled
+        # task, so refuse to rebuild here: that client's poller would have no closer.
+        _shut_down = True
     if client is None:
         return
 
@@ -126,8 +131,16 @@ def get_flag_client() -> Posthog | None:
     if _client is not None or _init_attempted or _shut_down:
         return _client
 
-    _init_attempted = True
+    with _client_lock:
+        if _client is not None or _init_attempted or _shut_down:
+            return _client
+        return _build_client()
+
+
+def _build_client() -> Posthog | None:
+    global _client, _init_attempted
     if not is_configured():
+        _init_attempted = True
         logger.warning("PostHog API key not configured; flag reads will not resolve")
         return None
 
@@ -143,6 +156,7 @@ def get_flag_client() -> Posthog | None:
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
     )
+    _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
         f"(local evaluation: {'on' if personal_api_key else 'off'}, "
