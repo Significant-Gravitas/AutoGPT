@@ -1,9 +1,9 @@
-# Anysearch Parallel Search
+# AnySearch Parallel Search
 <!-- MANUAL: file_description -->
 Runs multiple AnySearch queries in a single block (client-side concurrency, max 5 queries). Requires an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
 <!-- END MANUAL -->
 
-## Any Search Parallel Search
+## AnySearch Parallel Search
 
 ### What it is
 Runs several AnySearch queries in parallel (client-side concurrency via asyncio)

@@ -1,9 +1,9 @@
-# Anysearch Extract
+# AnySearch Extract
 <!-- MANUAL: file_description -->
 Extracts readable page content from a URL via AnySearch. Requires an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
 <!-- END MANUAL -->
 
-## Any Search Extract
+## AnySearch Extract
 
 ### What it is
 Extracts readable content from a single URL using AnySearch, optimized for LLM consumption

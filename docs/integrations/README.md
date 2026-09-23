@@ -285,9 +285,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [Any Search](block-integrations/anysearch/search.md#any-search) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
-| [Any Search Extract](block-integrations/anysearch/extract.md#any-search-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
-| [Any Search Parallel Search](block-integrations/anysearch/parallel_search.md#any-search-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
+| [AnySearch](block-integrations/anysearch/search.md#anysearch) | Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters |
+| [AnySearch Extract](block-integrations/anysearch/extract.md#anysearch-extract) | Extracts readable content from a single URL using AnySearch, optimized for LLM consumption |
+| [AnySearch Parallel Search](block-integrations/anysearch/parallel_search.md#anysearch-parallel-search) | Runs several AnySearch queries in parallel (client-side concurrency via asyncio) |
 | [Ask Wolfram](block-integrations/wolfram/llm_api.md#ask-wolfram) | Ask Wolfram Alpha a question |
 | [Exa Bulk Webset Items](block-integrations/exa/websets_items.md#exa-bulk-webset-items) | Get all items from a webset in bulk (with configurable limits) |
 | [Exa Cancel Enrichment](block-integrations/exa/websets_enrichment.md#exa-cancel-enrichment) | Cancel a running enrichment operation |

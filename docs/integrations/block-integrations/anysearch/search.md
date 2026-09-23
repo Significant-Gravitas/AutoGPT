@@ -1,9 +1,9 @@
-# Anysearch Search
+# AnySearch Search
 <!-- MANUAL: file_description -->
 Blocks for web search with AnySearch, an AI-native search API covering general queries and 16 vertical domains. All blocks require an `ANYSEARCH_API_KEY` credential.
 <!-- END MANUAL -->
 
-## Any Search
+## AnySearch
 
 ### What it is
 Searches the web using AnySearch - general queries plus vertical domains (finance, academic, health, legal, and more) via domain/sub_domain filters

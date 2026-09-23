@@ -227,6 +227,7 @@ async def test_search_forwards_vertical_params():
     )
 
     assert captured["tag"] == "finance.quote"
+    assert captured["max_results"] == 3
     assert captured["params"] == {"type": "stock", "symbol": "NVDA"}
     assert "domain" not in captured
     assert "sub_domain" not in captured
@@ -340,6 +341,36 @@ async def test_parallel_malformed_results_degrade_to_error_group():
     assert groups[0].error and groups[0].results == []
     assert groups[1].error and groups[1].results == []
     assert groups[2].error == "" and len(groups[2].results) == 1
+
+
+@pytest.mark.asyncio
+async def test_parallel_forwards_shared_params():
+    payloads = []
+
+    def spy(creds, payload):
+        payloads.append(payload)
+        return _search_response([])
+
+    block = AnySearchParallelSearchBlock()
+    _mock_block(block, {"_search": spy})
+
+    await _collect(
+        block,
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "queries": ["a", "b"],
+            "max_results": 3,
+            "domain": "finance",
+            "sub_domain": "finance.quote",
+            "sub_domain_params": {"type": "stock", "symbol": "NVDA"},
+        },
+    )
+
+    assert sorted(p["query"] for p in payloads) == ["a", "b"]
+    for p in payloads:
+        assert p["tag"] == "finance.quote"
+        assert p["params"] == {"type": "stock", "symbol": "NVDA"}
+        assert p["max_results"] == 3
 
 
 @pytest.mark.asyncio
