@@ -188,9 +188,10 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
 
     track_mock.assert_called_once()
     _, kwargs = track_mock.call_args
-    assert kwargs["event"] == "subscription_upgraded"
+    assert kwargs["event"] == "subscription_changed"
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"] == {
+        "change_type": "upgrade",
         "previous_subscription_tier": "BASIC",
         "subscription_tier": "PRO",
         "billing_cycle": "yearly",
@@ -1988,7 +1989,7 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
     add_tx_mock.assert_not_called()
     track_mock.assert_called_once()
     _, kwargs = track_mock.call_args
-    assert kwargs["event"] == "subscription_payment_success"
+    assert kwargs["event"] == "payment_succeeded"
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"]["subscription_tier"] == "PRO"
     assert kwargs["properties"]["billing_cycle"] == "yearly"
@@ -2504,7 +2505,7 @@ async def test_top_up_credits_tracks_success():
 
     track_mock.assert_called_once()
     _, kwargs = track_mock.call_args
-    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["event"] == "topup_completed"
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"] == {
         "amount_credits": 500,
@@ -2561,7 +2562,7 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
 
     track_mock.assert_called_once()
     _, kwargs = track_mock.call_args
-    assert kwargs["event"] == "credit_topup_success"
+    assert kwargs["event"] == "topup_completed"
     assert kwargs["distinct_id"] == "user-1"
     # amount_cents is the session total actually charged (tax included), not
     # the credit amount.
@@ -2934,7 +2935,7 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
 @pytest.mark.asyncio
 async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
     """When ``set_subscription_tier`` fails after a successful Stripe modify,
-    the immediate ``subscription_upgraded`` emit must be skipped — the webhook
+    the immediate ``subscription_changed`` emit must be skipped — the webhook
     is the fallback emit path and would otherwise produce a duplicate event."""
     mock_sub = stripe.Subscription.construct_from(
         {

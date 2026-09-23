@@ -10,6 +10,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
+from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import (
     ExecutionStatus,
@@ -1010,6 +1011,14 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs[library_agent.graph_id] = (
                 session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
             )
+            track_chat_outcome(
+                user_id,
+                session_id,
+                "agent_run_success",
+                graph_id=library_agent.graph_id,
+                execution_id=execution.id,
+                library_agent_id=library_agent.id,
+            )
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:
@@ -1310,6 +1319,16 @@ class RunAgentTool(BaseTool):
         # Track successful schedule
         session.successful_agent_schedules[library_agent.graph_id] = (
             session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+        track_chat_outcome(
+            user_id,
+            session_id,
+            "schedule_created",
+            target="agent",
+            graph_id=library_agent.graph_id,
+            schedule_id=result.id,
+            cron=cron,
+            library_agent_id=library_agent.id,
         )
 
         library_agent_link = f"/library/agents/{library_agent.id}"

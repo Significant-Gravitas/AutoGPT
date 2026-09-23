@@ -1,13 +1,18 @@
 """PostHog analytics tracking for the chat system.
 
-Events carry ``source: chat_copilot`` and are only sent for a known user: a
-synthetic distinct id would create a PostHog person nobody can merge.
+Event names are the product analytics plan's ``chat_*`` family. Events carry
+``source: chat_copilot`` and are only sent for a known user: a synthetic
+distinct id would create a PostHog person nobody can merge.
 """
+
+from typing import Any, Literal
 
 from backend.util import posthog_client, product_analytics
 from backend.util.posthog_events import PostHogEvent
 
 SOURCE = "chat_copilot"
+
+ChatOutcomeType = Literal["agent_run_success", "schedule_created"]
 
 
 def track_user_message(
@@ -21,8 +26,8 @@ def track_user_message(
 ) -> None:
     """Track when a user sends a message in chat.
 
-    One event per turn: ``run_autopilot`` or ``run_expert``, carrying the
-    message length.
+    One ``chat_message_sent`` per turn (``expert_id`` set in an expert chat),
+    carrying the message length.
 
     Args:
         user_id: The user's ID; no event without one
@@ -58,12 +63,35 @@ def track_tool_called(
     """
     posthog_client.capture(
         user_id,
-        PostHogEvent.COPILOT_TOOL_CALLED,
+        PostHogEvent.CHAT_TOOL_CALLED,
         {
             "session_id": session_id,
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
         },
+        source=SOURCE,
+    )
+
+
+def track_chat_outcome(
+    user_id: str,
+    session_id: str,
+    outcome_type: ChatOutcomeType,
+    **properties: Any,
+) -> None:
+    """Track a moment of value in a chat: the copilot ran or scheduled
+    something for the user. ``outcome_type`` uses the analytics plan's values.
+
+    Args:
+        user_id: The user's ID
+        session_id: The chat session the outcome happened in
+        outcome_type: Which kind of result the chat produced
+        properties: Ids describing the result (``graph_id``, ...)
+    """
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.CHAT_OUTCOME,
+        {**properties, "session_id": session_id, "outcome_type": outcome_type},
         source=SOURCE,
     )
 
@@ -89,7 +117,7 @@ def track_library_check_outcome(
     """
     posthog_client.capture(
         user_id,
-        PostHogEvent.COPILOT_LIBRARY_CHECK_OUTCOME,
+        PostHogEvent.CHAT_LIBRARY_CHECK_OUTCOME,
         {
             "session_id": session_id,
             "outcome": outcome,

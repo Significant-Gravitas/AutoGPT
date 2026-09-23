@@ -47,7 +47,6 @@ const LIVE_EVENT_NAMES = [
   "onboarding_step_viewed",
   "paywall_viewed",
   "plan_selected",
-  "subscription_trial_offer_viewed",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
@@ -56,6 +55,7 @@ const LIVE_EVENT_NAMES = [
   "tour_scenario_started",
   "tour_started",
   "transcription_failed",
+  "trial_offer_viewed",
   "voice_mode_error",
   "voice_mode_permission_denied",
   "voice_mode_started",
@@ -71,7 +71,7 @@ const LIVE_EVENT_NAMES = [
 
 const PLANNED_EVENT_NAMES: string[] = [];
 
-// No longer sent (SECRT-2722). The names stay reserved: reusing one would
+// No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.
 const RETIRED_EVENT_NAMES = [
   "experiment_exposed",
@@ -83,6 +83,8 @@ const RETIRED_EVENT_NAMES = [
   "raise_door_clicked",
   // Folded into the backend's checkout_started{checkout_kind: trial}.
   "subscription_trial_checkout_started",
+  // Renamed to the analytics plan's trial_offer_viewed.
+  "subscription_trial_offer_viewed",
   "voice_first_sound_latency_ms",
   "voice_transcribe_latency_ms",
 ];

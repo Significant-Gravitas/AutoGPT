@@ -114,14 +114,14 @@ def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) 
 
     posthog_client.capture(
         "user-1",
-        PostHogEvent.SUBSCRIPTION_UPGRADED,
+        PostHogEvent.SUBSCRIPTION_CHANGED,
         {"subscription_tier": "PRO", "source": "caller"},
         source="chat_copilot",
     )
 
     client.capture.assert_called_once_with(
         distinct_id="user-1",
-        event="subscription_upgraded",
+        event="subscription_changed",
         properties={
             "subscription_tier": "PRO",
             "environment": "prod",
@@ -137,7 +137,7 @@ def test_capture_defaults_the_source_to_platform(
     client = Mock()
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
 
-    posthog_client.capture("user-1", PostHogEvent.CREDIT_TOPUP_SUCCESS)
+    posthog_client.capture("user-1", PostHogEvent.TOPUP_COMPLETED)
 
     properties = client.capture.call_args.kwargs["properties"]
     assert properties["source"] == "platform"
@@ -151,7 +151,7 @@ def test_capture_without_a_user_sends_nothing(
     client = Mock()
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
 
-    posthog_client.capture(distinct_id, PostHogEvent.COPILOT_TOOL_CALLED)
+    posthog_client.capture(distinct_id, PostHogEvent.CHAT_TOOL_CALLED)
 
     client.capture.assert_not_called()
 
@@ -161,7 +161,7 @@ def test_capture_is_a_noop_when_analytics_is_off(
 ) -> None:
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
 
-    posthog_client.capture("user-1", PostHogEvent.COPILOT_TOOL_CALLED)
+    posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED)
 
 
 def test_capture_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,7 +169,7 @@ def test_capture_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client.capture.side_effect = RuntimeError("posthog down")
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
 
-    posthog_client.capture("user-1", PostHogEvent.COPILOT_TOOL_CALLED)
+    posthog_client.capture("user-1", PostHogEvent.CHAT_TOOL_CALLED)
 
 
 def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(

@@ -31,7 +31,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     const identity = `${userID}:${offer.token}`;
     if (seenOffer.current === identity) return;
     seenOffer.current = identity;
-    posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_OFFER_VIEWED, {
+    posthog?.capture(TrialEvent.TRIAL_OFFER_VIEWED, {
       trial_offer_version: offer.version,
       subscription_tier: offer.tier,
       trial_duration_days: offer.duration_days,

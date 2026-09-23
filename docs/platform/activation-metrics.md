@@ -21,7 +21,7 @@ exists, so a change to one must be made in all four.
 | **LaunchDarkly** | Feature gating (on/off, rollouts, targeting). Not for A/B measurement. | — |
 | **DataFast** | Marketing attribution: which channel brought a visitor who signed up, ran an agent, paid. | Browser goals only (`signup`, `paywall_view`, `run_agent`, `schedule_agent`, ...). |
 | **Admin dashboard** | Ops views: platform costs, copilot usage export, execution accuracy. | Backend admin routes. |
-| **Sentry** | Errors and stack traces behind `agent_run_failed`. | — |
+| **Sentry** | Errors and stack traces behind `agent_run_finished` with `status: failed`. | — |
 
 ## Definitions
 
@@ -65,21 +65,21 @@ Every event carries `environment` and `source: "platform"`.
 
 | GTM asked for | Event | Fires when | Key properties |
 | --- | --- | --- | --- |
-| run_agent | `run_agent` | A person starts an agent run (UI, API key, copilot tool). Not schedules, webhooks, sub-graphs or dry runs. | `trigger`, `trigger_ref`, `graph_id`, `graph_exec_id` |
-| run_autopilot | `run_autopilot` | A person sends a message in an Autopilot chat. | `session_id`, `surface` (web chat, slack, telegram, discord) |
-| run_expert | `run_expert` | A person sends a message in an expert chat (`kind: chat_turn`) or starts an expert workflow run (`kind: workflow_run`). | `expert_id`, `kind` |
+| run_agent | `agent_run_started` without `expert_id` | A person starts an agent run (UI, API key, copilot tool). Not schedules, webhooks, sub-graphs or dry runs. | `trigger`, `trigger_ref`, `graph_id`, `graph_exec_id` |
+| run_autopilot | `chat_message_sent` without `expert_id` | A person sends a message in an Autopilot chat. | `session_id`, `surface` (web chat, slack, telegram, discord) |
+| run_expert | `chat_message_sent` / `agent_run_started` with `expert_id` | A person sends a message in an expert chat or starts an expert workflow run (`kind: workflow_run`). | `expert_id`, `kind` |
 | schedule_agent_run / schedule_autopilot_run / schedule_expert_run | `schedule_created` | Any schedule is registered, from any surface. | `target`: `agent` / `autopilot` / `expert`, `cron`, `is_recurring`, `schedule_id` |
 | schedule_agent_ran / schedule_autopilot_ran / schedule_expert_ran | `schedule_fired` | A schedule produced work. | `target`, `schedule_id`, `graph_exec_id` or `session_id` |
 | (trigger) | `trigger_fired` | A webhook produced a run. | `webhook_id`, `graph_exec_id`, `target` |
-| agent_fail | `agent_run_failed` | A run reaches FAILED. | `trigger`, `failure_reason`, `expert_id` |
-| — | `agent_run_completed` | A run reaches COMPLETED. | `trigger`, `cost_cents`, `duration_seconds` |
+| agent_fail | `agent_run_finished` with `status: failed` | A run reaches FAILED. | `trigger`, `failure_reason`, `expert_id` |
+| — | `agent_run_finished` with `status: completed` | A run reaches COMPLETED. | `trigger`, `cost_cents`, `duration_seconds` |
 | — | `expert_hired` | A user hires an expert from a template, from any surface. | `expert_id`, `template_id`, `surface` |
 | — | `integration_connected` | A user connects a credential, by OAuth or by pasting a key. | `provider`, `credential_type`, `method` |
 | agent_idle, stale account | *(not events)* | Computed states, see `agent_health` and `user_lifecycle`. | — |
 
-The copilot events (`copilot_tool_called`, `copilot_library_check_outcome`)
-and billing events (`credit_topup_success`, `subscription_*`) keep their names.
-Every PostHog event, its sender, its properties and whether it is live,
+The event names follow the product analytics plan; the chat events
+(`chat_tool_called`, `chat_outcome`, ...) and billing events (`topup_completed`,
+`trial_*`, `subscription_*`, ...) are listed there too. Every PostHog event, its sender, its properties and whether it is live,
 planned or removed is listed in the [PostHog Tracking Plan](tracking-plan.md).
 
 ## SQL views (Looker)
@@ -91,7 +91,7 @@ untouched.
 | View | Grain | Answers |
 | --- | --- | --- |
 | `graph_execution` (extended) | one row per agent run | Now also `triggerSource`, `triggerRef`, `expertId`, `failureReason`, `isDryRun`, `isSubgraphRun`. |
-| `chat_turn` | one row per human chat message | Autopilot vs expert usage; the SQL twin of `run_autopilot` / `run_expert`. |
+| `chat_turn` | one row per human chat message | Autopilot vs expert usage; the SQL twin of `chat_message_sent`. |
 | `user_task_daily` | user × day | How many tasks people run, by surface and by how they started; failures; our cost; credits charged; logins. |
 | `user_lifecycle` | one row per user | First/last activity per surface, first-two-weeks behaviour, cost and revenue, and the labels `activated`, `stale_*`, `churned_30d`, `never_activated_30d`. The feature table for churn analysis. |
 | `user_lifecycle_funnel_weekly` | signup-week cohort | Signup → onboarded → first task in 7d → activated in 14d → schedule / expert / purchase → retained at week 4. |
@@ -181,8 +181,9 @@ is already wired this way.
    `CreditTransaction`; if staging shows that hurting, the follow-up is a
    nightly-refreshed materialized view (a `generate_views.py` change), not a
    Looker source on the live view. Then wire the new views into Looker Studio.
-4. Confirm in PostHog that `run_agent`, `run_autopilot`, `schedule_created`
-   and `agent_run_failed` are arriving with `source = platform`.
+4. Confirm in PostHog that `agent_run_started`, `chat_message_sent`,
+   `schedule_created` and `agent_run_finished` are arriving with
+   `source = platform`.
 
 ## The questions GTM will ask next
 

@@ -3,9 +3,11 @@
 // docs/platform/tracking-plan.md; the backend's list is
 // backend/util/posthog_events.py.
 //
-// Never change a value here. PostHog stores the raw string, so a rename
-// orphans every insight and funnel built on the old name and cannot be
-// backfilled. __tests__/posthog-events.test.ts pins the values.
+// The names follow the product analytics plan ("Every Second Counts"). Never
+// change a value here. PostHog stores the raw string, so a rename orphans
+// every insight and funnel built on the old name and cannot be backfilled.
+// __tests__/posthog-events.test.ts pins the values and reserves the names
+// retired or renamed in SECRT-2722.
 //
 // Plain `as const` objects rather than enums so a string literal at a call
 // site still type-checks against the list.
@@ -130,7 +132,7 @@ export const CredentialConnectionFailureEvent = {
 } as const;
 
 export const TrialEvent = {
-  SUBSCRIPTION_TRIAL_OFFER_VIEWED: "subscription_trial_offer_viewed",
+  TRIAL_OFFER_VIEWED: "trial_offer_viewed",
 } as const;
 
 export const TourEvent = {
