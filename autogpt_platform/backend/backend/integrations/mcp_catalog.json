@@ -282,6 +282,30 @@
     }
   },
   {
+    "name": "mcp_aws",
+    "display_name": "AWS",
+    "description": "Run AWS operations, search AWS documentation, and access account resources through the official AWS MCP Server.",
+    "mcp_server": {
+      "documentation_url": "https://docs.aws.amazon.com/agent-toolkit/latest/userguide/getting-started-aws-mcp-server.html",
+      "setup_instructions": "Attach the AWSMCPSignInOAuthAccessPolicy managed policy to your IAM role or user, then sign in with your AWS account via OAuth. Your existing IAM permissions and any condition-key restrictions apply to every action.",
+      "connection_mode": "custom",
+      "auth_methods": [
+        "oauth"
+      ],
+      "server_url_options": [
+        {
+          "label": "US East (N. Virginia)",
+          "url": "https://aws-mcp.us-east-1.api.aws/mcp"
+        },
+        {
+          "label": "Europe (Frankfurt)",
+          "url": "https://aws-mcp.eu-central-1.api.aws/mcp"
+        }
+      ],
+      "icon_id": "aws"
+    }
+  },
+  {
     "name": "mcp_aws_databases",
     "display_name": "AWS Knowledge",
     "description": "Search AWS documentation and guidance for AWS Agents, AWS Databases, AWS Deployments, and AWS Amplify.",
