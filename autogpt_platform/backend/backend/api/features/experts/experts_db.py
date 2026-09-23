@@ -60,6 +60,7 @@ from backend.api.features.experts.models import (
     ExpertTemplate,
     ExpertWorkflowRef,
     HireResult,
+    HireSurface,
     RaiseAttachment,
     RaiseResult,
     decode_day_one,
@@ -888,7 +889,12 @@ async def resolve_private_expert_tenancy(
     return organization_id, team_id
 
 
-async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+async def hire_expert(
+    user_id: str,
+    template_id: str,
+    name: str | None,
+    surface: HireSurface | None = None,
+) -> HireResult:
     try:
         result, state = await _hire_expert_impl(user_id, template_id, name)
     except Exception:
@@ -900,14 +906,15 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         raise
     # An idempotent re-hire of an already-active expert is not a hire.
     if state != "existing":
-        emit_funnel_event(
-            user_id,
-            PostHogEvent.HIRE_COMPLETED,
-            {
-                "template_id": template_id,
-                "failed_preloads_count": len(result.failed_preloads),
-            },
-        )
+        hired: dict[str, str | int] = {
+            "expert_id": result.expert.id,
+            "template_id": template_id,
+            "name": result.expert.name,
+            "failed_preloads_count": len(result.failed_preloads),
+        }
+        if surface is not None:
+            hired["surface"] = surface
+        emit_funnel_event(user_id, PostHogEvent.EXPERT_HIRED, hired)
     return result
 
 
@@ -1869,7 +1876,7 @@ async def _install_library_workflow(
         PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
-            "source": "library",
+            "workflow_source": "library",
             "library_agent_id": library_agent_id,
         },
     )
@@ -1918,7 +1925,7 @@ async def _install_marketplace_workflow(
         PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
-            "source": "marketplace",
+            "workflow_source": "marketplace",
             "store_listing_version_id": store_listing_version_id,
         },
     )

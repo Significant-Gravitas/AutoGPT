@@ -58,6 +58,10 @@ def _clear_active_subscription_cache():
     yield
 
 
+# What the shared PostHog client adds to every event (see posthog_client.capture).
+BASE_PROPERTIES = {"environment": "test", "source": "platform"}
+
+
 @pytest.mark.asyncio
 async def test_set_subscription_tier_updates_db():
     with (
@@ -173,8 +177,11 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
             "backend.data.credit._cleanup_stale_subscriptions", new_callable=AsyncMock
         ),
         patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         patch.object(get_pending_subscription_change, "cache_delete"),
     ):
         await sync_subscription_from_stripe(stripe_sub)
@@ -187,6 +194,7 @@ async def test_sync_subscription_from_stripe_tracks_upgrade():
         "previous_subscription_tier": "BASIC",
         "subscription_tier": "PRO",
         "billing_cycle": "yearly",
+        **BASE_PROPERTIES,
     }
 
 
@@ -592,8 +600,11 @@ async def test_cancel_stripe_subscription_tracks_cancellation():
             new_callable=AsyncMock,
             return_value=1,
         ),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         patch.object(get_pending_subscription_change, "cache_delete"),
     ):
         result = await cancel_stripe_subscription("user-1")
@@ -603,7 +614,10 @@ async def test_cancel_stripe_subscription_tracks_cancellation():
     _, kwargs = track_mock.call_args
     assert kwargs["event"] == "subscription_cancellation_scheduled"
     assert kwargs["distinct_id"] == "user-1"
-    assert kwargs["properties"] == {"subscription_tier": "PRO"}
+    assert kwargs["properties"] == {
+        "subscription_tier": "PRO",
+        **BASE_PROPERTIES,
+    }
 
 
 @pytest.mark.asyncio
@@ -1961,8 +1975,11 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
             "backend.data.credit.UserCredit._add_transaction",
             new=AsyncMock(),
         ) as add_tx_mock,
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
@@ -1998,8 +2015,11 @@ async def test_handle_subscription_payment_success_metadata_absent_uses_user_tie
             new_callable=AsyncMock,
             return_value="monthly",
         ),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
@@ -2032,8 +2052,11 @@ async def test_handle_subscription_payment_success_reads_parent_metadata():
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
@@ -2064,8 +2087,11 @@ async def test_handle_subscription_payment_success_swallows_posthog_errors():
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
@@ -2093,8 +2119,7 @@ async def test_handle_subscription_payment_success_skips_tracking_when_posthog_d
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch("backend.data.credit.UserCredit._add_transaction", new=AsyncMock()),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new=""),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch("backend.util.posthog_client.get_posthog_client", return_value=None),
         _patch_credit_grant_config(False),
     ):
         await handle_subscription_payment_success(invoice)
@@ -2463,8 +2488,11 @@ async def test_top_up_credits_tracks_success():
             "backend.data.credit.stripe.PaymentIntent.create_async",
             return_value=payment_intent,
         ),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
     ):
         await credit_system._top_up_credits("user-1", 500)
 
@@ -2475,6 +2503,7 @@ async def test_top_up_credits_tracks_success():
     assert kwargs["properties"] == {
         "amount_credits": 500,
         "top_up_type": "UNCATEGORIZED",
+        **BASE_PROPERTIES,
     }
 
 
@@ -2512,8 +2541,11 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
             new_callable=AsyncMock,
             return_value=(2500, "pi_test_topup"),
         ),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
     ):
         await credit_system.fulfill_checkout(session_id="cs_test_topup")
 
@@ -2524,6 +2556,7 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
     assert kwargs["properties"] == {
         "amount_credits": 2500,
         "top_up_type": "CHECKOUT",
+        **BASE_PROPERTIES,
     }
 
 
@@ -2931,8 +2964,11 @@ async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
             new_callable=AsyncMock,
             side_effect=PrismaError("db down"),
         ),
-        patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
-        patch("backend.data.credit.posthog.capture", new=track_mock),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
         patch.object(get_pending_subscription_change, "cache_delete"),
     ):
         result = await modify_stripe_subscription_for_tier(

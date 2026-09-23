@@ -363,6 +363,10 @@ class HireResult(BaseModel):
     failed_preloads: list[str]
 
 
+# Where a hire was made, for the ``expert_hired`` analytics event.
+HireSurface = Literal["onboarding", "expert_page", "copilot"]
+
+
 RaiseAttachmentKind = Literal["workflow", "skill"]
 RaiseAttachmentSource = Literal["marketplace", "library"]
 RaiseAttachmentFailureReason = Literal["unavailable", "installation_failed"]

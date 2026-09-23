@@ -25,28 +25,20 @@ class PostHogEvent(StrEnum):
     SCHEDULE_CREATED = "schedule_created"
     SCHEDULE_FIRED = "schedule_fired"
     TRIGGER_FIRED = "trigger_fired"
-    EXPERT_HIRED = "expert_hired"
     INTEGRATION_CONNECTED = "integration_connected"
 
     # Experts loop: backend/util/funnel_analytics.py
+    EXPERT_HIRED = "expert_hired"
     HIRE_FAILED = "hire_failed"
-    HIRE_COMPLETED = "hire_completed"
     WRITING_STYLE_ADDED = "writing_style_added"
     WORKFLOW_INSTALLED_ON_EXPERT = "workflow_installed_on_expert"
     EXPERT_FIRED = "expert_fired"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
-    EXPERT_RUN_COMPLETED = "expert_run_completed"
 
     # Copilot: backend/copilot/tracking.py
-    COPILOT_MESSAGE_SENT = "copilot_message_sent"
     COPILOT_TOOL_CALLED = "copilot_tool_called"
-    COPILOT_AGENT_RUN_SUCCESS = "copilot_agent_run_success"
-    COPILOT_AGENT_SCHEDULED = "copilot_agent_scheduled"
-    COPILOT_FOLLOWUP_SCHEDULED = "copilot_followup_scheduled"
     COPILOT_LIBRARY_CHECK_OUTCOME = "copilot_library_check_outcome"
-    # Dead: track_trigger_setup has no caller.
-    COPILOT_TRIGGER_SETUP = "copilot_trigger_setup"
 
     # Billing: backend/data/credit.py
     CREDIT_TOPUP_SUCCESS = "credit_topup_success"

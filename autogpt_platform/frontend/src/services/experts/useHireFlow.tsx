@@ -13,7 +13,6 @@ import {
 } from "@/components/organisms/VoicePicker/helpers";
 import { analytics } from "@/services/analytics";
 import { trackExperts } from "@/services/experts/experts-analytics";
-import { takeHireElapsedMs } from "@/services/experts/hire-timing";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -49,7 +48,6 @@ export function useHireFlow(expert: Expert | null) {
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
   const [isVoicePickOpen, setIsVoicePickOpen] = useState(false);
   const pendingCelebrationRef = useRef<HireResult | null>(null);
-  const voicePickedRef = useRef(false);
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
   const { mutateAsync: updateSoul, isPending: isSavingVoice } =
@@ -61,12 +59,6 @@ export function useHireFlow(expert: Expert | null) {
     setHireResult(null);
     setIsVoicePickOpen(false);
     if (completedHire) {
-      trackExperts("hire_flow_completed", {
-        template_id: expert?.id ?? null,
-        expert_id: completedHire.expert.id,
-        elapsed_ms: expert ? takeHireElapsedMs(expert.id) : null,
-        voice_picked: voicePickedRef.current,
-      });
       celebrate(completedHire);
       // Hiring isn't installing: hand the user straight to the expert's
       // thread with kickoff=1 so it introduces itself and starts its job.
@@ -76,9 +68,10 @@ export function useHireFlow(expert: Expert | null) {
 
   async function hire() {
     if (!expert || !expert.is_template) return;
-    voicePickedRef.current = false;
     try {
-      const response = await hireExpert({ data: { template_id: expert.id } });
+      const response = await hireExpert({
+        data: { template_id: expert.id, surface: "expert_page" },
+      });
       const result = response.data as HireResult;
       analytics.sendDatafastEvent("hire_completed", {
         template_id: expert.id,
@@ -143,7 +136,6 @@ export function useHireFlow(expert: Expert | null) {
       });
       return;
     }
-    voicePickedRef.current = true;
     finish();
   }
 

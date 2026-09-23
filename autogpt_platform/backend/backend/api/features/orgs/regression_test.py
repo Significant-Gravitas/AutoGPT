@@ -1644,7 +1644,6 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1675,7 +1674,6 @@ class TestPR10WebhookTenancy:
             new_callable=AsyncMock,
             return_value=mock_lib_agent,
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
         await tool._run_agent(
             user_id=USER_ID,

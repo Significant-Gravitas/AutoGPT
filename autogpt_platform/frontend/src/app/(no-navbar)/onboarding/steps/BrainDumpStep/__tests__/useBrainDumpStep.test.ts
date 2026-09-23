@@ -413,7 +413,13 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       duration_secs: 65,
       input_mode: "voice",
+      finalize_latency_ms: expect.any(Number),
     });
+    // The finalize round trip rides on the outcome, not on an event of its own.
+    expect(trackBrainDump).not.toHaveBeenCalledWith(
+      "finalize_latency_ms",
+      expect.anything(),
+    );
   });
 
   it("marks the take finalized by id and clears it before advancing", async () => {
@@ -501,6 +507,7 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: "transcription_error",
+      finalize_latency_ms: expect.any(Number),
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
@@ -517,6 +524,7 @@ describe("useBrainDumpStep — finishing a take", () => {
     expect(result.current.screen).toBe("failed");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: 500,
+      finalize_latency_ms: expect.any(Number),
     });
   });
 
@@ -551,6 +559,7 @@ describe("useBrainDumpStep — insufficient content", () => {
     expect(result.current.screen).toBe("insufficient");
     expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
       error_code: "no_usable_speech",
+      finalize_latency_ms: expect.any(Number),
     });
     // No accidental advance, and nothing personalized to advance to.
     expect(useOnboardingWizardStore.getState().currentStep).toBe(1);

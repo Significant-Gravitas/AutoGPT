@@ -33,12 +33,15 @@ describe("trackFunnel", () => {
   });
 
   it("leaves a breadcrumb so the step shows on an error's timeline", () => {
-    trackFunnel("hire_started", { template_id: "template-maria" });
+    trackFunnel("hire_started", {
+      template_id: "template-maria",
+      surface: "expert_page",
+    });
 
     expect(addBreadcrumb).toHaveBeenCalledExactlyOnceWith({
       category: "funnel",
       message: "hire_started",
-      data: { template_id: "template-maria" },
+      data: { template_id: "template-maria", surface: "expert_page" },
       level: "info",
     });
   });

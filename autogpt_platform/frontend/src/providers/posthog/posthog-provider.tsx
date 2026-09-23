@@ -5,6 +5,7 @@ import {
   captureFirstLanding,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
+import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
@@ -32,6 +33,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
       });
+      posthog.register(getPostHogBaseProperties());
     }
     captureFirstLanding();
   }, []);

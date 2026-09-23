@@ -211,7 +211,6 @@ class TestRunAgentToolSessionDryRun:
                 new=AsyncMock(return_value=(None, None)),
             ),
             patch("backend.copilot.tools.run_agent.execution_utils") as mock_exec_utils,
-            patch("backend.copilot.tools.run_agent.track_agent_run_success"),
         ):
             mock_exec_utils.add_graph_execution = AsyncMock(return_value=mock_execution)
 

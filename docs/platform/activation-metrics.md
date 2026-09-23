@@ -73,14 +73,14 @@ Every event carries `environment` and `source: "platform"`.
 | (trigger) | `trigger_fired` | A webhook produced a run. | `webhook_id`, `graph_exec_id`, `target` |
 | agent_fail | `agent_run_failed` | A run reaches FAILED. | `trigger`, `failure_reason`, `expert_id` |
 | — | `agent_run_completed` | A run reaches COMPLETED. | `trigger`, `cost_cents`, `duration_seconds` |
-| — | `expert_hired` | A user hires an expert from a template. | `expert_id`, `template_id` |
+| — | `expert_hired` | A user hires an expert from a template, from any surface. | `expert_id`, `template_id`, `surface` |
 | — | `integration_connected` | A user connects a credential, by OAuth or by pasting a key. | `provider`, `credential_type`, `method` |
 | agent_idle, stale account | *(not events)* | Computed states, see `agent_health` and `user_lifecycle`. | — |
 
-The pre-existing copilot events (`copilot_message_sent`, `copilot_tool_called`,
-...) and billing events (`credit_topup_success`, `subscription_*`) are unchanged.
-Every PostHog event, its sender, its properties and whether it is kept,
-merged or planned is listed in the [PostHog Tracking Plan](tracking-plan.md).
+The copilot events (`copilot_tool_called`, `copilot_library_check_outcome`)
+and billing events (`credit_topup_success`, `subscription_*`) keep their names.
+Every PostHog event, its sender, its properties and whether it is live,
+planned or removed is listed in the [PostHog Tracking Plan](tracking-plan.md).
 
 ## SQL views (Looker)
 
@@ -152,14 +152,9 @@ device context yet), so bucket pre-login experiments on the client.
    side effects before then, or a late variant is mis-recorded as control.
    The hook reports the arm to `POST /api/experiments/assignments` once per
    user and experiment; the backend keeps the **first** arm it sees.
-3. Prefer a LaunchDarkly flag for the arms? Use `useLaunchDarklyExperiment(flagKey)`
-   with a string-valued flag. It reports the assignment the same way
-   (`source = launchdarkly`) and sends PostHog an `experiment_exposed` event
-   carrying `$feature/<flag>`, so a PostHog experiment can use it as its
-   exposure and measure the activation events against it.
-4. Backend-decided experiments can call
+3. Backend-decided experiments can call
    `backend.data.experiments.record_assignment(user_id, key, variant, source="backend")`.
-5. Read results in PostHog (exposure + the activation events above as goals),
+4. Read results in PostHog (exposure + the activation events above as goals),
    and in Looker by joining `analytics.experiment_assignment` to
    `user_lifecycle`, `user_task_daily` or `unit_economics_monthly`.
 
@@ -253,11 +248,12 @@ missing.
 - *Can we A/B backend behaviour (model routing, default expert, prompt)?* —
   yes via `record_assignment(source="backend")`; LaunchDarkly stays the
   gate, PostHog and the assignment table hold the arm.
-- *Can the team keep using LaunchDarkly for arms?* — yes, through
-  `useLaunchDarklyExperiment`; the arm still lands in PostHog and the
-  assignment table. **Gap**: the backend's LaunchDarkly context has no
-  `device` kind yet, so server-evaluated flags cannot bucket by the
-  anonymous id.
+- *Can the team keep using LaunchDarkly for arms?* — not in the browser
+  today: the unused `useLaunchDarklyExperiment` bridge and its
+  `experiment_exposed` event were removed (SECRT-2722), so a LaunchDarkly arm
+  reaches the assignment table only through `record_assignment`. **Gap**: the
+  backend's LaunchDarkly context has no `device` kind yet, so server-evaluated
+  flags cannot bucket by the anonymous id.
 
 **Experts and schedules**
 

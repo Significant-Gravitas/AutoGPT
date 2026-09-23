@@ -18,13 +18,16 @@ Event vocabulary (PostHog event name -> SQL equivalent):
                           ``trigger`` so failures can be split by how they started.
                           Includes subgraph and automated runs; filter to human
                           triggers when comparing outcomes with run-start events.
+                          A top-level expert run is ``expert_id`` set and
+                          ``is_subgraph_run`` false.
 - ``schedule_created``    a schedule was registered (``target``: agent | autopilot |
                           expert).  ActivityEvent category SCHEDULE / schedule.created.
 - ``schedule_fired``      a schedule produced work.  For agent/expert targets the run
                           row carries triggerSource='schedule' and triggerRef=schedule
                           id; for autopilot targets the session has origin='automation'.
 - ``trigger_fired``       a webhook produced a run (triggerSource='webhook').
-- ``expert_hired``        a user hired an expert from a template.
+- ``expert_hired``        a user hired an expert from a template (sent from
+                          ``experts_db.hire_expert``, so every surface counts).
 - ``integration_connected`` a user connected a credential (OAuth or manual).
                           IntegrationCredential rows by createdByUserId.
 
@@ -42,16 +45,14 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from backend.util.posthog_client import get_posthog_client
+from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
-from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.data.execution import GraphExecutionEntry, GraphExecutionMeta
     from backend.data.model import GraphExecutionStats
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 
 ScheduleTarget = Literal["agent", "autopilot", "expert"]
@@ -71,24 +72,13 @@ def track(
     event: PostHogEvent,
     properties: dict[str, Any] | None = None,
 ) -> None:
-    """Send one event for *user_id*. Silently no-ops when analytics is off."""
-    if not user_id:
-        return
-    try:
-        client = get_posthog_client()
-        if client is None:
-            return
-        client.capture(
-            distinct_id=user_id,
-            event=event.value,
-            properties={
-                "environment": settings.config.app_env.value,
-                "source": "platform",
-                **{k: v for k, v in (properties or {}).items() if v is not None},
-            },
-        )
-    except Exception:
-        logger.warning("Failed to track %s for user %s", event.value, user_id)
+    """Send one event for *user_id*, dropping unset properties. Silently
+    no-ops when analytics is off or there is no user."""
+    posthog_client.capture(
+        user_id,
+        event,
+        {k: v for k, v in (properties or {}).items() if v is not None},
+    )
 
 
 def track_agent_run_started(
@@ -135,6 +125,7 @@ def track_agent_run_finished(
     cost_cents: int | None = None,
     duration_seconds: float | None = None,
     is_dry_run: bool = False,
+    is_subgraph_run: bool = False,
 ) -> None:
     if is_dry_run:
         return
@@ -156,6 +147,7 @@ def track_agent_run_finished(
             "failure_reason": _enum_value(failure_reason),
             "cost_cents": cost_cents,
             "duration_seconds": duration_seconds,
+            "is_subgraph_run": is_subgraph_run,
         },
     )
 
@@ -178,6 +170,9 @@ def handle_run_finished(
             cost_cents=exec_stats.cost,
             duration_seconds=exec_stats.walltime,
             is_dry_run=exec_stats.is_dry_run,
+            is_subgraph_run=(
+                graph_exec.execution_context.parent_execution_id is not None
+            ),
         )
     except Exception:
         logger.warning(
@@ -194,6 +189,7 @@ def track_chat_turn(
     expert_id: str | None = None,
     origin: str | None = None,
     surface: str | None = None,
+    message_length: int | None = None,
 ) -> None:
     """A person sent a chat message. Model-authored turns are not activation."""
     if origin == "automation":
@@ -207,6 +203,7 @@ def track_chat_turn(
             "origin": origin,
             "surface": surface or "chat",
             "kind": "chat_turn",
+            "message_length": message_length,
         },
     )
 
@@ -288,20 +285,6 @@ def track_trigger_fired(
             "preset_id": preset_id,
             "target": "expert" if expert_id else "agent",
         },
-    )
-
-
-def track_expert_hired(
-    *,
-    user_id: str,
-    expert_id: str,
-    template_id: str | None = None,
-    name: str | None = None,
-) -> None:
-    track(
-        user_id,
-        PostHogEvent.EXPERT_HIRED,
-        {"expert_id": expert_id, "template_id": template_id, "name": name},
     )
 
 
