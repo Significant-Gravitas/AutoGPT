@@ -340,7 +340,11 @@ class SwapProxyAddon:
         clean TLS error.  (Leaving ``ssl_conn`` empty instead, which mitmproxy
         also treats as a failure, leaves the box waiting.)"""
         if data.context.client in self._refused_tls:
-            refused = SSL.Connection(SSL.Context(SSL.TLS_SERVER_METHOD))
+            context = SSL.Context(SSL.TLS_SERVER_METHOD)
+            # Never completes a handshake, but no context of ours offers
+            # anything below TLS 1.2.
+            context.set_min_proto_version(SSL.TLS1_2_VERSION)
+            refused = SSL.Connection(context)
             refused.set_accept_state()
             data.ssl_conn = refused
 
