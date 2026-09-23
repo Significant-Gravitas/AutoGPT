@@ -1,5 +1,4 @@
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Tooltip,
@@ -11,16 +10,12 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
-import {
-  ArrowRight02Icon,
-  Book04Icon,
-  CheckmarkCircle02Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
 import { CategoryTag } from "../../CategoryChip/CategoryTag";
 import { getCategoryAccent } from "../helpers";
-import { ExpertHireButton } from "./ExpertHireButton";
+import { ExpertHireControl } from "./ExpertHireControl";
 
 /** Three named, then a count for the rest — enough to place the expert
  *  without turning the card into a list. */
@@ -59,17 +54,7 @@ export function ExpertCard({ expert, isHired }: Props) {
         className="absolute inset-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
       />
       <div className="absolute right-5 top-5 z-10">
-        {isHired ? (
-          <Badge
-            variant="success"
-            className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
-          >
-            <Icon icon={CheckmarkCircle02Icon} size={14} />
-            On your team
-          </Badge>
-        ) : (
-          <ExpertHireButton expert={expert} />
-        )}
+        <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
       {/* Inert, so a click anywhere lands on the link underneath; the pieces
           that answer to a pointer take their events back. */}
