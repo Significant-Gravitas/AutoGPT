@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from ldclient import Context, LDClient
+from ldclient.config import Config
+from ldclient.integrations.test_data import TestData
 from pydantic import ValidationError
 
 from backend.data import subscription_trial_config as trials
@@ -219,6 +222,64 @@ async def test_country_is_handed_to_the_flag_not_decided_here(country, attribute
     ) as flag:
         await trials.get_trial_offer("user-1", country=country)
     assert flag.await_args.kwargs["attributes"] == attributes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "country",
+    # a duplicated header comma-joined, unassigned and reserved codes, a name
+    ["IN, US", "US,IN", "XX", "ZZ", "EU", "T1", "INDIA", "U S", "us\u200b"],
+)
+async def test_a_country_that_is_not_an_iso_code_never_reaches_the_flag(country):
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
+    ) as flag:
+        assert await trials.get_trial_offer("user-1", country=country) is None
+    flag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "country,offered",
+    [
+        ("US", True),
+        (" gb ", True),
+        ("IN", False),
+        (None, False),
+        # junk must not satisfy "country is not one of IN"
+        ("IN, US", False),
+        ("XX", False),
+        ("India", False),
+    ],
+)
+async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
+    country, offered
+):
+    """The production rule shape, evaluated by LaunchDarkly's own SDK."""
+    td = TestData.data_source()
+    td.update(
+        td.flag(trials.Flag.CARD_REQUIRED_TRIAL_OFFER.value)
+        .variations({"enabled": False}, offer_data())
+        .fallthrough_variation(0)
+        .if_not_match("country", "IN")
+        .then_return(1)
+    )
+    client = LDClient(Config("sdk-test", update_processor_class=td, send_events=False))
+    try:
+        with patch.object(
+            trials, "is_feature_enabled", AsyncMock(return_value=True)
+        ), patch("backend.util.feature_flag.ldclient.get", return_value=client), patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            AsyncMock(
+                return_value=(Context.builder("user-1").kind("user").build(), True)
+            ),
+        ):
+            offer = await trials.get_trial_offer("user-1", country=country)
+    finally:
+        client.close()
+    assert (offer is not None) is offered
 
 
 @pytest.mark.parametrize(

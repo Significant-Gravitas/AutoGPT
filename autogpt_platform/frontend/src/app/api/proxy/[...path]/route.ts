@@ -1,9 +1,10 @@
 import {
   API_KEY_HEADER_NAME,
-  CLIENT_COUNTRY_HEADER_NAME,
+  CLIENT_COUNTRY_TOKEN_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
   VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
+import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
@@ -85,18 +86,31 @@ function buildBackendUrl(path: string[], queryString: string): string {
   return `${environment.getAGPTServerBaseUrl()}/${path.join("/")}${queryString}`;
 }
 
-function buildForwardHeaders(req: NextRequest, token: string | null): Headers {
+async function signCountry(country: string) {
+  try {
+    return await getCountryToken(country);
+  } catch (error) {
+    console.error("[proxy] Could not sign the client country", error);
+    return null;
+  }
+}
+
+async function buildForwardHeaders(
+  req: NextRequest,
+  token: string | null,
+): Promise<Headers> {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = req.headers.get(name);
     if (value) headers.set(name, value);
   }
   headers.set("accept-encoding", BACKEND_ACCEPT_ENCODING);
-  // The visitor's country as the edge saw it. Sent under our own name, and
-  // only ever from the edge value: the browser's copy is not allowlisted
-  // above, so a client cannot claim a country through the proxy.
+  // The visitor's country as the edge saw it, signed so the backend can tell
+  // it from one a caller typed. Without it the country is unknown, which the
+  // trial offer treats as "no offer", so a failed mint fails closed.
   const country = req.headers.get(VERCEL_COUNTRY_HEADER_NAME);
-  if (country) headers.set(CLIENT_COUNTRY_HEADER_NAME, country);
+  const countryToken = country ? await signCountry(country) : null;
+  if (countryToken) headers.set(CLIENT_COUNTRY_TOKEN_HEADER_NAME, countryToken);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
@@ -213,7 +227,7 @@ async function handler(
       return await handleWorkspaceDownload(backendUrl, token);
     }
 
-    const headers = buildForwardHeaders(req, token);
+    const headers = await buildForwardHeaders(req, token);
     const hasBody = !METHODS_WITHOUT_BODY.has(method);
 
     // Two-phase timeout: the overall ceiling covers the whole hop, while the

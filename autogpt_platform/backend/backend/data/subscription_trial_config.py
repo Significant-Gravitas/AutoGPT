@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from backend.util.country import country_code
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -84,8 +85,16 @@ async def get_trial_offer(
     matches a country rule, negated or not, so the recommended shape -- a
     rule serving the offer when country is not one of the excluded list,
     falling through to off -- also withholds it when the country is unknown.
+
+    A country that is present but not an assigned ISO 3166-1 alpha-2 code is
+    refused outright rather than handed on: under a negated rule any value
+    other than the excluded ones -- ``"IN, US"`` from a duplicated header, say
+    -- would be served the offer, so it fails closed instead.
     """
-    code = (country or "").strip().upper()
+    code = country_code(country)
+    if code is None and (country or "").strip():
+        logger.info("Unrecognised client country; withholding the trial offer")
+        return None
     try:
         if not await is_feature_enabled(
             Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False

@@ -23,7 +23,7 @@ from pydantic import BaseModel
 # the SDK adds `distinct_id` (the user id, LaunchDarkly's context key) itself.
 # `country` is not stored on the person: it is the visitor's ISO country code,
 # passed per evaluation by callers that know it (the trial offer, from the
-# X-Client-Country header), so it is absent whenever a caller does not.
+# country token the proxy signs), so it is absent whenever a caller does not.
 PERSON_PROPERTIES = frozenset(
     {"email", "email_domain", "role", "created_at", "country"}
 )
