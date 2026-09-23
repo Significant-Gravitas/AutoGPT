@@ -33,6 +33,7 @@ vi.mock(
     }) =>
       open ? (
         <div data-testid="connect-dialog">
+          {existing?.purpose && <span>{`purpose-${existing.purpose}`}</span>}
           {existing?.credentials.map((credential) => (
             <button
               key={credential.id}
@@ -155,5 +156,58 @@ describe("ConnectorRow with several saved accounts for one provider", () => {
       expect.objectContaining({ id: "cred-work" }),
     );
     expect(screen.queryByText("Choose account")).toBeNull();
+  });
+});
+
+describe("ConnectorRow when no saved account has the access a card needs", () => {
+  const oauthRow = () =>
+    row({
+      schema: {
+        credentials_provider: ["github"],
+        credentials_types: ["oauth2"],
+        credentials_scopes: ["repo", "read:org"],
+      },
+    });
+  const oauth = (id: string, title: string) => ({
+    id,
+    provider: "github",
+    type: "oauth2",
+    title,
+    scopes: ["repo"],
+  });
+
+  it("asks which account to update when there are several", () => {
+    renderRow(oauthRow(), [
+      oauth("cred-a", "work"),
+      oauth("cred-b", "personal"),
+    ] as never);
+
+    fireEvent.click(screen.getByText("Connect"));
+
+    expect(screen.getByText("purpose-update")).toBeDefined();
+    expect(screen.getByText("use-work")).toBeDefined();
+    expect(screen.getByText("use-personal")).toBeDefined();
+  });
+
+  it("does not ask with a single account, which is upgraded in place already", () => {
+    renderRow(oauthRow(), [oauth("cred-a", "work")] as never);
+
+    fireEvent.click(screen.getByText("Connect"));
+
+    expect(screen.queryByText("purpose-update")).toBeNull();
+  });
+
+  it("does not ask when the card takes an API key, which no sign-in widens", () => {
+    // Several OAuth accounts exist, but this row only accepts an API key:
+    // naming one of them changes nothing about the key form that follows.
+    renderRow(row(), [
+      oauth("cred-a", "work"),
+      oauth("cred-b", "personal"),
+    ] as never);
+
+    fireEvent.click(screen.getByText("Connect"));
+
+    expect(screen.queryByText("purpose-update")).toBeNull();
+    expect(screen.queryByText("use-work")).toBeNull();
   });
 });

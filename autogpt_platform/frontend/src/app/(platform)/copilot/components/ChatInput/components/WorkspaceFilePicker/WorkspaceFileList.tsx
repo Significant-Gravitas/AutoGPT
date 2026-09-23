@@ -11,15 +11,23 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { isKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { SelectionModifiers } from "./helpers";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: WorkspaceFileItem[];
-  selectedFileIds: ReadonlySet<string>;
-  onToggle: (item: WorkspaceFileItem) => void;
+  selectedIds: ReadonlyMap<string, WorkspaceFileItem>;
+  onSelect: (index: number, modifiers: SelectionModifiers) => void;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -33,8 +41,8 @@ interface Props {
 
 export function WorkspaceFileList({
   files,
-  selectedFileIds,
-  onToggle,
+  selectedIds,
+  onSelect,
   isLoading,
   isError,
   error,
@@ -108,14 +116,20 @@ export function WorkspaceFileList({
         className="max-h-[24rem] overflow-y-auto py-1"
       >
         <div className="grid grid-cols-2 gap-2">
-          {files.map((file) => {
-            const isSelected = selectedFileIds.has(file.id);
+          {files.map((file, index) => {
+            const isSelected = selectedIds.has(file.id);
             const fileIcon = getFileTypeIcon(file.mime_type);
             return (
               <button
                 key={file.id}
                 type="button"
-                onClick={() => onToggle(file)}
+                onClick={(e) =>
+                  onSelect(index, {
+                    shift: e.shiftKey,
+                    meta: e.metaKey || e.ctrlKey,
+                  })
+                }
+                onKeyDown={(e) => handleRangeKey(e, index, onSelect)}
                 aria-pressed={isSelected}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors",
@@ -169,4 +183,20 @@ export function WorkspaceFileList({
       </div>
     </div>
   );
+}
+
+/**
+ * Firefox reports shiftKey as false on the click it synthesises from
+ * Shift+Enter/Space (Chromium reports true), so the keyboard range cannot ride
+ * that click. Handle the chord here and preventDefault, which also stops
+ * Chromium firing a second, plain selection.
+ */
+function handleRangeKey(
+  e: KeyboardEvent<HTMLButtonElement>,
+  index: number,
+  onSelect: (index: number, modifiers: SelectionModifiers) => void,
+) {
+  if (!e.shiftKey || !isKey(e, "Enter", " ")) return;
+  e.preventDefault();
+  onSelect(index, { shift: true });
 }

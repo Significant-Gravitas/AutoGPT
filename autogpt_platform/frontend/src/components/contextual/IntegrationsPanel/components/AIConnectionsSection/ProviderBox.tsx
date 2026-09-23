@@ -18,7 +18,7 @@ interface Props {
 }
 
 const FRAME =
-  "flex w-full flex-col items-center gap-3 rounded-2xl border bg-white px-4 py-6 text-center";
+  "flex h-44 w-full min-w-0 flex-col items-center gap-3 rounded-2xl border bg-white px-3 py-4 text-center";
 
 // One subscription the experts could run on. Available ones are a button
 // that starts the sign-in; connected and coming-soon ones just say so.
@@ -31,13 +31,16 @@ export function ProviderBox({
 }: Props) {
   const body = (
     <>
-      <span className="relative flex h-12 w-12 items-center justify-center">
+      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
         <Image
           src={logoSrc}
           alt=""
           width={48}
           height={48}
-          className={cn("rounded-xl", state === "coming-soon" && "opacity-50")}
+          className={cn(
+            "h-12 w-12 rounded-xl object-contain",
+            state === "coming-soon" && "opacity-50",
+          )}
         />
         {isBusy && (
           <Icon
@@ -47,11 +50,14 @@ export function ProviderBox({
           />
         )}
       </span>
-      <span className="flex flex-col items-center gap-1">
+      <span className="flex w-full flex-col items-center gap-1">
         <Text
           variant="body-medium"
           as="span"
-          className={state === "coming-soon" ? "text-zinc-500" : "text-black"}
+          className={cn(
+            "flex min-h-11 items-center justify-center",
+            state === "coming-soon" ? "text-zinc-500" : "text-black",
+          )}
         >
           {name}
         </Text>

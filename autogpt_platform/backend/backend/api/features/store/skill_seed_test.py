@@ -8,6 +8,7 @@ import pytest
 
 from backend.api.features.store.skill_model import skill_title
 from backend.api.features.store.skill_seed import (
+    RETIRED_STARTER_SLUGS,
     STARTER_SKILLS,
     CatalogEntry,
     _attribution_value,
@@ -135,6 +136,12 @@ def test_attribution_accepts_top_level_fields_but_prefers_metadata():
         "nested/repo"
     )
     assert _attribution_value(parsed, {}, "source_url") == "https://example.com/top"
+
+
+def test_retired_starters_are_not_also_seeded():
+    """A slug in both lists would be delisted right after being upserted."""
+    seeded = {entry["slug"] for entry in STARTER_SKILLS}
+    assert not seeded & set(RETIRED_STARTER_SLUGS), seeded & set(RETIRED_STARTER_SLUGS)
 
 
 @pytest.mark.parametrize("entry", STARTER_SKILLS, ids=lambda entry: entry["slug"])

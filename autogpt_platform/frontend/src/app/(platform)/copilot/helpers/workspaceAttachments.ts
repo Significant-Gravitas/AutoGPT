@@ -39,10 +39,7 @@ export type Attachment = { kind: "local"; file: File } | WorkspaceAttachment;
 /**
  * The backend caps `folder_ids` at 5 per message. Without the same ceiling
  * here the composer would build a message the send answers with a 422.
- *
- * When #14770's `MAX_ATTACHMENTS` (10 across every kind) lands, KEEP BOTH:
- * a folder costs one of the ten and one of these five, and the two ceilings
- * refuse for different reasons.
+ * A folder also costs one of the `MAX_ATTACHMENTS`.
  */
 export const MAX_FOLDER_ATTACHMENTS = 5;
 
@@ -58,6 +55,10 @@ export interface WorkspaceFolderPartData {
   name: string;
   fileCount: number;
 }
+
+// Must equal `file_ids` max_length on StreamChatRequest/QueuePendingMessageRequest
+// (chat/routes.py): every attachment, uploaded or from the workspace, is one entry.
+export const MAX_ATTACHMENTS = 20;
 
 export function workspaceFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
@@ -122,21 +123,27 @@ export function buildWorkspaceFolderPart(
 }
 
 /**
- * Adds attachments the composer does not already hold, refusing folders past
- * `MAX_FOLDER_ATTACHMENTS`. A re-picked attachment is skipped without being
- * reported as refused: the user asked for it and it is there.
+ * Adds attachments the composer does not already hold, refusing anything past
+ * `MAX_ATTACHMENTS` and folders past `MAX_FOLDER_ATTACHMENTS`. A re-picked
+ * attachment is skipped without being reported as refused: the user asked for
+ * it and it is there.
  */
 export function appendWithinCap(
   held: Attachment[],
   incoming: Attachment[],
-): { attachments: Attachment[]; refusedFolders: number } {
+): { next: Attachment[]; refused: number; refusedFolders: number } {
   const keys = new Set(held.map(attachmentKey));
   const next = [...held];
   let folders = held.filter((a) => a.kind === "folder").length;
+  let refused = 0;
   let refusedFolders = 0;
 
   for (const attachment of incoming) {
     if (keys.has(attachmentKey(attachment))) continue;
+    if (next.length >= MAX_ATTACHMENTS) {
+      refused += 1;
+      continue;
+    }
     if (attachment.kind === "folder") {
       if (folders >= MAX_FOLDER_ATTACHMENTS) {
         refusedFolders += 1;
@@ -147,7 +154,7 @@ export function appendWithinCap(
     keys.add(attachmentKey(attachment));
     next.push(attachment);
   }
-  return { attachments: next, refusedFolders };
+  return { next, refused, refusedFolders };
 }
 
 export function partitionAttachments(attachments: Attachment[]): {

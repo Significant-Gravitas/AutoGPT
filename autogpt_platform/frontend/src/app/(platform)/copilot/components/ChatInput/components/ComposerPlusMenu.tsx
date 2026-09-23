@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
+import { MAX_ATTACHMENTS } from "../../../helpers/workspaceAttachments";
 import { useComposerPlusMenu } from "./useComposerPlusMenu";
 import {
   Attachment01Icon,
@@ -24,6 +25,9 @@ interface Props {
   onUseWorkspaceFile?: () => void;
   onClearGuidedPrompt?: () => void;
   disabled?: boolean;
+  /** The message already holds `MAX_ATTACHMENTS` attachments: both file
+   *  entries read disabled rather than letting the composer take another. */
+  isAtCap?: boolean;
   className?: string;
 }
 
@@ -32,6 +36,7 @@ export function ComposerPlusMenu({
   onUseWorkspaceFile,
   onClearGuidedPrompt,
   disabled,
+  isAtCap = false,
   className,
 }: Props) {
   const {
@@ -72,6 +77,7 @@ export function ComposerPlusMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
           <DropdownMenuItem
+            disabled={isAtCap}
             onSelect={() => {
               onClearGuidedPrompt?.();
               openFilePicker();
@@ -79,9 +85,11 @@ export function ComposerPlusMenu({
           >
             <Icon icon={Attachment01Icon} className="mr-2 h-4 w-4" />
             Attach file
+            {isAtCap && <CapLabel />}
           </DropdownMenuItem>
           {showWorkspaceOption && (
             <DropdownMenuItem
+              disabled={isAtCap}
               onSelect={() => {
                 onClearGuidedPrompt?.();
                 onUseWorkspaceFile?.();
@@ -89,6 +97,7 @@ export function ComposerPlusMenu({
             >
               <Icon icon={FolderOpenIcon} className="mr-2 h-4 w-4" />
               Use File from Workspace
+              {isAtCap && <CapLabel />}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -111,5 +120,13 @@ export function ComposerPlusMenu({
         </DropdownMenuContent>
       </DropdownMenu>
     </>
+  );
+}
+
+function CapLabel() {
+  return (
+    <span className="ml-auto pl-3 text-xs text-zinc-500">
+      {MAX_ATTACHMENTS} max
+    </span>
   );
 }

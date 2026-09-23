@@ -10,6 +10,12 @@ import {
   childrenOf,
 } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import {
+  applySelection,
+  orderByList,
+  type Selection,
+  type SelectionModifiers,
+} from "./helpers";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -21,7 +27,13 @@ type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 /** A picked row: a file, or a folder the model will open for itself. */
 export type PickedItem =
   | { kind: "file"; file: WorkspaceFileItem }
-  | { kind: "folder"; folder: WorkspaceFolder; subfolderCount: number };
+  | PickedFolder;
+
+type PickedFolder = {
+  kind: "folder";
+  folder: WorkspaceFolder;
+  subfolderCount: number;
+};
 
 interface Args {
   enabled: boolean;
@@ -37,8 +49,15 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   const [expertOnly, setExpertOnly] = useState(true);
   const [folderId, setFolderId] = useState<string | null>(null);
   // Keep the full item (not just id) so a selection survives a search that
-  // pages the row off the currently-loaded list.
-  const [selected, setSelected] = useState<Map<string, PickedItem>>(new Map());
+  // pages the row off the currently-loaded list. The anchor travels with the
+  // files because a range is only meaningful against the list it was taken from.
+  const [selection, setSelection] = useState<Selection>({
+    selected: new Map(),
+    anchor: null,
+  });
+  const [pickedFolders, setPickedFolders] = useState<Map<string, PickedFolder>>(
+    new Map(),
+  );
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -101,26 +120,58 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
     enabled,
   });
 
-  function toggle(item: PickedItem) {
-    const key = pickedKey(item);
-    setSelected((prev) => {
+  const files = flattenFiles(query.data);
+
+  function select(index: number, modifiers?: SelectionModifiers) {
+    setSelection((prev) => applySelection(prev, files, index, modifiers));
+  }
+
+  function toggleFolder(folder: WorkspaceFolder, subfolderCount: number) {
+    setPickedFolders((prev) => {
       const next = new Map(prev);
-      if (next.has(key)) next.delete(key);
-      else next.set(key, item);
+      if (next.has(folder.id)) next.delete(folder.id);
+      else next.set(folder.id, { kind: "folder", folder, subfolderCount });
       return next;
     });
   }
 
+  // A range across a changed listing would span files never shown together.
+  function dropAnchor() {
+    setSelection((prev) => ({ ...prev, anchor: null }));
+  }
+
+  function search(term: string) {
+    setSearchTerm(term);
+    dropAnchor();
+  }
+
+  function openFolder(id: string | null) {
+    setFolderId(id);
+    dropAnchor();
+  }
+
+  function filterToExpert(on: boolean) {
+    setExpertOnly(on);
+    dropAnchor();
+  }
+
   function reset() {
-    setSelected(new Map());
+    setSelection({ selected: new Map(), anchor: null });
     setSearchTerm("");
+    setPickedFolders(new Map());
     setFolderId(null);
   }
 
-  const selectedItems = Array.from(selected.values());
+  // Folders first, as the picker shows them, so the chips — and at the cap,
+  // what survives it — follow the order on screen.
+  const selectedFiles = orderByList(selection.selected, files);
+  const selectedItems: PickedItem[] = [
+    ...pickedFolders.values(),
+    ...selectedFiles.map((file) => ({ kind: "file" as const, file })),
+  ];
 
   return {
-    files: flattenFiles(query.data),
+    files,
     folderRows: showFolders ? childrenOf(folders, folderId) : [],
     folders,
     breadcrumb:
@@ -131,35 +182,30 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
           }))
         : [],
     folderId,
-    openFolder: setFolderId,
+    openFolder,
     showFolders,
     isFoldersLoading: foldersQuery.isLoading,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     searchTerm,
-    setSearchTerm,
+    setSearchTerm: search,
     expertOnly,
-    setExpertOnly,
+    setExpertOnly: filterToExpert,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {
       query.fetchNextPage();
     },
-    selectedKeys: selected,
+    selectedIds: selection.selected,
+    selectedFolderIds: new Set(pickedFolders.keys()),
     selectedItems,
-    selectedFileCount: selectedItems.filter((i) => i.kind === "file").length,
-    selectedFolderCount: selectedItems.filter((i) => i.kind === "folder")
-      .length,
-    toggle,
+    selectedFileCount: selectedFiles.length,
+    selectedFolderCount: pickedFolders.size,
+    select,
+    toggleFolder,
     reset,
   };
-}
-
-export function pickedKey(item: PickedItem): string {
-  return item.kind === "file"
-    ? `file:${item.file.id}`
-    : `folder:${item.folder.id}`;
 }
 
 function flattenFiles(

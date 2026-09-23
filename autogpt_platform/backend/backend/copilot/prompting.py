@@ -15,6 +15,9 @@ from functools import cache
 # individual tool schema.
 SHARED_TOOL_NOTES = """\
 
+### Math
+Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` for display; a plain price like `$5` stays text.
+
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
 - File: `[report.csv](workspace://file_id#text/csv)`

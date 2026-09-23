@@ -115,19 +115,17 @@ export function WorkspaceFilePicker({
             <WorkspaceFolderRows
               folders={picker.folderRows}
               allFolders={picker.folders}
-              selectedIds={folderIdsOf(picker.selectedItems)}
+              selectedIds={picker.selectedFolderIds}
               isLoading={picker.isFoldersLoading}
               onOpen={picker.openFolder}
-              onToggleAttach={(folder, subfolderCount) =>
-                picker.toggle({ kind: "folder", folder, subfolderCount })
-              }
+              onToggleAttach={picker.toggleFolder}
             />
           ) : null}
 
           <WorkspaceFileList
             files={picker.files}
-            selectedFileIds={fileIdsOf(picker.selectedItems)}
-            onToggle={(file) => picker.toggle({ kind: "file", file })}
+            selectedIds={picker.selectedIds}
+            onSelect={picker.select}
             isLoading={picker.isLoading}
             isError={picker.isError}
             error={picker.error}
@@ -205,14 +203,4 @@ function emptyMessage(opts: {
       ? "No files directly in this folder."
       : "This folder is empty.";
   return "No files in your workspace yet.";
-}
-
-function fileIdsOf(items: PickedItem[]): Set<string> {
-  return new Set(items.filter((i) => i.kind === "file").map((i) => i.file.id));
-}
-
-function folderIdsOf(items: PickedItem[]): Set<string> {
-  return new Set(
-    items.filter((i) => i.kind === "folder").map((i) => i.folder.id),
-  );
 }

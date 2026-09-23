@@ -173,10 +173,6 @@ resolve_publication() {
   publish_latest=false
   publication_name="Single-container SHA image published"
 
-  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/dev" ]]; then
-    return
-  fi
-
   if [[ "$GITHUB_EVENT_NAME" == "release" && "$GITHUB_REF" == "refs/tags/${RELEASE_TAG}" ]]; then
     if [[ ! "$RELEASE_TAG" =~ ^autogpt-platform-beta-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
       echo "refusing unsupported release tag: $RELEASE_TAG" >&2
@@ -194,18 +190,6 @@ resolve_publication() {
 }
 
 publication_allowed() {
-  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-    if [[ "$PUBLISH_REQUESTED" != "true" ]]; then
-      printf 'false\n'
-      return
-    fi
-    if ! resolve_publication; then
-      return 1
-    fi
-    printf 'true\n'
-    return
-  fi
-
   if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
     if [[ "$RELEASE_PRERELEASE" != "false" ]]; then
       printf 'false\n'
@@ -356,7 +340,7 @@ ensure_immutable_manifest() {
 
 ensure_release_tag() {
   local manifest_digest="$1"
-  local state raw_manifest
+  local state raw_manifest published_release_version
 
   release_manifest_digest="$manifest_digest"
   [[ -n "$release_ref" ]] || return 0
@@ -370,7 +354,11 @@ ensure_release_tag() {
   release_manifest_digest="$(inspect_manifest "$release_ref")"
   verify_manifest "$release_ref" "${expected_rows[@]}"
   raw_manifest="$(docker buildx imagetools inspect --raw "$release_ref")"
-  if [[ "$(release_version_from_manifest <<<"$raw_manifest")" != "$release_version" ]]; then
+  if ! published_release_version="$(release_version_from_manifest <<<"$raw_manifest")"; then
+    echo "could not read the immutable release-version annotation from $release_ref" >&2
+    return 1
+  fi
+  if [[ "$published_release_version" != "$release_version" ]]; then
     echo "$release_ref is missing its immutable release-version annotation" >&2
     return 1
   fi
@@ -418,10 +406,11 @@ latest_update_allowed() {
     return
   fi
 
-  set +e
-  semver_is_newer "$current_version" "$target_version"
-  compare_status=$?
-  set -e
+  if semver_is_newer "$current_version" "$target_version"; then
+    compare_status=0
+  else
+    compare_status=$?
+  fi
   if ((compare_status == 0)); then
     echo "refusing to move latest backward from $current_version to $target_version" >&2
     return 1
@@ -458,13 +447,22 @@ publish_latest_tag() {
   fi
 }
 
+list_digest_files() {
+  find "$DIGEST_DIR" -maxdepth 1 -type f -print | sort
+}
+
 load_verified_digests() {
   local digest_file descriptor expected_arch digest_hex image_ref actual_platform raw_manifest expected_row
   local runnable_digest image_json source_revision
+  local digest_listing
   local -a digest_files=()
   declare -A seen_platforms=()
 
-  mapfile -t digest_files < <(find "$DIGEST_DIR" -maxdepth 1 -type f -print | sort)
+  if ! digest_listing="$(list_digest_files)"; then
+    echo "could not enumerate verified platform digests" >&2
+    return 1
+  fi
+  mapfile -t digest_files <<<"$digest_listing"
   if ((${#digest_files[@]} != 2)); then
     echo "expected exactly two verified platform digests" >&2
     return 1
@@ -695,12 +693,12 @@ self_test() {
   assert_equal 3 "$actual" "confirmed absent retry count"
   rm -f "$tag_retry_state"
 
-  DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
+  if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-    RELEASE_TAG='' resolve_publication
-  assert_equal docker.io/significantgravitas/autogpt:sha-abc123 "$immutable_ref" "dev immutable tag"
-  assert_equal '' "$release_ref" "dev release tag"
-  assert_equal false "$publish_latest" "dev latest policy"
+    RELEASE_TAG='' resolve_publication 2>/dev/null; then
+    echo "workflow dispatch publication was accepted" >&2
+    return 1
+  fi
 
   release_manifest_digest=""
   ensure_release_tag sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -726,26 +724,20 @@ self_test() {
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-      PUBLISH_REQUESTED=true RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
+      RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
   )"
-  assert_equal true "$actual" "dev publication authorization"
-  actual="$(
-    DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
-      GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-      PUBLISH_REQUESTED=false RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
-  )"
-  assert_equal false "$actual" "validation-only dispatch authorization"
+  assert_equal false "$actual" "dispatch publication authorization"
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
-      GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+      GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
       RELEASE_TAG=autogpt-platform-beta-v0.7.1 publication_allowed
   )"
   assert_equal true "$actual" "release publication authorization"
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
-      GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=true \
+      GITHUB_SHA=abc123 RELEASE_PRERELEASE=true \
       RELEASE_TAG=autogpt-platform-beta-v0.7.1 publication_allowed
   )"
   assert_equal false "$actual" "prerelease publication authorization"
@@ -754,9 +746,9 @@ self_test() {
   GITHUB_OUTPUT="$authorization_output" \
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-    PUBLISH_REQUESTED=true RELEASE_PRERELEASE='' RELEASE_TAG='' authorize
+    RELEASE_PRERELEASE='' RELEASE_TAG='' authorize
   actual="$(<"$authorization_output")"
-  assert_equal allowed=true "$actual" "authorization output"
+  assert_equal allowed=false "$actual" "dispatch authorization output"
   : >"$authorization_output"
 
   if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
@@ -767,7 +759,7 @@ self_test() {
   fi
   if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7 \
-    GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+    GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
     RELEASE_TAG=autogpt-platform-beta-v0.7 publication_allowed 2>/dev/null; then
     echo "malformed release tag was authorized" >&2
     return 1
@@ -775,7 +767,7 @@ self_test() {
   if GITHUB_OUTPUT="$authorization_output" \
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7 \
-    GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+    GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
     RELEASE_TAG=autogpt-platform-beta-v0.7 authorize 2>/dev/null; then
     echo "malformed release tag produced an authorization output" >&2
     return 1
@@ -875,6 +867,32 @@ JSON
     echo "invalid release-version annotation was accepted" >&2
     return 1
   fi
+  if (
+    release_ref=docker.io/significantgravitas/autogpt:v0.7.1
+    release_version=v0.7.1
+    expected_rows=()
+    tag_state() {
+      printf 'present\n'
+    }
+    inspect_manifest() {
+      printf 'sha256:%064d\n' 0
+    }
+    verify_manifest() {
+      :
+    }
+    docker() {
+      printf '{}\n'
+    }
+    release_version_from_manifest() {
+      printf 'v0.7.1\n'
+      return 1
+    }
+    ensure_release_tag sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      >/dev/null 2>&1
+  ); then
+    echo "failed release-version extraction was accepted" >&2
+    return 1
+  fi
 
   semver_is_newer v0.7.2 v0.7.1
   semver_is_newer v1.0.0 v0.99.99
@@ -896,6 +914,19 @@ JSON
   fi
   if latest_update_allowed v0.7.1 sha256:first v0.7.1 sha256:second 2>/dev/null; then
     echo "same-version digest replacement was accepted" >&2
+    return 1
+  fi
+
+  if (
+    list_digest_files() {
+      printf '%s\n' \
+        /tmp/amd64-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+        /tmp/arm64-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      return 1
+    }
+    DIGEST_DIR=/tmp load_verified_digests >/dev/null 2>&1
+  ); then
+    echo "failed digest enumeration was accepted" >&2
     return 1
   fi
 
