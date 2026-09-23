@@ -307,9 +307,13 @@ async def migrate_flat_triggered_preset_inputs():
                     continue
 
                 async with transaction() as tx:
-                    await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
-                        where={"id": {"in": [row.id for row in config_rows]}}
-                    )
+                    deleted = await AgentNodeExecutionInputOutput.prisma(
+                        tx
+                    ).delete_many(where={"id": {"in": [row.id for row in config_rows]}})
+                    # Another replica's boot converted it after our read: its
+                    # delete held these rows until commit, so ours found none.
+                    if deleted != len(config_rows):
+                        raise _ConvertedElsewhere
                     await AgentNodeExecutionInputOutput.prisma(tx).create(
                         data={
                             "name": node_input_mask_key(trigger_node.id),
@@ -321,6 +325,8 @@ async def migrate_flat_triggered_preset_inputs():
                     )
 
                 n_migrated += 1
+            except _ConvertedElsewhere:
+                continue
             except Exception as e:
                 n_failed += 1
                 logger.error(
@@ -383,3 +389,7 @@ def _trigger_config_field_names() -> list[str]:
             if not is_credentials_field_name(name)
         }
     )
+
+
+class _ConvertedElsewhere(Exception):
+    """Rolls back a backfill transaction that another replica beat to the preset."""

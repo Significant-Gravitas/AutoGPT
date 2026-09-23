@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
@@ -210,7 +211,7 @@ async def test_backfill_wraps_a_preset_the_sql_migration_missed():
     presets = MagicMock()
     presets.prisma.return_value.find_many = AsyncMock(return_value=[preset])
     io_model = MagicMock()
-    io_model.prisma.return_value.delete_many = AsyncMock()
+    io_model.prisma.return_value.delete_many = AsyncMock(return_value=2)
     io_model.prisma.return_value.create = AsyncMock()
 
     with (
@@ -248,7 +249,7 @@ async def test_backfill_keeps_a_committed_page_when_the_budget_runs_out():
     presets = MagicMock()
     presets.prisma.return_value.find_many = find_many
     io_model = MagicMock()
-    io_model.prisma.return_value.delete_many = AsyncMock()
+    io_model.prisma.return_value.delete_many = AsyncMock(return_value=1)
     io_model.prisma.return_value.create = AsyncMock()
 
     with (
@@ -269,6 +270,82 @@ async def test_backfill_keeps_a_committed_page_when_the_budget_runs_out():
         io_model.prisma.return_value.create.await_args.kwargs["data"]["agentPresetId"]
         == "preset-a"
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_backfills_convert_a_preset_once():
+    """Every REST replica runs the backfill at boot. Against real Postgres, two
+    that both read the same flat preset must leave one mask row, not two."""
+    from prisma.models import (
+        AgentGraph,
+        AgentNode,
+        AgentNodeExecutionInputOutput,
+        AgentPreset,
+    )
+
+    from backend.api.features.library.model import node_input_mask_key
+    from backend.blocks import get_webhook_block_ids
+    from backend.data.user import get_or_create_user
+    from backend.util.json import SafeJson
+
+    user_id = str(uuid.uuid4())
+    await get_or_create_user(
+        {"sub": user_id, "email": f"backfill-{user_id}@example.com"}
+    )
+    graph = await AgentGraph.prisma().create(
+        data={"id": str(uuid.uuid4()), "version": 1, "userId": user_id}
+    )
+    await AgentNode.prisma().create(
+        data={
+            "agentBlockId": sorted(get_webhook_block_ids())[0],
+            "agentGraphId": graph.id,
+            "agentGraphVersion": 1,
+        }
+    )
+    preset = await AgentPreset.prisma().create(
+        data={
+            "name": "p",
+            "description": "",
+            "userId": user_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": 1,
+        }
+    )
+    for name, data in (("repo", "owner/repo"), ("events", ["push"])):
+        await AgentNodeExecutionInputOutput.prisma().create(
+            data={"name": name, "data": SafeJson(data), "agentPresetId": preset.id}
+        )
+
+    both_read = asyncio.Barrier(2)
+
+    async def get_graph(graph_id, **_):
+        # Other presets on a shared database are left alone.
+        if graph_id != graph.id:
+            return None
+        await both_read.wait()
+        return _graph()
+
+    try:
+        with patch("backend.data.graph.get_graph", get_graph):
+            await asyncio.wait_for(
+                asyncio.gather(
+                    webhooks_utils.migrate_flat_triggered_preset_inputs(),
+                    webhooks_utils.migrate_flat_triggered_preset_inputs(),
+                ),
+                timeout=60,
+            )
+        rows = await AgentNodeExecutionInputOutput.prisma().find_many(
+            where={"agentPresetId": preset.id}
+        )
+        assert len(rows) == 1, [row.name for row in rows]
+        assert rows[0].name == node_input_mask_key("trigger-node-1")
+        assert rows[0].data == {"repo": "owner/repo", "events": ["push"]}
+    finally:
+        await AgentNodeExecutionInputOutput.prisma().delete_many(
+            where={"agentPresetId": preset.id}
+        )
+        await AgentPreset.prisma().delete(where={"id": preset.id})
+        await AgentGraph.prisma().delete_many(where={"id": graph.id})
 
 
 def test_trigger_field_prefilter_covers_every_trigger_block():
