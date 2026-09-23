@@ -68,14 +68,15 @@ carries the same story, by `outcome`:
 
 | outcome | meaning |
 |---|---|
-| `refresher` / `stored` | this process holds the lock and wrote the definitions |
+| `refresher` / `stored` | this process holds the lock and wrote its definitions to the shared copy, which it does every poll whether or not PostHog reported a change |
 | `follower` / `cached` | this process read the shared copy |
-| `stale` | the shared copy is older than five poll intervals and is being served anyway |
-| `empty` | nothing in the cache; this process fetches from PostHog directly |
+| `stale` | the shared copy has not been rewritten for five poll intervals, so no refresher is writing it; it is served anyway |
+| `empty` | nothing in the cache; a process with no definitions yet fetches from PostHog directly, and one that has some keeps them |
 | `error` | Redis was unreachable |
 
-Healthy, with N replicas: `stored` increments on exactly one process, `cached`
-on the other N−1, and `error` stays flat.
+Healthy, with N replicas: `stored` increments once per poll on exactly one
+process, `cached` once per poll on each of the other N−1, and `empty` and
+`error` stay flat.
 
 ### Failure modes
 
@@ -85,7 +86,7 @@ on the other N−1, and `error` stays flat.
 | Redis unreachable | Every process polls PostHog for itself, as it would without the cache, and logs once per five minutes. Flag reads are unaffected. |
 | Shared copy goes stale | It is served anyway, with a warning, while the refresher catches up. Stale definitions beat none. |
 | The refresher dies | Its lock expires and another process takes the job on its next poll. |
-| A definitions fetch fails | The definitions already in memory stay in use, and the cache keeps the last good copy. |
+| A definitions fetch fails | The definitions already in memory stay in use, and the refresher keeps writing that copy to the cache. |
 
 Nothing here can make a flag read wait on Redis or on PostHog: flag evaluation
 only ever reads the definitions already in the process.

@@ -25,7 +25,7 @@ from posthog.flag_definition_cache import (
 )
 from prometheus_client import Counter
 
-from backend.data.redis_client import get_redis
+from backend.data.redis_client import connect_once
 from backend.util.settings import FlagDefinitionCacheBackend, Settings
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,8 @@ _LOCK_TTL_POLLS = 2
 _STALE_AFTER_POLLS = 5
 # One line per poll per process would drown the logs for as long as Redis is out.
 _DEGRADED_LOG_INTERVAL = 300.0
+# The SDK's poller thread waits on these; past them it falls back to fetching.
+_REDIS_TIMEOUT_SECONDS = 2.0
 
 # Renew and release only our own lock: a bare PEXPIRE or DEL would extend or
 # free whichever process actually holds it.
@@ -104,25 +106,33 @@ class RedisFlagDefinitionCache:
         *,
         refresh_interval: int,
         ttl: int,
-        redis_factory: Callable[[], Any] = get_redis,
+        redis_factory: Callable[[], Any] | None = None,
     ) -> None:
         self._ttl = ttl
         self._lock_ttl_ms = refresh_interval * _LOCK_TTL_POLLS * 1000
         self._stale_after = refresh_interval * _STALE_AFTER_POLLS
-        self._redis_factory = redis_factory
+        self._redis_factory = redis_factory or _connect
+        self._client: Any = None
         self._instance = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
         self._is_refresher = False
         self._degraded_at = 0.0
+        # What this process's SDK last installed, fetched or read.
+        self._definitions: FlagDefinitionCacheData | None = None
 
     def should_fetch_flag_definitions(self) -> bool:
         try:
-            redis = self._redis_factory()
+            redis = self._redis()
             acquired = bool(
                 redis.set(_LOCK_KEY, self._instance, nx=True, px=self._lock_ttl_ms)
             ) or bool(
                 redis.eval(_RENEW_LOCK, 1, _LOCK_KEY, self._instance, self._lock_ttl_ms)
             )
+            # The SDK stores only on a 200; a 304 poll would otherwise let the
+            # shared copy lapse while the definitions are unchanged.
+            if acquired and self._definitions is not None:
+                self._store(redis, self._definitions)
         except Exception as e:
+            self._drop_client()
             self._log_degraded("electing a flag-definition refresher", e)
             _record("error")
             # What the SDK falls back to on a provider error anyway: definitions
@@ -135,8 +145,9 @@ class RedisFlagDefinitionCache:
 
     def get_flag_definitions(self) -> FlagDefinitionCacheData | None:
         try:
-            raw = self._redis_factory().get(_DATA_KEY)
+            raw = self._redis().get(_DATA_KEY)
         except Exception as e:
+            self._drop_client()
             self._log_degraded("reading the shared flag definitions", e)
             _record("error")
             # None leaves the SDK on the definitions it already holds, and makes
@@ -164,29 +175,52 @@ class RedisFlagDefinitionCache:
             _record("stale")
         else:
             _record("cached")
+        self._definitions = data
         return data
 
     def on_flag_definitions_received(self, data: FlagDefinitionCacheData) -> None:
+        self._definitions = data
         try:
-            payload = json.dumps({"fetched_at": time.time(), "definitions": data})
-            self._redis_factory().set(_DATA_KEY, payload, ex=self._ttl)
+            self._store(self._redis(), data)
         except Exception as e:
+            self._drop_client()
             self._log_degraded("sharing the refreshed flag definitions", e)
             _record("error")
             return
 
-        _record("stored")
         logger.debug(f"Shared {len(data.get('flags') or [])} PostHog flag definitions")
 
     def shutdown(self) -> None:
-        if not self._is_refresher:
+        # Connecting here would hold shutdown for a Redis that is down anyway;
+        # the lock then lapses on its own within two polls.
+        if not self._is_refresher or self._client is None:
             return
         try:
-            self._redis_factory().eval(_RELEASE_LOCK, 1, _LOCK_KEY, self._instance)
+            self._client.eval(_RELEASE_LOCK, 1, _LOCK_KEY, self._instance)
         except Exception as e:
             logger.warning(f"Could not release the flag-refresher lock: {e}")
         finally:
             self._is_refresher = False
+            self._drop_client()
+
+    def _redis(self) -> Any:
+        if self._client is None:
+            self._client = self._redis_factory()
+        return self._client
+
+    def _drop_client(self) -> None:
+        client, self._client = self._client, None
+        if client is None:
+            return
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    def _store(self, redis: Any, data: FlagDefinitionCacheData) -> None:
+        payload = json.dumps({"fetched_at": time.time(), "definitions": data})
+        redis.set(_DATA_KEY, payload, ex=self._ttl)
+        _record("stored")
 
     def _note_role(self, is_refresher: bool) -> None:
         if is_refresher == self._is_refresher:
@@ -252,3 +286,9 @@ class MemoryFlagDefinitionCache:
 def _record(outcome: str) -> None:
     """In a healthy fleet one process records ``stored`` and the rest ``cached``."""
     CACHE_EVENTS.labels(outcome=outcome).inc()
+
+
+def _connect() -> Any:
+    # Not the shared get_redis(): its connect retries for minutes, and this
+    # cache has a fallback of its own.
+    return connect_once(timeout=_REDIS_TIMEOUT_SECONDS)
