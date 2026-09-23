@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 import {
   Accordion,
   AccordionContent,
@@ -68,9 +69,9 @@ export function ProviderGroup({
 
 function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
   const [broken, setBroken] = useState(false);
-  const src = provider.logoUrl ?? `/integrations/${provider.id}.png`;
+  const src = provider.logoUrl ?? integrationIconSrc(provider.id);
 
-  if (broken) {
+  if (!src || broken) {
     return (
       <div
         aria-hidden="true"

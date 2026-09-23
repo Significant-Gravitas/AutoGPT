@@ -44,9 +44,16 @@ def test_rubric_has_three_anchors_per_dimension():
         assert dim.question.endswith("?")
 
 
-def test_the_baseline_covers_the_whole_roster_and_says_what_produced_it():
+def test_the_baseline_says_what_produced_it():
+    """Checks the stored file is internally coherent. It deliberately does NOT
+    assert the baseline covers the current roster: every expert's context
+    embeds the rest of the roster as teammates, so adding or renaming one moves
+    all of their fingerprints, and a coverage assertion here turned any roster
+    edit into a full paid rescore of everyone ($26.89 for twenty-four experts,
+    and it grows with the roster). The eval is hand-run, and
+    `poetry run expert-style-eval --dry-run` already names which components
+    moved for free, which is where drift should be noticed."""
     baseline = load_baseline()
-    assert {b.expert for b in baseline.experts} == {e.name for e in roster_experts()}
     for stored in baseline.experts:
         assert stored.scores.n == len(stored.by_prompt) > 0
         assert 0 <= stored.scores.mean <= 100
@@ -67,7 +74,11 @@ def test_every_expert_has_thirty_prompts_across_every_kind(expert: str):
 
 
 def test_fixture_set_covers_the_whole_roster():
-    assert {f.expert for f in load_fixtures()} == {e.name for e in roster_experts()}
+    assert {f.expert for f in load_fixtures()} == {e.name for e in roster_experts()}, (
+        "every roster expert needs its own fixtures/<name>.json. Copy a sibling "
+        "and rewrite its 27 reference prompts; this one costs nothing. Procedure: "
+        "'Adding or changing a roster expert' in backend/AGENTS.md."
+    )
 
 
 @pytest.mark.asyncio

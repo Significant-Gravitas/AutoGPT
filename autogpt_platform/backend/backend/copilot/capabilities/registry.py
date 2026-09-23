@@ -1,9 +1,9 @@
 """Assemble the capability index from its sources.
 
 The platform-wide index (tools + blocks + MCP catalog) is static for the
-life of the process, so it is built once and reused.  Per-user entries (MCP
-servers the user has registered) are layered on top per request by a later
-change; nothing here depends on the user.
+life of the process, so it is built once and reused.  Per-session entries
+(the owner's skills) are layered on top per call by
+``tools.session_registry``; nothing here depends on the user.
 
 ``backend.copilot.tools`` imports the registry tools, which import this
 package, so the tools package hands over its registry with
@@ -105,6 +105,9 @@ def _merge(entries: list[CapabilityEntry]) -> list[CapabilityEntry]:
             continue
         tool.implementations += block.implementations
         tool.context = "both"
+        tool.description = " ".join(
+            text for text in (tool.description, block.description) if text
+        )
         tool.tags = sorted(set(tool.tags) | set(block.tags))
         tool.argument_names = list(
             dict.fromkeys(tool.argument_names + block.argument_names)
