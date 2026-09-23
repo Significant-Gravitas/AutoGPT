@@ -465,6 +465,22 @@ describe("WorkspaceFilePicker - folders", () => {
     ]);
   });
 
+  it("opening a folder never shows the previous folder's files while its own load", async () => {
+    mockPage(makeFiles(1));
+    mockFolders.mockReturnValue({ data: { folders: FOLDERS } });
+
+    renderPicker();
+    await screen.findByText("f-0");
+
+    mockListWorkspaceFiles.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByRole("button", { name: "Open Reports" }));
+    await waitFor(() =>
+      expect(lastRequest()).toMatchObject({ folder_id: "fld-1" }),
+    );
+
+    expect(screen.queryByText("f-0")).toBeNull();
+  });
+
   it("opening a folder drops the range anchor taken in the previous listing", async () => {
     mockPage(makeFiles(3));
     mockFolders.mockReturnValue({ data: { folders: FOLDERS } });
@@ -477,6 +493,7 @@ describe("WorkspaceFilePicker - folders", () => {
     await waitFor(() =>
       expect(lastRequest()).toMatchObject({ folder_id: "fld-1" }),
     );
+    await screen.findByText("f-2");
     fireEvent.click(card("f-2"), { shiftKey: true });
 
     expect(selectedNames()).toEqual(["f-0", "f-2"]);

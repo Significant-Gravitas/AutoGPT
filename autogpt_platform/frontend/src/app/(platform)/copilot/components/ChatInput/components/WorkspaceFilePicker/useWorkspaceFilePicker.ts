@@ -110,13 +110,23 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
       return countLoadedFiles(allPages);
     },
     // Keep the previous page while a search refines the same listing, but
-    // never show one expert's files — or the other side of the filter —
-    // while its request is pending.
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey[2].expertId === (expertId ?? null) &&
-      previousQuery?.queryKey[2].includeUserFiles === (includeUserFiles ?? null)
-        ? previousData
-        : undefined,
+    // never show one expert's files, the other side of the filter or another
+    // folder's files while its request is pending.
+    placeholderData: (previousData, previousQuery) => {
+      const prev = previousQuery?.queryKey[2];
+      if (!prev) return undefined;
+      if (prev.expertId !== (expertId ?? null)) return undefined;
+      if (prev.includeUserFiles !== (includeUserFiles ?? null))
+        return undefined;
+      // A search refines a listing; opening a folder replaces it.
+      const isBrowsing = prev.q === null && !q;
+      if (
+        isBrowsing &&
+        (prev.folderId !== listedFolderId || prev.rootOnly !== rootOnly)
+      )
+        return undefined;
+      return previousData;
+    },
     enabled,
   });
 
