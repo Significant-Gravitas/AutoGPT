@@ -34,7 +34,9 @@ function useReportMismatch(
       value: launchDarkly.value,
       resolved: launchDarkly.resolved,
     },
-    posthog: { value: postHog.value, resolved: postHog.resolved },
+    // `null`, not `undefined`: a flag PostHog has never heard of must still
+    // appear in the record rather than vanish from the JSON.
+    posthog: { value: postHog.value ?? null, resolved: postHog.resolved },
   });
   // The two vendors never answer on the same render — LaunchDarkly fetches
   // over the network, PostHog reads its bootstrapped snapshot — so comparing

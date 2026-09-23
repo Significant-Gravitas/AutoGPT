@@ -66,6 +66,28 @@ class TestClientConstruction:
 
         posthog.assert_called_once()
 
+    def test_concurrent_first_reads_build_one_client(self, mocker):
+        """The executor reads flags from two loops on two threads; a second
+        client would leak a poller thread nothing closes."""
+        configure(mocker)
+
+        def slow_construction(*args, **kwargs):
+            time.sleep(0.05)
+            return mocker.Mock()
+
+        posthog = mocker.patch.object(ph, "Posthog", side_effect=slow_construction)
+        start = threading.Barrier(8)
+
+        def first_read():
+            start.wait()
+            return ph.get_flag_client()
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            clients = list(pool.map(lambda _: first_read(), range(8)))
+
+        posthog.assert_called_once()
+        assert all(client is clients[0] for client in clients)
+
     def test_an_unconfigured_deployment_does_not_retry_forever(self, mocker):
         """Same reason LaunchDarkly gates on "did we try": a warning and a
         construction attempt per flag read on deployments shipping without
