@@ -1,5 +1,11 @@
-const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/;
+// A backtick fence's info string may not contain a backtick; a closer carries none.
+const OPENING_FENCE_RE = /^(?:(`{3,})[^`]*|(~{3,}).*)$/;
+const CLOSING_FENCE_RE = /^(`{3,}|~{3,})[ \t]*$/;
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
+const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
+const HEADING_RE = /^#{1,6}(?:\s|$)/;
+const THEMATIC_BREAK_RE = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const SETEXT_UNDERLINE_RE = /^(?:=+|-+)[ \t]*$/;
 
 // With single-dollar math on, remark-math reads "$5 and $10" as one formula. A "$"
 // before a digit is therefore currency unless the span up to the next "$" on that
@@ -7,13 +13,23 @@ const LATEX_SYNTAX_RE = /[\\^_{}]/;
 // them literal and every other delimiter to remark-math.
 export function escapeCurrencyAmounts(markdown: string): string {
   let openFence: string | null = null;
+  let codeIndent: number | null = null;
+  // Content column of each open list item, innermost last.
+  const listIndents: number[] = [];
+  let inParagraph = false;
+  const listIndent = () => listIndents.at(-1) ?? 0;
 
   return markdown
     .split("\n")
     .map((line) => {
-      const fence = FENCE_RE.exec(line)?.[1];
+      const indent = indentWidth(line);
+      const content = line.trimStart();
 
       if (openFence) {
+        const fence =
+          indent < listIndent() + 4
+            ? CLOSING_FENCE_RE.exec(content)?.[1]
+            : undefined;
         if (
           fence &&
           fence[0] === openFence[0] &&
@@ -24,11 +40,52 @@ export function escapeCurrencyAmounts(markdown: string): string {
         return line;
       }
 
-      if (fence) {
-        openFence = fence;
+      if (!line.trim()) {
+        inParagraph = false;
         return line;
       }
 
+      if (codeIndent !== null && indent >= codeIndent) return line;
+      codeIndent = null;
+
+      const marker = LIST_MARKER_RE.exec(line);
+      const startsItem = marker !== null && indent < listIndent() + 4;
+      // A lazy paragraph line stays in its list item; anything else closes the
+      // items it is not indented into.
+      if (startsItem || !inParagraph) {
+        while (listIndents.length && listIndent() > indent) listIndents.pop();
+      }
+
+      // Block markers may be indented up to three columns past the list item's content.
+      const startsBlock = indent < listIndent() + 4;
+      const opening = startsBlock ? OPENING_FENCE_RE.exec(content) : null;
+      const fence = opening ? (opening[1] ?? opening[2]) : undefined;
+
+      if (fence) {
+        openFence = fence;
+        inParagraph = false;
+        return line;
+      }
+
+      if (
+        startsBlock &&
+        (THEMATIC_BREAK_RE.test(content) ||
+          (inParagraph && SETEXT_UNDERLINE_RE.test(content)))
+      ) {
+        inParagraph = false;
+        return line;
+      }
+
+      if (startsItem) listIndents.push(columns(marker[0]));
+
+      // Indented code cannot interrupt a paragraph, and CommonMark renders a
+      // backslash escape inside it literally.
+      if (!inParagraph && indent >= listIndent() + 4) {
+        codeIndent = listIndent() + 4;
+        return line;
+      }
+
+      inParagraph = !(startsBlock && HEADING_RE.test(content));
       return escapeCurrencyAmountsInLine(line);
     })
     .join("\n");
@@ -81,4 +138,15 @@ function isCurrencyAmount(line: string, index: number): boolean {
   const rest = line.slice(index + 1);
   const close = rest.search(/(?<!\\)\$/);
   return close === -1 || !LATEX_SYNTAX_RE.test(rest.slice(0, close));
+}
+
+function indentWidth(line: string): number {
+  return columns(line.slice(0, line.length - line.trimStart().length));
+}
+
+// A tab advances to the next multiple of four columns.
+function columns(text: string): number {
+  let width = 0;
+  for (const char of text) width += char === "\t" ? 4 - (width % 4) : 1;
+  return width;
 }
