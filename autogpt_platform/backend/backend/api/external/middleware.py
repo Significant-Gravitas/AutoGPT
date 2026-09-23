@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
+from starlette.types import Scope
 
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
@@ -12,6 +13,8 @@ from backend.data.auth.oauth import (
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
+
+_REQUEST_AUTH = "external_api_auth"
 
 
 async def resolve_auth_info(
@@ -46,6 +49,22 @@ async def resolve_auth_info(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
     return None
+
+
+async def resolve_request_auth(
+    scope: Scope,
+    api_key: str | None,
+    bearer: HTTPAuthorizationCredentials | None,
+) -> APIAuthorizationInfo | None:
+    """`resolve_auth_info`, verified at most once per request.
+
+    v2's rate limiter and route dependency both need the caller, and an API key
+    costs a Scrypt hash per check. Failures are not remembered, so a retry retries.
+    """
+    state = scope.setdefault("state", {})
+    if _REQUEST_AUTH not in state:
+        state[_REQUEST_AUTH] = await resolve_auth_info(api_key=api_key, bearer=bearer)
+    return state[_REQUEST_AUTH]
 
 
 async def require_auth(

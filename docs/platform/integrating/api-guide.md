@@ -205,6 +205,7 @@ When creating API keys or using OAuth, request only the scopes your application 
 | `IDENTITY` | Read who the credentials act as, and in which organization (`GET /me`) |
 | `READ_FILES` | List and download workspace files |
 | `WRITE_FILES` | Upload and delete workspace files |
+| `USE_TOOLS` | Use MCP tools that spend platform resources: web search, web fetch, feature requests |
 
 A few endpoints require two scopes at once:
 
@@ -213,9 +214,12 @@ A few endpoints require two scopes at once:
 | `POST /graphs/{graph_id}/schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
 | `POST /library/presets/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
 | `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
+| `DELETE /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
 
 Public marketplace reads (`GET /marketplace/agents`, `/creators`, and their detail
-routes) and `GET /search` require valid credentials but no particular scope.
+routes) require valid credentials but no particular scope, and so does `GET /search`
+over public content. Searching your own content costs the scope that endpoint costs:
+`content_types=LIBRARY_AGENT` needs `READ_LIBRARY`, `WORKSPACE_FILE` needs `READ_FILES`.
 
 ### Legacy Scopes (v1 only)
 
@@ -223,7 +227,6 @@ routes) and `GET /search` require valid credentials but no particular scope.
 |-------|-------------|
 | `EXECUTE_GRAPH` | Execute graphs directly (use `RUN_AGENT` in v2) |
 | `EXECUTE_BLOCK` | Execute individual blocks |
-| `USE_TOOLS` | Use chat tools via external API |
 
 ## Support
 

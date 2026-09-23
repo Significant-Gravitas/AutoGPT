@@ -7,6 +7,7 @@ from typing import Any
 
 import aiohttp
 import html2text
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
 from backend.util.request import Requests
@@ -72,7 +73,8 @@ class WebFetchTool(BaseTool):
 
     @property
     def allow_external_use(self):
-        return True, []
+        # Fetches a caller-chosen URL from platform infrastructure.
+        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:

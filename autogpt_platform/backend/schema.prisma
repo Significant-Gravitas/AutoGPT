@@ -2046,7 +2046,7 @@ enum APIKeyPermission {
   EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
   WRITE_LIBRARY // Can add agents to library
-  USE_TOOLS // Can use chat tools via external API (v1 only)
+  USE_TOOLS // Can use v1 chat tools, and v2 MCP tools that spend platform resources
   MANAGE_INTEGRATIONS // Can initiate OAuth flows and create credentials
   READ_INTEGRATIONS // Can list credentials and providers
   DELETE_INTEGRATIONS // Can delete credentials

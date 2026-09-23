@@ -366,7 +366,9 @@ async def enable_sharing(
 )
 async def disable_sharing(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.SHARE_RUN)),
+    auth: TenantContext = Security(
+        require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
+    ),
 ) -> None:
     """Disable public sharing for a run."""
     execution = await execution_db.get_graph_execution(

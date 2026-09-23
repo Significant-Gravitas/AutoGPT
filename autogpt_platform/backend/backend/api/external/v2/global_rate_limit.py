@@ -5,7 +5,7 @@ ASGI middleware that enforces per-user and per-IP request caps across all v2
 endpoints. Authenticated users get 200 req/min keyed by user ID; unauthenticated
 sessions get 5 req/min keyed by client IP.
 
-Reuses `resolve_auth_info` from the auth middleware to identify the user.
+Identifies the user through the auth middleware's `resolve_request_auth`.
 On auth-resolution failure or Redis errors the request passes through — the
 endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from backend.api.external.middleware import resolve_auth_info
+from backend.api.external.middleware import resolve_request_auth
 from backend.api.utils.rate_limit import RateLimiter
 
 from .errors import error_response
@@ -47,8 +47,13 @@ class GlobalRateLimitMiddleware:
             )
 
         try:
-            auth = await resolve_auth_info(api_key=api_key, bearer=bearer)
+            auth = await resolve_request_auth(scope, api_key=api_key, bearer=bearer)
         except HTTPException:
+            auth = None
+        except Exception as exc:
+            # Fail open on anything the auth backend throws that is not a
+            # rejection; the route's own dependency will answer 401 or 500.
+            logger.warning(f"Rate-limit auth resolution failed: {exc}")
             auth = None
 
         try:
