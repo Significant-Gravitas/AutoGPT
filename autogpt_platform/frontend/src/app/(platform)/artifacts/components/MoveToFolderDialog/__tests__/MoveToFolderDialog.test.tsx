@@ -58,6 +58,35 @@ describe("MoveToFolderDialog", () => {
     expect(parent?.textContent).toContain("Current location");
   });
 
+  test("moves a selection spread across folders to the root", async () => {
+    let movedTo: unknown = "not called";
+    server.use(
+      http.post(`${PROXY}/folders/files/bulk-move`, async ({ request }) => {
+        movedTo = ((await request.json()) as { folder_id: unknown }).folder_id;
+        return HttpResponse.json({});
+      }),
+    );
+    // What SelectionBar passes when the selected files sit in different folders.
+    render(
+      <MoveToFolderDialog
+        move={{ kind: "files", fileIds: ["a", "b"], currentFolderId: null }}
+        canMoveToRoot
+        subject="2 files"
+        isOpen
+        setIsOpen={() => {}}
+      />,
+    );
+
+    const root = await screen.findByText("Files (root)");
+    await screen.findByText("Reports");
+    expect(root.closest("[role=treeitem]")?.textContent).not.toContain(
+      "Current location",
+    );
+    fireEvent.click(root);
+    fireEvent.click(screen.getByTestId("confirm-move-to-folder"));
+    await waitFor(() => expect(movedTo).toBeNull());
+  });
+
   test("moves to a selected folder after its parent row is collapsed", async () => {
     let movedTo: unknown = "not called";
     server.use(

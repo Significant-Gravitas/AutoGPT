@@ -76,8 +76,8 @@ export function useArtifactsPage({
   const q = debouncedSearch || undefined;
   const origin = originFilter === "all" ? undefined : originFilter;
   // "From: <expert>" narrows the files shown where you are, the way "Type"
-  // does; it no longer moves you out of the open folder. `include_user_files`
-  // is left unsent, so the tab keeps meaning "made in this expert's chats".
+  // does. `include_user_files` is left unsent, so the tab keeps meaning "made
+  // in this expert's chats".
   const expertId = expertFilter ?? undefined;
   // No folder selected → show only root-level files; a folder is selected →
   // scope the listing to that folder.

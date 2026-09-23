@@ -201,7 +201,10 @@ function FolderAttachmentCard({
           {folder.name}
         </span>
         <span className="text-xs text-zinc-600">
-          Folder · {folderSummary(folder.fileCount, 0)}
+          {/* The part counts direct files only, so zero is not "Empty". */}
+          {folder.fileCount > 0
+            ? `Folder · ${folderSummary(folder.fileCount, 0)}`
+            : "Folder"}
         </span>
       </div>
       {/* The share viewer has no Files page to send anyone to. */}

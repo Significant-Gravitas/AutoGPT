@@ -115,8 +115,10 @@ function refusedTargets(
     refused.set(rowKey(self?.parent_id ?? null), "Current location");
     return refused;
   }
-  if (move.currentFolderId !== undefined) {
-    refused.set(rowKey(move.currentFolderId), "Current location");
+  // Null means "at the root" or "spread across folders", and only the first
+  // is a location; `canMoveToRoot` already hides the root row in that case.
+  if (move.currentFolderId) {
+    refused.set(move.currentFolderId, "Current location");
   }
   return refused;
 }

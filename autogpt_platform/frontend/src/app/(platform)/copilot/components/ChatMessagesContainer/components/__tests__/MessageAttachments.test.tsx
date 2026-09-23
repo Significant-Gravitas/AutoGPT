@@ -57,6 +57,8 @@ describe("MessageAttachments", () => {
       />,
     );
     expect(container.firstChild).not.toBeNull();
+    // Zero direct files may still hold subfolders the part does not count.
+    expect(screen.queryByText(/Empty/)).toBeNull();
   });
 
   it("falls back to the file card for non-workspace files", () => {
