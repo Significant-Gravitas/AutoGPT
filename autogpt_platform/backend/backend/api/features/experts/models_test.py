@@ -4,15 +4,22 @@ import pytest
 from pydantic import ValidationError
 
 from backend.api.features.experts.models import (
+    EXPERT_DAY_ONE_MAX_ITEMS,
     EXPERT_IDENTITY_MAX_LENGTH,
+    Expert,
+    ExpertDayOneItem,
+    ExpertSkillsUpdate,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     RaiseAttachment,
     VoiceSample,
+    decode_day_one,
     decode_voice_preferences,
+    encode_day_one,
     encode_voice_preferences,
     validate_avatar_url,
 )
+from backend.copilot.tools.skills import MAX_SKILLS_PER_EXPERT
 
 
 def test_soul_update_strips_optional_fields():
@@ -115,6 +122,49 @@ def test_decode_mixed_sample_list_keeps_only_valid_samples():
 
     assert description == "Clear and direct."
     assert samples == [VoiceSample(label="Punchy", text="Ship it.")]
+
+
+def test_day_one_round_trips_stripped():
+    items = [
+        ExpertDayOneItem(
+            title="  Social listening  ",
+            description=" Tracks mentions. ",
+            timing=" first scan · 1 hr ",
+        )
+    ]
+
+    encoded = encode_day_one(items)
+
+    assert encoded == [
+        {
+            "title": "Social listening",
+            "description": "Tracks mentions.",
+            "timing": "first scan · 1 hr",
+        }
+    ]
+    assert decode_day_one(encoded) == items
+
+
+def test_day_one_caps_at_three_rows():
+    row = ExpertDayOneItem(title="Row")
+
+    assert len(encode_day_one([row] * EXPERT_DAY_ONE_MAX_ITEMS)) == 3
+    with pytest.raises(ValidationError):
+        encode_day_one([row] * (EXPERT_DAY_ONE_MAX_ITEMS + 1))
+    assert Expert.model_json_schema()["properties"]["day_one"]["maxItems"] == 3
+
+
+def test_day_one_item_rejects_a_blank_title():
+    with pytest.raises(ValidationError):
+        ExpertDayOneItem(title="   ")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [None, "not a list", [{"title": ""}], [{"title": "Row"}] * 4],
+)
+def test_decode_day_one_hides_malformed_values(raw: object):
+    assert decode_day_one(raw) == []
 
 
 def test_raise_attachment_strips_id():
@@ -220,3 +270,14 @@ def test_validate_avatar_url_accepts_https_and_relative_paths(
 def test_validate_avatar_url_rejects_unsafe_values(value: str):
     with pytest.raises(ValueError):
         validate_avatar_url(value)
+
+
+def test_skill_list_bound_matches_the_per_expert_cap():
+    """``ExpertSkillsUpdate`` cannot import the cap (circular import), so the
+    literal it carries is pinned here to the constant the folder enforces."""
+    bound = next(
+        m.max_length
+        for m in ExpertSkillsUpdate.model_fields["skills"].metadata
+        if getattr(m, "max_length", None) is not None
+    )
+    assert bound == MAX_SKILLS_PER_EXPERT

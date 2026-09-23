@@ -17,6 +17,7 @@ from .agent_json_input import (
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import require_installed_workflow
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -38,7 +39,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "Requires tool:get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -114,6 +115,16 @@ class EditAgentTool(BaseTool):
                 error="missing_agent_id",
                 session_id=session_id,
             )
+        if user_id:
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=agent_id,
+                library_agent_id=agent_id,
+                name=agent_id,
+            )
+            if scope_error is not None:
+                return scope_error
 
         agent_json, resolve_error = await resolve_agent_json_or_error(
             agent_json=agent_json,
@@ -159,8 +170,8 @@ class EditAgentTool(BaseTool):
                     "by editing the graph — that would change the agent's global "
                     "default for everyone who uses it. A trigger's configuration "
                     "lives on a per-trigger preset: use the "
-                    "setup_agent_webhook_trigger tool with these fields as "
-                    "`trigger_config` instead. Re-run edit_agent leaving the "
+                    "tool:setup_agent_webhook_trigger tool with these fields as "
+                    "`trigger_config` instead. Re-run tool:edit_agent leaving the "
                     "trigger block's config unchanged."
                 ),
                 error="trigger_config_edit_blocked",

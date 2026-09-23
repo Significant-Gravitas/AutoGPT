@@ -1,6 +1,7 @@
 "use client";
 
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { useTypewriter } from "./useTypewriter";
 
 type Props = {
@@ -24,12 +25,10 @@ export function AutoGPTBubble({
       className="flex max-w-[85%] flex-col gap-1.5 self-start duration-500 animate-in fade-in slide-in-from-bottom-3 fill-mode-both motion-reduce:animate-none"
     >
       <div className="flex items-end gap-2">
-        <AutoGPTLogo
-          hideText
-          viewBox="47 -1 42 42"
-          className="size-5 shrink-0"
-        />
-        <span className="text-sm font-medium text-foreground">Autopilot</span>
+        <AutopilotAvatar size={20} />
+        <span className="text-sm font-medium text-foreground">
+          {AUTOPILOT_NAME}
+        </span>
       </div>
       <p className="text-[15px] leading-relaxed text-foreground">
         <span aria-hidden>{typed}</span>

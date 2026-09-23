@@ -34,6 +34,7 @@ export function useRaiseSubmission() {
         data: {
           name: draft.name,
           role: draft.role,
+          job_title: draft.jobTitle || null,
           color: draft.color,
           avatar_url: draft.avatarUrl || null,
           about: draft.about || null,

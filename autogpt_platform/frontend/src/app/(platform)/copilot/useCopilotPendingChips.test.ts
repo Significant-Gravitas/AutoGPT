@@ -3,6 +3,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import { splitMessagesAtDrainHints } from "./components/ChatMessagesContainer/midTurnSplit";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
@@ -15,7 +16,12 @@ const mockGetPending = vi.mocked(getV2GetPendingMessages);
 
 const ASSISTANT_ID = "assistant-stable-id";
 
-function assistantMessage(drainHints = 0): Messages[number] {
+function assistantMessage(
+  drainHints = 0,
+  /** Text the backend ships on the hint. Present from the release that
+   *  renders the follow-up bubble at the drain point. */
+  drainedText?: string,
+): Messages[number] {
   const parts: Messages[number]["parts"] = [
     { type: "text", text: "working…", state: "done" },
   ];
@@ -23,10 +29,52 @@ function assistantMessage(drainHints = 0): Messages[number] {
     parts.push({
       type: "data-pending-drained",
       id: `hint-${i}`,
-      data: { drainedCount: 1 },
+      data: {
+        drainedCount: 1,
+        ...(drainedText
+          ? { messages: [{ id: `pm-${i}`, content: drainedText }] }
+          : {}),
+      },
     } as Messages[number]["parts"][number]);
   }
   return { id: ASSISTANT_ID, role: "assistant", parts };
+}
+
+type DrainHint = { text: string } | "count-only";
+
+/** One assistant message carrying the given hints in order, with a tool
+ *  result drawn between them so each one is a split point. */
+function assistantWithHints(hints: DrainHint[]): Messages[number] {
+  const parts: Messages[number]["parts"] = [
+    { type: "text", text: "working…", state: "done" },
+  ];
+  hints.forEach((hint, i) => {
+    parts.push({
+      type: "data-pending-drained",
+      id: `hint-${i}`,
+      data:
+        hint === "count-only"
+          ? { drainedCount: 1 }
+          : {
+              drainedCount: 1,
+              messages: [{ id: `pm-${i}`, content: hint.text }],
+            },
+    } as Messages[number]["parts"][number]);
+    parts.push({ type: "text", text: `step ${i}`, state: "done" });
+  });
+  return { id: ASSISTANT_ID, role: "assistant", parts };
+}
+
+/** What the transcript draws: the user rows of the render-time split. */
+function renderedUserRows(messages: Messages) {
+  return splitMessagesAtDrainHints(messages)
+    .filter((row) => row.role === "user")
+    .map((row) => ({
+      id: row.id,
+      text: row.parts
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join(""),
+    }));
 }
 
 // Server reports the buffer as fully drained (count 0) so the hook promotes
@@ -58,7 +106,14 @@ function setupHook(initialMessages: Messages) {
     { initialProps: { messages: initialMessages } },
   );
 
-  return { view, setMessages, getMessages: () => current };
+  /** Rerender with a new transcript, as `useChat` handing the hook a new
+   *  `messages` array would, so `getMessages` keeps tracking it. */
+  function rerender(messages: Messages) {
+    current = messages;
+    view.rerender({ messages });
+  }
+
+  return { view, setMessages, getMessages: () => current, rerender };
 }
 
 describe("useCopilotPendingChips", () => {
@@ -67,6 +122,26 @@ describe("useCopilotPendingChips", () => {
     mockBufferDrained();
   });
   afterEach(cleanup);
+
+  it("queues a message on a plain-HTTP LAN origin, where crypto.randomUUID is missing", () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    try {
+      const { view } = setupHook([assistantMessage(0)]);
+
+      act(() => {
+        view.result.current.queueMessage("sent while a turn was streaming");
+      });
+
+      expect(view.result.current.queuedMessages).toEqual([
+        "sent while a turn was streaming",
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("promotes a queued chip to a bubble the instant a data-pending-drained hint arrives", async () => {
     const { view, getMessages } = setupHook([assistantMessage(0)]);
@@ -89,6 +164,214 @@ describe("useCopilotPendingChips", () => {
     });
 
     // …and promoted to a user bubble inserted before the streaming assistant.
+    const promoted = getMessages().find((m) =>
+      m.id.startsWith("promoted-midturn-pending-chip-"),
+    );
+    expect(promoted?.role).toBe("user");
+  });
+
+  it("draws the follow-up once when the hint carries the text", async () => {
+    // The transcript renders the bubble at the drain point itself
+    // (splitMessagesAtDrainHints); the fallback bubble promoted here must
+    // not show up next to it.
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("follow up");
+    });
+
+    await act(async () => {
+      rerender([assistantMessage(1, "follow up")]);
+    });
+
+    await waitFor(() => {
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+    expect(renderedUserRows(getMessages())).toEqual([
+      { id: "midturn-pm-0", text: "follow up" },
+    ]);
+  });
+
+  it("draws one bubble when the backstop poll beat the text-bearing hint", async () => {
+    vi.useFakeTimers();
+    try {
+      const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+      act(() => {
+        view.result.current.queueMessage("follow up");
+      });
+
+      // The GET observes the drained buffer before the SSE hint reaches
+      // the client: the chip becomes a fallback bubble above the assistant.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(view.result.current.queuedMessages).toEqual([]);
+      const fallback = getMessages().find((m) =>
+        m.id.startsWith("promoted-midturn-pending-chip-"),
+      );
+      expect(fallback?.role).toBe("user");
+      expect(renderedUserRows(getMessages())).toEqual([
+        { id: fallback!.id, text: "follow up" },
+      ]);
+
+      // Now the hint lands with the text. Exactly one follow-up must render,
+      // between the two assistant segments, and the live assistant must
+      // still be the last message so later deltas keep landing in it.
+      await act(async () => {
+        rerender([
+          ...getMessages().filter((m) => m.role !== "assistant"),
+          assistantWithHints([{ text: "follow up" }]),
+        ]);
+      });
+      const rows = splitMessagesAtDrainHints(getMessages());
+      expect(rows.map((row) => row.id)).toEqual([
+        `${ASSISTANT_ID}#seg0`,
+        "midturn-pm-0",
+        ASSISTANT_ID,
+      ]);
+      const messages = getMessages();
+      expect(messages[messages.length - 1].id).toBe(ASSISTANT_ID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps two identical follow-ups when only the first drain carried text", async () => {
+    // Turn-scoped reconciliation: the first "continue" was drawn by its
+    // hint, so its chip left no bubble behind. The second "continue" drains
+    // through a count-only hint (older backend, rolling deploy) and must
+    // still become a bubble — the earlier hint is not its drain.
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("continue");
+    });
+    await act(async () => {
+      rerender([assistantWithHints([{ text: "continue" }])]);
+    });
+    await waitFor(() => {
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+    expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+      "continue",
+    ]);
+
+    act(() => {
+      view.result.current.queueMessage("continue");
+    });
+    await act(async () => {
+      rerender([
+        ...getMessages().filter((m) => m.role !== "assistant"),
+        assistantWithHints([{ text: "continue" }, "count-only"]),
+      ]);
+    });
+    await waitFor(() => {
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+
+    expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+      "continue",
+      "continue",
+    ]);
+  });
+
+  it("keeps two identical follow-ups when the second drain's hint was dropped", async () => {
+    vi.useFakeTimers();
+    try {
+      const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+      act(() => {
+        view.result.current.queueMessage("continue");
+      });
+      await act(async () => {
+        rerender([assistantWithHints([{ text: "continue" }])]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(view.result.current.queuedMessages).toEqual([]);
+
+      // No second hint ever arrives; the backstop poll sees the drained
+      // buffer and must not let the first drain's text stand in for it.
+      act(() => {
+        view.result.current.queueMessage("continue");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(view.result.current.queuedMessages).toEqual([]);
+
+      expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+        "continue",
+        "continue",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("promotes only the copy of a same-batch repeated text the stream did not draw", async () => {
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("again");
+      view.result.current.queueMessage("again");
+    });
+    // Both chips drain in one batch, but the hint only names one of them.
+    await act(async () => {
+      rerender([assistantWithHints([{ text: "again" }])]);
+    });
+    await waitFor(() => {
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+
+    expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+      "again",
+      "again",
+    ]);
+  });
+
+  it("still promotes a count-only drain that follows a text-bearing one", async () => {
+    // Mixed hints reach one transcript across a rolling backend deploy. The
+    // earlier hint's text is drawn by the split, but the later count-only
+    // drain has no text on it, so its chip must still become a bubble —
+    // the queue entry is dropped either way.
+    function mixedHints(): Messages[number] {
+      const parts: Messages[number]["parts"] = [
+        { type: "text", text: "working…", state: "done" },
+        {
+          type: "data-pending-drained",
+          id: "hint-text",
+          data: {
+            drainedCount: 1,
+            messages: [{ id: "pm-0", content: "earlier follow up" }],
+          },
+        } as Messages[number]["parts"][number],
+        {
+          type: "data-pending-drained",
+          id: "hint-count-only",
+          data: { drainedCount: 1 },
+        } as Messages[number]["parts"][number],
+      ];
+      return { id: ASSISTANT_ID, role: "assistant", parts };
+    }
+
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+    act(() => {
+      view.result.current.queueMessage("later follow up");
+    });
+
+    await act(async () => {
+      rerender([mixedHints()]);
+    });
+
+    await waitFor(() => {
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(view.result.current.queuedMessages).toEqual([]);
+    });
+
     const promoted = getMessages().find((m) =>
       m.id.startsWith("promoted-midturn-pending-chip-"),
     );

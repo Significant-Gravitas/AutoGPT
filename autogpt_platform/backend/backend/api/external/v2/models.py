@@ -18,7 +18,9 @@ from pydantic import BaseModel, Field, JsonValue, field_validator
 import backend.blocks._base as block_types
 
 if TYPE_CHECKING:
-    from backend.api.features.executions.review.model import PendingHumanReviewModel
+    from backend.api.features.graph_executions.review.model import (
+        PendingHumanReviewModel,
+    )
     from backend.api.features.library.model import LibraryAgent as _LibraryAgent
     from backend.api.features.library.model import (
         LibraryAgentPreset as _LibraryAgentPreset,
@@ -979,7 +981,7 @@ class CreditTransaction(BaseModel):
 # ============================================================================
 
 SubscriptionTierValue: TypeAlias = Literal[
-    "NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
+    "NO_TIER", "TRIAL", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"
 ]
 
 

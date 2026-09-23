@@ -27,6 +27,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Session {
   id: string;
@@ -47,7 +48,6 @@ interface Props {
   onCancelRename: () => void;
   isExporting: boolean;
   isDeleting: boolean;
-  chatSharingEnabled: boolean;
   chatPinningEnabled: boolean;
   onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
@@ -81,7 +81,6 @@ export function RecentChatItem({
   onCancelRename,
   isExporting,
   isDeleting,
-  chatSharingEnabled,
   chatPinningEnabled,
   onPin,
   onRename,
@@ -106,12 +105,12 @@ export function RecentChatItem({
           value={editingTitle}
           onChange={(e) => onEditingTitleChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (isKey(e, "Enter")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onSubmitRename(session.id);
               e.currentTarget.blur();
-            } else if (e.key === "Escape") {
+            } else if (isKey(e, "Escape")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onCancelRename();
@@ -196,12 +195,10 @@ export function RecentChatItem({
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
-          {chatSharingEnabled && (
-            <DropdownMenuItem onClick={() => onShare(session.id)}>
-              <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
-              Share chat
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={() => onShare(session.id)}>
+            <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+            Share chat
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}

@@ -58,9 +58,16 @@ def requires_frontend_service(scope: str):
             raise fastapi.HTTPException(
                 status_code=401, detail=f"Invalid token: {e}"
             ) from e
-        # Service tokens are only ever JWKS-signed; the legacy HS256 shared
-        # secret must not be able to mint one.
-        if header.get("alg", "").startswith("HS"):
+        # Service tokens are only ever JWKS-signed. Check the algorithm's
+        # type before inspecting it: a non-string `alg` must fail as a 401,
+        # not surface as an AttributeError (500).
+        algorithm = header.get("alg")
+        if not isinstance(algorithm, str):
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail="Invalid token: signing algorithm is not accepted",
+            )
+        if algorithm.startswith("HS"):
             raise fastapi.HTTPException(
                 status_code=401,
                 detail=(

@@ -1,6 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useEffect, useState } from "react";
 import {
   getYouTubeVideoId,
@@ -73,6 +74,7 @@ export function AgentImageItem({
             )}
             <Image
               src={image}
+              unoptimized={isLocalStoreMediaUrl(image)}
               alt="Image"
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"

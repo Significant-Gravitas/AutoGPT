@@ -6,17 +6,30 @@ import {
   AuthType,
   type AuthMethod,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { useState } from "react";
 
 interface Args {
   provider: string;
-  onConnected: () => void;
+  onConnected: (credential?: CredentialsMetaResponse) => void;
+  scopes?: string[];
+  credentialID?: string;
 }
 
-export function useConnectCredentialDialog({ provider, onConnected }: Args) {
+export function useConnectCredentialDialog({
+  provider,
+  onConnected,
+  scopes,
+  credentialID,
+}: Args) {
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
 
-  const oauth = useOAuthConnect({ provider, onSuccess: handleConnected });
+  const oauth = useOAuthConnect({
+    provider,
+    onSuccess: handleConnected,
+    scopes,
+    credentialID,
+  });
   const apiKey = useApiKeyConnectForm({ provider, onSuccess: handleConnected });
 
   // The dialog stays mounted while closed, so a half-filled key or a
@@ -26,9 +39,9 @@ export function useConnectCredentialDialog({ provider, onConnected }: Args) {
     apiKey.form.reset();
   }
 
-  function handleConnected() {
+  function handleConnected(credential?: CredentialsMetaResponse) {
     reset();
-    onConnected();
+    onConnected(credential);
   }
 
   function handleContinue() {

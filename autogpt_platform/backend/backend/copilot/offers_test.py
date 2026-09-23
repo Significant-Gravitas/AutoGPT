@@ -118,6 +118,31 @@ async def test_provider_family_groups_without_becoming_the_credential(
 
 
 @pytest.mark.asyncio
+async def test_microsoft_offer_uses_device_auth_and_has_no_fake_model_tiers(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(
+        mocker,
+        [
+            _transport(
+                "microsoft_365_copilot",
+                "cred-msft",
+                "Microsoft 365 Copilot",
+            )
+        ],
+    )
+
+    (offer,) = await get_connection_offers(USER_ID)
+
+    assert offer.auth_provider == "microsoft_365_copilot"
+    assert offer.provider_family == "microsoft"
+    assert offer.auth_method == "device_code"
+    assert offer.backed_by_label == "Your Microsoft 365 Copilot plan"
+    assert offer.tiers == []
+    assert "spend no AutoGPT credits" in offer.description
+
+
+@pytest.mark.asyncio
 async def test_offer_ids_are_stable_and_per_account(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

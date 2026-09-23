@@ -13,10 +13,16 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (items: WorkspaceFileItem[]) => void;
+  expertId?: string | null;
 }
 
-export function WorkspaceFilePicker({ isOpen, onClose, onConfirm }: Props) {
-  const picker = useWorkspaceFilePicker({ enabled: isOpen });
+export function WorkspaceFilePicker({
+  isOpen,
+  onClose,
+  onConfirm,
+  expertId,
+}: Props) {
+  const picker = useWorkspaceFilePicker({ enabled: isOpen, expertId });
 
   function handleOpenChange(open: boolean) {
     if (!open) {
@@ -64,7 +70,7 @@ export function WorkspaceFilePicker({ isOpen, onClose, onConfirm }: Props) {
           <WorkspaceFileList
             files={picker.files}
             selectedIds={picker.selectedIds}
-            onToggle={picker.toggle}
+            onSelect={picker.select}
             isLoading={picker.isLoading}
             isError={picker.isError}
             error={picker.error}

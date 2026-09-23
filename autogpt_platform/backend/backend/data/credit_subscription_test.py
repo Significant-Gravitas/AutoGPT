@@ -130,7 +130,7 @@ async def test_sync_subscription_from_stripe_active():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -224,7 +224,7 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -271,7 +271,7 @@ async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -325,7 +325,7 @@ async def test_sync_subscription_from_stripe_cancelled():
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -359,7 +359,7 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier():
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -398,7 +398,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -470,7 +470,7 @@ async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exis
             return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             side_effect=list_side_effect,
         ),
         patch(
@@ -516,7 +516,7 @@ async def test_sync_subscription_from_stripe_trialing():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -566,10 +566,10 @@ async def test_cancel_stripe_subscription_cancels_active():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
-        patch("backend.data.credit.stripe.Subscription.modify") as mock_modify,
+        patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
     ):
         await cancel_stripe_subscription("user-1")
         mock_modify.assert_called_once_with("sub_abc123", cancel_at_period_end=True)
@@ -640,11 +640,11 @@ async def test_cancel_stripe_subscription_multi_partial_failure():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
             side_effect=stripe.StripeError("first modify failed"),
         ) as mock_modify,
         patch(
@@ -678,10 +678,13 @@ async def test_cancel_stripe_subscription_no_active():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
-        patch("backend.data.credit.stripe.Subscription.cancel") as mock_cancel,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         mock_cancel.assert_not_called()
@@ -697,7 +700,7 @@ async def test_cancel_stripe_subscription_raises_on_list_failure():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             side_effect=stripe.StripeError("network error"),
         ),
     ):
@@ -707,7 +710,7 @@ async def test_cancel_stripe_subscription_raises_on_list_failure():
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_trialing():
-    """Trialing subs must also be scheduled for cancellation, else users get billed after trial end."""
+    """Trial cancellation ends access without invoicing or prorating."""
     active_subs = MagicMock()
     active_subs.data = []
     active_subs.has_more = False
@@ -729,18 +732,25 @@ async def test_cancel_stripe_subscription_cancels_trialing():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             side_effect=list_side_effect,
         ),
-        patch("backend.data.credit.stripe.Subscription.modify") as mock_modify,
+        patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
-        mock_modify.assert_called_once_with("sub_trial_123", cancel_at_period_end=True)
+        mock_cancel.assert_called_once_with(
+            "sub_trial_123", invoice_now=False, prorate=False
+        )
+        mock_modify.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_active_and_trialing():
-    """Both active AND trialing subs present → both get scheduled for cancellation, no duplicates."""
+    """Paid access lasts through the paid period; trial access ends now."""
     active_subs = MagicMock()
     active_subs.data = [
         stripe.Subscription.construct_from(
@@ -766,14 +776,21 @@ async def test_cancel_stripe_subscription_cancels_active_and_trialing():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             side_effect=list_side_effect,
         ),
-        patch("backend.data.credit.stripe.Subscription.modify") as mock_modify,
+        patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         modified_ids = {call.args[0] for call in mock_modify.call_args_list}
-        assert modified_ids == {"sub_active_1", "sub_trial_2"}
+        assert modified_ids == {"sub_active_1"}
+        mock_cancel.assert_called_once_with(
+            "sub_trial_2", invoice_now=False, prorate=False
+        )
 
 
 @pytest.mark.asyncio
@@ -808,7 +825,7 @@ async def test_cancel_stripe_subscription_releases_attached_schedule_first():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
         patch(
@@ -817,7 +834,7 @@ async def test_cancel_stripe_subscription_releases_attached_schedule_first():
             side_effect=record_release,
         ) as mock_release,
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
             side_effect=record_modify,
         ) as mock_modify,
     ):
@@ -930,7 +947,7 @@ async def test_active_subscription_lookup_is_cached_within_window():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_returns_url():
+async def test_create_subscription_checkout_returns_url(checkout_guard):
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
     with (
@@ -945,7 +962,7 @@ async def test_create_subscription_checkout_returns_url():
             return_value="cus_123",
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             return_value=mock_session,
         ),
     ):
@@ -959,7 +976,9 @@ async def test_create_subscription_checkout_returns_url():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_offers_saved_payment_methods():
+async def test_create_subscription_checkout_offers_saved_payment_methods(
+    checkout_guard,
+):
     """Returning subscribers must see their saved cards in Checkout.
 
     Cards attached by a previous subscription-mode Checkout get
@@ -985,7 +1004,7 @@ async def test_create_subscription_checkout_offers_saved_payment_methods():
             new_callable=AsyncMock,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             return_value=mock_session,
         ) as mock_create,
     ):
@@ -1002,7 +1021,7 @@ async def test_create_subscription_checkout_offers_saved_payment_methods():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_no_price_raises():
+async def test_create_subscription_checkout_no_price_raises(checkout_guard):
     with patch(
         "backend.data.credit.get_subscription_price_id",
         new_callable=AsyncMock,
@@ -1015,6 +1034,23 @@ async def test_create_subscription_checkout_no_price_raises():
                 success_url="https://app.example.com/success",
                 cancel_url="https://app.example.com/cancel",
             )
+
+
+@pytest.fixture
+def checkout_guard():
+    with (
+        patch(
+            "backend.data.credit.subscription_checkout_lock", return_value=AsyncMock()
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial", new_callable=AsyncMock
+        ),
+        patch(
+            "backend.data.credit._expire_open_subscription_sessions",
+            new_callable=AsyncMock,
+        ),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -1135,7 +1171,7 @@ async def test_sync_subscription_from_stripe_business_tier():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -1187,7 +1223,7 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -1237,11 +1273,13 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=existing,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.cancel",
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
         ) as mock_cancel,
         patch(
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
@@ -1289,11 +1327,11 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=existing,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.cancel",
+            "backend.data.credit.stripe.Subscription.cancel_async",
             side_effect=stripe_mod.StripeError("cancel failed"),
         ),
         patch(
@@ -1590,11 +1628,11 @@ async def test_cancel_stripe_subscription_raises_on_cancel_error():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
             side_effect=stripe_mod.StripeError("network error"),
         ),
     ):
@@ -1633,7 +1671,7 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -1705,7 +1743,7 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(
@@ -1740,7 +1778,9 @@ async def test_handle_subscription_payment_failure_balance_covers_pays_invoice()
             "backend.data.credit.UserCredit._add_transaction",
             new_callable=AsyncMock,
         ),
-        patch("backend.data.credit.stripe.Invoice.pay") as mock_pay,
+        patch(
+            "backend.data.credit.stripe.Invoice.pay_async", new_callable=AsyncMock
+        ) as mock_pay,
     ):
         await handle_subscription_payment_failure(invoice)
         mock_pay.assert_called_once_with("in_abc123", paid_out_of_band=True)
@@ -1769,7 +1809,7 @@ async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_ra
             new_callable=AsyncMock,
         ),
         patch(
-            "backend.data.credit.stripe.Invoice.pay",
+            "backend.data.credit.stripe.Invoice.pay_async",
             side_effect=stripe_mod.StripeError("network error"),
         ),
     ):
@@ -1797,7 +1837,7 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
             "backend.data.credit.UserCredit._add_transaction",
             new_callable=AsyncMock,
         ) as mock_add_tx,
-        patch("backend.data.credit.stripe.Invoice.pay"),
+        patch("backend.data.credit.stripe.Invoice.pay_async", new_callable=AsyncMock),
     ):
         await handle_subscription_payment_failure(invoice)
         mock_add_tx.assert_called_once()
@@ -2317,7 +2357,7 @@ async def test_top_up_intent_uses_inline_product_data_when_flag_unset():
     mock_session = MagicMock()
     mock_session.id = "cs_test_topup"
     mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     credit_system = UserCredit()
     with (
         patch(
@@ -2331,7 +2371,7 @@ async def test_top_up_intent_uses_inline_product_data_when_flag_unset():
             return_value=None,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
@@ -2356,7 +2396,7 @@ async def test_top_up_intent_references_product_id_when_flag_set():
     mock_session = MagicMock()
     mock_session.id = "cs_test_topup"
     mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     credit_system = UserCredit()
     with (
         patch(
@@ -2370,7 +2410,7 @@ async def test_top_up_intent_references_product_id_when_flag_set():
             return_value="prod_abc123",
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
@@ -2416,11 +2456,11 @@ async def test_top_up_credits_tracks_success():
             return_value="cus_123",
         ),
         patch(
-            "backend.data.credit.stripe.PaymentMethod.list",
+            "backend.data.credit.stripe.PaymentMethod.list_async",
             return_value=[payment_method],
         ),
         patch(
-            "backend.data.credit.stripe.PaymentIntent.create",
+            "backend.data.credit.stripe.PaymentIntent.create_async",
             return_value=payment_intent,
         ),
         patch("backend.data.credit.settings.secrets.posthog_api_key", new="phc_test"),
@@ -2463,7 +2503,7 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
             return_value=MagicMock(find_first=AsyncMock(return_value=transaction)),
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.retrieve",
+            "backend.data.credit.stripe.checkout.Session.retrieve_async",
             return_value=checkout_session,
         ),
         patch.object(
@@ -3731,7 +3771,7 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
             return_value=empty_list,
         ),
         patch(

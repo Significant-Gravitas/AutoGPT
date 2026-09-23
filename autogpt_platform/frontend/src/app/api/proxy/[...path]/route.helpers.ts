@@ -46,6 +46,32 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
   return false;
 }
 
+export function getSafeDownloadContentDisposition(
+  contentDisposition: string | null,
+): string {
+  if (!contentDisposition) return "attachment";
+
+  const parametersStart = contentDisposition.indexOf(";");
+  return parametersStart === -1
+    ? "attachment"
+    : `attachment${contentDisposition.slice(parametersStart)}`;
+}
+
+export function buildSafeWorkspaceDownloadHeaders(
+  contentType: string | null,
+  contentDisposition: string | null,
+  contentLength: number,
+): Record<string, string> {
+  return {
+    "Content-Type": contentType || "application/octet-stream",
+    "Content-Length": String(contentLength),
+    "Content-Disposition":
+      getSafeDownloadContentDisposition(contentDisposition),
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
 export function isRedirectStatus(status: number): boolean {
   return [301, 302, 303, 307, 308].includes(status);
 }

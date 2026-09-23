@@ -446,6 +446,27 @@ provider client secrets, `OPENAI_API_KEY`, `TRANSCRIPTION_API_KEY`, and the
 legacy `SUPABASE_JWT_SECRET`. These values remain server-side process
 environment and are not baked into the browser bundle.
 
+### AutoPilot spend caps
+
+AutoGPT Cloud limits each account's AutoPilot spend per day and per week,
+measured from the provider-reported cost of every chat turn. This image
+disables both caps by default because you pay the model provider directly:
+`CHAT_DAILY_COST_LIMIT_MICRODOLLARS` and `CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS`
+are set to `-1` unless you provide a value. To guard an OpenRouter or
+Anthropic bill, set either variable to a positive amount in microdollars
+(1 USD = `1000000`):
+
+```dotenv
+CHAT_DAILY_COST_LIMIT_MICRODOLLARS=5000000
+CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS=20000000
+```
+
+The daily window resets at midnight UTC and the weekly window at Monday
+00:00 UTC. Once a window is exhausted, further AutoPilot turns are refused
+with HTTP 429 until it resets. The caps only meter the platform-routed chat
+transport: ChatGPT/Codex subscription turns are exempt, and local
+OpenAI-compatible servers report no cost, so they never count against a cap.
+
 ### Database connection tuning
 
 `DB_CONNECTION_LIMIT` controls each backend role's Prisma connection pool and
@@ -541,6 +562,7 @@ The named volume mounted at `/data` contains all durable appliance state:
 | `/data/valkey` | Three-node Valkey state |
 | `/data/falkordb` | Graphiti memory data |
 | `/data/workspaces` | User workspaces |
+| `/data/store-media` | Marketplace images and videos when GCS is not configured |
 | `/data/home` and `/data/frontend-home` | Application home directories |
 | `/data/cache` | Regenerable backend and Next.js caches (excluded from backups) |
 
@@ -923,6 +945,7 @@ same `RESTORE_IMAGE`:
       test -d /data/valkey/17002
       test -d /data/falkordb
       test -d /data/workspaces
+      test -d /data/store-media
       test -d /data/home
       test -d /data/frontend-home
       quote="$(printf "\047")"

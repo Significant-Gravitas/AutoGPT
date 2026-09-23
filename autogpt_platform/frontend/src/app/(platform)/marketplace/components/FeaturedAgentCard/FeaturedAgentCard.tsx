@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
 
@@ -69,6 +70,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             )}
             <Image
               src={agent.agent_image}
+              unoptimized={isLocalStoreMediaUrl(agent.agent_image)}
               alt={`${agent.agent_name} preview image`}
               fill
               className="object-cover"

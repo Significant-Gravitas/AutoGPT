@@ -13,19 +13,29 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
+import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { UpcomingProviderBoxes } from "./UpcomingProviderBoxes";
+import { ProviderBox } from "./ProviderBox";
+import { MicrosoftCopilotProviderBox } from "./MicrosoftCopilotProviderBox";
 import { ManageConnectionDialog } from "./ManageConnectionDialog";
 import { isSelectable, tierSummary } from "./helpers";
 import { useAIConnectionsSection } from "./useAIConnectionsSection";
 
 export function AIConnectionsSection() {
   const {
+    connectChatGPT,
+    isConnectingChatGPT,
+    isChatGPTLinked,
+    isMicrosoftLinked,
     connections,
     accountFor,
+    credentialFor,
     selectedKey,
     chooseDefault,
     isSaving,
     isLoading,
     isError,
+    refetch,
   } = useAIConnectionsSection();
   const [managing, setManaging] = useState<AIConnectionOffer | null>(null);
 
@@ -79,7 +89,8 @@ export function AIConnectionsSection() {
               onSelect={() => chooseDefault(connection)}
               onManage={
                 connection.credential_id &&
-                connection.auth_method === "chatgpt_oauth"
+                (connection.auth_provider === "codex" ||
+                  connection.auth_provider === "microsoft_365_copilot")
                   ? () => setManaging(connection)
                   : undefined
               }
@@ -88,11 +99,31 @@ export function AIConnectionsSection() {
         </div>
       )}
 
-      <UpcomingConnections />
+      {!isLoading && (
+        <div
+          role="group"
+          aria-label="Available AI subscriptions"
+          className="mt-4 grid w-full grid-cols-2 gap-3 sm:grid-cols-4"
+        >
+          {!isChatGPTLinked && (
+            <ProviderBox
+              name="ChatGPT"
+              logoSrc="/integrations/openai.png"
+              state="available"
+              isBusy={isConnectingChatGPT}
+              onClick={connectChatGPT}
+            />
+          )}
+          {!isMicrosoftLinked && (
+            <MicrosoftCopilotProviderBox isLinked={false} onSuccess={refetch} />
+          )}
+          <UpcomingProviderBoxes />
+        </div>
+      )}
 
       <ManageConnectionDialog
         connection={managing}
-        account={managing ? accountFor(managing) : undefined}
+        credential={managing ? credentialFor(managing) : undefined}
         onOpenChange={(open) => {
           if (!open) setManaging(null);
         }}
@@ -136,12 +167,26 @@ function ConnectionRow({
         </span>
       )}
 
+      {(connection.auth_provider === "codex" ||
+        connection.auth_provider === "microsoft_365_copilot") && (
+        <IntegrationLogo
+          provider={
+            connection.auth_provider === "codex"
+              ? "openai"
+              : "microsoft_365_copilot"
+          }
+          alt=""
+          size={32}
+          className="shrink-0"
+        />
+      )}
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
           <Text variant="body-medium" as="span" className="text-black">
             {connection.display_name}
           </Text>
-          {connection.auth_method === "chatgpt_oauth" &&
+          {connection.auth_method !== "deployment" &&
+            connection.credential_id &&
             isSelectable(connection) && (
               <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
                 <Icon icon={CheckmarkCircle02Icon} size={13} />
@@ -221,38 +266,6 @@ function ConnectionRow({
         {body}
       </button>
       {manage}
-    </div>
-  );
-}
-
-/**
- * Names what is coming without claiming it works yet. Each provider needs its
- * own adapter and its own provider/legal approval before it can appear as a
- * real row above, so this promises nothing about capability or timing.
- */
-function UpcomingConnections() {
-  return (
-    <div className="mt-3 flex items-start gap-3 rounded-2xl border border-dashed border-[#DADADC] p-4">
-      <span
-        aria-hidden
-        className="mt-[2px] flex h-4 w-4 flex-none items-center justify-center text-[#9A9A9F]"
-      >
-        <Icon icon={SparklesIcon} size={16} />
-      </span>
-      <span className="flex min-w-0 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <Text variant="body-medium" as="span" className="text-[#505057]">
-            GitHub Copilot and Grok
-          </Text>
-          <span className="inline-flex items-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]">
-            Coming soon
-          </span>
-        </span>
-        <Text variant="small" as="span" className="text-[#505057]">
-          More subscriptions you already pay for. Each one shows up here once it
-          is approved to run AutoGPT agents.
-        </Text>
-      </span>
     </div>
   );
 }

@@ -35,28 +35,26 @@ describe("getDateGroupLabel", () => {
     expect(getDateGroupLabel(isoDaysAgo(1))).toBe("Yesterday");
   });
 
-  it("labels an older same-year date with an ordinal day and month", () => {
-    // 2026-06-20 -> "20th June"
-    const label = getDateGroupLabel("2026-06-20T08:00:00");
-    expect(label).toBe("20th June");
+  it("labels an older same-year date with month and day", () => {
+    // 2026-06-20 -> "June 20"
+    const label = getDateGroupLabel("2026-06-20T08:00:00", "en-US");
+    expect(label).toBe("June 20");
   });
 
   it("includes the year for dates in a previous year", () => {
-    const label = getDateGroupLabel("2024-12-01T08:00:00");
-    expect(label).toBe("1st December 2024");
+    const label = getDateGroupLabel("2024-12-01T08:00:00", "en-US");
+    expect(label).toBe("December 1, 2024");
   });
 
-  it("uses 'st', 'nd', 'rd', 'th' ordinal suffixes correctly", () => {
-    expect(getDateGroupLabel("2026-06-01T08:00:00")).toBe("1st June");
-    expect(getDateGroupLabel("2026-06-02T08:00:00")).toBe("2nd June");
-    expect(getDateGroupLabel("2026-06-03T08:00:00")).toBe("3rd June");
-    expect(getDateGroupLabel("2026-06-04T08:00:00")).toBe("4th June");
-  });
-
-  it("uses 'th' for the 11th–13th teen exceptions", () => {
-    expect(getDateGroupLabel("2026-06-11T08:00:00")).toBe("11th June");
-    expect(getDateGroupLabel("2026-06-12T08:00:00")).toBe("12th June");
-    expect(getDateGroupLabel("2026-06-13T08:00:00")).toBe("13th June");
+  it("formats the date end-to-end in the user's locale", () => {
+    // The label must come from a single locale-aware formatter, not from
+    // hand-assembled English-style parts ("20th 六月"-style mixes).
+    expect(getDateGroupLabel("2026-06-20T08:00:00", "en-GB")).toBe("20 June");
+    expect(getDateGroupLabel("2026-06-20T08:00:00", "de-DE")).toBe("20. Juni");
+    expect(getDateGroupLabel("2026-06-20T08:00:00", "zh-CN")).toBe("6月20日");
+    expect(getDateGroupLabel("2024-12-01T08:00:00", "zh-CN")).toBe(
+      "2024年12月1日",
+    );
   });
 });
 
@@ -84,11 +82,11 @@ describe("groupSessionsByDate", () => {
       { id: "today", updated_at: isoDaysAgo(0) },
       { id: "yesterday", updated_at: isoDaysAgo(1) },
     ];
-    const groups = groupSessionsByDate(sessions);
+    const groups = groupSessionsByDate(sessions, "en-US");
     expect(groups.map((g) => g.label)).toEqual([
       "Today",
       "Yesterday",
-      getDateGroupLabel(isoDaysAgo(5)),
+      getDateGroupLabel(isoDaysAgo(5), "en-US"),
     ]);
   });
 
@@ -101,5 +99,13 @@ describe("groupSessionsByDate", () => {
     const groups = groupSessionsByDate(sessions);
     expect(groups).toHaveLength(1);
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["1", "2", "3"]);
+  });
+
+  it("labels groups in the given locale", () => {
+    const groups = groupSessionsByDate(
+      [{ id: "a", updated_at: "2026-06-20T08:00:00" }],
+      "de-DE",
+    );
+    expect(groups[0].label).toBe("20. Juni");
   });
 });

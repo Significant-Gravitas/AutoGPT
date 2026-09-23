@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.data.model import OAuth2Credentials
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import as_str
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.codex.credential_codec import credentials_from_bundle
 from backend.integrations.codex.models import (
@@ -137,7 +138,7 @@ class RedisCodexLoginStateStore:
 
     async def get_active(self, user_id: str) -> str | None:
         redis = await get_redis_async()
-        return await redis.get(_active_key(user_id))
+        return as_str(await redis.get(_active_key(user_id)))
 
     async def get(self, user_id: str, login_id: str) -> CodexSharedLoginState | None:
         redis = await get_redis_async()

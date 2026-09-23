@@ -16,12 +16,14 @@ interface Args {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected?: (credential: CredentialsMetaResponse) => void;
+  initialProviderId?: string | null;
 }
 
 export function useConnectServiceDialog({
   open,
   onOpenChange,
   onConnected,
+  initialProviderId,
 }: Args) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
@@ -36,12 +38,14 @@ export function useConnectServiceDialog({
   });
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setSelectedId(initialProviderId ?? null);
+    } else {
       setQuery("");
       setSelectedId(null);
       setDirection(1);
     }
-  }, [open]);
+  }, [open, initialProviderId]);
 
   const allProviders = toConnectableProviders(providersQuery.data ?? []);
   const providers = filterConnectableProviders(allProviders, debouncedQuery);

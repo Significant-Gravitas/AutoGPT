@@ -1,10 +1,13 @@
 import type { ToolUIPart } from "ai";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
+import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
 import {
   extractToolName,
   getAnimationText,
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
+import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
@@ -40,7 +43,8 @@ const SUB_SESSION_CARD_TOOLS = new Set([
 ]);
 
 function subSessionIdOf(row: ChainRow): string | null {
-  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const tool = capabilityTargetRow(row).tool;
+  if (!tool || !SUB_SESSION_CARD_TOOLS.has(tool)) return null;
   const output = asObject(row.output);
   const sid = output?.sub_session_id;
   return typeof sid === "string" && sid ? sid : null;
@@ -66,7 +70,8 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
     const sid = subSessionIdOf(row);
     if (!sid) continue;
     const open = openRowKey.get(sid);
-    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+    const tool = capabilityTargetRow(row).tool ?? "";
+    if (open && !SUB_SESSION_START_TOOLS.has(tool)) {
       supersededKeys.add(open);
     }
     openRowKey.set(sid, row.key);
@@ -83,33 +88,44 @@ const ACTION_RESPONSE_TYPES = new Set([
   "need_login",
   "trigger_config_required",
   "suggested_goal",
-  "expert_change_proposed",
 ]);
 
-function actionLabel(output: unknown): string | null {
+const BLOCK_ACTION_TOOLS = new Set([
+  "run_block",
+  "continue_run_block",
+  "run_capability",
+  "resume_capability",
+]);
+
+function actionLabel(toolName: string, tool: ToolUIPart): string | null {
+  const output = tool.output;
   const data = asObject(output);
   if (!data) return null;
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
+  const isBlock = BLOCK_ACTION_TOOLS.has(toolName);
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
         ? (data.setup_info as Record<string, unknown>)
         : null;
-    const name = setup?.agent_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : setup?.agent_name;
     return typeof name === "string" && name.trim()
       ? `Connect ${name.trim()} to continue`
       : "Complete setup to continue";
   }
   if (data.type === "review_required") {
-    const name = data.block_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : data.block_name;
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
-  if (data.type === "expert_change_proposed") return "Approve the new expert";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
     : "Action required";
@@ -142,8 +158,34 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
 // it into a chain would bury both behind a collapsed "summarized context".
 export const COMPACTION_PART_TYPE = "tool-context_compaction";
 
+// Hiring, raising or updating an expert is the user's call, not a step the
+// model worked through — the card renders as its own message part so the
+// approval never sits inside a chain that collapses on top of it.
+export const EXPERT_CHANGE_TOOLS = new Set([
+  "hire_expert",
+  "raise_expert",
+  "update_expert",
+  "confirm_expert_change",
+]);
+
+export function isExpertChangePart(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  if (EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))) return true;
+  const target = capabilityTargetToolName(
+    part.type,
+    "input" in part ? part.input : undefined,
+  );
+  return target !== null && EXPERT_CHANGE_TOOLS.has(target);
+}
+
 export function isChainPart(part: MessagePart): boolean {
-  if (part.type === COMPACTION_PART_TYPE) return false;
+  if (
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    isExpertChangePart(part)
+  ) {
+    return false;
+  }
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
@@ -172,6 +214,11 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
   }
   if (part.type === "reasoning") {
     const isStreaming = "state" in part && part.state === "streaming";
+    // A settled reasoning part with nothing in it is a "Thought it through"
+    // row over an empty panel — the model never actually wrote any.
+    const hasText =
+      "text" in part && typeof part.text === "string" && !!part.text.trim();
+    if (!isStreaming && !hasText) return null;
     return {
       key: `reasoning-${index}`,
       category: "reasoning",
@@ -203,7 +250,7 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       : tool;
 
     const providerIconSrc = getProviderIconSrc(stableTool);
-    const requiredActionLabel = actionLabel(tool.output);
+    const requiredActionLabel = actionLabel(toolName, tool);
 
     const data = {
       tool: toolName,
@@ -211,7 +258,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state);
+    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
+      displayName: tool.title,
+      output: tool.output,
+    });
     if (catalogLabel) {
       return {
         key: tool.toolCallId,
@@ -309,6 +359,9 @@ export function getChainHeading(
 
 export type ChainSegment =
   | { kind: "chain"; parts: MessagePart[]; index: number }
+  // Back-to-back expert changes (one per hire/raise call) render as one
+  // group so a whole new team pages instead of stacking down the message.
+  | { kind: "experts"; parts: MessagePart[]; index: number }
   | { kind: "part"; part: MessagePart; index: number };
 
 export function buildChainSegments(
@@ -331,6 +384,13 @@ export function buildChainSegments(
 
   parts.forEach((part, index) => {
     if (part.type === "step-start") return;
+    if (isExpertChangePart(part)) {
+      chain = null;
+      const last = segments[segments.length - 1];
+      if (last?.kind === "experts") last.parts.push(part);
+      else segments.push({ kind: "experts", parts: [part], index });
+      return;
+    }
     if (isChainable(part)) {
       if (!chain) {
         chain = { kind: "chain", parts: [], index };
@@ -353,4 +413,18 @@ export function buildChainSegments(
   });
 
   return segments;
+}
+
+/** A tool call whose result has not landed. Whatever it needs from the user
+ *  has not been asked for yet. A call paused on human-in-the-loop approval
+ *  is equally unresolved — only a denial or an output ends it. */
+export function isToolCallPending(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  const state = (part as ToolUIPart).state;
+  return (
+    state === "input-streaming" ||
+    state === "input-available" ||
+    state === "approval-requested" ||
+    state === "approval-responded"
+  );
 }

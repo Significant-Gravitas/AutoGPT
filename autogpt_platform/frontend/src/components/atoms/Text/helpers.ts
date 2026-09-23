@@ -10,7 +10,10 @@ export type As =
   | "div"
   | "code"
   | "label"
-  | "kbd";
+  | "kbd"
+  | "li"
+  | "dt"
+  | "dd";
 
 export const variants = {
   // Headings
@@ -41,9 +44,21 @@ export const variants = {
   // Label Text
   label:
     "font-sans text-[0.6785rem] font-medium uppercase leading-[1.25rem] tracking-[0.06785rem] text-black",
+  eyebrow:
+    "font-sans text-[0.75rem] font-[500] uppercase leading-[1rem] tracking-[0.06em] text-zinc-500",
 } as const;
 
 export type Variant = keyof typeof variants;
+
+/** Semantic colours. Omit for the variant's own colour (black). */
+export const tones = {
+  primary: "text-zinc-900",
+  secondary: "text-zinc-600",
+  muted: "text-zinc-500",
+  danger: "text-red-600",
+} as const;
+
+export type Tone = keyof typeof tones;
 
 export const variantElementMap: Record<Variant, As> = {
   h1: "h1",
@@ -62,4 +77,5 @@ export const variantElementMap: Record<Variant, As> = {
   small: "p",
   "small-medium": "p",
   label: "span",
+  eyebrow: "span",
 };

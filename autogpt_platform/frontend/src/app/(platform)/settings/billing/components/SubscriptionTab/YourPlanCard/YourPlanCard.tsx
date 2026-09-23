@@ -58,6 +58,8 @@ export function YourPlanCard({ index = 0 }: Props) {
 
   const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
 
+  if (plan?.tierKey === "TRIAL") return null;
+
   if (isLoading || !plan) {
     return (
       <motion.div {...sectionMotion}>
@@ -172,6 +174,8 @@ export function YourPlanCard({ index = 0 }: Props) {
               size="small"
               onClick={onManage}
               disabled={!canManagePortal}
+              data-fast-goal="billing_portal_open"
+              data-fast-goal-surface="settings_billing"
             >
               Manage subscription
             </Button>
@@ -183,6 +187,10 @@ export function YourPlanCard({ index = 0 }: Props) {
               onClick={onUpgrade}
               disabled={isUpdatingTier}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
+              data-fast-goal="subscription_upgrade_click"
+              data-fast-goal-from={plan.label}
+              data-fast-goal-to={plan.nextTierLabel}
+              data-fast-goal-surface="settings_billing"
               rightIcon={
                 plan.nextTierIsTeamLink ? (
                   <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />

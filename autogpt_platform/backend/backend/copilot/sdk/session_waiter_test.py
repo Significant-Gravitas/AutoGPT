@@ -83,7 +83,44 @@ async def test_queue_branch_timeout_zero_returns_immediately():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
-    queue_mock.assert_awaited_once_with(session_id="sess-busy", message="follow-up")
+    queue_mock.assert_awaited_once_with(
+        session_id="sess-busy", message="follow-up", metadata=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_branch_keeps_the_callers_message_metadata():
+    """A spawn tool's sender provenance must survive the in-flight fallback:
+    the pending message is what becomes the persisted user row."""
+    queue_mock = AsyncMock(return_value=_QR())
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_user_message",
+            new=queue_mock,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(),
+        ),
+    ):
+        outcome, _ = await run_copilot_turn_via_queue(
+            session_id="sess-busy",
+            user_id="u1",
+            message="follow-up",
+            timeout=0,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            message_metadata=provenance,
+        )
+
+    assert outcome == "queued"
+    assert queue_mock.await_args.kwargs["metadata"] == provenance
 
 
 @pytest.mark.asyncio
@@ -246,3 +283,66 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_in_flight_session_with_allow_queue_false_is_refused():
+    """``allow_queue=False`` must refuse an in-flight target rather than
+    append to its buffer — a spawn's prompt would otherwise execute inside
+    another turn's envelope and permissions. Covered directly, because the
+    only other coverage is through mocked callers, so deleting the guard
+    would leave those green."""
+    queue_message = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.queue_user_message",
+            new=queue_message,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-busy",
+            user_id="u1",
+            message="do the thing",
+            timeout=5,
+            tool_call_id="autopilot_block",
+            tool_name="autopilot_block",
+            allow_queue=False,
+        )
+
+    assert outcome == "refused"
+    assert result.refusal, "a refusal must carry a message the model can act on"
+    queue_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_tree_refusal_becomes_the_refused_outcome():
+    """A ledger refusal (budget or node cap) reaches the caller as
+    ``refused`` carrying the ledger's own message, not as ``failed``."""
+    from backend.copilot.tree import TreeRefusal
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This task's tree has closed.")),
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-idle",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert outcome == "refused"
+    assert result.refusal == "This task's tree has closed."
