@@ -291,81 +291,53 @@ async def test_upload_media_invalid_signature(mock_settings, mock_storage_client
         await store_media.upload_media("test-user", test_file)
 
 
-async def test_expert_avatar_is_not_stored_when_review_fails(
-    mock_settings, mock_storage_client, mocker
-):
-    mocker.patch(
-        "backend.api.features.store.media.moderate_avatar_image",
-        new_callable=AsyncMock,
-        side_effect=fastapi.HTTPException(422, "Choose another image."),
-    )
-    upload = fastapi.UploadFile(
-        filename="avatar.png",
-        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
-        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
-    )
-    with pytest.raises(fastapi.HTTPException) as error:
-        await store_media.upload_media("owner", upload, review_avatar=True)
-    assert error.value.status_code == 422
-    mock_storage_client.upload.assert_not_awaited()
-
-
-async def test_submission_upload_does_not_require_avatar_review(
-    mock_settings, mock_storage_client, mocker
-):
-    review = mocker.patch(
-        "backend.api.features.store.media.moderate_avatar_image", new_callable=AsyncMock
-    )
-    upload = fastapi.UploadFile(
-        filename="image.png",
-        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
-        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
-    )
-    await store_media.upload_media("owner", upload)
-    review.assert_not_awaited()
-    mock_storage_client.upload.assert_awaited_once()
-
-
 @pytest.mark.parametrize("local", [False, True])
-@pytest.mark.parametrize("receipt_fails", [False, True])
-async def test_avatar_receipt_precedes_publication(
-    mock_settings, mock_storage_client, mocker, local, receipt_fails
+async def test_expert_avatar_upload_works_without_moderation(
+    mock_settings, mock_storage_client, mocker, local
 ):
+    mock_settings.config.automod_api_url = ""
+    mock_settings.secrets.automod_api_key = ""
     if local:
         mock_settings.config.media_gcs_bucket_name = ""
-    mocker.patch(
-        "backend.api.features.store.media.moderate_avatar_image", new_callable=AsyncMock
-    )
-    receipt = mocker.patch(
-        "backend.api.features.store.media.record_approved_avatar",
-        new_callable=AsyncMock,
-    )
-    if receipt_fails:
-        receipt.side_effect = fastapi.HTTPException(503, "Please try again later.")
-
-    async def publish(*args, **kwargs):
-        receipt.assert_awaited_once()
-        return receipt.await_args.args[1]
-
     local_upload = mocker.patch.object(
-        local_media, "store_media", new=AsyncMock(side_effect=publish)
+        local_media,
+        "store_media",
+        new_callable=AsyncMock,
+        return_value="/api/store/media/owner/images/avatar.png",
     )
-    mock_storage_client.upload.side_effect = publish
+    scan = mocker.patch.object(store_media, "scan_content_safe", new_callable=AsyncMock)
+    content = b"\x89PNG\r\n\x1a\nimage"
     upload = fastapi.UploadFile(
         filename="existing-avatar.png",
-        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
+        file=io.BytesIO(content),
         headers=starlette.datastructures.Headers({"content-type": "image/png"}),
     )
-    if receipt_fails:
-        with pytest.raises(fastapi.HTTPException) as error:
-            await store_media.upload_media("owner", upload, review_avatar=True)
-        assert error.value.status_code == 503
-        local_upload.assert_not_awaited()
-        mock_storage_client.upload.assert_not_awaited()
-    else:
-        url = await store_media.upload_media(
-            "owner", upload, use_file_name=True, review_avatar=True
-        )
-        receipt.assert_awaited_once_with("owner", url)
-        assert "existing-avatar" not in url
-        (local_upload if local else mock_storage_client.upload).assert_awaited_once()
+    url = await store_media.upload_media(
+        "owner", upload, use_file_name=True, is_avatar=True
+    )
+    assert url
+    scan.assert_awaited_once()
+    assert scan.await_args.args[0] == content
+    assert "existing-avatar" not in scan.await_args.kwargs["filename"]
+    (local_upload if local else mock_storage_client.upload).assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "content_type, content, status",
+    [
+        ("image/gif", b"GIF89a", 400),
+        ("image/png", b"\x89PNG\r\n\x1a\n" + b"x" * (5 * 1024 * 1024), 413),
+    ],
+)
+async def test_expert_avatar_still_enforces_type_and_size(
+    mock_settings, mock_storage_client, content_type, content, status
+):
+    upload = fastapi.UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(content),
+        headers=starlette.datastructures.Headers({"content-type": content_type}),
+    )
+    with pytest.raises(fastapi.HTTPException) as error:
+        await store_media.upload_media("owner", upload, is_avatar=True)
+    assert error.value.status_code == status
+    mock_storage_client.upload.assert_not_awaited()

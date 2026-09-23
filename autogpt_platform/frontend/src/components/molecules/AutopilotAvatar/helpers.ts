@@ -3,6 +3,9 @@ export const AUTOPILOT_NAME = "Otto";
 export const AUTOPILOT_AVATAR_URL =
   "/autogpt-characters/v1.1/otto/neutral/128.webp";
 
+export const AUTOPILOT_TRANSPARENT_AVATAR_URL =
+  "/experts/transparent/otto.webp";
+
 export const AUTOPILOT_AVATAR_BG_CLASS = "bg-violet-50";
 
 export const AUTOPILOT_COVER_URL = "/experts/covers/otto-cover-3.png";

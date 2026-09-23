@@ -40,7 +40,7 @@ export function ExpertAvatarButton({ expert }: Props) {
           avatarUrl={expert.avatar_url}
           color={expert.color}
           size={96}
-          className="ring-4 ring-background"
+          className="rounded-full ring-4 ring-background"
         />
 
         <span

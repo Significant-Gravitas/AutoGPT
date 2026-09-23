@@ -15920,7 +15920,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission or reviewed appearance.",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

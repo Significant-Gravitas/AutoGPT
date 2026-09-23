@@ -219,7 +219,7 @@ describe("makeAuthenticatedFileUpload", () => {
       422,
       "This image wasn't approved for an Expert appearance. Choose another image.",
     ],
-    [503, "Appearance review is unavailable. Please try again later."],
+    [503, "Image storage is unavailable. Please try again later."],
   ])(
     "preserves actionable backend details for HTTP %i",
     async (status, detail) => {

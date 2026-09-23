@@ -265,7 +265,7 @@ describe("proxy route — handler pass-through", () => {
     expect(acceptEncoding.toLowerCase()).toMatch(/gzip|br|deflate/);
   });
 
-  it("forwards the Expert appearance review purpose on uploads", async () => {
+  it("forwards the Expert appearance purpose on uploads", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response('"https://cdn.test/avatar.png"', { status: 200 }),
     );

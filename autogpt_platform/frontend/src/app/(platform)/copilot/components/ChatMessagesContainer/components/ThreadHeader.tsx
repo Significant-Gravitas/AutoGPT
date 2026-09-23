@@ -103,7 +103,7 @@ export function ThreadHeader({
         color={expertIdentity?.color}
         isAutopilot={!expertIdentity && !isResolving}
         isLoading={isResolving}
-        size="sm"
+        size="md"
       />
       {isResolving ? (
         <Skeleton className="h-3.5 w-16 rounded" />

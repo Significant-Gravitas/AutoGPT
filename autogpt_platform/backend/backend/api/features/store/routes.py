@@ -564,10 +564,10 @@ async def upload_submission_media(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
     purpose: Literal["submission", "expert-avatar"] = "submission",
 ) -> str:
-    """Upload media for a marketplace listing submission or reviewed appearance."""
+    """Upload media for a marketplace listing submission or Expert appearance."""
 
     return await store_media.upload_media(
-        user_id=user_id, file=file, review_avatar=purpose == "expert-avatar"
+        user_id=user_id, file=file, is_avatar=purpose == "expert-avatar"
     )
 
 

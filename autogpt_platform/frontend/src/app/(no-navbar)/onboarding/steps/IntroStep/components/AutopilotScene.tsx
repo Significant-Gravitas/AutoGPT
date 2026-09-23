@@ -1,8 +1,8 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { motion } from "framer-motion";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 
 const POINTS = [
   "I help plan and coordinate your work.",
@@ -20,7 +20,7 @@ function reveal(i: number) {
 export function AutopilotScene() {
   return (
     <div className="flex h-full flex-col items-center justify-start gap-4">
-      <AutopilotAvatar size={120} />
+      <AutopilotAvatar size={120} transparent />
 
       <div className="flex flex-col items-center gap-3">
         <ul className="flex flex-col items-center gap-2">

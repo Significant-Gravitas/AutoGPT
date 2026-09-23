@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
-from backend.api.features.experts.avatar_moderation import require_approved_avatar
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
@@ -217,7 +216,6 @@ async def create_raised_expert(
     request: CreateRaisedExpertRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> RaiseResult:
-    await require_approved_avatar(user_id, request.avatar_url)
     try:
         return await experts_db.create_raised_expert(
             user_id,
@@ -560,8 +558,6 @@ async def update_expert_avatar(
     current = await experts_db.get_expert(user_id, expert_id)
     if current is None:
         raise fastapi.HTTPException(404, "Expert not found")
-    if request.avatar_url != current.avatar_url:
-        await require_approved_avatar(user_id, request.avatar_url)
     try:
         return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
     except experts_db.ExpertNotFoundError as e:

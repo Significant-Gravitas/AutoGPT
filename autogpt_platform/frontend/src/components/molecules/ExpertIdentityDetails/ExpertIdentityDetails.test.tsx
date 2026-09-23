@@ -93,3 +93,28 @@ test("keeps Otto's disclosure without a role or title", () => {
   expect(screen.getByText("Your personal Head of AI")).toBeDefined();
   expect(screen.queryByText("AI Expert")).toBeNull();
 });
+
+test("shows only name and role for a compact specialist", () => {
+  render(
+    <ExpertIdentityDetails name="Mina" jobTitle="Bookkeeper" size="compact" />,
+  );
+  expect(screen.getByText("Mina")).toBeDefined();
+  expect(screen.getByText("Bookkeeper")).toBeDefined();
+  expect(screen.queryByText("AI Expert")).toBeNull();
+});
+
+test.each(["compact", "card", "page"] as const)(
+  "avoids repeating Otto's role in %s size",
+  (size) => {
+    render(
+      <ExpertIdentityDetails
+        name="Otto"
+        isOtto
+        role="Head of AI"
+        size={size}
+      />,
+    );
+    expect(screen.getByText("Head of AI")).toBeDefined();
+    expect(screen.queryByText("Your personal Head of AI")).toBeNull();
+  },
+);

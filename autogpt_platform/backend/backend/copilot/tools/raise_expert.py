@@ -93,7 +93,7 @@ class RaiseExpertTool(BaseTool):
     def description(self) -> str:
         return (
             EXPERT_CREATION_COPY_POLICY
-            + " Preview when no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). The card shows the charter; add at most one short line. Returns a one-time confirmation_id. Wait for user approval before tool:confirm_expert_change."
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
         )
 
     @property
@@ -103,34 +103,32 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "Personal first name, not a job title (use job_title for that)."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short name for the area they own, e.g. 'SEO & Content'.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
                 },
                 "job_title": {
                     "type": "string",
-                    "description": "What they would be called on a team, e.g. 'SEO Content Manager'.",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": ("Accent token for the avatar and chat theme."),
+                    "description": "Avatar/chat accent token.",
                 },
                 "avatar_glasses": {
                     "type": "string",
                     "enum": list(AVATAR_GLASSES),
                     "description": (
-                        "Eyewear suited to their role; omit for a name-seeded choice."
+                        "Role-appropriate eyewear; omit for name-seeded choice."
                     ),
                 },
                 "avatar_beard": {
@@ -146,7 +144,7 @@ class RaiseExpertTool(BaseTool):
                 "about": {
                     "type": "string",
                     "description": (
-                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {

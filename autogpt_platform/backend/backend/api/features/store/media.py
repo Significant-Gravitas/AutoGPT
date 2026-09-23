@@ -5,10 +5,6 @@ import uuid
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.api.features.experts.avatar_moderation import (
-    moderate_avatar_image,
-    record_approved_avatar,
-)
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -68,7 +64,7 @@ async def upload_media(
     user_id: str,
     file: fastapi.UploadFile,
     use_file_name: bool = False,
-    review_avatar: bool = False,
+    is_avatar: bool = False,
 ) -> str:
     # Get file content for deeper validation
     try:
@@ -155,7 +151,7 @@ async def upload_media(
             logger.error(f"Error reading file chunks: {str(e)}")
             raise store_exceptions.FileReadError("Failed to read uploaded file") from e
 
-        if review_avatar:
+        if is_avatar:
             if content_type not in {"image/png", "image/jpeg", "image/webp"}:
                 raise fastapi.HTTPException(
                     400, "Choose a PNG, JPEG, or WebP image for your appearance."
@@ -164,8 +160,6 @@ async def upload_media(
                 raise fastapi.HTTPException(
                     413, "Appearance images must be 5 MB or smaller."
                 )
-            await file.seek(0)
-            await moderate_avatar_image(user_id, await file.read(), content_type)
 
         # Reset file pointer
         await file.seek(0)
@@ -173,7 +167,7 @@ async def upload_media(
         # Generate unique filename
         filename = file.filename or ""
         file_ext = os.path.splitext(filename)[1].lower()
-        if use_file_name and not review_avatar:
+        if use_file_name and not is_avatar:
             unique_filename = filename
         else:
             unique_filename = f"{uuid.uuid4()}{file_ext}"
@@ -183,14 +177,10 @@ async def upload_media(
 
         if use_local_storage:
             unique_filename = local_media.stored_filename(
-                unique_filename, content_type, use_file_name and not review_avatar
+                unique_filename, content_type, use_file_name and not is_avatar
             )
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
-            if review_avatar:
-                await record_approved_avatar(
-                    user_id, local_media.media_url(user_id, media_type, unique_filename)
-                )
             return await local_media.store_media(
                 user_id, media_type, unique_filename, file_bytes
             )
@@ -207,8 +197,6 @@ async def upload_media(
                 public_url = (
                     f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
                 )
-                if review_avatar:
-                    await record_approved_avatar(user_id, public_url)
 
                 # Upload using pure async client
                 await async_client.upload(
