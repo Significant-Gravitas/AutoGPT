@@ -13,6 +13,12 @@ vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
 const VISITOR_ID = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd";
+const STATISTICS_GRANTED =
+  "{stamp:%27abc==%27%2Cnecessary:true%2Cpreferences:false%2Cstatistics:true%2Cmarketing:false%2Cmethod:%27explicit%27%2Cver:1%2Cutc:1724770548958%2Cregion:%27de%27}";
+const STATISTICS_DENIED = STATISTICS_GRANTED.replace(
+  "statistics:true",
+  "statistics:false",
+);
 
 describe("DataFast server-side account creation tracking", () => {
   beforeEach(() => {
@@ -20,9 +26,10 @@ describe("DataFast server-side account creation tracking", () => {
     resetConfigErrorReportingForTests();
     vi.stubEnv("DATAFAST_API_KEY", "df_test");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "test-cbid");
     vi.mocked(cookies).mockResolvedValue({
       get: vi.fn((name: string) => {
-        if (name === "agpt_analytics_consent") return { value: "granted" };
+        if (name === "CookieConsent") return { value: STATISTICS_GRANTED };
         if (name === "datafast_visitor_id") return { value: VISITOR_ID };
         return undefined;
       }),
@@ -76,10 +83,32 @@ describe("DataFast server-side account creation tracking", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("does not schedule tracking when the visitor declined statistics", async () => {
+    vi.mocked(cookies).mockResolvedValue({
+      get: vi.fn((name: string) => {
+        if (name === "CookieConsent") return { value: STATISTICS_DENIED };
+        if (name === "datafast_visitor_id") return { value: VISITOR_ID };
+        return undefined;
+      }),
+    } as never);
+
+    await scheduleAccountCreatedGoal("email");
+
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("does not schedule tracking without a consent banner, whatever the cookie says", async () => {
+    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+
+    await scheduleAccountCreatedGoal("email");
+
+    expect(after).not.toHaveBeenCalled();
+  });
+
   it("does not schedule tracking without a valid visitor ID", async () => {
     vi.mocked(cookies).mockResolvedValue({
       get: vi.fn((name: string) =>
-        name === "agpt_analytics_consent" ? { value: "granted" } : undefined,
+        name === "CookieConsent" ? { value: STATISTICS_GRANTED } : undefined,
       ),
     } as never);
 

@@ -9,7 +9,6 @@ export enum Key {
   WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
   LIBRARY_AGENTS_CACHE = "library-agents-cache",
   CHAT_SESSION_ID = "chat_session_id",
-  COOKIE_CONSENT = "autogpt_cookie_consent",
   AI_AGENT_SAFETY_POPUP_SHOWN = "ai-agent-safety-popup-shown",
   COPILOT_SOUND_ENABLED = "copilot-sound-enabled",
   COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",

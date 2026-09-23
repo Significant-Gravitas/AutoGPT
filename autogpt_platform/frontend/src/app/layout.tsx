@@ -5,16 +5,19 @@ import React from "react";
 import "./globals.css";
 
 import { Providers } from "@/app/providers";
-import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
+import { buildConsentDefaultsScript } from "@/services/analytics/consent-mode";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
+import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
+import { COOKIEBOT_SCRIPT_URL } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
+import Script from "next/script";
 import { getSiteUrl } from "@/lib/metadata";
 
 const isDev = environment.isDev();
@@ -58,6 +61,8 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
+  const cookiebotCBID = environment.getCookiebotCBID();
+  const cookiebotGeoRegions = environment.getCookiebotGeoRegions();
 
   return (
     <html
@@ -66,6 +71,30 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen">
+        {/* Without a Cookiebot domain group there is no banner and every
+            optional category stays denied. With one, order matters: the
+            Consent Mode defaults must be queued before Cookiebot sends its
+            first update, and both run before the Google tag. Blocking stays
+            manual because the tools we gate are bundled npm SDKs Cookiebot's
+            auto-blocking cannot see; each asks services/consent instead. */}
+        {cookiebotCBID ? (
+          <>
+            <Script
+              id="google-consent-defaults"
+              strategy="beforeInteractive"
+              data-cookieconsent="ignore"
+              dangerouslySetInnerHTML={{ __html: buildConsentDefaultsScript() }}
+            />
+            <Script
+              id="Cookiebot"
+              src={COOKIEBOT_SCRIPT_URL}
+              data-cbid={cookiebotCBID}
+              data-georegions={cookiebotGeoRegions || undefined}
+              data-blockingmode="manual"
+              strategy="beforeInteractive"
+            />
+          </>
+        ) : null}
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
@@ -95,7 +124,7 @@ export default async function RootLayout({
               )}
             </div>
             <Toaster />
-            <CookieConsentBanner />
+            <ConsentWithdrawalReload />
             {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>

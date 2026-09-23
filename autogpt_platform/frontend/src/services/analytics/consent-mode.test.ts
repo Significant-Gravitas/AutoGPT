@@ -1,65 +1,73 @@
-import { describe, expect, it } from "vitest";
-import type { ConsentPreferences } from "@/services/consent/cookies";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  buildConsentModeScript,
+  buildConsentDefaultsScript,
   CONSENT_DENIED_BY_DEFAULT_REGIONS,
 } from "./consent-mode";
 
-function preferences(
-  overrides: Partial<ConsentPreferences> = {},
-): ConsentPreferences {
-  return {
-    hasConsented: true,
-    timestamp: 1,
-    analytics: false,
-    monitoring: false,
-    advertising: false,
-    ...overrides,
-  };
+type DataLayerWindow = Window & { dataLayer?: IArguments[] };
+
+function runDefaultsScript(): unknown[][] {
+  new Function(buildConsentDefaultsScript())();
+  return ((window as DataLayerWindow).dataLayer ?? []).map((entry) =>
+    Array.from(entry),
+  );
 }
 
-describe("buildConsentModeScript", () => {
-  it("grants by default, denies in the EEA, UK and Switzerland, and passes click IDs through URLs", () => {
-    const script = buildConsentModeScript(null);
+describe("buildConsentDefaultsScript", () => {
+  afterEach(() => {
+    delete (window as DataLayerWindow).dataLayer;
+    delete window.gtag;
+  });
 
-    expect(script).toContain(
-      `gtag('consent','default',{"ad_storage":"granted","ad_user_data":"granted","ad_personalization":"granted","analytics_storage":"granted"});`,
-    );
-    expect(script).toContain(
-      `gtag('consent','default',{"ad_storage":"denied","ad_user_data":"denied","ad_personalization":"denied","analytics_storage":"denied","region":${JSON.stringify(CONSENT_DENIED_BY_DEFAULT_REGIONS)}});`,
-    );
+  it("grants by default, denies in the EEA, UK and Switzerland, and passes click IDs through URLs", () => {
+    expect(runDefaultsScript()).toEqual([
+      [
+        "consent",
+        "default",
+        {
+          ad_storage: "granted",
+          ad_user_data: "granted",
+          ad_personalization: "granted",
+          analytics_storage: "granted",
+        },
+      ],
+      [
+        "consent",
+        "default",
+        {
+          ad_storage: "denied",
+          ad_user_data: "denied",
+          ad_personalization: "denied",
+          analytics_storage: "denied",
+          region: CONSENT_DENIED_BY_DEFAULT_REGIONS,
+          wait_for_update: 500,
+        },
+      ],
+      ["set", "url_passthrough", true],
+    ]);
     expect(CONSENT_DENIED_BY_DEFAULT_REGIONS).toEqual(
       expect.arrayContaining(["DE", "FR", "ES", "GB", "CH", "NO", "IS", "LI"]),
     );
-    expect(script).toContain(`gtag('set','url_passthrough',true);`);
-    expect(script).not.toContain("'update'");
   });
 
-  it("sends no update while the visitor has not answered the banner", () => {
-    const script = buildConsentModeScript(
-      preferences({ hasConsented: false, analytics: true }),
-    );
-
-    expect(script).not.toContain("'update'");
+  it("leaves every consent update to Cookiebot", () => {
+    expect(buildConsentDefaultsScript()).not.toContain("'update'");
   });
 
-  it("updates every signal from the stored answer", () => {
-    const script = buildConsentModeScript(
-      preferences({ analytics: true, advertising: false }),
-    );
+  it("queues real arguments objects without defining window.gtag", () => {
+    runDefaultsScript();
 
-    expect(script).toContain(
-      `gtag('consent','update',{"analytics_storage":"granted","ad_storage":"denied","ad_user_data":"denied","ad_personalization":"denied"});`,
-    );
+    const [first] = (window as DataLayerWindow).dataLayer ?? [];
+    expect(Object.prototype.toString.call(first)).toBe("[object Arguments]");
+    expect(window.gtag).toBeUndefined();
   });
 
-  it("grants the advertising signals once advertising is accepted", () => {
-    const script = buildConsentModeScript(
-      preferences({ analytics: false, advertising: true }),
-    );
+  it("keeps entries already in the dataLayer", () => {
+    (window as DataLayerWindow).dataLayer = [];
+    const existing = (window as DataLayerWindow).dataLayer;
 
-    expect(script).toContain(
-      `gtag('consent','update',{"analytics_storage":"denied","ad_storage":"granted","ad_user_data":"granted","ad_personalization":"granted"});`,
-    );
+    runDefaultsScript();
+
+    expect((window as DataLayerWindow).dataLayer).toBe(existing);
   });
 });

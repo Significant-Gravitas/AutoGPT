@@ -1,4 +1,8 @@
-import { consent } from "@/services/consent/cookies";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureFirstLanding,
@@ -10,13 +14,8 @@ import {
 } from "../anonymous-id";
 
 function setAnalyticsConsent(analytics: boolean): void {
-  consent.save({
-    hasConsented: true,
-    timestamp: Date.now(),
-    analytics,
-    monitoring: false,
-    advertising: false,
-  });
+  configureCookiebot();
+  installCookiebot({ statistics: analytics });
 }
 
 function landOn(path: string, referrer = ""): void {
@@ -39,6 +38,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  removeCookiebot();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });

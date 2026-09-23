@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV1GetNotificationPreferencesMockHandler,
@@ -19,6 +19,12 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 
 import SettingsPreferencesPage from "../page";
 
@@ -471,5 +477,37 @@ describe("SettingsPreferencesPage", () => {
     expect(await screen.findByText("Time zone")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Briefing" })).toBeNull();
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
+  });
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+    });
+
+    test("opens the Cookiebot dialog from the Cookies card", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot({ statistics: true });
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("hides the Cookies card when no consent banner is configured", async () => {
+      vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Time zone")).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
   });
 });

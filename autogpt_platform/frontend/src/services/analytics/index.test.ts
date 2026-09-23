@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { consent } from "@/services/consent/cookies";
+import { hasConsentFor } from "@/services/consent/consent";
 import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
 import { analytics, flushDatafastQueue } from "./index";
 
-vi.mock("@/services/consent/cookies", () => ({
-  consent: { hasConsentFor: vi.fn() },
+vi.mock("@/services/consent/consent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/consent/consent")>()),
+  hasConsentFor: vi.fn(),
 }));
 
 function drainQueue() {
@@ -19,7 +20,7 @@ function drainQueue() {
 describe("sendDatafastEvent", () => {
   beforeEach(() => {
     drainQueue();
-    vi.mocked(consent.hasConsentFor).mockReturnValue(true);
+    vi.mocked(hasConsentFor).mockReturnValue(true);
     window.history.pushState({}, "", "/");
   });
 
@@ -93,7 +94,7 @@ describe("sendDatafastEvent", () => {
   });
 
   it("does not queue pre-consent events outside the tour", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
 
     analytics.sendDatafastEvent("run_agent", { agent_name: "x" });
 
@@ -105,7 +106,7 @@ describe("sendDatafastEvent", () => {
   });
 
   it("queues pre-consent events on the consent-exempt tour pages", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
     window.history.pushState({}, "", "/tour/chat");
 
     analytics.sendDatafastEvent("tour_start", {});
@@ -118,7 +119,7 @@ describe("sendDatafastEvent", () => {
   });
 
   it("does not treat /tourism as a consent-exempt tour page", () => {
-    vi.mocked(consent.hasConsentFor).mockReturnValue(false);
+    vi.mocked(hasConsentFor).mockReturnValue(false);
     window.history.pushState({}, "", "/tourism");
 
     analytics.sendDatafastEvent("tour_start", {});

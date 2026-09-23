@@ -6,10 +6,9 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { consent, type ConsentPreferences } from "@/services/consent/cookies";
+import { hasConsentFor } from "@/services/consent/consent";
 import Script from "next/script";
 import { environment } from "../environment";
-import { buildConsentModeScript } from "./consent-mode";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
 import { isTourPath } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
@@ -31,8 +30,7 @@ export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
   const adsID = environment.getGoogleAdsID();
-  const { preferences, googleTagEnabled, dataFastEnabled } =
-    useSetupAnalytics(host);
+  const { googleTagEnabled, dataFastEnabled } = useSetupAnalytics(host);
 
   return (
     <>
@@ -47,7 +45,6 @@ export function SetupAnalytics(props: SetupProps) {
                 GAID: gaId,
                 adsID,
                 debugMode,
-                preferences,
               }),
             }}
             nonce={nonce}
@@ -79,14 +76,14 @@ interface InitScriptArgs {
   GAID: string;
   adsID: string;
   debugMode?: boolean;
-  preferences: ConsentPreferences | null;
 }
 
+// The root layout queued the Consent Mode defaults before Cookiebot loaded,
+// and Cookiebot sends the visitor's answer itself.
 function buildGoogleTagInitScript({
   GAID,
   adsID,
   debugMode,
-  preferences,
 }: InitScriptArgs): string {
   // The IDs come from env vars and go into a nonce-bearing inline script, so
   // they are escaped rather than interpolated raw: a stray quote in a misfilled
@@ -94,7 +91,6 @@ function buildGoogleTagInitScript({
   return [
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
-    buildConsentModeScript(preferences),
     `gtag('js', new Date());`,
     `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
     adsID
@@ -137,7 +133,7 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   // events must not queue — they would be replayed once consent is granted.
   // /tour is exempt: it loads DataFast without consent by design.
   const consentExempt = isTourPath(window.location.pathname);
-  if (!consentExempt && !consent.hasConsentFor("analytics")) return;
+  if (!consentExempt && !hasConsentFor("analytics")) return;
   if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) {
     if (!datafastQueueOverflowWarned) {
       datafastQueueOverflowWarned = true;

@@ -1,4 +1,4 @@
-import type { ConsentPreferences } from "@/services/consent/cookies";
+import { DATA_LAYER_NAME } from "./gtag";
 
 const EU_MEMBER_STATES = [
   "AT",
@@ -43,18 +43,20 @@ export const CONSENT_DENIED_BY_DEFAULT_REGIONS = [
   "CH",
 ];
 
-type Signal = "granted" | "denied";
+// How long the tag holds its first hit for the banner's stored answer, so a
+// returning visitor's first page view already carries it.
+const WAIT_FOR_UPDATE_MS = 500;
 
-function signal(granted: boolean): Signal {
-  return granted ? "granted" : "denied";
-}
-
-// Consent Mode v2 commands for the Google tag init script. Must run before
-// gtag('config', …) so the first hit already carries the right signals.
-export function buildConsentModeScript(
-  preferences: ConsentPreferences | null,
-): string {
-  const lines = [
+// Consent Mode v2 defaults, rendered as a beforeInteractive script ahead of
+// Cookiebot and the Google tag. Cookiebot sends every `consent update` itself
+// (statistics → analytics_storage; marketing → ad_storage, ad_user_data and
+// ad_personalization). The shim stays local so it doesn't define window.gtag:
+// that global is how the rest of the app knows the tag itself loaded.
+export function buildConsentDefaultsScript(): string {
+  return [
+    `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
+    `(function(){`,
+    `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     `gtag('consent','default',${JSON.stringify({
       ad_storage: "granted",
       ad_user_data: "granted",
@@ -67,22 +69,10 @@ export function buildConsentModeScript(
       ad_personalization: "denied",
       analytics_storage: "denied",
       region: CONSENT_DENIED_BY_DEFAULT_REGIONS,
+      wait_for_update: WAIT_FOR_UPDATE_MS,
     })});`,
     // Carries the ad click ID across pages in the URL while cookies are denied.
     `gtag('set','url_passthrough',true);`,
-  ];
-
-  if (preferences?.hasConsented) {
-    const ads = signal(preferences.advertising);
-    lines.push(
-      `gtag('consent','update',${JSON.stringify({
-        analytics_storage: signal(preferences.analytics),
-        ad_storage: ads,
-        ad_user_data: ads,
-        ad_personalization: ads,
-      })});`,
-    );
-  }
-
-  return lines.join("\n");
+    `})();`,
+  ].join("\n");
 }
