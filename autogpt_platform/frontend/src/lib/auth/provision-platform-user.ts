@@ -47,14 +47,35 @@ export async function provisionPlatformUser(
     // admin plugin and re-created, say). `ON CONFLICT (id)` cannot absorb
     // that, and neither can the backend's own provisioning, so it has to be
     // visible rather than retried quietly.
-    console.error(
-      `Failed to provision platform User for auth identity ${user.id}`,
-      error,
+    //
+    // Report only the SQLSTATE and constraint, never the raw `pg` error: its
+    // `detail` field spells out the conflicting value ("Key (email)=(…)
+    // already exists"), which would put the user's email into server logs
+    // and, via Sentry's extra-error-data capture, into the event body.
+    const { code, constraint } = describePgError(error);
+    const sanitized = new Error(
+      `Failed to provision platform User (pg ${code}, ${constraint})`,
     );
-    Sentry.captureException(error, {
-      tags: { auth_hook: "user.create.after" },
-      extra: { userId: user.id },
+    console.error(sanitized.message, { userId: user.id });
+    Sentry.captureException(sanitized, {
+      tags: { auth_hook: "user.create.after", pg_code: code },
+      extra: { userId: user.id, constraint },
     });
     return "failed";
   }
+}
+
+function describePgError(error: unknown): {
+  code: string;
+  constraint: string;
+} {
+  const fields =
+    typeof error === "object" && error !== null
+      ? (error as { code?: unknown; constraint?: unknown })
+      : {};
+  return {
+    code: typeof fields.code === "string" ? fields.code : "unknown",
+    constraint:
+      typeof fields.constraint === "string" ? fields.constraint : "unknown",
+  };
 }

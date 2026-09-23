@@ -824,5 +824,8 @@ class TestFindOrphanedAuthIdentities:
         sql, older_than, limit = query.await_args.args
         assert '"UserAuthIdentity" a' in sql
         assert "u.id IS NULL" in sql
+        # A migrated identity may differ from its platform row only by case;
+        # a case-sensitive owner match would heal a duplicate account.
+        assert "LOWER(owner.email) = LOWER(a.email)" in sql
         assert older_than == cutoff.isoformat()
         assert limit == 7

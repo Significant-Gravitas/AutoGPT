@@ -310,7 +310,10 @@ async def find_orphaned_auth_identities(
         'SELECT a.id, a.email, a.name, a."createdAt", owner.id AS email_owner_id '
         'FROM {schema_prefix}"UserAuthIdentity" a '
         'LEFT JOIN {schema_prefix}"User" u ON u.id = a.id '
-        'LEFT JOIN {schema_prefix}"User" owner ON owner.email = a.email '
+        # Case-insensitive on purpose: the auth migration copied emails as
+        # stored, so a migrated identity can differ from its platform row only
+        # by case. Missing that owner here would heal a duplicate account.
+        'LEFT JOIN {schema_prefix}"User" owner ON LOWER(owner.email) = LOWER(a.email) '
         'WHERE u.id IS NULL AND a."createdAt" < $1::timestamptz '
         'ORDER BY a."createdAt" ASC '
         "LIMIT $2::int",
@@ -330,9 +333,10 @@ async def heal_orphaned_auth_identities(
     is indistinguishable from one that signed up cleanly. Identities younger
     than *grace_secs* are left alone: their sign-up is still in flight.
 
-    An identity whose email is already owned by a different platform User is
-    reported, not healed -- the unique index makes it unprovisionable, and
-    guessing which account the person meant is not this function's call.
+    An identity whose email is already owned by a different platform User
+    (compared case-insensitively) is reported, not healed -- the unique index
+    makes it unprovisionable, and guessing which account the person meant is
+    not this function's call.
     """
     older_than = datetime.now(timezone.utc) - timedelta(seconds=grace_secs)
     report = OrphanedAuthIdentityReport()

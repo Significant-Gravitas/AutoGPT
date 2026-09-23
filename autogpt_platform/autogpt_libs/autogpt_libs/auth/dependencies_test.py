@@ -932,6 +932,31 @@ class TestGetUserIdSelfHeal:
         assert [c.args[0] for c in ensure.await_args_list] == ["user-1", "user-2"]
 
     @pytest.mark.asyncio
+    async def test_cached_confirmation_expires(self, mocker: MockerFixture):
+        """Nothing deletes a User row today, but the cache must not turn that
+        into a permanent assumption: after the TTL the row is probed again."""
+        from autogpt_libs.auth import dependencies
+
+        self._stub_backend(mocker)
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        )
+        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
+
+        clock.return_value = 1_000.0
+        await get_user_id(self._request(), payload)
+        clock.return_value = 1_000.0 + dependencies._PROVISIONED_USER_TTL_SECS - 1
+        await get_user_id(self._request(), payload)
+        assert ensure.await_count == 1
+
+        clock.return_value = 1_000.0 + dependencies._PROVISIONED_USER_TTL_SECS
+        await get_user_id(self._request(), payload)
+        assert ensure.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_retries_while_the_row_is_still_missing(self, mocker: MockerFixture):
         """Only a confirmed row is remembered: a declined or failed heal must
         be attempted again on the next request, or the account stays broken

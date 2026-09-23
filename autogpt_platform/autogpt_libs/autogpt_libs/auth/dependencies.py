@@ -5,6 +5,7 @@ These are the high-level dependency functions used in route definitions.
 """
 
 import logging
+import time
 from collections import OrderedDict
 
 import fastapi
@@ -27,15 +28,28 @@ IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 logger = logging.getLogger(__name__)
 
 # User ids whose platform ``User`` row this process has confirmed, so the
-# self-heal in ``get_user_id`` costs one indexed read per (process, user)
-# instead of one per request. Bounded LRU of ids only; a row is never deleted
-# once it exists, so an entry never goes stale.
-_PROVISIONED_USER_IDS: "OrderedDict[str, None]" = OrderedDict()
+# self-heal in ``get_user_id`` costs one indexed read per (process, user, TTL)
+# instead of one per request. Bounded LRU of id -> monotonic expiry. Nothing
+# deletes a ``User`` row today, but the TTL keeps that an observation rather
+# than a load-bearing assumption: if a deletion path ever appears, a stale
+# entry can hide a missing row for at most ``_PROVISIONED_USER_TTL_SECS``.
+_PROVISIONED_USER_IDS: "OrderedDict[str, float]" = OrderedDict()
 _PROVISIONED_USER_IDS_MAX = 10_000
+_PROVISIONED_USER_TTL_SECS = 15 * 60
+
+
+def _is_provisioned_recently(user_id: str) -> bool:
+    expires_at = _PROVISIONED_USER_IDS.get(user_id)
+    if expires_at is None:
+        return False
+    if expires_at <= time.monotonic():
+        del _PROVISIONED_USER_IDS[user_id]
+        return False
+    return True
 
 
 def _remember_provisioned(user_id: str) -> None:
-    _PROVISIONED_USER_IDS[user_id] = None
+    _PROVISIONED_USER_IDS[user_id] = time.monotonic() + _PROVISIONED_USER_TTL_SECS
     _PROVISIONED_USER_IDS.move_to_end(user_id)
     while len(_PROVISIONED_USER_IDS) > _PROVISIONED_USER_IDS_MAX:
         _PROVISIONED_USER_IDS.popitem(last=False)
@@ -56,7 +70,7 @@ async def _heal_platform_user(jwt_payload: dict) -> None:
     tests exercise this dependency with no connection at all.
     """
     user_id = jwt_payload.get("sub")
-    if not user_id or user_id in _PROVISIONED_USER_IDS:
+    if not user_id or _is_provisioned_recently(user_id):
         return
 
     try:
