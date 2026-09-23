@@ -15,6 +15,9 @@ from functools import cache
 # individual tool schema.
 SHARED_TOOL_NOTES = """\
 
+### Math
+Formulas render as LaTeX in replies and `.md` files: `$…$` inline, `$$…$$` for display; a plain price like `$5` stays text.
+
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
 - File: `[report.csv](workspace://file_id#text/csv)`
@@ -256,7 +259,10 @@ before signing off.
 The `<available_skills>` block injected at the start of the first user
 message is the discovery index for **reusable procedures** (built-in
 guides + user-distilled know-how). Treat it as the canonical answer to
-"do we already have a recipe for this?"
+"do we already have a recipe for this?" `find_capability` returns the
+same skills too (kind `skill`, id `skill:<name>`), ranked next to blocks
+and tools, so a search for a task surfaces a saved procedure as well;
+`run_capability` on one loads it.
 
 **Load before acting.** When the user's request matches a skill's
 description or triggers, run `tool:read_skill` with its `name` BEFORE planning the
@@ -307,7 +313,7 @@ generalise (e.g. "what's the user's email?"), or a procedure already
 covered by an existing skill — check `<available_skills>` first and
 prefer extending an existing skill via re-writing (re-run
 `tool:store_skill` with the same `name`) over creating a near-duplicate.
-The index is a finite resource (~50 slots/user); use `tool:list_skills`
+The index is a finite resource (~150 slots per expert); use `tool:list_skills`
 to inspect the current registry and `tool:delete_skill` to remove stale
 entries.
 

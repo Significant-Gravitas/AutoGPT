@@ -14,6 +14,7 @@ from backend.copilot.capabilities.models import (
     Connection,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
@@ -57,6 +58,7 @@ def _catalog_entry(preset: MCPCatalogEntry, keyed_by_host: bool) -> CapabilityEn
         klass="service",
         name=preset.display_name,
         purpose=clip_purpose(preset.description),
+        description=normalize_text(preset.description),
         tags=tags,
         context="direct",
         implementations=[

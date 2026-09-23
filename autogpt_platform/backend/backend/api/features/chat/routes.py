@@ -73,6 +73,7 @@ from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
     peek_pending_messages,
 )
+from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.provider_tiers import (
     ProviderTiersResponse,
     describe_provider_tiers,
@@ -1006,7 +1007,8 @@ class CredentialSelectionRequest(BaseModel):
     """The credential the user picked for each provider on a connect card."""
 
     selections: dict[str, str] = Field(
-        description="Provider slug to credential id.", max_length=20
+        description="Provider slug to credential id.",  # gitleaks:allow (schema text)
+        max_length=20,
     )
 
 
@@ -1870,7 +1872,18 @@ async def stream_chat_post(
                 weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
-            raise HTTPException(status_code=429, detail=str(e)) from e
+            # Structured envelope (not a bare string) so the frontend can
+            # offer "switch to another connection" (e.g. a connected
+            # BYOSUB/Codex credential) instead of only "upgrade your plan" --
+            # the platform cap does not apply once the turn is billed to a
+            # user-supplied credential instead of platform dollars.
+            failure = ProviderFailure(
+                kind=ProviderFailureKind.USAGE_LIMIT,
+                message=str(e),
+                auth_provider="platform",
+                resets_at=int(e.resets_at.timestamp()),
+            )
+            raise HTTPException(status_code=429, detail=failure.as_part()) from e
         except RateLimitUnavailable as e:
             # Fail-closed on Redis brown-out: the user may already be at or
             # past their USD cap and we cannot prove otherwise. 503 + a short

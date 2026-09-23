@@ -209,6 +209,8 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_i
     assert stored.await_args.kwargs["name"] == listing.slug
     assert stored.await_args.kwargs["expert_id"] == expert_id
     assert stored.await_args.kwargs["body"] == "# do this\n"
+    # An install fills the platform's budget on that owner, not the owner's.
+    assert stored.await_args.kwargs["origin"] == "marketplace"
     assert result.name == listing.slug
     assert result.required_providers == ["google"]
 
@@ -411,6 +413,53 @@ async def test_seed_is_idempotent_and_rewrites_the_live_package_in_place(tmp_pat
     assert [(f.relativePath, f.content.decode()) for f in files] == [
         ("references/frameworks.md", b"# Frameworks v2\n")
     ]
+
+
+async def test_seed_delists_a_retired_starter_slug(tmp_path, monkeypatch):
+    """A slug that shipped and was then renamed keeps its listing row, so the
+    seed hides it: delisted and its version unavailable. A listing that is
+    merely absent from this catalog is not retired and stays live, as does
+    the listing still in it."""
+    catalog = _write_catalog(tmp_path)
+    stale = catalog / "skills" / "stale-but-live"
+    stale.mkdir(parents=True)
+    (stale / "SKILL.md").write_text(
+        "---\nname: stale-but-live\ndescription: Still live.\n---\n\n# Stale\n",
+        encoding="utf-8",
+    )
+    (catalog / "catalog.yml").write_text(
+        (catalog / "catalog.yml").read_text(encoding="utf-8")
+        + "  - slug: stale-but-live\n"
+        "    categories: [content]\n"
+        "    required_providers: []\n"
+        "    source: platform\n",
+        encoding="utf-8",
+    )
+    await skill_seed.seed_catalog_skills(catalog)
+    (catalog / "catalog.yml").write_text(
+        "skills:\n"
+        "  - slug: brand-voice-guide\n"
+        "    categories: [content]\n"
+        "    required_providers: []\n"
+        "    source: platform\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(skill_seed, "RETIRED_STARTER_SLUGS", ["cold-email"])
+
+    await skill_seed.seed_catalog_skills(catalog)
+
+    async def listing(slug: str) -> prisma.models.SkillListing:
+        row = await prisma.models.SkillListing.prisma().find_unique(
+            where={"slug": slug}, include={"ActiveVersion": True}
+        )
+        assert row is not None and row.ActiveVersion is not None, slug
+        return row
+
+    retired = await listing("cold-email")
+    assert retired.isDeleted and not retired.ActiveVersion.isAvailable
+    for slug in ("brand-voice-guide", "stale-but-live"):
+        live = await listing(slug)
+        assert not live.isDeleted and live.ActiveVersion.isAvailable, slug
 
 
 async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tmp_path):
