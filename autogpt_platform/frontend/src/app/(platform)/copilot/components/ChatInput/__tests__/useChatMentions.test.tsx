@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatMentions } from "../useChatMentions";
 
 const mockListWorkspaceFiles = vi.fn();
+const mockFolders = vi.fn(() => ({ data: { folders: [] } }));
 vi.mock("@/app/api/__generated__/endpoints/workspace/workspace", () => ({
   listWorkspaceFiles: (...args: unknown[]) => mockListWorkspaceFiles(...args),
+  useListWorkspaceFolders: () => mockFolders(),
 }));
 
 const FILE = {
@@ -32,9 +34,14 @@ function fakeTextarea(value: string, caret = value.length) {
   return { value, selectionStart: caret } as HTMLTextAreaElement;
 }
 
-function keyEvent(key: string) {
+function keyEvent(key: string, composing: boolean | "keyCode229" = false) {
+  const isComposing = composing === true;
+  // Safari confirms a candidate with an Enter fired after compositionend, so
+  // isComposing is already false and only the legacy keyCode is left.
+  const keyCode = composing === "keyCode229" ? 229 : key === "Enter" ? 13 : 0;
   return {
     key,
+    nativeEvent: { key, isComposing, keyCode },
     preventDefault: vi.fn(),
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
@@ -57,6 +64,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -64,7 +72,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
 
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
     await waitFor(() =>
       expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
         limit: 8,
@@ -81,6 +89,7 @@ describe("useChatMentions", () => {
           value: "hello world",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -97,6 +106,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -120,12 +130,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     let handled = false;
     act(() => {
@@ -152,12 +163,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     act(() => {
       result.current.onKeyDown(keyEvent("Escape"));
@@ -165,6 +177,85 @@ describe("useChatMentions", () => {
 
     expect(result.current.isOpen).toBe(false);
     expect(addWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("navigates results with arrow keys but ignores composing keydowns", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: {
+        files: [FILE, { ...FILE, id: "file-2", name: "beta.txt" }],
+        has_more: false,
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @")));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
+    });
+    expect(result.current.highlightedIndex).toBe(1);
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowUp"))).toBe(true);
+    });
+    expect(result.current.highlightedIndex).toBe(0);
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowDown", true))).toBe(false);
+    });
+    expect(result.current.highlightedIndex).toBe(0);
+  });
+
+  it("does not accept a mention on a composing Enter or Tab", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+    const setValue = vi.fn();
+    const addWorkspaceFile = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @al",
+          setValue,
+          addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @al")));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
+
+    for (const event of [
+      keyEvent("Enter", true),
+      keyEvent("Enter", "keyCode229"),
+      keyEvent("Tab", true),
+    ]) {
+      act(() => {
+        expect(result.current.onKeyDown(event)).toBe(false);
+      });
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+
+    expect(setValue).not.toHaveBeenCalled();
+    expect(addWorkspaceFile).not.toHaveBeenCalled();
+    expect(result.current.isOpen).toBe(true);
   });
 
   it("ignores accept when the highlighted item is out of bounds", async () => {
@@ -182,12 +273,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     // A shrinking result list can leave the highlighted index pointing past
     // the end before the clamp effect runs — accepting that must be a no-op,

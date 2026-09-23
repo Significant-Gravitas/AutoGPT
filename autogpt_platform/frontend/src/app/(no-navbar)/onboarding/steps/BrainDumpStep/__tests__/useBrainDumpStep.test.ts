@@ -144,12 +144,10 @@ afterEach(() => {
 });
 
 describe("useBrainDumpStep — headline", () => {
-  it("uses the name the wizard already collected", async () => {
-    useOnboardingWizardStore.getState().setName("Ada");
-
+  it("asks about the user's work", async () => {
     const { result } = await renderStep();
 
-    expect(result.current.headline).toBe("What keeps stealing your week, Ada?");
+    expect(result.current.headline).toBe("Talk to me about your work");
   });
 });
 

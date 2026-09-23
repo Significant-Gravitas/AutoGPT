@@ -3,11 +3,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import {
-  deleteV1DeleteCredentials,
-  getGetV1ListCredentialsQueryKey,
-} from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { deleteV1DeleteCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 export interface DeleteIntegrationTarget {
   id: string;
@@ -123,9 +121,7 @@ export function useDeleteIntegration() {
         });
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: getGetV1ListCredentialsQueryKey(),
-      });
+      await invalidateConnectionQueries(queryClient);
 
       return out;
     } finally {

@@ -41,7 +41,11 @@ from backend.data.model import (
     NodeExecutionStats,
     OAuth2Credentials,
 )
-from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.rabbitmq import (
+    SyncRabbitMQ,
+    declare_broadcast_queue,
+    start_shared_queue_reaper,
+)
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
@@ -51,7 +55,8 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util import json
+from backend.monitoring.instrumentation import record_graph_run_completion
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -69,8 +74,12 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
     ModerationError,
     NotFoundError,
+    UserPaywalledError,
+    get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
@@ -80,18 +89,22 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import billing, expert_posts
-from .activity_status_generator import generate_activity_status_for_execution
+from . import activity_events, billing, expert_posts
+from .activity_status_generator import (
+    INSUFFICIENT_BALANCE_GUIDANCE,
+    generate_activity_status_for_execution,
+)
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_CANCEL_EXCHANGE,
     GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
     GRAPH_EXECUTION_ROUTING_KEY,
+    LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -110,6 +123,67 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
+
+
+def _get_execution_credit_balance(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> int:
+    """Return the balance for the wallet billed by this execution."""
+    organization_id = graph_exec.execution_context.organization_id
+    if organization_id:
+        return db_client.get_org_credits(org_id=organization_id)
+    return db_client.get_credits(graph_exec.user_id)
+
+
+def _record_execution_failure(
+    execution_stats: GraphExecutionStats,
+    error: BaseException,
+) -> None:
+    """Record an error without erasing a trusted reason promoted by a node.
+
+    Precedence is deliberately asymmetric between the two fields:
+
+    ``error`` always reflects the *latest* failure, so the message a user sees
+    describes what actually terminated the run.
+
+    ``failure_reason`` is *sticky*: once a typed failure
+    (:class:`InsufficientBalanceError` or :class:`UserPaywalledError`) has been
+    promoted from a node via :func:`_propagate_node_failure`, a later untyped
+    error cannot clear it.
+    An exhausted wallet is the root cause of whatever fails next, and losing
+    that reason would send the run back to LLM analysis — the exact cost this
+    module exists to avoid. Only another typed classification may replace it.
+
+    The trade-off: when a run hits a credit failure *and* a later unrelated
+    typed-less terminal error, the deterministic summary attributes the run to
+    the credit failure while ``error`` names the later one. That is intended;
+    the credit condition is the actionable one for the user.
+    """
+    if failure_reason := get_execution_failure_reason(error):
+        execution_stats.failure_reason = failure_reason
+    execution_stats.error = str(error) or type(error).__name__
+
+
+# Terminal conditions the platform already understands. Anything outside this
+# set is treated as an unexpected failure and pages via Discord, so a known
+# business outcome left out of it produces a spurious "Unknown Graph Execution
+# Error" alert with a stack trace.
+KNOWN_GRAPH_EXECUTION_ERRORS = (
+    InsufficientBalanceError,
+    ModerationError,
+    UserPaywalledError,
+)
+
+
+def _propagate_node_failure(
+    graph_stats: GraphExecutionStats,
+    node_error: BaseException,
+) -> None:
+    """Promote only trusted, typed node failures to graph-level stats."""
+    if get_execution_failure_reason(node_error):
+        _record_execution_failure(graph_stats, node_error)
+
 
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
@@ -190,6 +264,23 @@ async def execute_node(
     if node_block.disabled:
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
+    input_model = cast(type[BlockSchema], node_block.input_schema)
+    credential_fields_info = input_model.get_credentials_fields_info()
+    required_credential_fields = set(input_model.get_required_fields())
+
+    # Remove optional credential metadata that the selected discriminator does
+    # not use before schema validation. Empty or stale objects would otherwise
+    # fail their nested credential schema before the executor can ignore them.
+    for field_name, field_info in credential_fields_info.items():
+        if not field_info.discriminator or field_name in required_credential_fields:
+            continue
+        discriminator_value = data.inputs.get(
+            field_info.discriminator,
+            node.input_default.get(field_info.discriminator),
+        )
+        if not field_info.requires_credentials(discriminator_value):
+            data.inputs[field_name] = None
+
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(
         node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
@@ -269,11 +360,8 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
-    input_model = cast(type[BlockSchema], node_block.input_schema)
-
     try:
         # Handle regular credentials fields
-        credential_fields_info = input_model.get_credentials_fields_info()
         for field_name, input_type in input_model.get_credentials_fields().items():
             # Dry-run platform credentials bypass the credential store.
             # Keep the existing credential metadata so _execute's input_schema(**...)
@@ -303,7 +391,8 @@ async def execute_node(
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
-            if credential_fields_info[field_name].credential_reference_only:
+            field_info = credential_fields_info[field_name]
+            if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
                     user_id,
                     credentials_meta.id,
@@ -359,6 +448,7 @@ async def execute_node(
             input_data=input_data,
             creds_manager=creds_manager,
             user_id=user_id,
+            expert_id=execution_context.expert_id,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)
@@ -616,6 +706,27 @@ async def _enqueue_next_nodes(
     ]
 
 
+def _expert_run_completed_event(
+    graph_exec: GraphExecutionEntry, status: ExecutionStatus
+) -> Optional[dict]:
+    """Funnel payload for a finished top-level expert run, else None.
+
+    Mirrors the gating in ``expert_posts._post_run_result`` so the funnel
+    counts exactly the runs that can post: an expert-attributed, non-dry-run,
+    top-level execution that reached a terminal status. Execution origin
+    (schedule vs manual vs webhook) is not persisted anywhere, so the event
+    covers every such run rather than pretending to know the trigger.
+    """
+    expert_id = expert_posts.completed_expert_id(graph_exec, status)
+    if expert_id is None:
+        return None
+    return {
+        "expert_id": expert_id,
+        "status": status.value,
+        "graph_exec_id": graph_exec.graph_exec_id,
+    }
+
+
 class ExecutionProcessor:
     """
     This class contains event handlers for the process pool executor events.
@@ -701,6 +812,12 @@ class ExecutionProcessor:
                 stats=execution_stats,
                 db_client=db_client,
             )
+            if status == ExecutionStatus.COMPLETED:
+                await activity_events.log_node_integration_activity(
+                    node_exec=node_exec,
+                    block=node.block,
+                    db_client=db_client,
+                )
             if not node_exec.execution_context.dry_run:
                 reconciled_delta, _ = await billing.charge_reconciled_usage(
                     node_exec=node_exec,
@@ -720,6 +837,7 @@ class ExecutionProcessor:
             )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
+                _propagate_node_failure(graph_stats, execution_stats.error)
 
         node_error = execution_stats.error
         node_stats = execution_stats.model_dump()
@@ -805,7 +923,7 @@ class ExecutionProcessor:
             )
 
             # Per-block wall-clock cap on `run`. Leaf compute blocks inherit
-            # the default cap; coordination blocks (AgentExecutor, AutoPilot)
+            # the default cap; coordination blocks (AgentExecutor, Otto)
             # opt out by overriding `execution_timeout_seconds = None`. Their
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
@@ -924,16 +1042,6 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=ExecutionStatus.RUNNING,
             )
-        elif exec_meta.status == ExecutionStatus.FAILED:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
         else:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
@@ -947,6 +1055,12 @@ class ExecutionProcessor:
         else:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
+
+        # Analysis is terminal-only, so discard prior interpretation before continuing.
+        exec_stats.error = None
+        exec_stats.failure_reason = None
+        exec_stats.activity_status = None
+        exec_stats.correctness_score = None
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -991,11 +1105,17 @@ class ExecutionProcessor:
                     "Activity status generation disabled, not setting fields"
                 )
         finally:
-            # Communication handling
-            billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            # No per-run email: a successful run is the system working as
+            # designed, and its evidence belongs in the Briefing's highlights
+            # or behind a deep link. The run is scored for the Briefing when
+            # its terminal stats are written, just below.
             expert_posts.handle_expert_run_post(
                 db_client, graph_exec, exec_meta.status, exec_stats
             )
+            activity_events.handle_run_completed(
+                db_client, graph_exec, exec_meta, exec_stats
+            )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -1003,6 +1123,15 @@ class ExecutionProcessor:
                 status=exec_meta.status,
                 stats=exec_stats,
             )
+            # Only once the terminal state is persisted.
+            run_event = _expert_run_completed_event(graph_exec, exec_meta.status)
+            if run_event is not None:
+                emit_funnel_event(
+                    graph_exec.user_id,
+                    "expert_run_completed",
+                    run_event,
+                    f"expert_run_completed:{graph_exec.graph_exec_id}",
+                )
 
     async def charge_node_usage(
         self,
@@ -1046,14 +1175,20 @@ class ExecutionProcessor:
         try:
             if (
                 not graph_exec.execution_context.dry_run
-                and db_client.get_credits(graph_exec.user_id) <= 0
+                and settings.config.enable_credit
             ):
-                raise InsufficientBalanceError(
-                    user_id=graph_exec.user_id,
-                    message="You have no credits left to run an agent.",
-                    balance=0,
-                    amount=1,
-                )
+                credit_balance = _get_execution_credit_balance(db_client, graph_exec)
+                required_balance = 1
+                if credit_balance < required_balance:
+                    raise InsufficientBalanceError(
+                        user_id=graph_exec.user_id,
+                        message=(
+                            f"At least {required_balance} credit must be available to run "
+                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                        ),
+                        balance=credit_balance,
+                        amount=required_balance,
+                    )
 
             # Input moderation
             try:
@@ -1269,7 +1404,14 @@ class ExecutionProcessor:
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
-            elif error is not None:
+            elif error is not None or execution_stats.failure_reason is not None:
+                # Any typed failure reason means the run is terminally broken,
+                # not merely that a node errored. Untyped node errors stay
+                # non-fatal, since a graph may deliberately wire an error
+                # output onward; only classified, trusted failures promote to
+                # graph stats via `_propagate_node_failure`. Before this, a
+                # paywalled run reported COMPLETED with error=null while the
+                # node inside carried the real denial.
                 execution_status = ExecutionStatus.FAILED
             else:
                 if db_client.has_pending_reviews_for_graph_exec(
@@ -1280,7 +1422,7 @@ class ExecutionProcessor:
                     execution_status = ExecutionStatus.COMPLETED
 
             if error:
-                execution_stats.error = str(error) or type(error).__name__
+                _record_execution_failure(execution_stats, error)
 
             return execution_status
 
@@ -1290,11 +1432,9 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
-            if not execution_stats.error:
-                execution_stats.error = str(error)
+            _record_execution_failure(execution_stats, error)
 
-            known_errors = (InsufficientBalanceError, ModerationError)
-            if isinstance(error, known_errors):
+            if isinstance(error, KNOWN_GRAPH_EXECUTION_ERRORS):
                 return ExecutionStatus.FAILED
 
             execution_status = ExecutionStatus.FAILED
@@ -1490,6 +1630,7 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
+        set_executor_id(self.executor_id)
         self._update_prompt_metrics()
         # Deliberate reuse of pyro_host: despite the legacy name it is the
         # bind address for every service's internal listener (see
@@ -1520,12 +1661,25 @@ class ExecutionManager(AppProcess):
             self.cancel_client.disconnect()
         self.cancel_client.connect()
         cancel_channel = self.cancel_client.get_channel()
+        # Declared here rather than once at startup: an exclusive queue dies
+        # with the connection that made it, and this method is the reconnect.
+        # It is also declared before the reaper runs, because this exchange is
+        # auto-delete and losing its last binding would drop the exchange.
+        cancel_queue_name = declare_broadcast_queue(
+            cancel_channel, GRAPH_EXECUTION_CANCEL_EXCHANGE, self.executor_id
+        )
+        start_shared_queue_reaper(
+            cancel_channel, LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME
+        )
         cancel_channel.basic_consume(
-            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+            queue=cancel_queue_name,
             on_message_callback=self._handle_cancel_message,
             auto_ack=True,
         )
-        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
+        logger.info(
+            f"[{self.service_name}] ⏳ Starting cancel message consumer "
+            f"on {cancel_queue_name}..."
+        )
         cancel_channel.start_consuming()
         if not self.stop_consuming.is_set() or self.active_graph_runs:
             raise RuntimeError(
@@ -2014,6 +2168,17 @@ def update_node_execution_status(
     return exec_update
 
 
+_TERMINAL_RUN_STATUSES = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED}
+)
+
+
+def _record_terminal_status(status: "ExecutionStatus | None") -> None:
+    """Feed the run-outcome counter exactly once, at the terminal transition."""
+    if status is not None and status in _TERMINAL_RUN_STATUSES:
+        record_graph_run_completion(status.value)
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -2025,6 +2190,7 @@ async def async_update_graph_execution_state(
         graph_exec_id, status, stats
     )
     if graph_update:
+        _record_terminal_status(status)
         await send_async_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
@@ -2040,6 +2206,7 @@ def update_graph_execution_state(
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
+        _record_terminal_status(status)
         send_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")

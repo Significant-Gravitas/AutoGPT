@@ -5,7 +5,7 @@ Provides token retrieval for connected integrations so that copilot tools
 hitting the database on every command.
 
 Cache semantics (handled automatically by TTLCache):
-- Token found → cached for _TOKEN_CACHE_TTL (5 min).  Avoids repeated DB hits
+- Token found → cached for _TOKEN_CACHE_TTL (60 s).  Avoids repeated DB hits
   for users who have credentials and are running many bash commands.
 - No credentials found → cached for _NULL_CACHE_TTL (60 s).  Avoids a DB hit
   on every E2B command for users who haven't connected an account yet, while
@@ -14,24 +14,29 @@ Cache semantics (handled automatically by TTLCache):
 Both caches are bounded to _CACHE_MAX_SIZE entries; cachetools evicts the
 least-recently-used entry when the limit is reached.
 
-Multi-worker note: both caches are in-process only.  Each worker/replica
-maintains its own independent cache, so a credential fetch may be duplicated
-across processes.  This is acceptable for the current goal (reduce DB hits per
-session per-process), but if cache efficiency across replicas becomes important
-a shared cache (e.g. Redis) should be used instead.
+Multi-worker note: the cached values are per-process, but invalidation is not.
+The API server and the copilot executor each hold their own copy of these
+caches, so a write in one cannot evict the other's; a subscription to the Redis
+creds-changed bus does.  See ``_ensure_cache_invalidation_listener``.
 """
 
+import asyncio
 import logging
+import threading
+from collections.abc import Mapping
 from typing import cast
 
 from cachetools import TTLCache
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.creds_events import listen_creds_changed
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from backend.integrations.providers import ProviderName
+from backend.util.retry import continuous_retry
 
 logger = logging.getLogger(__name__)
 
@@ -40,34 +45,98 @@ PROVIDER_ENV_VARS: dict[str, list[str]] = {
     slug: entry["env_vars"] for slug, entry in SUPPORTED_PROVIDERS.items()
 }
 
-_TOKEN_CACHE_TTL = 300.0  # seconds — for found tokens
+# 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
+# (a Redis blip drops the message), so the TTL is the floor on how long a stale
+# token can survive when it fails.  Five minutes was long enough for Otto
+# to verify a re-authorization against the provider and report it as failed.
+_TOKEN_CACHE_TTL = 60.0  # seconds — for found tokens
 _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
 _CACHE_MAX_SIZE = 10_000
 
-# (user_id, provider) → token string.  TTLCache handles expiry + eviction.
-# Thread-safety note: TTLCache is NOT thread-safe, but that is acceptable here
-# because all callers (get_provider_token, invalidate_user_provider_cache) run
-# exclusively on the asyncio event loop.  There are no await points between a
-# cache read and its corresponding write within any function, so no concurrent
-# coroutine can interleave.  If ThreadPoolExecutor workers are ever added to
-# this path, a threading.RLock should be wrapped around these caches.
-_token_cache: TTLCache[tuple[str, str], str] = TTLCache(
+
+# Sentinel so ``pop`` keeps ``Cache.pop``'s "raise without a default" contract.
+_MISSING = object()
+
+
+class _LockedTTLCache(TTLCache):
+    """TTLCache with a lock: the invalidation listener evicts entries from its
+    own thread while copilot workers read them from theirs."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lock = threading.RLock()
+
+    def __getitem__(self, key):
+        with self._lock:
+            return super().__getitem__(key)
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self._lock:
+            super().__delitem__(key)
+
+    def __contains__(self, key):
+        with self._lock:
+            return super().__contains__(key)
+
+    def pop(self, key, default=_MISSING):
+        with self._lock:
+            if default is _MISSING:
+                return super().pop(key)
+            return super().pop(key, default)
+
+    def popitem(self):
+        with self._lock:
+            return super().popitem()
+
+    def pop_prefix(self, prefix: tuple) -> None:
+        """Drop every entry whose key starts with *prefix*."""
+        with self._lock:
+            for key in [k for k in self.keys() if k[: len(prefix)] == prefix]:
+                super().pop(key, None)
+
+
+# (user_id, provider) → token string, or (user_id, provider, required_scopes)
+# when the caller asked for specific scopes.  TTLCache handles expiry + eviction.
+_CacheKey = tuple[str, str] | tuple[str, str, frozenset[str], str | None]
+_token_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
 # Separate cache for "no credentials" results with a shorter TTL.
-_null_cache: TTLCache[tuple[str, str], bool] = TTLCache(
+_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
-# GitHub user identity caches (keyed by user_id only, not provider tuple).
+# GitHub user identity caches, keyed (user_id, credential_id): a user with two
+# GitHub accounts has two identities, and a chat that picked one must not be
+# served the other's. credential_id is None when no account was picked.
 # Declared here so invalidate_user_provider_cache() can reference them.
 _GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
-_gh_identity_cache: TTLCache[str, dict[str, str]] = TTLCache(
+_IdentityKey = tuple[str, str | None]
+_gh_identity_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
 )
-_gh_identity_null_cache: TTLCache[str, bool] = TTLCache(
+_gh_identity_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
+
+
+def _canonical_provider(provider: str) -> str:
+    """``"ProviderName.GITHUB"`` -> ``"github"``.
+
+    Credentials persisted under Python 3.13's ``str(StrEnum)`` carry the enum's
+    repr as their provider, and change events pass it on as stored, while
+    lookups (and so cache keys) use the canonical value.
+    """
+    if provider.startswith("ProviderName."):
+        try:
+            return ProviderName[provider.removeprefix("ProviderName.")].value
+        except KeyError:
+            pass
+    return provider
 
 
 def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
@@ -81,19 +150,19 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     ``get_github_user_git_identity()`` re-fetches the user's profile on
     the next call instead of serving stale identity data.
     """
-    key = (user_id, provider)
-    _token_cache.pop(key, None)
-    _null_cache.pop(key, None)
+    provider = _canonical_provider(provider)
+    # Every scope-specific entry for this pair is stale too.
+    _token_cache.pop_prefix((user_id, provider))
+    _null_cache.pop_prefix((user_id, provider))
 
     if provider == "github":
-        _gh_identity_cache.pop(user_id, None)
-        _gh_identity_null_cache.pop(user_id, None)
+        _gh_identity_cache.pop_prefix((user_id,))
+        _gh_identity_null_cache.pop_prefix((user_id,))
 
 
-# Register this module's cache-bust function with the credentials manager so
-# that any create/update/delete operation immediately evicts stale cache
-# entries.  This avoids a lazy import inside creds_manager and eliminates the
-# circular-import risk.
+# Same-process writes (a token refresh performed by this process) invalidate
+# through the hook, without a Redis round trip.  Writes in other processes
+# arrive over the bus instead.
 try:
     register_creds_changed_hook(invalidate_user_provider_cache)
 except RuntimeError:
@@ -105,16 +174,34 @@ except RuntimeError:
 _manager = IntegrationCredentialsManager()
 
 
-async def get_provider_token(user_id: str, provider: str) -> str | None:
+def _cache_key(
+    user_id: str, provider: str, required: frozenset[str], credential_id: str | None
+) -> _CacheKey:
+    if required or credential_id:
+        return (user_id, provider, required, credential_id)
+    return (user_id, provider)
+
+
+async def get_provider_token(
+    user_id: str,
+    provider: str,
+    required_scopes: frozenset[str] = frozenset(),
+    credential_id: str | None = None,
+) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
     OAuth2 tokens are preferred (refreshed if needed); API keys are the fallback.
-    Found tokens are cached for _TOKEN_CACHE_TTL (5 min).  "Not connected" results
-    are cached for _NULL_CACHE_TTL (60 s) to avoid a DB hit on every bash_exec
-    command for users who haven't connected yet, while still picking up a
-    newly-connected account within one minute.
+    Among several OAuth2 credentials, one granting every scope in
+    *required_scopes* wins: that is the credential the connect card shows as
+    connected, so injecting any other would send the model back to a card that
+    already says "Connected".
+    *credential_id* is the credential the user picked for this provider in the
+    chat; when it is still stored, it is the only candidate.
+    Both found tokens and "not connected" results are cached for 60 s, and a
+    credential write in any process evicts the entry before that lapses.
     """
-    cache_key = (user_id, provider)
+    _ensure_cache_invalidation_listener()
+    cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
 
     if cache_key in _null_cache:
         return None
@@ -133,21 +220,32 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
         )
         return None
 
+    if credential_id is not None:
+        # The user picked this one. If it is gone, that is "not connected",
+        # never a reason to hand the sandbox another account's token.
+        creds_list = [c for c in creds_list if c.id == credential_id]
+
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).
-    # Sort so broader-scoped tokens come first: a token with "repo" scope covers
-    # full git access, while a public-data-only token lacks push/pull permission.
+    # Credentials covering the requested scopes come first, then ones with
+    # "repo" (full git access, where a public-data-only token lacks push/pull).
+    # The sort is stable, so ties keep their stored order, as the card does.
     # lock=False — background injection; not worth a distributed lock acquisition.
+    def rank(creds: OAuth2Credentials) -> tuple[int, int]:
+        granted = set(creds.scopes or [])
+        return (
+            0 if required_scopes <= granted else 1,
+            0 if "repo" in granted else 1,
+        )
+
     oauth2_creds = sorted(
-        [c for c in creds_list if c.type == "oauth2"],
-        key=lambda c: 0 if "repo" in (cast(OAuth2Credentials, c).scopes or []) else 1,
+        [cast(OAuth2Credentials, c) for c in creds_list if c.type == "oauth2"],
+        key=rank,
     )
     refresh_failed = False
     for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
-                fresh = await manager.refresh_if_needed(
-                    user_id, cast(OAuth2Credentials, creds), lock=False
-                )
+                fresh = await manager.refresh_if_needed(user_id, creds, lock=False)
                 token = fresh.access_token.get_secret_value()
             except Exception:
                 logger.warning(
@@ -162,6 +260,8 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                 # preventing the LLM from receiving a non-functional token.
                 refresh_failed = True
                 continue
+            # A refresh here publishes, and this process's own listener may evict
+            # the entry just written; the cost is one extra lookup, not a leak.
             _token_cache[cache_key] = token
             return token
 
@@ -181,16 +281,55 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     return None
 
 
-async def get_integration_env_vars(user_id: str) -> dict[str, str]:
+def _ensure_cache_invalidation_listener() -> None:
+    """Subscribe this process to credential changes, once.
+
+    Started from the cache read path so that every process holding a cache
+    subscribes, and only those do — the in-process hook covers a write served
+    by this process, and this covers the ones served elsewhere.
+    """
+    global _listener_thread
+    with _listener_start_lock:
+        if _listener_thread is not None:
+            return
+        _listener_thread = threading.Thread(
+            target=lambda: asyncio.run(_consume_creds_changed_events()),
+            name="creds-cache-invalidation",
+            daemon=True,
+        )
+        _listener_thread.start()
+
+
+@continuous_retry(retry_delay=5.0)
+async def _consume_creds_changed_events() -> None:
+    async for event in listen_creds_changed():
+        invalidate_user_provider_cache(event.user_id, event.provider)
+    raise RuntimeError("creds-changed subscription ended; resubscribing")
+
+
+_listener_start_lock = threading.Lock()
+_listener_thread: threading.Thread | None = None
+
+
+async def get_integration_env_vars(
+    user_id: str,
+    required_scopes: Mapping[str, frozenset[str]] | None = None,
+    selected: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return env vars for all providers the user has connected.
 
     Iterates :data:`PROVIDER_ENV_VARS`, fetches each token, and builds a flat
     ``{env_var: token}`` dict ready to pass to a subprocess or E2B sandbox.
     Only providers with a stored credential contribute entries.
+    *required_scopes* maps a provider to the scopes its token should carry, and
+    *selected* to the credential the user picked for it in this chat.
     """
     env: dict[str, str] = {}
     for provider, var_names in PROVIDER_ENV_VARS.items():
-        token = await get_provider_token(user_id, provider)
+        scopes = (required_scopes or {}).get(provider, frozenset())
+        token = await get_provider_token(
+            user_id, provider, scopes, (selected or {}).get(provider)
+        )
         if token:
             for var in var_names:
                 env[var] = token
@@ -202,7 +341,9 @@ async def get_integration_env_vars(user_id: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
+async def get_github_user_git_identity(
+    user_id: str, credential_id: str | None = None
+) -> dict[str, str] | None:
     """Fetch the GitHub user's name and email for git committer env vars.
 
     Uses the ``/user`` GitHub API endpoint with the user's stored token.
@@ -210,17 +351,21 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
     ``GIT_COMMITTER_NAME``, and ``GIT_COMMITTER_EMAIL`` if the user has a
     connected GitHub account.  Returns ``None`` otherwise.
 
+    *credential_id* is the GitHub account the user picked in this chat, so the
+    identity matches the token the sandbox was given for the same account.
+
     Results are cached for 10 minutes; "not connected" results are cached for
     60 s (same as null-token cache).
     """
-    if user_id in _gh_identity_null_cache:
+    key: _IdentityKey = (user_id, credential_id)
+    if key in _gh_identity_null_cache:
         return None
-    if cached := _gh_identity_cache.get(user_id):
+    if cached := _gh_identity_cache.get(key):
         return cached
 
-    token = await get_provider_token(user_id, "github")
+    token = await get_provider_token(user_id, "github", frozenset(), credential_id)
     if not token:
-        _gh_identity_null_cache[user_id] = True
+        _gh_identity_null_cache[key] = True
         return None
 
     import aiohttp
@@ -266,5 +411,5 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
         "GIT_COMMITTER_NAME": name,
         "GIT_COMMITTER_EMAIL": email,
     }
-    _gh_identity_cache[user_id] = identity
+    _gh_identity_cache[key] = identity
     return identity

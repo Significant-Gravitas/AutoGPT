@@ -101,8 +101,10 @@ Each branch entry includes its name and a URL to browse the repository file tree
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
-| per_page | Number of branches to return per page (max 100) | int | No |
-| page | Page number for pagination | int | No |
+| limit | Maximum number of branches to fetch | int | No |
+| per_page | [Legacy] Number of branches to return per page (max 100). If set (or `page` is set), `limit` is ignored. | int | No |
+| page | [Legacy] Page number for pagination. If set (or `per_page` is set), `limit` is ignored. | int | No |
+| protected | Only include branches that are (un)protected | "all" \| "protected" \| "unprotected" | No |
 
 ### Outputs
 

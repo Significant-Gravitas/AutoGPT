@@ -9,6 +9,16 @@ For a more comprehensive guide using the new SDK pattern with ProviderBuilder an
 
 Blocks are reusable components that can be connected to form a graph representing an agent's behavior. Each block has inputs, outputs, and a specific function. Proper testing is crucial to ensure blocks work correctly and consistently.
 
+## Block Auto-Discovery
+
+All block modules are **automatically discovered and imported** at startup. The block loader in `backend/blocks/__init__.py` uses `Path(__file__).parent.rglob("*.py")` to find every `.py` file in the `blocks/` directory tree. Files named `__init__.py` and those starting with `test_` are excluded.
+
+This means:
+
+- You do **not** need to manually register your block anywhere — just create the file and your `Block` subclass will be picked up automatically.
+- Any **module-level side effects** (e.g., global registrations, print statements) in your block files will execute on import. Keep block packages clean and avoid side-effect-heavy code at module scope.
+- Block auto-discovery does not replace provider setup. For a new API-key integration, follow the [provider auth setup](#api-key-only-provider-auth-recommended-pattern) below: add the provider name, credentials, display metadata, and [integration icon](#integration-icon-required). Frontend provider data is loaded dynamically; no manual frontend provider registration is needed.
+
 ## Creating and Testing a New Block
 
 Follow these steps to create and test a new block:
@@ -346,8 +356,8 @@ response = requests.post(
 )
 ```
 
-The `ProviderName` enum is the single source of truth for which providers exist in our system.
-Naturally, to add an authenticated block for a new provider, you'll have to add it here too.
+The backend discovers provider names from the `ProviderName` enum and the SDK's `AutoRegistry`.
+The `_auth.py` pattern below uses a `ProviderName` member, so add the new provider to that enum. SDK integrations can instead register provider names through `ProviderBuilder`; see the [Block SDK Guide](block-sdk-guide.md).
 
 <details>
 <summary><code>ProviderName</code> definition</summary>
@@ -357,6 +367,96 @@ Naturally, to add an authenticated block for a new provider, you'll have to add 
 ```
 
 </details>
+
+#### API-Key-Only Provider Auth (Recommended Pattern)
+
+For integrations that only use API key authentication (no OAuth), keep credential definitions in `_auth.py` and register display metadata separately. The setup is:
+
+1. **Add to `ProviderName` enum** in `backend/integrations/providers.py`
+2. **Create `_auth.py`** in your block package with credentials type, field factory, and test credentials
+3. **Create the block** using the credentials field from `_auth.py`
+4. **Create `_config.py`** with the provider description and supported auth types for the settings UI
+5. **Add the integration icon** as described [below](#integration-icon-required)
+
+Here's the complete `_auth.py` pattern (using ZeroBounce as a reference):
+
+```python title="backend/blocks/my_provider/_auth.py"
+from typing import Literal
+
+from pydantic import SecretStr
+
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
+from backend.integrations.providers import ProviderName
+
+# Type aliases for your provider
+MyProviderCredentials = APIKeyCredentials
+MyProviderCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.MY_PROVIDER],
+    Literal["api_key"],
+]
+
+
+# Field factory for use in block Input schemas
+def MyProviderCredentialsField() -> MyProviderCredentialsInput:
+    return CredentialsField(
+        description="The My Provider integration requires an API key.",
+    )
+
+
+# Test credentials for block tests
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="my_provider",
+    api_key=SecretStr("mock-my-provider-api-key"),
+    title="Mock My Provider API key",
+    expires_at=None,
+)
+
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
+```
+
+Then use it in your block:
+
+```python title="backend/blocks/my_provider/my_block.py"
+from ._auth import MyProviderCredentials, MyProviderCredentialsField, MyProviderCredentialsInput
+
+class MyBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: MyProviderCredentialsInput = MyProviderCredentialsField()
+        # ... other inputs
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: MyProviderCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        api_key = credentials.api_key.get_secret_value()
+        # ... use the API key
+        yield "result", ...
+```
+
+Register the provider metadata in `_config.py`, following `backend/blocks/zerobounce/_config.py`:
+
+```python title="backend/blocks/my_provider/_config.py"
+from backend.integrations.providers import ProviderName
+from backend.sdk import ProviderBuilder
+
+my_provider = (
+    ProviderBuilder(ProviderName.MY_PROVIDER.value)
+    .with_description("A short description of the integration")
+    .with_supported_auth_types("api_key")
+    .build()
+)
+```
+
+This metadata tells the settings UI which connection methods to offer. It does not replace the credentials declared in `_auth.py`. The block loader imports `_config.py` automatically, and `.build()` registers the provider. OAuth, webhooks, and cost tracking use additional `ProviderBuilder` methods described in the [Block SDK Guide](block-sdk-guide.md).
 
 #### Multiple credentials inputs
 
@@ -406,26 +506,25 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 #### Adding to the frontend
 
-You will need to add the provider (api or oauth) to the `CredentialsInput` component in [`/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx`](<https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx>).
+##### Integration Icon (Required)
 
-```ts title="frontend/src/components/integrations/credentials-input.tsx"
---8 <
-  --"autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx:ProviderIconsEmbed";
+When adding a new integration provider, you **must** add a PNG icon at:
+
+```text
+autogpt_platform/frontend/public/integrations/{provider_name}.png
 ```
 
-You will also need to add the provider to the credentials provider list in [`frontend/src/components/integrations/helper.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/helper.ts).
+The frontend block menu dynamically loads icons using the URL `/integrations/{integration.name}.png` (see `PaginatedIntegrationList.tsx`). If the icon file is missing, the block will show a **broken image** in the builder UI.
 
-```ts title="frontend/src/components/integrations/helper.ts"
---8 <
-  --"autogpt_platform/frontend/src/components/integrations/helper.ts:CredentialsProviderNames";
-```
+Use the same `provider_name` that matches your `ProviderName` enum value (lowercase). For example, if your provider is `ProviderName.SLACK`, the icon should be at `frontend/public/integrations/slack.png`.
 
-Finally you will need to add the provider to the `CredentialsType` enum in [`frontend/src/lib/autogpt-server-api/types.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts).
+##### Frontend Provider Registration
 
-```ts title="frontend/src/lib/autogpt-server-api/types.ts"
---8 <
-  --"autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts:BlockIOCredentialsSubSchema";
-```
+No manual frontend provider registration is required. The credentials provider context fetches provider names from the backend, and the integrations UI uses the description and `supported_auth_types` returned by `GET /integrations/providers`. Set those fields in the backend provider configuration as shown above.
+
+Block credential inputs derive their accepted credential types from the block's input schema. `CredentialsProviderName` is a string type; `CredentialsType` describes authentication methods, not provider names, so neither needs a new frontend enum entry for a provider.
+
+The credentials list has an optional `providerIcons` map in `frontend/src/components/contextual/CredentialsInput/helpers.ts`; unlisted providers use a fallback icon. This is separate from the PNG asset required by the block menu.
 
 #### Example: GitHub integration
 
@@ -773,3 +872,125 @@ You can use MediaFileType to handle the importing and exporting of files out of 
 6. **Update tests when changing block behavior**: If you modify your block, ensure the tests are updated accordingly.
 
 By following these steps, you can create new blocks that extend the functionality of the AutoGPT Agent Server.
+
+## Standalone Unit Tests
+
+In addition to the inline `test_input`/`test_output`/`test_mock` approach described above, you can write standalone unit tests for more complex validation. Place test files alongside your block as `{block_name}_test.py` (e.g., `my_block_test.py`).
+
+!!! warning "Test file naming and auto-discovery"
+    The block loader in `backend/blocks/__init__.py` skips files whose names start with `test_` but still auto-imports files ending in `_test.py` at startup. Keep `_test.py` modules free of module-level side effects (no top-level `patch(...)` / network calls / fixtures-with-side-effects), or name your file `test_{block_name}.py` to opt out of auto-import entirely.
+
+### Test Structure
+
+Two patterns are supported:
+
+**1. Drive the block directly** (mirror `backend/blocks/slack/slack_test.py`) — gives you full control over inputs, mocks, and output assertions:
+
+```python title="backend/blocks/my_provider/my_block_test.py"
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from backend.blocks.my_provider._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.my_provider.my_block import MyBlock
+
+
+async def _collect_outputs(block, input_data, credentials):
+    outputs: dict[str, object] = {}
+    async for name, value in block.run(input_data, credentials=credentials):
+        outputs[name] = value
+    return outputs
+
+
+@pytest.mark.asyncio
+async def test_my_block_success():
+    block = MyBlock()
+    input_data = MyBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,
+        query="test query",
+    )
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"result": "test data"}
+
+    # Patch where the symbol is *used*. The block ecosystem uses
+    # `backend.util.request.Requests` (httpx under the hood), not stdlib `requests`.
+    with patch(
+        "backend.blocks.my_provider.my_block.Requests.post",
+        new_callable=AsyncMock,
+        return_value=mock_resp,
+    ):
+        outputs = await _collect_outputs(block, input_data, TEST_CREDENTIALS)
+
+    assert outputs["result"] == "test data"
+```
+
+**2. Run the block's inline `test_input` / `test_output` / `test_mock`** via the framework helper. The helper takes a block instance only and reads the test data defined on the block itself:
+
+```python title="backend/blocks/my_provider/my_block_test.py"
+import pytest
+
+from backend.blocks.my_provider.my_block import MyBlock
+from backend.util.test import execute_block_test
+
+
+@pytest.mark.asyncio
+async def test_my_block_inline_fixtures():
+    await execute_block_test(MyBlock())
+```
+
+### Key Points
+
+- **`TEST_CREDENTIALS_INPUT`** (from `_auth.py`) is used to construct the `Input` object — it contains the credential metadata (provider, id, type).
+- **`TEST_CREDENTIALS`** (from `_auth.py`) is passed to `block.run(..., credentials=...)` — it contains the actual mock API key/token.
+- **`execute_block_test(block)`** runs the block against its own inline `test_input` / `test_output` / `test_mock` attributes (set in `__init__`). It does **not** accept `input_data=` or `credentials=` and does **not** return outputs.
+- The block attribute for test credentials is `test_credentials` (not `test_credentials_input`) when using the inline test pattern in `__init__`.
+- Use `pytest.mark.asyncio` for async block `run()` methods. Mock the HTTP layer where it is *used* — typically `backend.util.request.Requests` (or `httpx.AsyncClient`), not stdlib `requests`.
+
+### Running Tests
+
+```bash
+# Run a specific block's standalone tests
+poetry run pytest backend/blocks/my_provider/my_block_test.py -xvs
+
+# Run all block tests (inline test_input/test_output validation)
+poetry run pytest backend/blocks/test/test_block.py -xvs
+
+# Test a specific block by name (inline tests)
+poetry run pytest 'backend/blocks/test/test_block.py::test_available_blocks[MyBlock]' -xvs
+```
+
+## Block Documentation Sync
+
+After creating or modifying blocks, you must regenerate the block documentation to keep it in sync with the code.
+
+### Generating Documentation
+
+```bash
+cd autogpt_platform/backend
+poetry run python scripts/generate_block_docs.py
+```
+
+For provider packages, the generator writes one page per Python module:
+
+```
+docs/integrations/block-integrations/{provider}/{module}.md
+```
+
+For example, `backend/blocks/zerobounce/validate_emails.py` generates `docs/integrations/block-integrations/zerobounce/validate_emails.md`. Top-level block modules are grouped into category pages such as `docs/integrations/block-integrations/basic.md`.
+
+### CI Enforcement
+
+The **"Block Documentation Sync Check"** CI workflow (`.github/workflows/docs-block-sync.yml`) runs on every PR that touches files in `backend/blocks/` or `docs/integrations/`. It runs the generator in `--check` mode and fails the build if docs are out of sync.
+
+If CI fails with a docs sync error, run the generator locally, commit the updated docs, and push.
+
+### Manual Sections
+
+The generated docs support manually-written content that is preserved across regeneration. Use these markers in the generated markdown files:
+
+```markdown
+<!-- MANUAL: use_case -->
+Your custom usage examples here. This will not be overwritten.
+<!-- END MANUAL -->
+```
+
+Use the generator-supported block sections `how_it_works`, `use_case`, and `extras`, or file-level `file_description` and `additional_content`. Keep the existing markers rather than inventing section names. These sections hold usage examples, caveats, and integration notes that cannot be generated from block metadata.

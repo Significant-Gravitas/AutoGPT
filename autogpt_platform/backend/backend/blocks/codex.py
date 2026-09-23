@@ -147,8 +147,8 @@ class CodeGenerationBlock(Block):
             title="Transport",
             default=CodexExecutionTransport.OPENAI_API,
             description=(
-                "Use an OpenAI API key or your connected ChatGPT plan through "
-                "Codex App Server."
+                "Use an OpenAI API key, or your connected ChatGPT subscription "
+                "through Codex App Server if supported by your plan."
             ),
             advanced=False,
         )
@@ -197,6 +197,7 @@ class CodeGenerationBlock(Block):
     def __init__(self):
         super().__init__(
             id="86a2a099-30df-47b4-b7e4-34ae5f83e0d5",
+            capability_kind="primitive",
             description=(
                 "Generate or refactor code using an OpenAI API key or a connected "
                 "ChatGPT plan through Codex App Server."

@@ -9,7 +9,7 @@ import pytest
 
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 
 def _application_user(user_id: str, email: str) -> user_module.User:
@@ -614,3 +614,89 @@ class TestGetAuthUserFlagFields:
             fields = await user_module.get_auth_user_flag_fields("ghost")
 
         assert fields is None
+
+
+class TestGetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_returns_the_saved_route(self):
+        user = _application_user("user-1", "user@example.com")
+        user.default_chat_auth_provider = "codex"
+        user.default_chat_credential_id = "cred-1"
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == ("codex", "cred-1")
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_platform_row_yet_reads_as_nothing_saved(self):
+        """Sign-up leaves a window before ``POST /auth/user`` creates the row.
+
+        Transport discovery and session creation both read this on paths that
+        never touched the user table before the setting existed, so raising
+        here would take them down for a freshly signed-up account.
+        """
+        with patch.object(
+            user_module,
+            "get_user_by_id",
+            AsyncMock(side_effect=ValueError("User not found with ID: user-1")),
+        ):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_an_old_cached_user_without_route_fields_reads_as_nothing_saved(self):
+        user = _application_user("user-1", "user@example.com")
+        user.__dict__.pop("default_chat_auth_provider", None)
+        user.__dict__.pop("default_chat_credential_id", None)
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
+
+
+class TestSetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_missing_user_is_reported_as_not_found(self):
+        with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+            prisma_user = mock_prisma_user.prisma.return_value
+            prisma_user.find_unique = AsyncMock(return_value=None)
+            prisma_user.update_many = AsyncMock()
+
+            with pytest.raises(NotFoundError, match="User user-1 not found"):
+                await user_module.set_user_default_chat_route(
+                    "user-1", "platform", None
+                )
+
+        prisma_user.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clearing_provider_also_clears_stale_credential_id(self):
+        prisma_user = MagicMock(id="user-1", email="user@example.com")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.get_user_by_id, "cache_delete") as by_id_del,
+            patch.object(user_module.get_user_by_email, "cache_delete") as by_email_del,
+            patch.object(user_module.get_or_create_user, "cache_clear") as goc_clear,
+        ):
+            prisma = mock_prisma_user.prisma.return_value
+            prisma.find_unique = AsyncMock(return_value=prisma_user)
+            prisma.update_many = AsyncMock(return_value=1)
+
+            await user_module.set_user_default_chat_route(
+                "user-1", None, "stale-credential"
+            )
+
+        prisma.update_many.assert_awaited_once_with(
+            where={"id": "user-1"},
+            data={
+                "defaultChatAuthProvider": None,
+                "defaultChatCredentialId": None,
+            },
+        )
+        by_id_del.assert_called_once_with("user-1")
+        by_email_del.assert_called_once_with("user@example.com")
+        goc_clear.assert_called_once_with()

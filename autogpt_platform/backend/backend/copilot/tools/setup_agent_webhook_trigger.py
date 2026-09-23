@@ -1,6 +1,6 @@
 """Tool for setting up a webhook-triggered preset for a library agent.
 
-Wraps the same logic as the ``POST /presets/setup-trigger`` route so AutoPilot
+Wraps the same logic as the ``POST /presets/setup-trigger`` route so Otto
 can set up a webhook trigger end-to-end and hand the user the correct ingress
 URL for manual-setup webhooks.
 
@@ -24,11 +24,13 @@ from backend.data.graph import GraphModel, Node
 from backend.data.model import Credentials, CredentialsMetaInput
 from backend.util.exceptions import (
     InvalidInputError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
 )
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants, require_installed_workflow
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -186,6 +188,15 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if error:
             return error
         assert graph is not None
+        scope_error = await require_installed_workflow(
+            user_id,
+            session,
+            graph_id=graph.id,
+            library_agent_id=(kwargs.get("library_agent_id") or "").strip() or None,
+            name=graph.name,
+        )
+        if scope_error is not None:
+            return scope_error
 
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(
@@ -204,7 +215,12 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             return config_required
 
         agent_credentials, card = await self._resolve_credentials(
-            user_id, graph, trigger_node, kwargs.get("credentials") or {}, session_id
+            user_id,
+            graph,
+            trigger_node,
+            kwargs.get("credentials") or {},
+            session_id,
+            session.expert_id,
         )
         if card:
             return card
@@ -219,9 +235,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 description=(kwargs.get("description") or "").strip(),
                 trigger_config=kwargs.get("trigger_config") or {},
                 agent_credentials=agent_credentials,
+                expert_id=session.expert_id,
             )
         except (
             InvalidInputError,
+            MissingConfigError,
             NotFoundError,
             WebhookRegistrationError,
         ) as e:
@@ -272,7 +290,10 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             graph_id = library_agent.graph_id
             graph_version = library_agent.graph_version
 
-        graph = await graph_db().get_graph(graph_id, graph_version, user_id=user_id)
+        # Sub-graphs are needed to aggregate the full set of required credentials.
+        graph = await graph_db().get_graph(
+            graph_id, graph_version, user_id=user_id, include_subgraphs=True
+        )
         if not graph:
             return None, ErrorResponse(
                 message=f"Agent graph '{graph_id}' not found.",
@@ -309,7 +330,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "configuration and pass it as `trigger_config` — do NOT guess "
                 "values (e.g. don't invent a repository name). The required "
                 "fields and their schema are below; once you have the user's "
-                "answers, call setup_agent_webhook_trigger again with "
+                "answers, call tool:setup_agent_webhook_trigger again with "
                 "`trigger_config` filled in."
             ),
             session_id=session_id,
@@ -326,6 +347,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         trigger_node: Node,
         selection: dict[str, str],
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], SetupRequirementsResponse | None]:
         """Resolve the agent's credentials, or return a setup card to fill them.
 
@@ -337,12 +359,14 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         Returns ``(agent_credentials, None)`` when ready to proceed, or
         ``({}, SetupRequirementsResponse)`` when the user must act first.
         """
-        matched, _ = await match_user_credentials_to_graph(user_id, graph)
+        matched, _ = await match_user_credentials_to_graph(
+            user_id, graph, expert_id, session_id=session_id
+        )
         trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
 
         effective = dict(matched)
         if selection:
-            available = await get_user_credentials(user_id)
+            available = await get_user_credentials(user_id, expert_id)
             effective.update(self._resolve_selection(graph, selection, available))
 
         # Force the trigger credential into the card until it's explicitly
@@ -352,7 +376,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             for key, cred in effective.items()
             if not (key == trigger_cred_key and trigger_cred_key not in selection)
         }
-        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        card_missing = await annotate_expert_grants(
+            user_id,
+            expert_id,
+            build_missing_credentials_from_graph(graph, matched_for_card),
+        )
         if card_missing:
             return {}, self._build_card(graph, card_missing, session_id)
 

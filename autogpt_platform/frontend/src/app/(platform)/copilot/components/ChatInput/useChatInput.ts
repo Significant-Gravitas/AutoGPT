@@ -1,4 +1,6 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { describeSendFailure } from "./helpers";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
@@ -20,7 +22,8 @@ export function useChatInput({
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
+  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
+    useCopilotUIStore();
 
   useEffect(
     function consumeInitialPrompt() {
@@ -64,9 +67,23 @@ export function useChatInput({
 
     isSubmittingRef.current = true;
     setIsSending(true);
+    // Clear eagerly: onSend can resolve only when the whole stream finishes,
+    // which would leave the sent text sitting in the composer for the entire
+    // turn. On failure the draft is restored (see restoreFailedDraft).
+    setValue("");
     try {
       await onSend(trimmedMessage);
-      setValue("");
+      notifyMessageSent();
+    } catch (error) {
+      setValue((current) => restoreFailedDraft(current, message));
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(
+          error,
+          "your message is back in the composer",
+        ),
+        variant: "destructive",
+      });
     } finally {
       isSubmittingRef.current = false;
       setIsSending(false);
@@ -92,4 +109,13 @@ export function useChatInput({
     handleChange,
     isSending,
   };
+}
+
+/** A failed send must never cost the user their words. The composer was
+ *  cleared eagerly, so the failed message goes back in — and if they started
+ *  a new draft during the stream, BOTH are kept: silently picking a winner
+ *  deletes the other one for good. */
+function restoreFailedDraft(current: string, failed: string) {
+  if (!current.trim() || current === failed) return failed;
+  return `${failed}\n\n${current}`;
 }

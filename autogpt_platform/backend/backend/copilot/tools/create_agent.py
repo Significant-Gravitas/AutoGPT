@@ -14,6 +14,7 @@ from .agent_json_input import (
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import install_saved_agent
 from .helpers import require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
 
@@ -31,7 +32,7 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, "
-            "auto-fixes, and saves. Requires get_agent_building_guide and "
+            "auto-fixes, and saves. Requires tool:get_agent_building_guide and "
             "find_library_agent(for_creation=true) first."
         )
 
@@ -119,7 +120,7 @@ class CreateAgentTool(BaseTool):
                 "Please provide agent_json with the complete agent graph "
                 '(inline or as an "@@agptfile:<path>" string), or '
                 "agent_json_ref pointing at the workspace agent file. "
-                "Use find_block to discover blocks, then generate the JSON."
+                'Use find_capability(context="graph") to discover blocks, then generate the JSON.'
             ),
         )
         if resolve_error is not None:
@@ -150,7 +151,7 @@ class CreateAgentTool(BaseTool):
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
 
-        return await fix_validate_and_save(
+        saved = await fix_validate_and_save(
             agent_json,
             user_id=user_id,
             session_id=session_id,
@@ -161,3 +162,6 @@ class CreateAgentTool(BaseTool):
             folder_id=folder_id,
             is_hidden=is_hidden,
         )
+        if user_id:
+            return await install_saved_agent(user_id, session, saved)
+        return saved

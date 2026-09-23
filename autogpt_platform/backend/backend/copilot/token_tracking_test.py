@@ -613,3 +613,35 @@ class TestPlatformCostLogging:
         # Negative cost rejected — falls back to token-based tracking
         assert entry.cost_microdollars is None
         assert entry.metadata["tracking_type"] == "tokens"
+
+
+@pytest.mark.asyncio
+async def test_usage_charges_the_tree_ledger(monkeypatch):
+    """The tree charge is the only thing that makes the spend ceiling bind;
+    nothing asserted it was reached, or with what amount."""
+    from backend.copilot import token_tracking
+    from backend.copilot.context import set_execution_context
+    from backend.copilot.tree import TurnEnvelope
+
+    charged: list[tuple[str, int]] = []
+
+    async def _charge(envelope, microdollars):
+        charged.append((envelope.tree_id, microdollars))
+
+    monkeypatch.setattr(token_tracking, "charge_turn", _charge)
+    monkeypatch.setattr(token_tracking, "record_cost_usage", AsyncMock())
+    monkeypatch.setattr(token_tracking, "_schedule_cost_log", lambda entry: None)
+
+    set_execution_context("u1", None, envelope=TurnEnvelope(tree_id="tree-9", depth=1))
+    try:
+        await token_tracking.persist_and_record_usage(
+            session=None,
+            user_id="u1",
+            prompt_tokens=10,
+            completion_tokens=5,
+            cost_usd=0.25,
+        )
+    finally:
+        set_execution_context(None, None, envelope=None)
+
+    assert charged == [("tree-9", 250_000)]

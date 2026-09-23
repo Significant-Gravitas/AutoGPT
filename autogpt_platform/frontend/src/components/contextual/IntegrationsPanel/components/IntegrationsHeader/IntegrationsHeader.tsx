@@ -15,13 +15,12 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
       <div className="flex min-w-0 flex-col">
         {withTitle && (
           <Text variant="h4" as="h1" className="leading-[28px] text-[#1F1F20]">
-            Third Party Integrations
+            Integrations
           </Text>
         )}
         <Text variant="body" className="mt-4 max-w-[600px] text-[#505057]">
-          Manage the 3rd party accounts you&apos;ve connected to AutoGPT. These
-          are services that can be used by your agents — like Gmail for sending
-          emails, GitHub for code, or Notion for documents.
+          Connect AI subscriptions to power your agents, and third-party tools
+          for them to use.
         </Text>
       </div>
 

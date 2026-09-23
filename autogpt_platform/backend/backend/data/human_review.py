@@ -19,7 +19,7 @@ from prisma.models import (
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
-from backend.api.features.executions.review.model import (
+from backend.api.features.graph_executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
@@ -29,6 +29,7 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import get_graph_execution_meta
+from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
@@ -45,6 +46,24 @@ class ReviewResult(BaseModel):
     message: str = ""
     processed: bool
     node_exec_id: str
+
+
+async def _sync_awaiting_review_safely(user_id: str, graph_id: str) -> None:
+    """Keep the awaiting-review alert from deciding whether a review succeeds.
+
+    The alert is a notification side effect. Raising here would report failure
+    for a review that was actually recorded — the node is already paused, or
+    the rows are already marked REJECTED by the time this runs — and would roll
+    the caller back over a notification problem.
+    """
+    try:
+        await sync_awaiting_review(user_id, graph_id)
+    except Exception:
+        logger.warning(
+            "Could not sync the awaiting-review alert for graph %s",
+            graph_id,
+            exc_info=True,
+        )
 
 
 def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
@@ -237,6 +256,9 @@ async def get_or_create_human_review(
 
     # If pending, return None to continue waiting, otherwise return the review result
     if review.status == ReviewStatus.WAITING:
+        # Nothing sends until a human acts, which is exactly the shape of an
+        # Alert. The engine debounces and coalesces from here.
+        await _sync_awaiting_review_safely(user_id, graph_id)
         return None
     else:
         return ReviewResult(
@@ -250,7 +272,7 @@ async def get_or_create_human_review(
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional["PendingHumanReviewModel"]:
+) -> Optional[PendingHumanReviewModel]:
     """
     Get a pending review by its node execution ID.
 
@@ -368,7 +390,7 @@ async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
 
 async def get_pending_reviews_for_user(
     user_id: str, page: int = 1, page_size: int = 25
-) -> list["PendingHumanReviewModel"]:
+) -> list[PendingHumanReviewModel]:
     """
     Get all pending reviews for a user with pagination.
 
@@ -403,9 +425,9 @@ async def _enrich_pending_reviews(
     rather than one round-trip per row:
       - ``node_id``, from the node executions
       - expert attribution (from the graph execution, or from the chat
-        session for CoPilot run_block reviews)
+        session for CoPilot run_capability reviews)
       - the requesting agent's display name and library agent id
-      - the chat session id, for CoPilot run_block reviews
+      - the chat session id, for CoPilot run_capability reviews
 
     Mutates and returns the given models in place.
     """
@@ -652,6 +674,11 @@ async def process_all_reviews_for_execution(
     # Execute all updates in parallel and get updated reviews
     updated_reviews = await asyncio.gather(*update_tasks) if update_tasks else []
 
+    # Re-derive the "waiting on your review" alert from the live queue, so
+    # clearing the last item resolves it rather than leaving a stale alert.
+    for review in {(r.userId, r.graphId) for r in reviews_to_process}:
+        await _sync_awaiting_review_safely(review[0], review[1])
+
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
@@ -722,13 +749,14 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "reviewedAt": datetime.now(timezone.utc),
         },
     )
+    await sync_awaiting_review(user_id, graph_exec.graph_id)
     return result
 
 
 async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
-    Used by CoPilot's continue_run_block to clean up one-time-use review records
+    Used by CoPilot's resume_capability to clean up one-time-use review records
     after successful execution.
 
     Args:

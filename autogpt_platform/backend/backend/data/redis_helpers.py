@@ -153,6 +153,18 @@ return 1
 """
 
 
+def as_str(value: bytes | str | None) -> str | None:
+    """Coerce a value read back from Redis to ``str``.
+
+    Our clients decode responses, but redis-py types every read as
+    ``bytes | str | None``; this keeps that knowledge in one place instead of
+    an ``isinstance`` at every call site.
+    """
+    if value is None:
+        return None
+    return value if isinstance(value, str) else value.decode()
+
+
 async def incr_with_ttl(
     redis: AsyncRedisClient,
     key: str,

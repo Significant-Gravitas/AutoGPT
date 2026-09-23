@@ -1,6 +1,6 @@
 """Platform-agnostic bot config."""
 
-# Cache TTL for AutoPilot session IDs (per channel/thread).
+# Cache TTL for Otto session IDs (per channel/thread).
 #
 # Must be >= the thread auto-reply subscription TTL (``threads.
 # THREAD_SUBSCRIPTION_TTL``, 7 days). If it's shorter, the bot keeps

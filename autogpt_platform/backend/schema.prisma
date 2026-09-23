@@ -111,21 +111,34 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
-  maxEmailsPerDay              Int     @default(3)
-  notifyOnAgentRun             Boolean @default(true)
-  notifyOnZeroBalance          Boolean @default(true)
-  notifyOnLowBalance           Boolean @default(true)
-  notifyOnBlockExecutionFailed Boolean @default(true)
-  notifyOnContinuousAgentError Boolean @default(true)
-  notifyOnDailySummary         Boolean @default(true)
-  notifyOnWeeklySummary        Boolean @default(true)
-  notifyOnMonthlySummary       Boolean @default(true)
-  notifyOnAgentApproved        Boolean @default(true)
-  notifyOnAgentRejected        Boolean @default(true)
+  maxEmailsPerDay Int @default(3)
+
+  // The volume knob from the Briefing footer: a frequency plus two switches,
+  // instead of one unsubscribe trapdoor.
+  briefingFrequency    BriefingFrequency @default(WEEKLY)
+  alertsEnabled        Boolean           @default(true)
+  notifyOnStoreVerdict Boolean           @default(true)
+
+  // Last Briefing actually sent, so a re-run of the scheduler can't send the
+  // same period twice and the next period knows where to start.
+  lastBriefingAt DateTime?
+
+  // Set the first time this user pays for a plan. Doubles as the "first
+  // subscription" test for the welcome email and its idempotency key.
+  welcomeEmailSentAt DateTime?
 
   timezone String @default("not-set")
 
-  subscriptionTier SubscriptionTier @default(NO_TIER)
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
+
+  subscriptionTier  SubscriptionTier   @default(NO_TIER)
+  subscriptionTrial SubscriptionTrial?
 
   // Relations
 
@@ -137,10 +150,13 @@ model User {
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   UserBriefings        UserBriefing[]
+  ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
+  ExpertPods           ExpertPod[]
+  ExpertRoutines       ExpertRoutine[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -150,9 +166,12 @@ model User {
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
+  SkillListings         SkillListing[]
+  SkillVersionsReviewed SkillListingVersion[]   @relation("SkillVersionsReviewed")
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
@@ -171,6 +190,61 @@ model User {
   // Platform bot linking
   PlatformLinks     PlatformLink[]
   PlatformUserLinks PlatformUserLink[]
+
+  ExperimentAssignments ExperimentAssignment[]
+  Attribution           UserAttribution?
+}
+
+// One row per (user, experiment): the arm a user was bucketed into the first
+// time the experiment was evaluated for them. Written once and never
+// overwritten, so analytics can join a stable arm to every later event
+// (runs, retention, spend) without depending on the flag provider's history.
+model ExperimentAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  experimentKey String
+  variant       String
+  // "posthog" when the frontend reports a PostHog-evaluated flag,
+  // "backend" when the server bucketed the user itself.
+  source        String
+
+  @@unique([userId, experimentKey])
+  @@index([experimentKey, variant])
+}
+
+// Where a user came from, captured once around signup. Holds the identities
+// the analytics tools know the user by before they had a user id, so the
+// database can join marketing attribution (DataFast), product analytics
+// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
+// anonymous id) to activation and revenue. Fields are filled at most once.
+model UserAttribution {
+  userId    String   @id
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  anonymousId       String?
+  // PostHog $device_id at the time of reporting, when it differs.
+  posthogDistinctId String?
+  datafastVisitorId String?
+  datafastSessionId String?
+
+  // First landing on the site, as seen by the browser that later signed up.
+  landingPath  String?
+  referrer     String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  // "email" | "google" when the account was created in this browser session.
+  signupMethod String?
+
+  @@index([anonymousId])
+  @@index([datafastVisitorId])
 }
 
 enum ChatSessionStatus {
@@ -181,11 +255,51 @@ enum ChatSessionStatus {
 
 enum SubscriptionTier {
   NO_TIER
+  TRIAL
   BASIC
   PRO
   MAX
   BUSINESS
   ENTERPRISE
+}
+
+model SubscriptionTrial {
+  id                        String    @id @default(uuid())
+  userId                    String    @unique
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer                     Json
+  stripeCustomerId          String
+  stripeCheckoutSessionId   String?   @unique
+  stripeSubscriptionId      String?   @unique
+  stripeConversionInvoiceId String?   @unique
+  notificationRevision      Int       @default(0)
+  checkoutAttempt           Int       @default(0)
+  checkoutSuccessUrl        String
+  checkoutCancelUrl         String
+  checkoutMetadata          Json      @default("{}")
+  status                    String    @default("checkout_pending")
+  rejectionReason           String?
+  cardVerifiedAt            DateTime?
+  startedAt                 DateTime?
+  endsAt                    DateTime?
+  consumedAt                DateTime?
+  convertedAt               DateTime?
+  cancelAtPeriodEnd         Boolean   @default(false)
+  costMicrodollars          BigInt    @default(0)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([status, endsAt])
+  @@index([stripeCustomerId, id])
+}
+
+// No account/trial foreign key: deleting an account must not reset intro eligibility.
+model SubscriptionTrialClaim {
+  key       String   @id
+  trialId   String
+  createdAt DateTime @default(now())
+
+  @@index([trialId])
 }
 
 model UserOnboarding {
@@ -197,19 +311,19 @@ model UserOnboarding {
   // backend, OpenAPI-generated union on the frontend). Storing as String[]
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
-  completedSteps                String[]         @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      String[]         @default([])
-  rewardedFor                   String[]         @default([])
+  completedSteps                String[]  @default([])
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -274,17 +388,22 @@ model OnboardingBrainDump {
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
   /// is instant — the user has already waited through the loading screen.
-  greeting         String?
+  greeting             String?
   /// List of {title, prompt} objects the user can pick from under the
   /// greeting. JSON so the shape can evolve without a migration.
-  suggestedPrompts Json    @default("[]")
+  suggestedPrompts     Json    @default("[]")
   /// True once the user has sent their first message. The greeting is
   /// never shown again after this, but its content is kept.
-  greetingSeen     Boolean @default(false)
+  greetingSeen         Boolean @default(false)
   /// List of {provider, reason} objects Claude picks from the transcript
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
   recommendedProviders Json?
+  /// The team AutoPilot proposes off the back of the dump: {diagnosis,
+  /// experts, raise_suggestion, source}, where every expert is a live
+  /// roster template. Null until its background job writes a result;
+  /// `source="disabled"` records a run the feature flag switched off.
+  recommendedExperts   Json?
 
   @@index([userId])
 }
@@ -310,6 +429,46 @@ model UserBriefing {
   // Every read is by user + date (latest-first or exact date), so the unique
   // index above serves them all — no secondary index to pay for on write.
   @@unique([userId, briefingDate])
+}
+
+enum ActivityEventCategory {
+  FILE
+  INTEGRATION
+  RUN
+  SCHEDULE
+}
+
+// Append-only audit log of work agents performed on the user's behalf:
+// side-effecting copilot tool calls, credentialed block executions, and
+// run completions. Powers the Home "Recent work" feed.
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  // Soft references on purpose: events must outlive the expert, session or
+  // schedule that produced them, so attribution falls back to `data`.
+  expertId    String?
+  sessionId   String?
+  graphExecId String?
+  nodeExecId  String?
+  scheduleId  String?
+
+  category  ActivityEventCategory
+  eventType String
+  provider  String?
+  objectId  String?
+  title     String
+  data      Json                  @default("{}")
+
+  @@index([userId, createdAt])
+  @@index([userId, category, createdAt])
+  @@index([sessionId])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -364,7 +523,10 @@ model UserWorkspaceFile {
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
 
-  @@unique([workspaceId, path])
+  // Paths are unique among LIVE files, which Prisma cannot express: the rule is
+  // a partial unique index created in migrations
+  // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
+  // the path it was deleted at.
   @@index([workspaceId, isDeleted])
   @@index([folderId])
 }
@@ -382,7 +544,7 @@ model UserWorkspaceFolder {
   name String
   icon String?
 
-  // Forward-compat for nesting; unused by the v1 API (always null).
+  // Null = a folder at the workspace root.
   parentId String?
   Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   Children UserWorkspaceFolder[] @relation("WorkspaceFolderHierarchy")
@@ -391,7 +553,9 @@ model UserWorkspaceFolder {
 
   Files UserWorkspaceFile[]
 
-  @@unique([workspaceId, parentId, name])
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migrations
+  // ("..._workspaceId_parentId_name_live_key" and "..._workspaceId_name_root_key").
   @@index([workspaceId, isDeleted])
 }
 
@@ -581,6 +745,14 @@ model ChatMessage {
   model         String?
   routingSource String?
 
+  // Which connection served this assistant turn. The session's metadata is
+  // the route a chat STARTS on; these record the route a turn actually RAN
+  // on, so a later route change cannot rewrite what already happened.
+  // Null on user/tool rows and on rows predating this column, where the
+  // session's own route is the answer (see `segment_of`).
+  llmAuthProvider String?
+  llmCredentialId String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -699,19 +871,88 @@ model AgentPreset {
   @@index([organizationId])
 }
 
+// The four product-notification families plus the account/billing service
+// messages. Every email the platform sends is one of these; there is
+// deliberately no per-run notification type — a finished run is evidence for
+// the Briefing's highlights, not a message of its own.
 enum NotificationType {
-  AGENT_RUN
-  ZERO_BALANCE
+  BRIEFING
+  ALERT
+  VERDICT
+  OPS
+  SUBSCRIPTION_WELCOME
+  PAYMENT_FAILED
+  PAYMENT_FINAL_NOTICE
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RESUMED
+  SUBSCRIPTION_ENDED
+  TRIAL_UPDATE
+}
+
+// How often the Briefing is delivered. OFF is the "alerts only" / "pause"
+// half of the footer volume knob; `alertsEnabled` carries the other half.
+enum BriefingFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  OFF
+}
+
+// Every condition the Alert family can fire for. The last four have no
+// equivalent in the notification surface this replaces.
+enum AlertCause {
+  AUTH_EXPIRED
+  PAUSED_FAILURES
+  BLOCK_FAILED
+  CONTINUOUS_ERROR
+  AWAITING_REVIEW
+  AWAITING_INPUT
   LOW_BALANCE
-  BLOCK_EXECUTION_FAILED
-  CONTINUOUS_AGENT_ERROR
-  DAILY_SUMMARY
-  WEEKLY_SUMMARY
-  MONTHLY_SUMMARY
-  REFUND_REQUEST
-  REFUND_PROCESSED
-  AGENT_APPROVED
-  AGENT_REJECTED
+  ZERO_BALANCE
+  GUARDRAIL
+}
+
+enum AlertConditionStatus {
+  // Raised, inside the debounce window, not yet emailed.
+  PENDING
+  // Emailed. Blocks the same cause from re-alerting for 24h.
+  SENT
+  // Deduped or capped — folds into the next Briefing's attention block
+  // instead of re-pinging the inbox.
+  DEFERRED
+  // Cleared before it was ever sent, or fixed afterwards.
+  RESOLVED
+}
+
+// One row per live "the platform is blocked on the human" condition. The
+// alert engine debounces (10 min), coalesces, dedupes per cause per 24h and
+// caps sends at two a day off this table; anything it can't send lands in the
+// Briefing rather than being dropped.
+model AlertCondition {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cause    AlertCause
+  // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
+  // id>"), so re-raising the same condition updates one row instead of piling
+  // up duplicates, and resolving it can find the row without the payload.
+  causeKey String
+  data     Json
+
+  status     AlertConditionStatus @default(PENDING)
+  sentAt     DateTime?
+  resolvedAt DateTime?
+  // Set once the condition has been carried into a Briefing's attention
+  // block, so the next Briefing doesn't repeat it.
+  briefedAt  DateTime?
+
+  @@unique([userId, causeKey])
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 model NotificationEvent {
@@ -771,9 +1012,9 @@ model PushSubscription {
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   lastRunAt DateTime?
 
   userId String
@@ -865,17 +1106,28 @@ model Expert {
   ownerUserId String?
   OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  name      String
-  avatarUrl String?
-  role      String
-  tagline   String?
-  identity  String
-  bio       String?
-  skills    String[] @default([])
-  voicePreferences String @default("")
-  boundaries       String @default("")
+  name             String
+  avatarUrl        String?
+  // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
+  color            String   @default("")
+  role             String
+  // What the expert would be called on a team ("Social Media Manager"); the
+  // `role` above names the area it covers. null on raised experts.
+  jobTitle         String?
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  // Free-text `role` cannot stand in: "Ops" folds onto no canonical
+  // category, and a raised expert's role is whatever its owner typed.
+  categories       String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
 
   toolProfile Json?
+
+  // Template-only: up to three creator-written "sets up on day one" rows.
+  dayOne Json?
 
   isTemplate       Boolean  @default(false)
   sourceTemplateId String?
@@ -887,16 +1139,29 @@ model Expert {
   // Weekly credit guardrail: null = platform default from config.
   // Spend is tracked per ISO week in Redis and reconciled from
   // CreditTransaction via the execution's expertId.
-  weeklyBudget Int?
+  weeklyBudget      Int?
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
 
+  // Null until the credential allow-list has been seeded from the expert's
+  // installed workflows. Distinguishes "never curated" from "deliberately
+  // empty": without it, revoking an expert's last credential would look
+  // identical to a fresh expert and re-seed the grant straight back.
+  credentialsSeededAt DateTime?
+
   Workflows       ExpertWorkflow[]
+  Credentials     ExpertCredential[]
   ChatSessions    ChatSession[]
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
+  BundledSkills   ExpertSkillListing[]
+  Routines        ExpertRoutine[]
+
+  // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
+  podId String?
+  Pod   ExpertPod? @relation(fields: [podId], references: [id], onDelete: SetNull)
 
   // Tenancy
   organizationId String?
@@ -911,6 +1176,7 @@ model Expert {
   @@index([isTemplate, isArchived])
   @@index([teamId])
   @@index([organizationId])
+  @@index([podId])
 }
 
 // Join between an Expert and a workflow (marketplace agent) installed on it.
@@ -940,6 +1206,157 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
+  @@index([expertId, createdAt, id])
+}
+
+// Where a routine's turn lands each time it fires.
+enum ExpertRoutineSource {
+  // Shipped by a roster or a shared package. Its prompt was written by someone
+  // who will never see the account it runs on, so it arrives reaching nothing
+  // and stays that way until the owner grants it.
+  TEMPLATE
+  // Dictated by the owner in their own chat. There is no third party in the
+  // prompt, so it runs with the same reach a `schedule_followup` has always had.
+  OWNER
+}
+
+enum ExpertRoutineSession {
+  // A brand-new chat every fire. No memory of the last run.
+  FRESH
+  // One named chat, pinned when the routine was switched on: the one it was
+  // set up in unless the owner named another. Any session the owner holds in
+  // the same expert scope is allowed, which is the one thing `schedule_followup`
+  // could do that a routine could not.
+  PINNED
+  // One durable thread of its own, minted at the first fire and reused after.
+  // Per routine, not per expert, so two routines on the same cadence never
+  // interleave into one conversation. With `graphiti-memory` off this thread
+  // IS the routine's memory, which is why it is the default.
+  THREAD
+}
+
+// Standing work an expert does unattended: a prompt on a cadence, firing as a
+// copilot turn. `schedule_followup` is the primitive underneath; this is the
+// durable record that owns the cadence, the thread, and the on/off state.
+//
+// Template rows are proposals — a draft prompt, a suggested cadence, and the
+// questions an owner has to answer before it can run. Hiring copies them OFF,
+// because a cadence that fires unattended from the day of hire is a much
+// bigger promise than a skill. Switching one on resolves the proposal into the
+// routine that actually runs.
+model ExpertRoutine {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Null when the routine is the account's own standing work rather than an
+  // expert's — Otto is the platform's default assistant, not a row in Expert,
+  // so its routines have no expert to hang off. Exactly one of expertId and
+  // userId is set: a template or hire row names the expert and takes its owner
+  // from it; an account row names the owner directly.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Roster/shared slug, and the key `_sync_routines` matches on. Null when the
+  // expert authored this one in conversation; Postgres treats NULLs as
+  // distinct, so the unique below still allows many authored rows.
+  key String?
+
+  title  String
+  // The proposal on a template row; what actually runs once resolved.
+  prompt String
+  // One routine, several fire times — a callback sweep that runs at 08:30 and
+  // again at 13:00 is one thing the owner switched on, not two. Template rows
+  // hold the suggested cadence; hire rows hold the resolved one.
+  crons  String[]
+  // What the owner has to tell the expert before this can run: which repo,
+  // which inbox, what time. Carried from the source package's installer block.
+  // A routine with unanswered asks cannot be switched on.
+  asks   String[]
+
+  sessionMode ExpertRoutineSession @default(THREAD)
+  // THREAD: null until the first fire mints it, then reused. PINNED: the chat
+  // the owner named. FRESH: stays null.
+  sessionId   String?
+
+  // Where the prompt came from, which is what decides how far a fire-time turn
+  // can reach. Nothing else in the row answers that: a proposal and an
+  // owner's own words are both just text by the time they are scheduled.
+  source ExpertRoutineSource @default(TEMPLATE)
+
+  // Exactly one of `crons` and `runAt` is set. `runAt` is the one-shot — "check
+  // the deploy at six" — which gets a row like any other so it can be listed,
+  // renamed, cancelled and counted rather than living only as a scheduler job.
+  runAt   DateTime?
+  // Stamped when a one-shot has run. The row outlives its job on purpose; this
+  // is what stops a spent routine still reading as switched on.
+  firedAt DateTime?
+
+  // One scheduler job per cron. Empty means off — off is the absence of a job,
+  // not a paused one, so a routine nobody switched on costs the scheduler
+  // nothing.
+  scheduleIds           String[]
+  enabledAt             DateTime?
+  // Set when the owner resolved the proposal (a time, a source, a rewrite).
+  // From then on the row is theirs and roster edits never touch it again.
+  customizedAt          DateTime?
+  // False means the fire-time turn resolves an EMPTY credential allow-list, so
+  // the routine provably reaches nothing outside the platform — the rule
+  // `PreloadSeed.cron` states for preloads, enforced rather than asserted.
+  // Seeded and shared rows always arrive false; only an owner binding this
+  // routine to their connections sets it.
+  grantsCredentials     Boolean   @default(false)
+  // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
+  // what archiving paused, never one the owner had switched off themselves.
+  pausedByExpertArchive Boolean   @default(false)
+
+  @@unique([expertId, key])
+  @@index([expertId, createdAt, id])
+  @@index([userId, createdAt, id])
+}
+
+// A Skills Hub listing a roster template comes with; hiring installs its
+// active version into the new expert's own skills folder.
+model ExpertSkillListing {
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  skillListingId String
+  SkillListing   SkillListing @relation(fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  // Display order, as the roster declares it.
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@id([expertId, skillListingId])
+  @@index([skillListingId])
+}
+
+// Which of the owner's integration credentials an expert may use.
+// Deny-by-default: an expert with no rows here reaches nothing, so the
+// seeding marker on Expert (credentialsSeededAt) is what keeps existing
+// experts working across the migration.
+model ExpertCredential {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // IntegrationCredential.id for USER-scoped rows. Deliberately NOT a foreign
+  // key: system credentials (platform LLM keys built from settings) never have
+  // a row at all, and reads intersect grants against the user's live
+  // credentials anyway — so a deleted credential leaves an inert grant rather
+  // than blocking the delete or cascading a revoke the user did not ask for.
+  credentialId String
+  // Denormalized so listing an expert's integrations never has to decrypt a
+  // payload just to learn which logo to draw.
+  provider     String
+
+  @@unique([expertId, credentialId])
   @@index([expertId])
 }
 
@@ -956,6 +1373,24 @@ model ExpertPauseEvent {
   clearedAt DateTime?
 
   @@index([expertId, createdAt])
+}
+
+// A user-owned named group of the user's own experts. Distinct from the
+// org-tenancy Team model: pods are a personal roster grouping with no
+// members, invites, or org. Deleting a pod detaches its experts (SetNull).
+model ExpertPod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+
+  Experts Expert[]
+
+  // Doubles as the userId lookup index for list_pods.
+  @@unique([userId, name])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1073,6 +1508,20 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // How the run was started (values: backend.data.execution.ExecutionTrigger).
+  // Persisted so analytics can separate human-initiated runs from schedule,
+  // webhook, API and copilot-initiated ones instead of inferring it from the
+  // preset / expert / parent columns. Null for rows that predate the column.
+  triggerSource String?
+  // What started the run, for that source: schedule id, webhook id, chat
+  // session id, API key id, or the UI surface for manual runs.
+  triggerRef    String?
+  // What started this run, when it was not a person: the scheduler job or
+  // the webhook that fired. Soft references, since jobs live in
+  // APScheduler's own store and webhooks are cleaned up independently.
+  scheduleId    String?
+  webhookId     String?
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -1084,6 +1533,13 @@ model AgentGraphExecution {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats Json?
+
+  // Scored once, when the run reaches a terminal state, from signals we
+  // already have (outcome, first-ever success, novel output, cost/duration
+  // anomaly). Assembling a Briefing is then a ranked read rather than a scan
+  // of every run in the period. Null for runs that finished before scoring
+  // existed, and for runs still in flight.
+  interestingness Float?
 
   // Parent-child execution tracking for nested agent graphs
   parentGraphExecutionId String?
@@ -1110,6 +1566,8 @@ model AgentGraphExecution {
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
+  // Briefing assembly: top-scored runs for one user over one period.
+  @@index([userId, endedAt, interestingness])
   @@index([agentPresetId])
   @@index([expertId, createdAt])
   @@index([shareToken])
@@ -1496,6 +1954,7 @@ model Profile {
 
   LibraryAgents LibraryAgent[]
   StoreListings StoreListing[]
+  SkillListings SkillListing[]
 
   @@index([userId])
 }
@@ -1768,6 +2227,131 @@ model StoreListingVersion {
   @@index([reviewerId])
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
   @@index([organizationId])
+}
+
+// A marketplace listing for a knowledge skill: instructions and examples the
+// copilot reads, never a runnable graph. Separate from StoreListing because
+// that model's agentGraphId is required and its StoreAgent view exposes the
+// graph as non-null.
+model SkillListing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  isDeleted          Boolean @default(false)
+  hasApprovedVersion Boolean @default(false)
+
+  // Globally unique, not scoped to a creator: a platform listing has no
+  // creator segment to disambiguate it, so the URL is /marketplace/skills/{slug}.
+  slug String @unique
+
+  activeVersionId String?              @unique
+  ActiveVersion   SkillListingVersion? @relation("SkillActiveVersion", fields: [activeVersionId], references: [id])
+
+  // Popularity for browse ordering. Skills have no executions, so there is no
+  // run count to aggregate — installs are counted on the row instead.
+  installCount Int @default(0)
+
+  // Null for platform-authored starter listings, the way a roster Expert has
+  // no owner until it is hired. A creator listing carries both.
+  owningUserId   String?
+  OwningUser     User?    @relation(fields: [owningUserId], references: [id])
+  CreatorProfile Profile? @relation(fields: [owningUserId], references: [userId], map: "SkillListing_owner_Profile_fkey", onDelete: Cascade)
+
+  Versions  SkillListingVersion[] @relation("SkillListingVersions")
+  BundledBy ExpertSkillListing[]
+
+  // Tenancy
+  owningOrgId String?
+  OwningOrg   Organization? @relation("OrgSkillListings", fields: [owningOrgId], references: [id])
+
+  @@index([isDeleted, hasApprovedVersion])
+  @@index([owningUserId])
+  @@index([owningOrgId])
+}
+
+model SkillListingVersion {
+  id        String   @id @default(uuid())
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // The SKILL.md this version publishes: frontmatter fields plus the body.
+  // Snapshotted at submission, so editing the creator's library skill never
+  // changes what installers get.
+  name        String
+  description String
+  body        String
+  triggers    String[] @default([])
+  categories  String[]
+
+  // Integrations the skill's instructions assume the installer has connected;
+  // provider names as used by the credentials system.
+  requiredProviders String[] @default([])
+
+  // The creator's own library skill slug this was published from, so a
+  // re-publish can find its listing again. Null once that skill is deleted.
+  sourceSkillSlug String?
+
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
+
+  isDeleted   Boolean @default(false)
+  isAvailable Boolean @default(true)
+
+  submissionStatus SubmissionStatus @default(DRAFT)
+  submittedAt      DateTime?
+
+  skillListingId String
+  SkillListing   SkillListing @relation("SkillListingVersions", fields: [skillListingId], references: [id], onDelete: Cascade)
+
+  ActiveFor SkillListing? @relation("SkillActiveVersion")
+
+  changesSummary String?
+
+  reviewerId       String?
+  Reviewer         User?     @relation("SkillVersionsReviewed", fields: [reviewerId], references: [id])
+  internalComments String?
+  reviewComments   String?
+  reviewedAt       DateTime?
+
+  // Tenancy
+  organizationId String?
+
+  Files SkillListingFile[]
+
+  @@unique([skillListingId, version])
+  @@index([skillListingId, submissionStatus, isAvailable])
+  @@index([submissionStatus])
+  @@index([reviewerId])
+  @@index([organizationId])
+}
+
+/// One file beside a published version's SKILL.md, snapshotted at submit time
+/// like the body is. Bytes live in the row: a version is immutable once
+/// approved, capped at 20 MiB in the application layer, and cascade-deleted
+/// with its version, so a blob store would only add orphan cleanup.
+model SkillListingFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  skillListingVersionId String
+  SkillListingVersion   SkillListingVersion @relation(fields: [skillListingVersionId], references: [id], onDelete: Cascade)
+
+  /// Posix path relative to the skill folder, e.g. `scripts/with_server.py`.
+  relativePath String
+  sizeBytes    Int
+  sha256       String
+  mimeType     String?
+  /// Restored on install: `python scripts/x.py` works without it, `./x.py` does not.
+  isExecutable Boolean @default(false)
+
+  content Bytes
+
+  @@unique([skillListingVersionId, relativePath])
 }
 
 // Content type enum for unified search across store agents, blocks, docs
@@ -2051,6 +2635,7 @@ model Organization {
   CreditTransactions OrgCreditTransaction[]
   Invitations        OrgInvitation[]
   StoreListings      StoreListing[]               @relation("OrgStoreListings")
+  SkillListings      SkillListing[]               @relation("OrgSkillListings")
   Credentials        IntegrationCredential[]
   Profile            OrganizationProfile?
   Subscription       OrganizationSubscription?

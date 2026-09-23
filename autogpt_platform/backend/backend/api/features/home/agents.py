@@ -13,9 +13,10 @@ def compose_agent_statuses(
     experts: list[Expert],
     running_expert_ids: set[str],
     next_run_by_expert: dict[str, datetime],
+    spend_by_expert: dict[str, int],
 ) -> list[HomeAgentStatus]:
     statuses = [
-        _agent_status(expert, running_expert_ids, next_run_by_expert)
+        _agent_status(expert, running_expert_ids, next_run_by_expert, spend_by_expert)
         for expert in experts
     ]
     return sorted(statuses, key=lambda item: _STATUS_RANK[item.status])
@@ -29,6 +30,7 @@ def compose_team_summary(agents: list[HomeAgentStatus]) -> HomeTeamSummary:
         needs_attention=sum(
             agent.status in {"paused", "needs_setup", "failed"} for agent in agents
         ),
+        spend_cents=sum(agent.spend_cents for agent in agents),
     )
 
 
@@ -36,6 +38,7 @@ def _agent_status(
     expert: Expert,
     running_expert_ids: set[str],
     next_run_by_expert: dict[str, datetime],
+    spend_by_expert: dict[str, int],
 ) -> HomeAgentStatus:
     if expert.id in running_expert_ids:
         status, detail = "working", "Working on a task now"
@@ -52,4 +55,5 @@ def _agent_status(
         status=status,
         detail=detail,
         next_run_time=next_run_by_expert.get(expert.id),
+        spend_cents=spend_by_expert.get(expert.id, 0),
     )

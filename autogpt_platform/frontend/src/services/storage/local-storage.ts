@@ -1,5 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
-import { environment } from "../environment";
+import { createSafeStorage } from "./safe-storage";
 
 export enum Key {
   LOGOUT = "supabase-logout",
@@ -21,47 +20,16 @@ export enum Key {
   COPILOT_CONTEXT_PANEL_WIDTH = "copilot-context-panel-width",
   COPILOT_CONTEXT_PANEL_OPEN = "copilot-context-panel-open",
   COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
+  TEAM_WORKFLOWS_VIEW = "team-workflows-view",
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
+  COPILOT_VOICE_SILENCE_TIMEOUT = "copilot-voice-silence-timeout",
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
 }
 
-function get(key: Key) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    // Fine, just return undefined not always items will be set on local storage
-    return;
-  }
-}
-
-function set(key: Key, value: string) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  return window.localStorage.setItem(key, value);
-}
-
-function clean(key: Key) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  return window.localStorage.removeItem(key);
-}
-
-export const storage = {
-  clean,
-  get,
-  set,
-};
+export const storage = createSafeStorage<Key>("local");

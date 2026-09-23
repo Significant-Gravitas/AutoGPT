@@ -6,21 +6,29 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import type { ArtifactRef } from "../../../store";
+import type { ArtifactPanelMode, ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { PanelModeSwitch } from "./PanelModeSwitch";
 import { SourceToggle } from "./SourceToggle";
 import {
   ArrowLeft02Icon,
   Cancel01Icon,
+  ComputerIcon,
   Copy01Icon,
-  Download04Icon,
+  Download01Icon,
   Folder01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  artifact: ArtifactRef;
-  classification: ArtifactClassification;
+  /** Null while the panel shows only its computer face. */
+  artifact: ArtifactRef | null;
+  classification: ArtifactClassification | null;
+  mode?: ArtifactPanelMode;
+  /** Render the Artifact/Computer switch; the chat passes a session, the
+   *  share viewer and tour do not. */
+  showModeSwitch?: boolean;
+  onModeChange?: (mode: ArtifactPanelMode) => void;
   canGoBack: boolean;
   isSourceView: boolean;
   hasSourceToggle: boolean;
@@ -31,6 +39,10 @@ interface Props {
   onDownload: () => void;
   onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
+  /** True when a control outside the panel (the chat's sidebar-right
+   *  toggle) already closes it — standalone hosts (share viewer, tour,
+   *  mobile drawer) have no such control and keep the header Close. */
+  hasExternalClose?: boolean;
 }
 
 function HeaderButton({
@@ -72,55 +84,93 @@ export function ArtifactPanelHeader({
   onDownload,
   onOpenFiles,
   onSourceToggle,
+  hasExternalClose = false,
+  mode = "artifact",
+  showModeSwitch = false,
+  onModeChange,
 }: Props) {
+  const isComputer = mode === "computer" || artifact == null;
+  // An expert is not a workspace file: nothing to download, and "All files"
+  // would strand the user in the wrong tab.
+  const isFile = !isComputer && !artifact?.expert;
+  // Height matches the chat thread header (36px avatar + py-2 + border) so
+  // the two top bars share one seam across the panel split.
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3 py-2">
+    <div className="sticky top-0 z-10 flex h-[53px] items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3">
       {/* Left section */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        {canGoBack && (
+        {!isComputer && canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
             <Icon icon={ArrowLeft02Icon} size={16} />
           </HeaderButton>
         )}
-        <Icon
-          icon={classification.icon}
-          size={16}
-          className="shrink-0 text-zinc-400"
-        />
-        <span className="truncate text-sm font-medium text-zinc-900">
-          {artifact.title}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-            artifact.origin === "user-upload"
-              ? "bg-blue-50 text-blue-600"
-              : "bg-violet-50 text-violet-600",
-          )}
-        >
-          {classification.label}
-        </span>
+        {isComputer || !artifact || !classification ? (
+          <>
+            <Icon
+              icon={ComputerIcon}
+              size={16}
+              className="shrink-0 text-zinc-400"
+            />
+            <span className="truncate text-sm font-medium text-zinc-900">
+              Computer
+            </span>
+          </>
+        ) : (
+          <>
+            <Icon
+              icon={classification.icon}
+              size={16}
+              className="shrink-0 text-zinc-400"
+            />
+            <span className="truncate text-sm font-medium text-zinc-900">
+              {artifact.title}
+            </span>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                artifact.origin === "user-upload"
+                  ? "bg-blue-50 text-blue-600"
+                  : "bg-violet-50 text-violet-600",
+              )}
+            >
+              {classification.label}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Right section */}
       <div className="flex items-center gap-1">
-        {hasSourceToggle && (
+        {showModeSwitch && onModeChange && (
+          <PanelModeSwitch
+            mode={isComputer ? "computer" : "artifact"}
+            hasArtifact={artifact != null}
+            onChange={onModeChange}
+          />
+        )}
+        {!isComputer && hasSourceToggle && (
           <SourceToggle isSourceView={isSourceView} onToggle={onSourceToggle} />
         )}
-        {canCopy && (
+        {!isComputer && canCopy && (
           <HeaderButton onClick={onCopy} title="Copy">
             <Icon icon={Copy01Icon} size={16} />
           </HeaderButton>
         )}
-        <HeaderButton onClick={onDownload} title="Download">
-          <Icon icon={Download04Icon} size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onOpenFiles} title="All files">
-          <Icon icon={Folder01Icon} size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onClose} title="Close">
-          <Icon icon={Cancel01Icon} size={16} />
-        </HeaderButton>
+        {isFile && (
+          <HeaderButton onClick={onDownload} title="Download">
+            <Icon icon={Download01Icon} size={16} />
+          </HeaderButton>
+        )}
+        {isFile && (
+          <HeaderButton onClick={onOpenFiles} title="All files">
+            <Icon icon={Folder01Icon} size={16} />
+          </HeaderButton>
+        )}
+        {!hasExternalClose && (
+          <HeaderButton onClick={onClose} title="Close">
+            <Icon icon={Cancel01Icon} size={16} />
+          </HeaderButton>
+        )}
       </div>
     </div>
   );

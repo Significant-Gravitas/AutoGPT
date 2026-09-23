@@ -1,0 +1,594 @@
+{
+  "id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+  "version": 1,
+  "is_active": false,
+  "name": "Jev resume review — configure before running",
+  "description": "UTF-8 resume file → file-to-text → typed Jev questions → Jev route → reviewer email for top scores, Google Sheet for remaining scores.",
+  "instructions": "Before running, select TypeSafe credentials on both Jev blocks; configure SMTP credentials, server, and reviewer address; connect Google and select a results spreadsheet. The .invalid email/server are deliberate placeholders. This example has no stored credentials. Upload a synthetic UTF-8 .txt resume for an initial check. PDF/DOCX require a suitable text-extraction step. Running after configuration sends an email or appends a row.",
+  "user_id": "",
+  "created_at": "2026-09-16T00:00:00Z",
+  "nodes": [
+    {
+      "id": "db522e24-718b-421c-92e2-000000000001",
+      "block_id": "95ead23f-8283-4654-aef3-10c053b74a31",
+      "input_default": {
+        "name": "Resume file",
+        "description": "Upload a UTF-8 plain-text resume (.txt). Convert PDF/DOCX to text first.",
+        "base_64": false
+      },
+      "metadata": {
+        "position": {
+          "x": 0,
+          "y": 100
+        },
+        "customized_name": "Resume file"
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000001",
+          "source_id": "db522e24-718b-421c-92e2-000000000001",
+          "sink_id": "db522e24-718b-421c-92e2-000000000002",
+          "source_name": "result",
+          "sink_name": "file_input",
+          "is_static": true
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000002",
+      "block_id": "3735a31f-7e18-4aca-9e90-08a7120674bc",
+      "input_default": {
+        "delimiter": "",
+        "size_limit": 0
+      },
+      "metadata": {
+        "position": {
+          "x": 320,
+          "y": 100
+        },
+        "customized_name": "File to text"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000001",
+          "source_id": "db522e24-718b-421c-92e2-000000000001",
+          "sink_id": "db522e24-718b-421c-92e2-000000000002",
+          "source_name": "result",
+          "sink_name": "file_input",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000002",
+          "source_id": "db522e24-718b-421c-92e2-000000000002",
+          "sink_id": "db522e24-718b-421c-92e2-000000000003",
+          "source_name": "content",
+          "sink_name": "state",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000003",
+      "block_id": "840fa616-d3a1-4384-855c-657ff9e8a7e6",
+      "input_default": {
+        "questions": {
+          "fit": {
+            "type": "score",
+            "question": "Rate documented fit for a senior Python backend role using only evidence in this resume. Missing evidence does not qualify for a tier.",
+            "levels": [
+              "Terrible: no demonstrated programming or backend experience.",
+              "Bad: only introductory programming exercises; no delivered backend work.",
+              "Okay: has delivered a Python backend feature with testing under guidance.",
+              "Excellent: independently shipped and maintained production Python services, with tests and operational ownership.",
+              "Brilliant: led complex production systems and demonstrates measurable reliability or performance improvements across teams.",
+              "One-in-a-thousand: sustained, externally verifiable, field-leading backend contributions with exceptional impact far beyond normal senior-role expectations."
+            ]
+          },
+          "python_evidence": {
+            "type": "choice",
+            "question": "Does the resume document Python backend work in production?",
+            "options": {
+              "documented": "Explicitly identifies production Python backend work and concrete responsibilities.",
+              "not_documented": "Does not supply explicit evidence of production Python backend work."
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 640,
+          "y": 100
+        },
+        "customized_name": "Jev resume questions"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000002",
+          "source_id": "db522e24-718b-421c-92e2-000000000002",
+          "sink_id": "db522e24-718b-421c-92e2-000000000003",
+          "source_name": "content",
+          "sink_name": "state",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000003",
+          "source_id": "db522e24-718b-421c-92e2-000000000003",
+          "sink_id": "db522e24-718b-421c-92e2-000000000004",
+          "source_name": "answers",
+          "sink_name": "state",
+          "is_static": false
+        },
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000004",
+          "source_id": "db522e24-718b-421c-92e2-000000000003",
+          "sink_id": "db522e24-718b-421c-92e2-000000000004",
+          "source_name": "answers",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000004",
+      "block_id": "529b586b-38e7-4ba8-a564-89542075f633",
+      "input_default": {
+        "question": "Choose shortlist only if fit.score is at least 4 and python_evidence.choice is documented. Choose remaining in every other case.",
+        "options": {
+          "shortlist": "The stated shortlist rule is met; request a human review by email.",
+          "remaining": "The stated shortlist rule is not met; record the typed ratings in the sheet."
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 1000,
+          "y": 100
+        },
+        "customized_name": "Route top resumes"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000003",
+          "source_id": "db522e24-718b-421c-92e2-000000000003",
+          "sink_id": "db522e24-718b-421c-92e2-000000000004",
+          "source_name": "answers",
+          "sink_name": "state",
+          "is_static": false
+        },
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000004",
+          "source_id": "db522e24-718b-421c-92e2-000000000003",
+          "sink_id": "db522e24-718b-421c-92e2-000000000004",
+          "source_name": "answers",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000005",
+          "source_id": "db522e24-718b-421c-92e2-000000000004",
+          "sink_id": "db522e24-718b-421c-92e2-000000000005",
+          "source_name": "option_1",
+          "sink_name": "values",
+          "is_static": false
+        },
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000007",
+          "source_id": "db522e24-718b-421c-92e2-000000000004",
+          "sink_id": "db522e24-718b-421c-92e2-000000000007",
+          "source_name": "option_2",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000005",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "Resume marked for human review by Jev.\nFit score: {{ fit.score }} / 5\nFit confidence: {{ fit.confidence }}\nProduction Python evidence: {{ python_evidence.choice }}\nReview the uploaded resume and the Jev request/response before deciding.",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1350,
+          "y": -120
+        },
+        "customized_name": "Format email"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000005",
+          "source_id": "db522e24-718b-421c-92e2-000000000004",
+          "sink_id": "db522e24-718b-421c-92e2-000000000005",
+          "source_name": "option_1",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000006",
+          "source_id": "db522e24-718b-421c-92e2-000000000005",
+          "sink_id": "db522e24-718b-421c-92e2-000000000006",
+          "source_name": "output",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000006",
+      "block_id": "4335878a-394e-4e67-adf2-919877ff49ae",
+      "input_default": {
+        "to_email": "reviewer@example.invalid",
+        "subject": "Resume requires human review",
+        "config": {
+          "smtp_server": "smtp.example.invalid",
+          "smtp_port": 587
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 1690,
+          "y": -120
+        },
+        "customized_name": "Email reviewer — configure SMTP"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000006",
+          "source_id": "db522e24-718b-421c-92e2-000000000005",
+          "sink_id": "db522e24-718b-421c-92e2-000000000006",
+          "source_name": "output",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000011",
+          "source_id": "db522e24-718b-421c-92e2-000000000006",
+          "sink_id": "db522e24-718b-421c-92e2-000000000011",
+          "source_name": "status",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000007",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "Fit={{ fit.score }}/5; confidence={{ fit.confidence }}; production_python={{ python_evidence.choice }}",
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1350,
+          "y": 300
+        },
+        "customized_name": "Format remaining resume row"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000007",
+          "source_id": "db522e24-718b-421c-92e2-000000000004",
+          "sink_id": "db522e24-718b-421c-92e2-000000000007",
+          "source_name": "option_2",
+          "sink_name": "values",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000008",
+          "source_id": "db522e24-718b-421c-92e2-000000000007",
+          "sink_id": "db522e24-718b-421c-92e2-000000000008",
+          "source_name": "output",
+          "sink_name": "entry",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000008",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {
+        "list": [
+          "Remaining resume"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 1690,
+          "y": 300
+        },
+        "customized_name": "Build sheet row"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000008",
+          "source_id": "db522e24-718b-421c-92e2-000000000007",
+          "sink_id": "db522e24-718b-421c-92e2-000000000008",
+          "source_name": "output",
+          "sink_name": "entry",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000009",
+          "source_id": "db522e24-718b-421c-92e2-000000000008",
+          "sink_id": "db522e24-718b-421c-92e2-000000000009",
+          "source_name": "updated_list",
+          "sink_name": "row",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000009",
+      "block_id": "531d50c0-d6b9-4cf9-a013-7bf783d313c7",
+      "input_default": {
+        "sheet_name": "",
+        "value_input_option": "RAW"
+      },
+      "metadata": {
+        "position": {
+          "x": 2020,
+          "y": 300
+        },
+        "customized_name": "Append remaining resume"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000009",
+          "source_id": "db522e24-718b-421c-92e2-000000000008",
+          "sink_id": "db522e24-718b-421c-92e2-000000000009",
+          "source_name": "updated_list",
+          "sink_name": "row",
+          "is_static": false
+        },
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000010",
+          "source_id": "db522e24-718b-421c-92e2-000000000010",
+          "sink_id": "db522e24-718b-421c-92e2-000000000009",
+          "source_name": "result",
+          "sink_name": "spreadsheet",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000012",
+          "source_id": "db522e24-718b-421c-92e2-000000000009",
+          "sink_id": "db522e24-718b-421c-92e2-000000000012",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000010",
+      "block_id": "d3b32f15-6fd7-40e3-be52-e083f51b19a2",
+      "input_default": {
+        "name": "Results spreadsheet",
+        "description": "Connect Google and select the destination spreadsheet. The picker carries your credential.",
+        "allowed_views": [
+          "SPREADSHEETS"
+        ],
+        "allow_folder_selection": false
+      },
+      "metadata": {
+        "position": {
+          "x": 1690,
+          "y": 650
+        },
+        "customized_name": "Select results spreadsheet"
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000010",
+          "source_id": "db522e24-718b-421c-92e2-000000000010",
+          "sink_id": "db522e24-718b-421c-92e2-000000000009",
+          "source_name": "result",
+          "sink_name": "spreadsheet",
+          "is_static": true
+        }
+      ],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000011",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Email status"
+      },
+      "metadata": {
+        "position": {
+          "x": 2020,
+          "y": -120
+        },
+        "customized_name": "Email status"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000011",
+          "source_id": "db522e24-718b-421c-92e2-000000000006",
+          "sink_id": "db522e24-718b-421c-92e2-000000000011",
+          "source_name": "status",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    },
+    {
+      "id": "db522e24-718b-421c-92e2-000000000012",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Sheet result"
+      },
+      "metadata": {
+        "position": {
+          "x": 2350,
+          "y": 300
+        },
+        "customized_name": "Sheet result"
+      },
+      "input_links": [
+        {
+          "id": "5393bf41-ef64-4207-9b48-000000000012",
+          "source_id": "db522e24-718b-421c-92e2-000000000009",
+          "sink_id": "db522e24-718b-421c-92e2-000000000012",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "a8a925ad-8de1-4529-b716-933b28f35b08",
+      "graph_version": 1,
+      "webhook_id": null
+    }
+  ],
+  "links": [
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000001",
+      "source_id": "db522e24-718b-421c-92e2-000000000001",
+      "sink_id": "db522e24-718b-421c-92e2-000000000002",
+      "source_name": "result",
+      "sink_name": "file_input",
+      "is_static": true
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000002",
+      "source_id": "db522e24-718b-421c-92e2-000000000002",
+      "sink_id": "db522e24-718b-421c-92e2-000000000003",
+      "source_name": "content",
+      "sink_name": "state",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000003",
+      "source_id": "db522e24-718b-421c-92e2-000000000003",
+      "sink_id": "db522e24-718b-421c-92e2-000000000004",
+      "source_name": "answers",
+      "sink_name": "state",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000004",
+      "source_id": "db522e24-718b-421c-92e2-000000000003",
+      "sink_id": "db522e24-718b-421c-92e2-000000000004",
+      "source_name": "answers",
+      "sink_name": "data",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000005",
+      "source_id": "db522e24-718b-421c-92e2-000000000004",
+      "sink_id": "db522e24-718b-421c-92e2-000000000005",
+      "source_name": "option_1",
+      "sink_name": "values",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000006",
+      "source_id": "db522e24-718b-421c-92e2-000000000005",
+      "sink_id": "db522e24-718b-421c-92e2-000000000006",
+      "source_name": "output",
+      "sink_name": "body",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000007",
+      "source_id": "db522e24-718b-421c-92e2-000000000004",
+      "sink_id": "db522e24-718b-421c-92e2-000000000007",
+      "source_name": "option_2",
+      "sink_name": "values",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000008",
+      "source_id": "db522e24-718b-421c-92e2-000000000007",
+      "sink_id": "db522e24-718b-421c-92e2-000000000008",
+      "source_name": "output",
+      "sink_name": "entry",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000009",
+      "source_id": "db522e24-718b-421c-92e2-000000000008",
+      "sink_id": "db522e24-718b-421c-92e2-000000000009",
+      "source_name": "updated_list",
+      "sink_name": "row",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000010",
+      "source_id": "db522e24-718b-421c-92e2-000000000010",
+      "sink_id": "db522e24-718b-421c-92e2-000000000009",
+      "source_name": "result",
+      "sink_name": "spreadsheet",
+      "is_static": true
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000011",
+      "source_id": "db522e24-718b-421c-92e2-000000000006",
+      "sink_id": "db522e24-718b-421c-92e2-000000000011",
+      "source_name": "status",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "5393bf41-ef64-4207-9b48-000000000012",
+      "source_id": "db522e24-718b-421c-92e2-000000000009",
+      "sink_id": "db522e24-718b-421c-92e2-000000000012",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "sub_graphs": []
+}

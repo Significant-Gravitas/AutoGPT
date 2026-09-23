@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import sys
 from enum import Enum
 from types import TracebackType
 
@@ -23,6 +25,7 @@ except ImportError:
     LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
+from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 
@@ -195,8 +198,9 @@ def _before_send(event, hint):
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
-        # Expected business logic — insufficient balance
-        if "insufficient balance" in exc_msg or "no credits left" in exc_msg:
+        # Expected business logic — exhausted wallet, or a plan that does
+        # not include the feature. Neither is a platform bug.
+        if get_execution_failure_reason(exc_value) is not None:
             return None
 
         # Expected security check — blocked IP access
@@ -258,6 +262,9 @@ def _before_send(event, hint):
 
 
 def sentry_init():
+    if _running_under_pytest():
+        return
+
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
     if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
@@ -283,6 +290,13 @@ def sentry_init():
         + optional_integrations
         + integrations,
     )
+
+
+def _running_under_pytest() -> bool:
+    """sentry_init() runs at import time (AppProcess class body), before pytest
+    sets PYTEST_CURRENT_TEST; the env var covers spawned service subprocesses,
+    which do not inherit sys.modules. Self-hosted instances match neither."""
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
 def sentry_capture_error(error: BaseException):

@@ -3,6 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CredentialsFlatView } from "../CredentialsFlatView";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 
+vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
+  getV1GetAyrshareSsoUrl: vi.fn(),
+}));
+
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
+const connectButton = { name: /Connect Social Media Accounts/i };
+
 afterEach(() => {
   cleanup();
 });
@@ -86,5 +96,59 @@ describe("CredentialsFlatView", () => {
     // The presence of the overflow button is the rendering signal.
     const rowContainer = screen.getByText("My API key").closest("div");
     expect(rowContainer).toBeTruthy();
+  });
+
+  it("offers the Ayrshare connect button when the user has no credential yet", () => {
+    render(<CredentialsFlatView {...makeProps({ credentials: [] })} />);
+
+    expect(screen.getByRole("button", connectButton)).toBeTruthy();
+    // "Add API key" must stay hidden — Ayrshare keys are provisioned server-side.
+    expect(screen.queryByRole("button", { name: /Add API key/i })).toBeNull();
+  });
+
+  it("keeps offering the connect button once a managed credential exists", () => {
+    render(
+      <CredentialsFlatView
+        {...makeProps({
+          credentials: [
+            {
+              id: "managed-1",
+              title: "Ayrshare (managed by AutoGPT)",
+              type: "api_key",
+              provider: "ayrshare",
+              is_managed: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    // Linking additional social networks reuses the same SSO flow.
+    expect(screen.getByRole("button", connectButton)).toBeTruthy();
+  });
+
+  it("hides the connect button when read-only", () => {
+    render(
+      <CredentialsFlatView
+        {...makeProps({ credentials: [], readOnly: true })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", connectButton)).toBeNull();
+  });
+
+  it("does not offer the connect button for other providers", () => {
+    render(
+      <CredentialsFlatView
+        {...makeProps({
+          provider: "github",
+          displayName: "GitHub",
+          credentials: [],
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", connectButton)).toBeNull();
+    expect(screen.getByRole("button", { name: /Add API key/i })).toBeTruthy();
   });
 });

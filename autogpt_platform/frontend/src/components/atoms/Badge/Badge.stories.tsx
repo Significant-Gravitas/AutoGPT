@@ -10,14 +10,14 @@ const meta: Meta<typeof Badge> = {
     docs: {
       description: {
         component:
-          "Badge component for displaying status information with different variants for success, error, and info states.",
+          "Badge component for displaying status information with success, error, warning, and info states.",
       },
     },
   },
   argTypes: {
     variant: {
       control: "select",
-      options: ["success", "error", "info"],
+      options: ["success", "error", "warning", "info"],
       description: "Badge variant that determines color scheme",
     },
     children: {
@@ -52,6 +52,13 @@ export const Error: Story = {
   },
 };
 
+export const Warning: Story = {
+  args: {
+    variant: "warning",
+    children: "Waiting for review",
+  },
+};
+
 export const Info: Story = {
   args: {
     variant: "info",
@@ -68,6 +75,7 @@ function renderAllVariants() {
     <div className="flex flex-wrap gap-4">
       <Badge variant="success">Success</Badge>
       <Badge variant="error">Failed</Badge>
+      <Badge variant="warning">Waiting for review</Badge>
       <Badge variant="info">Stopped</Badge>
       <Badge variant="info">Running</Badge>
       <Badge variant="success">Completed</Badge>

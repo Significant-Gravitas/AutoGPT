@@ -1,11 +1,14 @@
-"""RabbitMQ queue configuration for CoPilot executor.
+"""RabbitMQ topology for the CoPilot executor.
 
-Defines two exchanges and queues following the graph executor pattern:
-- 'copilot_execution' (DIRECT) for chat generation tasks
-- 'copilot_cancel' (FANOUT) for cancellation requests
+- 'copilot_execution' (DIRECT) for chat generation tasks, one shared queue so
+  the fleet shares the work.
+- 'copilot_cancel' (FANOUT) for cancellation requests, one queue per pod so
+  every pod sees every cancel and the one holding the session acts on it.
 """
 
 import logging
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -16,10 +19,24 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tree import (
+    SpawnRequest,
+    TreeRefusal,
+    TurnEnvelope,
+    admit_turn,
+    derive_child_envelope,
+    release_turn,
+    root_envelope,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
+from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    from pika.adapters.blocking_connection import BlockingChannel
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +106,16 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+# Pre-2026-09 topology: one durable queue bound to the fanout and consumed by
+# every pod, so RabbitMQ round-robined each cancel to a single arbitrary pod.
+# Old-image pods keep draining it through a rollout; the reaper below deletes it
+# once none is left, so no operator step is needed on any install.
+LEGACY_COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
+COPILOT_CANCEL_QUEUE_PREFIX = "copilot_cancel.pod"
+
+# Only waits for the last old-image pod to drain, which is a rollout-scale
+# event; costs one passive declare per pod per interval.
+LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS = 5 * 60
 
 
 def get_session_lock_key(session_id: str) -> str:
@@ -111,14 +137,9 @@ GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = COPILOT_CONSUMER_TIMEOUT_SECONDS
 
 
 def create_copilot_queue_config() -> RabbitMQConfig:
-    """Create RabbitMQ configuration for CoPilot executor.
+    """Declare both exchanges and the shared run queue.
 
-    Defines two exchanges and queues:
-    - 'copilot_execution' (DIRECT) for chat generation tasks
-    - 'copilot_cancel' (FANOUT) for cancellation requests
-
-    Returns:
-        RabbitMQConfig with exchanges and queues defined
+    The cancel queue is deliberately absent; see the comment below.
     """
     run_queue = Queue(
         name=COPILOT_EXECUTION_QUEUE_NAME,
@@ -154,19 +175,84 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=COPILOT_CANCEL_QUEUE_NAME,
-        exchange=COPILOT_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-        arguments={"x-queue-type": "quorum"},
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming
+    # connection, and declared by the consumer itself in
+    # ``declare_pod_cancel_queue``. Declaring it in the shared config would
+    # bind one queue for the whole fleet again, and every other holder of this
+    # config (the API, which only publishes) would own a queue nobody drains.
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[COPILOT_EXECUTION_EXCHANGE, COPILOT_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
+
+
+def declare_pod_cancel_queue(channel: "BlockingChannel", executor_id: str) -> str:
+    """Give this pod its own queue on the cancel fanout and return its name.
+
+    A fanout reaches every pod only when every pod owns a queue: consumers on
+    one shared queue get round-robined, so a cancel lands on one arbitrary pod
+    and the pod actually running that session never hears it. Exclusive and
+    auto-delete, so the queue dies with the connection that declared it.
+    """
+    queue_name = f"{COPILOT_CANCEL_QUEUE_PREFIX}.{executor_id}.{uuid4().hex[:8]}"
+    channel.queue_declare(
+        queue=queue_name, durable=False, exclusive=True, auto_delete=True
+    )
+    channel.queue_bind(
+        queue=queue_name, exchange=COPILOT_CANCEL_EXCHANGE.name, routing_key=""
+    )
+    return queue_name
+
+
+def start_legacy_cancel_queue_reaper(channel: "BlockingChannel") -> None:
+    """Delete the retired fleet-wide cancel queue once no pod is draining it.
+
+    Runs now and every few minutes after, on the consumer's own connection:
+    a pika ``BlockingConnection`` is not thread-safe, and ``call_later`` fires
+    from inside ``start_consuming``. An old-image pod that reconnects declares
+    that queue again, so the pass repeats for as long as this consumer lives.
+    """
+    reap_legacy_cancel_queue(channel)
+    try:
+        channel.connection.call_later(
+            LEGACY_CANCEL_QUEUE_REAP_INTERVAL_SECONDS,
+            lambda: start_legacy_cancel_queue_reaper(channel),
+        )
+    except Exception as e:
+        logger.debug(f"Legacy cancel queue reaper not re-armed: {e}")
+
+
+def reap_legacy_cancel_queue(channel: "BlockingChannel") -> bool:
+    """Delete the legacy cancel queue if it exists and nothing consumes it.
+
+    The consumer count is the rollout gate: while an old-image pod still drains
+    that queue, deleting it would take its cancels away. Runs on a scratch
+    channel because a 404 from the passive declare closes the channel it
+    arrives on, and the caller's is carrying the consumer.
+    """
+    try:
+        scratch = channel.connection.channel()
+    except Exception:
+        logger.warning("Could not open a channel to reap the legacy cancel queue")
+        return False
+    try:
+        queue = scratch.queue_declare(
+            queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME, passive=True
+        ).method
+        if queue.consumer_count:
+            return False
+        # Check-then-act, because RabbitMQ refuses `if_unused` on a quorum queue:
+        # a pod that re-consumes in the gap re-declares it when it reconnects.
+        scratch.queue_delete(queue=LEGACY_COPILOT_CANCEL_QUEUE_NAME)
+        logger.info(f"Deleted retired queue {LEGACY_COPILOT_CANCEL_QUEUE_NAME}")
+        return True
+    except Exception as e:
+        logger.debug(f"{LEGACY_COPILOT_CANCEL_QUEUE_NAME} not reaped: {e}")
+        return False
+    finally:
+        if scratch.is_open:
+            scratch.close()
 
 
 # ============ Message Models ============ #
@@ -199,14 +285,16 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
+    message_metadata: dict[str, Any] | None = None
+    """Persisted on the user message row (e.g. ``from_session_id`` /
+    ``from_expert_id`` provenance for a delegated or handed-off task) so the
+    thread can render where the message came from."""
+
     organization_id: str | None = None
     """Active organization for tenant-scoped execution"""
 
     team_id: str | None = None
     """Active workspace for tenant-scoped execution"""
-
-    mode: CopilotMode | None = None
-    """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
 
     model: CopilotLLMModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
@@ -221,6 +309,11 @@ class CoPilotExecutionEntry(BaseModel):
     """Capability filter inherited from a parent run (e.g. ``run_sub_session``
     forwards its parent's permissions so the sub can't escalate). ``None``
     means the worker applies no filter."""
+
+    envelope: TurnEnvelope | None = None
+    """The turn's tree envelope (depth, tool ceiling, taint, deadline), derived
+    at dispatch from the spawning turn's. ``None`` only for entries queued
+    before the field existed."""
 
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP
@@ -252,14 +345,24 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    message_metadata: dict[str, Any] | None = None,
+    *,
+    envelope: TurnEnvelope,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
+
+    ``envelope`` is required and keyword-only on purpose. Every turn belongs to
+    a tree, and a turn that arrives without one is unenforced end to end: the
+    ``BaseTool.execute`` check no-ops and its first spawn is minted as a fresh
+    root. Making the parameter mandatory means a new entry point has to decide
+    which tree its turn belongs to rather than silently opting out.
+    ``CoPilotExecutionEntry.envelope`` stays optional so a message enqueued by
+    an older worker still decodes.
 
     Args:
         session_id: Chat session ID (also used for dedup/locking)
@@ -269,9 +372,9 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
-        mode: Autopilot mode override ('fast' or 'extended_thinking'). None = server default.
+        mode: Otto mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
-        permissions: Capability filter inherited from a parent run (sub-AutoPilot).
+        permissions: Capability filter inherited from a parent run (sub-Otto).
             None = no filter.
     """
     from backend.util.clients import get_async_copilot_queue
@@ -286,12 +389,13 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         organization_id=organization_id,
         team_id=team_id,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        message_metadata=message_metadata,
+        envelope=envelope,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -315,12 +419,13 @@ async def schedule_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -381,12 +486,13 @@ async def schedule_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            spawn=spawn,
+            message_metadata=message_metadata,
         )
 
 
@@ -404,16 +510,22 @@ async def dispatch_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    spawn: SpawnRequest | None = None,
+    message_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
     transfer slot ownership to ``mark_session_completed``.
+
+    This is the one chokepoint every turn passes — HTTP chat, scheduler,
+    ``AutoPilotBlock``, and the three spawn tools — so it is where the
+    turn's tree envelope is derived and admitted. A spawned turn that the
+    tree refuses raises :class:`TreeRefusal` before any side effect.
 
     Caller is responsible for acquiring ``slot`` via
     :func:`acquire_turn_slot`. This function is the post-acquire dispatch
@@ -430,14 +542,13 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        turn_id=turn_id,
-    )
+    envelope = await _admitted_turn_envelope(turn_id, user_id, permissions, spawn)
 
+    # Everything after the admit above runs inside the try: the tree's node
+    # counter is already incremented, so an exception from ``create_session``
+    # (a Redis blip) would otherwise leak a node for the key's whole TTL, and
+    # a handful of those exhaust a tree that never ran anything.
+    #
     # Once ``create_session`` has written Redis meta, EVERY exit path
     # from this point on must either (a) commit the turn (``slot.keep()``
     # + RabbitMQ message enqueued) or (b) tear the Redis meta down — or
@@ -447,6 +558,17 @@ async def dispatch_turn(
     # happy path from any failure / cancellation.
     committed = False
     try:
+        # Inside the try on purpose: the admit above already incremented the
+        # tree's node count, so anything that can raise between there and the
+        # finally must be covered by ``release_turn``.
+        permissions = _narrow_permissions(permissions, envelope)
+        await stream_registry.create_session(
+            session_id=session_id,
+            user_id=user_id,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            turn_id=turn_id,
+        )
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -457,17 +579,19 @@ async def dispatch_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            message_metadata=message_metadata,
+            envelope=envelope,
         )
         slot.keep()
         committed = True
     finally:
         if not committed:
+            await release_turn(envelope)
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:
@@ -479,18 +603,84 @@ async def dispatch_turn(
                 )
 
 
+async def _admitted_turn_envelope(
+    turn_id: str,
+    user_id: str | None,
+    permissions: CopilotPermissions | None,
+    spawn: SpawnRequest | None,
+) -> TurnEnvelope:
+    """Derive this turn's envelope from the running turn's (a child) or mint
+    a root, then admit it against the tree ledger.
+
+    The spawner's envelope comes from the executor contextvar, so a caller
+    outside any turn — the HTTP route, the scheduler, a graph block — is a
+    root by construction rather than by declaration.
+    """
+    spawner = get_current_envelope()
+    if spawn is not None and spawner is None:
+        # A caller that passed a SpawnRequest is by construction a spawn tool
+        # running inside a turn, so a missing spawner envelope means the
+        # context was lost — a pre-deploy queue entry, or a refactor that
+        # dropped it. Minting a root there would hand the child FULL
+        # authority, which is the opposite of what the caller asked for, so
+        # refuse instead. This also makes the stream_heartbeat task boundary
+        # belt-and-braces rather than load-bearing.
+        raise TreeRefusal(
+            "This task's context was lost, so its limits cannot be carried "
+            "over. Start it again from the top."
+        )
+    if spawner is None:
+        envelope = root_envelope(turn_id)
+    else:
+        envelope = derive_child_envelope(
+            spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        )
+    await admit_turn(envelope, user_id=user_id)
+    return envelope
+
+
+def _narrow_permissions(
+    permissions: CopilotPermissions | None, envelope: TurnEnvelope
+) -> CopilotPermissions | None:
+    """The envelope's tool set as the turn's whitelist, keeping any block
+    filter the caller passed. Hides the tools from the model; the refusal
+    itself lives in ``BaseTool.execute``."""
+    narrowed = envelope.as_permissions()
+    if narrowed is None:
+        return permissions
+    if permissions is None:
+        return narrowed
+    # The caller's ``_parent`` is dropped on purpose: it belongs to the
+    # spawner's turn, and the envelope is already the narrower bound.
+    #
+    # ``tools_exclude`` is carried, never hardcoded: an empty envelope encodes
+    # deny-all as a blacklist of every tool, and forcing ``False`` here would
+    # reread that as a whitelist of every tool — the exact inversion the
+    # encoding exists to prevent.
+    return CopilotPermissions(
+        tools=narrowed.tools,
+        tools_exclude=narrowed.tools_exclude,
+        blocks=permissions.blocks,
+        blocks_exclude=permissions.blocks_exclude,
+    )
+
+
 async def schedule_chat_turn(
     *,
     session_id: str,
     user_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
+    message_already_persisted: bool = False,
     is_user_message: bool = True,
+    expert_id: str | None = None,
+    session_origin: str | None = None,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -504,7 +694,8 @@ async def schedule_chat_turn(
     Returns the new ``turn_id`` on a fresh dispatch, or ``None`` if the
     inbound message was a duplicate of one already saved (caller should
     subscribe to the existing in-flight turn's stream instead of opening
-    a new one).
+    a new one). ``message_already_persisted`` re-dispatches an orphaned
+    kickoff row only when this caller atomically admits the idle session.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -518,18 +709,32 @@ async def schedule_chat_turn(
     """
     # Deferred so the executor module stays a leaf for the queue dataclasses
     # (only the chat HTTP path persists user messages this way).
-    from uuid import uuid4
-
     from backend.copilot.model import ChatMessage, append_and_save_message
+    from backend.copilot.prompting import VOICE_TURN_PREFIX
+    from backend.copilot.service import strip_server_injected_tags
     from backend.copilot.tracking import track_user_message
 
+    # Prefix before persistence, not after: the services dedup the incoming
+    # message against the row saved here, and a prefix applied later fails
+    # that match and saves the turn a second time. Display strips it again.
+    raw_message_length = len(message)
+    if message and voice and is_user_message and not message_already_persisted:
+        # Sanitise here, not in the engines: they strip inbound tags at their
+        # own entry points, which is after this function has already saved the
+        # row. A forged </voice_turn> would close the server's block, and the
+        # display stripper would take the user's own text with it.
+        message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
+
     async with acquire_turn_slot(user_id, session_id) as slot:
+        if message_already_persisted and not slot.admitted:
+            return None
         is_duplicate = False
-        if message:
+        if message and not message_already_persisted:
             chat_message = ChatMessage(
                 id=message_id,
                 role="user" if is_user_message else "assistant",
                 content=message,
+                metadata=message_metadata,
             )
             is_duplicate = (
                 await append_and_save_message(session_id, chat_message)
@@ -538,7 +743,10 @@ async def schedule_chat_turn(
                 track_user_message(
                     user_id=user_id,
                     session_id=session_id,
-                    message_length=len(message),
+                    message_length=raw_message_length,
+                    expert_id=expert_id,
+                    origin=session_origin,
+                    surface="chat",
                 )
 
         if is_duplicate:
@@ -556,7 +764,6 @@ async def schedule_chat_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,

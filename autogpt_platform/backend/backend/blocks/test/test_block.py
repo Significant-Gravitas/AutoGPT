@@ -5,13 +5,37 @@ import pytest
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockSchemaInput
 from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.data.execution import ExecutionContext
 from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.test import execute_block_test
 
 SKIP_BLOCK_TESTS = {
     "HumanInTheLoopBlock",
 }
+
+
+async def test_execute_preserves_insufficient_balance_error_type():
+    error = InsufficientBalanceError(
+        message="Producer wording is irrelevant to classification",
+        user_id="user-1",
+        balance=0,
+        amount=1,
+    )
+
+    class BalanceFailingBlock(Block):
+        async def run(self, input_data, **kwargs):
+            raise error
+            yield
+
+    block = BalanceFailingBlock(id="credit-failure-block")
+
+    with pytest.raises(InsufficientBalanceError) as exc_info:
+        async for _ in block.execute({}, execution_context=ExecutionContext()):
+            pass
+
+    assert exc_info.value is error
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
@@ -22,6 +46,27 @@ async def test_available_blocks(block: Type[Block]):
             f"Skipping {block_instance.__class__.__name__} - requires external service"
         )
     await execute_block_test(block_instance)
+
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
+def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
+    """A sensitive-action block's whole input dict becomes the review payload.
+
+    `data` is the key the approval card historically unwrapped to, rendering
+    that one field in place of the arguments the block goes on to execute.
+    The card no longer unwraps (see PendingReviewCard), so this is the second
+    line rather than the first; a block that genuinely needs the name can
+    delete this case once the render path is re-checked.
+    """
+    block_instance = block()
+    if not block_instance.is_sensitive_action:
+        return
+
+    assert "data" not in block_instance.input_schema.model_fields, (
+        f"{block_instance.name} is a sensitive action with a top-level 'data' "
+        f"input; rename it so the approval card cannot be read as showing only "
+        f"that field."
+    )
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)

@@ -1,0 +1,102 @@
+{#- ============================================================
+    alert.html.j2 — the "Needs you" interrupt
+    One template covers every alert cause (auth expired, agent
+    paused, awaiting review, low balance, spend guardrail) plus
+    coalesced secondary items. All strings arrive pre-assembled
+    from the cause catalog (see README.md).
+    ============================================================ -#}
+{%- import "_ui.j2" as ui with context -%}
+{%- set also_items = also | default([]) -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject | default(primary.headline)) }}
+</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; -webkit-text-size-adjust:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader | default(primary.body)) }}
+{{ ui.page_open() }}
+{{ ui.header() }}
+{{ ui.hero_alert() }}
+
+    <!-- Body card -->
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+        {#- a tinted severity strip, so the alert still reads as an alert with images off -#}
+        <tr><td bgcolor="#fff6e8" class="gutter" style="padding:12px 48px; border-bottom:1px solid #f2dcb0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:#b45309;">&#9650;&nbsp; NEEDS YOU{% if timestamp_label %} &middot; {{ timestamp_label | upper }}{% endif %}</div>
+        </td></tr>
+        <tr><td class="gutter" style="padding:26px 48px 0;">
+          <div class="headline" style="font-size:26px; line-height:34px; font-weight:800; color:#17123b; overflow-wrap:anywhere;">
+            {{ primary.headline }}
+          </div>
+        </td></tr>
+
+        <tr><td class="gutter" style="padding:16px 48px 0;">
+          <div style="font-size:15px; line-height:24px; color:#494566;">
+            {{ primary.body }}
+          </div>
+        </td></tr>
+
+        {%- if primary.facts %}
+        <tr><td class="gutter" style="padding:18px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:14px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {%- for f in primary.facts %}
+                {{ ui.kv(f.label, f.value, mono=true, first=loop.first) }}
+                {%- endfor %}
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- endif %}
+
+        <tr><td class="gutter" style="padding:24px 48px 0;">
+          {{ ui.btn(primary.cta_label, primary.cta_url) }}
+          {%- if primary.microcopy %}
+          <div style="padding-top:10px; font-size:12px; color:#8a86a3;">{{ primary.microcopy }}</div>
+          {%- endif %}
+        </td></tr>
+
+        {%- if also_items %}
+        <tr><td class="gutter" style="padding:28px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:15px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#6f6b8a; padding-bottom:5px;">{{ (also_label | default('Also waiting')) | upper }}</div>
+              {%- for a in also_items[:3] %}
+              <div style="font-size:14px; line-height:21px; color:#494566;{{ ' padding-top:8px;' if not loop.first }}">
+                <strong style="color:#17123b;">{{ ui.trunc(a.agent, 44) }}</strong> {{ a.text }}
+                <a href="{{ a.url }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">{{ a.link_label }}</a>
+              </div>
+              {%- endfor %}
+              {%- if also_items | length > 3 %}
+              <div style="font-size:13px; line-height:20px; color:#8a86a3; padding-top:8px;">
+                + {{ also_items | length - 3 }} more waiting &mdash;
+                <a href="{{ urls.dashboard }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">open your dashboard</a>
+              </div>
+              {%- endif %}
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- endif %}
+
+        <tr><td align="center" class="gutter" style="padding:22px 48px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td height="1" bgcolor="#eeecf5" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+            <tr><td align="center" style="padding-top:12px; font-size:12px; line-height:19px; color:#8a86a3;">
+              Alerts only fire when your action is needed &mdash; never for a successful run.
+              <div style="padding-top:4px;"><a href="{{ urls.settings }}" style="color:#6d28d9; text-decoration:underline;">Alert&nbsp;settings</a></div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.legal_footer('This alert is about the AutoGPT account for ' ~ user_email ~ '.', urls.unsubscribe, discord=false) }}
+
+</td></tr>
+</table>
+</body>
+</html>

@@ -4,7 +4,13 @@ from logging import getLogger
 from typing import Optional
 from urllib.parse import quote
 
-from backend.sdk import BaseOAuthHandler, OAuth2Credentials, ProviderName, SecretStr
+from backend.sdk import (
+    BaseOAuthHandler,
+    OAuth2Credentials,
+    ProviderName,
+    SecretStr,
+    parse_granted_scopes,
+)
 
 from ._api import (
     OAuthTokenResponse,
@@ -121,7 +127,9 @@ class WordPressOAuthHandler(BaseOAuthHandler):
                 access_token_expires_at=None,
                 refresh_token_expires_at=None,
                 provider=self.PROVIDER_NAME,
-                scopes=scopes if scopes else [],
+                # `scope` is only set on global tokens; a single-blog token
+                # reports nothing, leaving the request as the only information.
+                scopes=parse_granted_scopes(response.scope, fallback=scopes),
                 metadata=metadata,
             )
 

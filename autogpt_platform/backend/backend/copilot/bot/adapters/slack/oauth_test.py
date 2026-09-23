@@ -1,10 +1,14 @@
 """Tests for the Slack OAuth v2 install flow."""
 
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+import yaml
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from backend.copilot.bot.adapters.slack import oauth
 
@@ -283,3 +287,148 @@ async def test_callback_falls_back_to_slack_redirect_without_a_frontend_url():
         )
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://slack.com/app_redirect?app=A1&team=T1"
+
+
+@pytest.mark.asyncio
+async def test_callback_exchange_failure_redirects_gracefully():
+    # slack_sdk raises SlackApiError on ok:false (expired/reused code, wrong
+    # secret) — the callback must land the browser back on settings with the
+    # error flag, not surface a raw 500.
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError(
+                "bad code", response={"ok": False, "error": "invalid_code"}
+            )
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    upsert.assert_not_awaited()
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_transport_failure_also_lands_gracefully():
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        # slack_sdk re-raises the raw asyncio/aiohttp error on transport failure.
+        web_client.return_value.oauth_v2_access = AsyncMock(side_effect=TimeoutError())
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "auth-code"})
+        )
+    upsert.assert_not_awaited()
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_failure_detail_carries_slack_error_code():
+    # Without a frontend URL the plain-text landing is all an operator sees,
+    # so Slack's error code must survive into it.
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = ""
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError(
+                "bad code", response={"ok": False, "error": "invalid_code"}
+            )
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    assert resp.status_code == 400
+    assert b"invalid_code" in resp.body
+
+
+@pytest.mark.asyncio
+async def test_callback_handles_a_non_json_slack_response():
+    # A proxy outage hands slack_sdk a text/plain body; SlackApiError then
+    # carries a raw aiohttp response with no .get(), which must not 500.
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError("bad gateway", response=MagicMock(spec=[]))
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "auth-code"})
+        )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_failure_reads_the_code_from_a_real_sdk_response():
+    # The SDK hands SlackApiError an AsyncSlackResponse, not a dict; the error
+    # code must still reach the plain-text landing.
+    response = AsyncSlackResponse(
+        client=None,
+        http_verb="POST",
+        api_url="https://slack.com/api/oauth.v2.access",
+        req_args={},
+        data={"ok": False, "error": "invalid_code"},
+        headers={},
+        status_code=200,
+    )
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = ""
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError("bad code", response=response)
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    assert resp.status_code == 400
+    assert b"invalid_code" in resp.body
+
+
+def test_scopes_match_the_app_manifest():
+    # oauth._SCOPES carries a "must stay in sync with app-manifest.yaml"
+    # comment; this is the thing that enforces it.
+    manifest = yaml.safe_load(
+        Path(oauth.__file__).with_name("app-manifest.yaml").read_text()
+    )
+    assert set(manifest["oauth_config"]["scopes"]["bot"]) == set(oauth._SCOPES)

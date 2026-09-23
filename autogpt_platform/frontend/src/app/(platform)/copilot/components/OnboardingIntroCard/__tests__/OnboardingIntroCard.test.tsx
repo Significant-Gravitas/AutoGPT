@@ -239,40 +239,11 @@ describe("OnboardingIntroCard — transcript copy", () => {
 });
 
 describe("introRevealTimings", () => {
-  it("pushes every stage back as the greeting gets longer", () => {
-    const short = introRevealTimings("Hello there", 0);
-    const long = introRevealTimings("Hello there, this is a longer line", 0);
+  it("orders greeting, prompts, footer and composer with fixed offsets", () => {
+    const { promptsStart, footerStart, composerStart } = introRevealTimings();
 
-    expect(short.promptsStart).toBeCloseTo(0.5 + 2 * 0.08 + 0.3, 5);
-    expect(long.promptsStart).toBeGreaterThan(short.promptsStart);
-    expect(long.footerStart).toBeGreaterThan(short.footerStart);
-    expect(long.composerStart).toBeGreaterThan(short.composerStart);
-  });
-
-  it("staggers the footer behind the last prompt row and the composer behind the footer", () => {
-    const none = introRevealTimings("Hello there", 0);
-    const three = introRevealTimings("Hello there", 3);
-
-    expect(three.promptsStart).toBe(none.promptsStart);
-    expect(three.footerStart - none.footerStart).toBeCloseTo(3 * 0.12, 5);
-    expect(three.composerStart - three.footerStart).toBeCloseTo(0.4, 5);
-  });
-
-  it("ignores empty words so padding does not delay the reveal", () => {
-    const padded = introRevealTimings("  Hello   there  ", 2);
-    const tidy = introRevealTimings("Hello there", 2);
-
-    expect(padded).toEqual(tidy);
-  });
-
-  it("still produces an ordered schedule for an empty greeting", () => {
-    const { promptsStart, footerStart, composerStart } = introRevealTimings(
-      "",
-      0,
-    );
-
-    expect(promptsStart).toBeCloseTo(0.8, 5);
-    expect(footerStart).toBeGreaterThan(promptsStart);
-    expect(composerStart).toBeGreaterThan(footerStart);
+    expect(promptsStart).toBeCloseTo(0.5 + 0.45 + 0.3, 5);
+    expect(footerStart - promptsStart).toBeCloseTo(0.35, 5);
+    expect(composerStart - footerStart).toBeCloseTo(0.4, 5);
   });
 });

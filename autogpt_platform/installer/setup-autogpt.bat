@@ -11,7 +11,7 @@ REM   /with-ollama           Install Ollama (via winget), pull a default chat
 REM                          model, and wire backend\.env so AutoPilot runs
 REM                          without any cloud API keys (CHAT_USE_LOCAL=true).
 REM                          See docs/platform/copilot-local-llm.md.
-REM   /ollama-model=NAME     Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
+REM   /ollama-model=NAME     Model to pull (default: hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M).
 REM   /ollama-host=URL       Use an existing Ollama at this URL instead of
 REM                          installing one locally. Skips the Ollama install
 REM                          but still writes the CHAT_USE_LOCAL .env entries.
@@ -24,7 +24,7 @@ set REPO_DIR=%SCRIPT_DIR%..\..
 set CLONE_NEEDED=0
 set LOG_FILE=
 set WITH_OLLAMA=0
-set OLLAMA_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+set OLLAMA_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 set OLLAMA_HOST_URL=
 
 REM --- Parse args ---
@@ -142,6 +142,9 @@ if "%CLONE_NEEDED%"=="1" (
 )
 echo.
 
+REM --- Generate the secrets the .env.default files leave blank ---
+call :init_env || exit /b 1
+
 REM --- Bootstrap Ollama (optional) ---
 if "%WITH_OLLAMA%"=="1" (
     call :bootstrap_ollama || exit /b 1
@@ -175,6 +178,32 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM `up -d` succeeds as soon as the containers are created, so a backend
+REM that exits on startup would otherwise be reported as a working install.
+REM Wait for it to answer rather than for a fixed time: on a slow host the
+REM imports alone can take longer than any short window.
+echo Waiting for the backend to come up...
+set BACKEND_TRIES=0
+:backend_wait
+timeout /t 5 /nobreak >nul
+docker compose ps --status exited --services 2>nul | findstr /x /c:"rest_server" >nul
+if not errorlevel 1 (
+    echo The backend exited right after starting. Last log lines:
+    docker compose logs --tail 20 rest_server
+    echo.
+    echo If it names a missing or retired secret, see "Upgrading: secrets are
+    echo generated per install" in docs/platform/getting-started.md.
+    pause
+    exit /b 1
+)
+docker compose exec -T rest_server python -c "import urllib.request; urllib.request.urlopen('http://localhost:8006/health', timeout=3)" >nul 2>&1
+if not errorlevel 1 goto backend_ready
+set /a BACKEND_TRIES+=1
+if %BACKEND_TRIES% LSS 36 goto backend_wait
+echo The backend has not answered yet. It may still be starting: check
+echo "docker compose logs -f rest_server".
+:backend_ready
+
 echo =============================
 echo      Setup Complete!
 echo =============================
@@ -198,6 +227,32 @@ exit /b 0
 REM ============================================================================
 REM Subroutines
 REM ============================================================================
+
+:init_env
+REM The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY and
+REM BETTER_AUTH_SECRET blank and the backend refuses to start without an
+REM ENCRYPTION_KEY, so generate them here exactly as `make init-env` does.
+REM Values that are already set are never overwritten. The generator is
+REM stdlib-only Python; it runs in a container because Docker is the one
+REM prerequisite every Windows install already has.
+cd /d "%REPO_DIR%\autogpt_platform"
+if errorlevel 1 (
+    echo Failed to navigate to autogpt_platform directory.
+    exit /b 1
+)
+echo Generating secrets for this install...
+if not exist .env copy /Y .env.default .env >nul
+if not exist backend\.env copy /Y backend\.env.default backend\.env >nul
+if not exist frontend\.env copy /Y frontend\.env.default frontend\.env >nul
+for %%F in (.env backend/.env frontend/.env) do (
+    docker run --rm -v "%REPO_DIR%\autogpt_platform:/platform" -w /platform python:3.13-alpine python3 single-container/runtime_config.py fill-env --path %%F
+    if errorlevel 1 (
+        echo Failed to generate secrets in %%F
+        exit /b 1
+    )
+)
+echo Secrets ready.
+exit /b 0
 
 :bootstrap_ollama
 if not "%OLLAMA_HOST_URL%"=="" (
@@ -280,7 +335,7 @@ REM
 REM - OLLAMA_HOST=0.0.0.0:11434 so containers can reach it via
 REM   host.docker.internal ^(which Docker Desktop on Windows auto-injects
 REM   in every container's /etc/hosts^).
-REM - OLLAMA_CONTEXT_LENGTH=32768 because the OpenAI shim does NOT
+REM - OLLAMA_CONTEXT_LENGTH=262144 because the OpenAI shim does NOT
 REM   honor options.num_ctx in the request body ^(ollama/ollama#2714^);
 REM   Ollama silently caps every request at the 4 k default otherwise,
 REM   truncating AutoPilot's ~8 k system prompt.
@@ -290,9 +345,9 @@ REM — so we also export into this shell so the readiness probe below
 REM and any post-script user shells see the new values immediately.
 echo Setting OLLAMA_HOST and OLLAMA_CONTEXT_LENGTH ^(user env^)...
 setx OLLAMA_HOST "0.0.0.0:11434" >nul
-setx OLLAMA_CONTEXT_LENGTH "32768" >nul
+setx OLLAMA_CONTEXT_LENGTH "262144" >nul
 set OLLAMA_HOST=0.0.0.0:11434
-set OLLAMA_CONTEXT_LENGTH=32768
+set OLLAMA_CONTEXT_LENGTH=262144
 
 REM Restart Ollama so it picks up the new env. The Windows installer
 REM registers Ollama as a background app that re-spawns on user login;
@@ -347,7 +402,6 @@ if errorlevel 1 (
     echo no backend dir
     exit /b 1
 )
-if not exist .env copy /Y .env.default .env >nul
 
 set HOST_URL=
 if not "%OLLAMA_HOST_URL%"=="" (

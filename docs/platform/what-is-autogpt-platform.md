@@ -78,5 +78,5 @@ This strategy allows us to share previously closed-source components, fostering 
 
 ## Ready to Get Started?
 
-* Read the [Getting Started docs](getting-started.md) to self-host.
-* [Join the waitlist](https://agpt.co/waitlist) for the cloud-hosted beta.
+* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
+* **Self-Host:** Read the [Self-Hosting Guide](getting-started.md) to run the platform on your own infrastructure.

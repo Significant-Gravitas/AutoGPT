@@ -131,6 +131,90 @@ ORG_HEADER_NAME = "X-Org-Id"
 TEAM_HEADER_NAME = "X-Team-Id"
 
 
+async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
+    """Provision the platform ``User`` row for a valid token that has none.
+
+    The auth provider and the platform keep separate user tables, bridged only
+    by the client calling ``POST /api/v1/auth/user`` after sign-in. Better Auth
+    issues a session the moment the auth identity is created, so a request can
+    legitimately arrive before that call has run — or when it never ran,
+    because the OAuth flow lost the redirect that would have made it.
+
+    The org bootstrap below cannot create an org for a user it cannot find, and
+    nothing the client does later re-provisions, so such an account 400s on
+    every org-scoped endpoint forever rather than transiently. Provisioning
+    here from our own verified claims makes that self-healing.
+
+    Best-effort once provisioning is attempted: a failure leaves the caller to
+    run the org bootstrap and surface the same 400 as before, so this can only
+    improve the outcome. (The probe below is deliberately outside that guard —
+    if the database is unreachable the request has no context to resolve
+    anyway, and the very next query would raise regardless.)
+    """
+    from backend.data.db import prisma  # deferred -- only needed at runtime
+
+    # Only ever provision from claims that describe the user being resolved.
+    # Under admin impersonation ``user_id`` is the target while the JWT
+    # describes the admin, and provisioning from it would create the account
+    # under the admin's email.
+    if user_id != jwt_payload.get("sub"):
+        logger.debug("Not provisioning %s from an impersonator's claims", user_id)
+        return
+    if not jwt_payload.get("email"):
+        # Nothing to provision with, so this account stays broken. Say so —
+        # a silent return here is the exact failure mode this function exists
+        # to end: bricked and invisible.
+        logger.warning(f"Cannot provision user {user_id}: token carries no email claim")
+        return
+
+    if await prisma.user.find_unique(where={"id": user_id}) is not None:
+        return
+
+    from backend.data.user import get_or_create_user_with_status  # deferred
+
+    try:
+        # The uncached entry point: `get_or_create_user` memoizes for 5min
+        # across the whole process, so a row deleted (or healed) out from
+        # under a live cache entry would be masked for the rest of its TTL.
+        result = await get_or_create_user_with_status(jwt_payload)
+    except Exception:
+        # A first page load fans out ~20 requests that all miss the probe
+        # above, so all but one lose the create race and surface it as a
+        # DatabaseError. Report only a failure that actually left the user
+        # unprovisioned — otherwise one successful heal buries its own signal
+        # under ~19 tracebacks claiming it failed.
+        if await prisma.user.find_unique(where={"id": user_id}) is not None:
+            # The row exists, so the account is not stranded — but this is not
+            # necessarily a clean lost race: we may have created the row and
+            # then failed inside ensure_personal_org. Keep the traceback at
+            # WARNING, which LoggingIntegration attaches as a breadcrumb
+            # without raising a Sentry event, so the detail survives without
+            # the ~19-per-heal noise that reporting it as an error caused.
+            logger.warning(
+                f"Provisioning for user {user_id} raised, but the platform row "
+                "exists; the caller's org bootstrap will finish or report",
+                exc_info=True,
+            )
+            return
+        logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
+        return
+
+    if not result.was_created:
+        # Returning without raising is not proof we created anything: a
+        # concurrent request can land its row between our probe and the
+        # get-or-create's own lookup, which then simply reads it back. That
+        # request reports the breach; this one would only double-count it.
+        return
+
+    # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
+    # token with no platform user is an invariant breach worth seeing. Gated
+    # on `was_created` so it fires exactly once for the account that was
+    # missing rather than once per request in the fan-out above.
+    logger.error(
+        f"Provisioned a missing platform User row for {user_id} on first touch"
+    )
+
+
 async def get_request_context(
     request: fastapi.Request,
     jwt_payload: dict = fastapi.Security(get_jwt_payload),
@@ -191,12 +275,23 @@ async def get_request_context(
             # backfill cover normal accounts, but users created outside
             # get_or_create_user (e.g. seeded test accounts, direct DB
             # inserts) would otherwise 400 on every request forever.
-            from backend.api.features.orgs.db import (  # deferred
-                get_user_default_team,
-            )
+            from backend.api.features.orgs.db import get_user_default_team  # deferred
+
+            # Two things can be missing here, and only one of them used to be
+            # recoverable: the personal org, or the platform User row the org
+            # would hang off. Provision the user first so the bootstrap below
+            # has something to work with.
+            await _ensure_platform_user(user_id, jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)
             if org_id is None:
+                # Deliberately WARNING, not ERROR. This state is permanent
+                # until something heals it, and the client re-enters it on
+                # every org-scoped request, so a Sentry event here fires at a
+                # cadence the browser controls — thousands per broken account.
+                # The bounded signals carry this instead: _ensure_platform_user
+                # reports the failed provision once per request with a
+                # traceback, and reports a successful heal once per account.
                 logger.warning(
                     f"User {user_id} has no personal org and bootstrap "
                     "failed — account in inconsistent state"

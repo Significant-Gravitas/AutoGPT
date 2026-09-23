@@ -104,9 +104,10 @@ except ImportError:
 
 # OAuth handlers
 try:
-    from backend.integrations.oauth.base import BaseOAuthHandler
+    from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 except ImportError:
     BaseOAuthHandler = None
+    parse_granted_scopes = None
 
 
 # Credential type with proper provider name
@@ -151,6 +152,7 @@ __all__ = [
     "update_webhook",
     # Provider-Specific (when available)
     "BaseOAuthHandler",
+    "parse_granted_scopes",
     # Utilities
     "json",
     "store_media_file",

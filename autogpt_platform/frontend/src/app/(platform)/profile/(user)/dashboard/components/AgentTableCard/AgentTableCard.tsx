@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status } from "@/components/__legacy__/Status";
@@ -35,6 +36,7 @@ export const AgentTableCard = ({
         <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
           <Image
             src={image_urls?.[0] ?? "/nada.png"}
+            unoptimized={isLocalStoreMediaUrl(image_urls?.[0] ?? "/nada.png")}
             alt={agentName}
             fill
             style={{ objectFit: "cover" }}

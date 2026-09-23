@@ -31,6 +31,7 @@ CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
 )
 
 # The tokenizer generation introduced with Opus 4.7 (shared by the whole
@@ -140,7 +141,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O3_PRO = "o3-pro"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5.6 models (current flagship, July 2026)
+    # GPT-6 models (September 2026)
+    GPT6_ASTRA = "gpt-6-astra"
+    # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
     GPT5_6_LUNA = "gpt-5.6-luna"
@@ -172,8 +175,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_5_OPUS = "claude-opus-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
+    CLAUDE_5_1_FABLE = "claude-fable-5-1"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
@@ -194,8 +199,10 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
@@ -206,6 +213,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     COHERE_COMMAND_A_VISION_07_2025 = "cohere/command-a-vision-07-2025"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
+    DEEPSEEK_V4_1_FLASH = "deepseek/deepseek-v4.1-flash"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
     PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
@@ -217,8 +225,11 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+    INCLUSIONAI_LING_3_0_FLASH_VL = "inclusionai/ling-3.0-flash-vl"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
+    META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -232,6 +243,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K3 = "moonshotai/kimi-k3"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
+    QWEN3_8_FLASH = "qwen/qwen3.8-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
@@ -240,6 +253,14 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    # Sakana AI models
+    SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
+    # Inception Labs models
+    INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Tencent models
+    TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    # Unbiased models
+    UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"

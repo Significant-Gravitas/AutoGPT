@@ -13,13 +13,20 @@ interface Props {
   setQuery: (next: string) => void;
   providers: ConnectableProvider[];
   onSelect: (id: string) => void;
+  description: string;
 }
 
-export function ListView({ query, setQuery, providers, onSelect }: Props) {
+export function ListView({
+  query,
+  setQuery,
+  providers,
+  onSelect,
+  description,
+}: Props) {
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-[#505057]">
-        Pick a service to connect an API key or authorize with OAuth.
+        {description}
       </Text>
 
       <div className="relative w-full">

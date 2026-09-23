@@ -6,13 +6,15 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, st
 
 from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.data.execution import GraphExecutionMeta
+from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
 from backend.util.exceptions import (
     ExpertRunPausedError,
+    MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
+    WebhookSetupUnavailableError,
 )
 
 from .. import db
@@ -148,6 +150,10 @@ async def create_preset(
             return await db.create_preset_from_graph_execution(user_id, preset)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except MissingConfigError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        )
     except Exception as e:
         logger.exception("Preset creation failed for user %s: %s", user_id, e)
         raise HTTPException(
@@ -173,6 +179,20 @@ async def setup_trigger(
             description=params.description,
             trigger_config=params.trigger_config,
             agent_credentials=params.agent_credentials,
+            # Graph-match attribution is resolved by the caller (mirroring
+            # create_preset above): setup_triggered_preset itself never
+            # infers an expert, so copilot Otto sessions get presets
+            # they can actually manage.
+            expert_id=await experts_db.resolve_expert_for_graph(
+                user_id, params.graph_id
+            ),
+        )
+    except WebhookSetupUnavailableError as e:
+        # Server-side availability problem (e.g. Redis lock), not a bad
+        # request — retryable, mirroring create_preset's MissingConfigError.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Trigger setup is temporarily unavailable: {e}",
         )
     except WebhookRegistrationError as e:
         raise HTTPException(
@@ -315,6 +335,8 @@ async def execute_preset(
             graph_credentials_inputs=merged_credential_inputs,
             organization_id=exec_org_id,
             team_id=exec_team_id,
+            trigger=ExecutionTrigger.MANUAL,
+            trigger_ref="preset",
         )
     except ExpertRunPausedError as e:
         # A paused/over-budget expert is a user-visible state, not a server

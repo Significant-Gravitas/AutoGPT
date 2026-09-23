@@ -166,6 +166,7 @@ const exceptionMap: Record<string, string> = {
   Json: "JSON",
   Ai: "AI",
   "You Tube": "YouTube",
+  "All Quiet": "AllQuiet",
 };
 
 const applyExceptions = (str: string): string => {

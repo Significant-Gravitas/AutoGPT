@@ -28,7 +28,7 @@ def credentials_from_bundle(
         access_token_expires_at=access_claims.expires_at,
         refresh_token=bundle.tokens.refresh_token,
         scopes=[],
-        refresh_strategy="provider_runtime",
+        refresh_strategy="oauth_handler",
         provider_state=SecretStr(encode_provider_state(bundle)),
         provider_state_version=bundle.schema_version,
         metadata={
@@ -41,7 +41,11 @@ def credentials_from_bundle(
 def bundle_from_credentials(credentials: OAuth2Credentials) -> CodexAuthBundleV1:
     if credentials.provider != "codex":
         raise CodexAuthBundleError("Credential provider is not Codex")
-    if credentials.refresh_strategy != "provider_runtime":
+    # "provider_runtime" is the legacy shape from when the Codex CLI owned the
+    # token lifecycle. Sign-in and refresh are plain HTTP now, so new credentials
+    # are written as "oauth_handler"; both are readable so existing grants keep
+    # working across the change.
+    if credentials.refresh_strategy not in ("oauth_handler", "provider_runtime"):
         raise CodexAuthBundleError("Codex credential refresh ownership is invalid")
     if credentials.provider_state_version != 1 or credentials.provider_state is None:
         raise CodexAuthBundleError("Codex credential provider state is unavailable")

@@ -24,6 +24,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -46,6 +47,7 @@ from backend.copilot.response_model import (
 )
 
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
+from .tool_display import strip_display_token
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +357,12 @@ class SDKResponseAdapter:
                     # Strip MCP prefix so frontend sees "find_block"
                     # instead of "mcp__copilot__find_block".
                     tool_name = block.name.strip().removeprefix(MCP_TOOL_PREFIX)
+                    tool_input = strip_display_token(block.input)
+                    # A dispatch of a platform tool IS a call to that tool, so
+                    # the row this persists and the key the result is popped
+                    # under name it — the same resolve the MCP handler runs.
+                    if dispatch := resolve_tool_dispatch(tool_name, tool_input):
+                        tool_name, tool_input = dispatch.name, dispatch.args
 
                     responses.append(
                         StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
@@ -363,12 +371,12 @@ class SDKResponseAdapter:
                         StreamToolInputAvailable(
                             toolCallId=block.id,
                             toolName=tool_name,
-                            input=block.input,
+                            input=tool_input,
                         )
                     )
                     self.current_tool_calls[block.id] = {
                         "name": tool_name,
-                        "input": block.input,
+                        "input": tool_input,
                     }
 
         elif isinstance(sdk_message, UserMessage):
@@ -467,10 +475,7 @@ class SDKResponseAdapter:
 
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
-            if self.step_open:
-                self._end_reasoning_if_open(responses)
-                responses.append(StreamFinishStep())
-                self.step_open = False
+            self._finish_step(responses)
 
             # Narrate the gap between "tool returned" and "model emits its
             # next chunk". Usually sub-second, but with large tool outputs
@@ -497,9 +502,7 @@ class SDKResponseAdapter:
             #    content; with subtype=error the service layer never persists
             #    a marker so the chat history just stops mid-task).
             if self._should_surface_empty_completion(sdk_message, had_orphan_tool_use):
-                if self.step_open:
-                    responses.append(StreamFinishStep())
-                    self.step_open = False
+                self._finish_step(responses)
                 responses.append(
                     StreamError(
                         errorText="The model returned an empty response.",
@@ -547,11 +550,8 @@ class SDKResponseAdapter:
                 # placeholder.
                 if not self.thinking_only_reprompted:
                     self.pending_thinking_only_reprompt = True
-                    self._end_text_if_open(responses)
-                    self._end_reasoning_if_open(responses)
-                    if self.step_open:
-                        responses.append(StreamFinishStep())
-                        self.step_open = False
+                    self.end_open_blocks(responses)
+                    self._finish_step(responses)
                     return responses
                 # UserMessage (tool_result) closed the last step, so we must
                 # open a fresh one before emitting any text — the AI SDK v5
@@ -579,12 +579,9 @@ class SDKResponseAdapter:
                         delta=fallback_text,
                     )
                 )
-            self._end_text_if_open(responses)
-            self._end_reasoning_if_open(responses)
+            self.end_open_blocks(responses)
             # Close the step before finishing.
-            if self.step_open:
-                responses.append(StreamFinishStep())
-                self.step_open = False
+            self._finish_step(responses)
 
             if sdk_message.subtype == "success":
                 responses.append(StreamFinish())
@@ -606,9 +603,10 @@ class SDKResponseAdapter:
                 responses.append(
                     StreamError(
                         errorText=(
-                            "The turn ended because it exceeded the budget. "
-                            "Try a smaller scope, or wait for the next "
-                            "billing window."
+                            "This turn reached its spending limit. "
+                            "Send a follow-up to continue with a smaller scope. "
+                            "If your account usage limit is also reached, "
+                            "wait for it to reset."
                         ),
                         code="max_budget_exhausted",
                     )
@@ -782,6 +780,25 @@ class SDKResponseAdapter:
                 self._pending_thinking_index = None
             responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
             self.has_ended_reasoning = True
+
+    def end_open_blocks(self, responses: list[StreamBaseResponse]) -> None:
+        """End any open text and reasoning block.
+
+        Runs before every event that clears the frontend's active parts —
+        the adapter's own ``StreamFinishStep`` and the ones the service emits
+        (compaction rows).  An end that arrives after ``finish-step`` has
+        nothing to close and fails the whole turn in the AI SDK.
+        """
+        self._end_text_if_open(responses)
+        self._end_reasoning_if_open(responses)
+
+    def _finish_step(self, responses: list[StreamBaseResponse]) -> None:
+        """Close the open step, ending any open block first."""
+        if not self.step_open:
+            return
+        self.end_open_blocks(responses)
+        responses.append(StreamFinishStep())
+        self.step_open = False
 
     # ------------------------------------------------------------------
     # Partial-message streaming (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
@@ -1088,9 +1105,7 @@ class SDKResponseAdapter:
             # the fallback synthesis if the model then produced no text.
             self._text_since_last_tool_result = False
             self._any_tool_results_seen = True
-            if self.step_open:
-                responses.append(StreamFinishStep())
-                self.step_open = False
+            self._finish_step(responses)
 
 
 def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:

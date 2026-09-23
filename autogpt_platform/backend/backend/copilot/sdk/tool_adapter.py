@@ -17,7 +17,10 @@ from typing import TYPE_CHECKING, Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 from mcp.types import ToolAnnotations
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.context import (
+    _current_envelope,
+    _current_hidden_tools,
     _current_permissions,
     _current_project_dir,
     _current_sandbox,
@@ -27,6 +30,7 @@ from backend.copilot.context import (
     _encode_cwd_for_cli,
     get_execution_context,
     is_sdk_tool_path,
+    reset_consult_budget,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -34,7 +38,12 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
+from backend.copilot.tools import (
+    DEFERRED_TOOL_NAMES,
+    TOOL_REGISTRY,
+    ToolGroup,
+    tool_names_in_groups,
+)
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -55,11 +64,13 @@ from .e2b_file_tools import (
     get_read_tool_handler,
     get_write_tool_handler,
 )
+from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +138,8 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -139,6 +152,9 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
+        envelope: The turn's tree envelope; spawn tools derive children from it.
+        hidden_tools: Short tool names hidden from the model this turn;
+            ``run_capability`` refuses to reach them by id.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -146,6 +162,9 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
+    reset_consult_budget()
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
@@ -315,7 +334,7 @@ async def _execute_tool_sync(
 
     The call runs to completion — no per-handler timeout, no parking. The
     stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
-    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    is pending, so a long sub-Otto / graph execution doesn't trip the
     30-min idle safety net (SECRT-2247). A genuine hang is handled by the
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
@@ -722,6 +741,7 @@ def _make_truncating_wrapper(
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -741,7 +761,22 @@ def _make_truncating_wrapper(
     Swapping this order would cause the frontend to lose ``is_dry_run``.
     """
 
-    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+    async def execute(args: dict[str, Any]) -> dict[str, Any]:
+        # A dispatch of a platform tool IS a call to that tool: resolve it once,
+        # here, so the circuit breaker, the file-ref expansion, the output stash
+        # and the handler below all see the call the model made rather than the
+        # dispatcher it arrived through.  The display bridge stays bound to the
+        # dispatcher in ``wrapper`` above, which is what the hook registered.
+        dispatch = resolve_tool_dispatch(tool_name, args)
+        if dispatch is not None:
+            name, args = dispatch.name, dispatch.args
+            run = create_tool_handler(dispatch.tool)
+            schema = dispatch.tool.parameters
+            required = list(schema.get("required") or ())
+        else:
+            name, run = tool_name, fn
+            schema, required = input_schema, required_args
+
         # Detect empty-args truncation: args is empty AND the original tool
         # declared at least one *required* property. Tools whose params are all
         # optional (filters-only tools like list_schedules) legitimately accept
@@ -750,17 +785,17 @@ def _make_truncating_wrapper(
         # SDK-visible schema to avoid SDK-side validation rejecting truncated
         # calls before reaching this handler. We carry required_args through
         # the wrapper instead.
-        if not args and required_args:
+        if not args and required:
             logger.warning(
-                f"[MCP] {tool_name} called with empty args (truncated or "
+                f"[MCP] {name} called with empty args (truncated or "
                 f"schema-rejected input) — returning guidance"
             )
-            stop_msg = _check_circuit_breaker(tool_name, args)
-            _record_tool_failure(tool_name, args)
+            stop_msg = _check_circuit_breaker(name, args)
+            _record_tool_failure(name, args)
             if stop_msg:
                 return _mcp_error(stop_msg)
             return _mcp_error(
-                f"Your call to {tool_name} arrived with empty arguments. "
+                f"Your call to {name} arrived with empty arguments. "
                 f"This means the arguments were dropped in transit: either "
                 f"your response hit the output-token limit mid-call, or an "
                 f"argument value did not match the parameter's declared "
@@ -768,13 +803,13 @@ def _make_truncating_wrapper(
                 f"way. Instead, write the large argument value to a file "
                 f"first (bash_exec with cat >>, appending section by "
                 f"section, or reuse a file you already wrote), then call "
-                f'{tool_name} again passing the string "@@agptfile:<path>" '
+                f'{name} again passing the string "@@agptfile:<path>" '
                 f"as that argument's value. Object parameters such as "
                 f"agent_json accept this file-reference string directly."
             )
 
         original_args = args
-        stop_msg = _check_circuit_breaker(tool_name, original_args)
+        stop_msg = _check_circuit_breaker(name, original_args)
         if stop_msg:
             return _mcp_error(stop_msg)
 
@@ -782,23 +817,23 @@ def _make_truncating_wrapper(
         if session is not None:
             try:
                 args = await expand_file_refs_in_args(
-                    args, user_id, session, input_schema=input_schema
+                    args, user_id, session, input_schema=schema
                 )
             except FileRefExpansionError as exc:
-                _record_tool_failure(tool_name, original_args)
+                _record_tool_failure(name, original_args)
                 return _mcp_error(
                     f"@@agptfile: reference could not be resolved: {exc}. "
                     "Ensure the file exists before referencing it. "
                     "For sandbox paths use bash_exec to verify the file exists first; "
                     "for workspace files use a workspace:// URI."
                 )
-        result = await fn(args)
+        result = await run(args)
         truncated = truncate(result, _MCP_MAX_CHARS)
 
         if truncated.get("isError"):
-            _record_tool_failure(tool_name, original_args)
+            _record_tool_failure(name, original_args)
         else:
-            _clear_tool_failures(tool_name)
+            _clear_tool_failures(name)
 
         # Stash the raw tool output for the frontend SSE stream so widgets
         # (bash, tool viewers) receive clean JSON.  Mid-turn user follow-up
@@ -812,7 +847,7 @@ def _make_truncating_wrapper(
                 # Key by the model's ORIGINAL args (pre file-ref expansion) so
                 # it matches the ToolUseBlock.input the response adapter pops
                 # with — see ``_output_key`` (OPEN-3158).
-                stash_pending_tool_output(tool_name, text, original_args)
+                stash_pending_tool_output(name, text, original_args)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act
@@ -825,6 +860,12 @@ def _make_truncating_wrapper(
 
         return truncated
 
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        if tool_display_bridge is None:
+            return await execute(args)
+        with tool_display_bridge.execution_context(tool_name, args) as clean_args:
+            return await execute(clean_args)
+
     return wrapper
 
 
@@ -832,6 +873,7 @@ def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -864,7 +906,16 @@ def create_copilot_mcp_server(
         # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
         # can never approve makes the model call it, receive a permission
         # denial, and silently abandon the feature (e.g. the task checklist).
-        if tool_name in hidden or tool_name in BASELINE_ONLY_MCP_TOOLS:
+        # Deferred tools are reached through run_capability, not by name.
+        # ``is_available`` is the env check the baseline path applies in
+        # ``get_available_tools``; without it this engine offers browser
+        # tools on a box with no agent-browser binary.
+        if (
+            tool_name in hidden
+            or tool_name in BASELINE_ONLY_MCP_TOOLS
+            or tool_name in DEFERRED_TOOL_NAMES
+            or not base_tool.is_available
+        ):
             continue
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
@@ -880,7 +931,11 @@ def create_copilot_mcp_server(
             annotations=_PARALLEL_ANNOTATION,
         )(
             _make_truncating_wrapper(
-                handler, tool_name, input_schema=schema, required_args=required
+                handler,
+                tool_name,
+                input_schema=schema,
+                required_args=required,
+                tool_display_bridge=tool_display_bridge,
             )
         )
         sdk_tools.append(decorated)
@@ -1023,6 +1078,13 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   prod without issues.
 # ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
 #   {"scheduledFor": 0} and nothing is scheduled.
+# CronCreate/CronList/CronDelete: same failure mode as ScheduleWakeup, but
+#   worse because CronCreate *confirms* success ("Persisted to
+#   .claude/scheduled_tasks.json").  Those jobs belong to the CLI process,
+#   which exits with the turn; nothing here ever reads or runs that file, and
+#   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
+#   exposed lets the model promise unattended monitoring that silently never
+#   fires — `schedule_followup` is the primitive that actually persists.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1032,6 +1094,9 @@ SDK_DISALLOWED_TOOLS = [
     "Edit",
     "Read",
     "ScheduleWakeup",
+    "CronCreate",
+    "CronList",
+    "CronDelete",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).
@@ -1091,7 +1156,9 @@ def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
     return [
         f"{MCP_TOOL_PREFIX}{name}"
         for name in TOOL_REGISTRY.keys()
-        if name not in BASELINE_ONLY_MCP_TOOLS and name not in hidden
+        if name not in BASELINE_ONLY_MCP_TOOLS
+        and name not in DEFERRED_TOOL_NAMES
+        and name not in hidden
     ]
 
 
@@ -1148,3 +1215,13 @@ def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
     if not use_e2b:
         return list(SDK_DISALLOWED_TOOLS)
     return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+
+
+def get_sdk_builtin_tools() -> list[str]:
+    """Every Claude Code built-in this module knows about, blocked or kept.
+
+    For callers that want *no* built-ins at all — the orchestrator block hands
+    its model graph MCP tools only — so a built-in that is new here (a CLI
+    scheduler, say) is blocked there without a second, hand-synced edit.
+    """
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_TOOLS]))

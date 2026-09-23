@@ -10,6 +10,7 @@ function preferences(analytics: boolean): ConsentPreferences {
     timestamp: Date.now(),
     analytics,
     monitoring: false,
+    advertising: false,
   };
 }
 
@@ -64,5 +65,29 @@ describe("analytics consent cookie", () => {
     consent.clear();
 
     expect(document.cookie).not.toContain(`${COOKIE_NAME}=granted`);
+  });
+
+  it("keeps an answer stored before the advertising category existed, as advertising denied", () => {
+    localStorage.setItem(
+      Key.COOKIE_CONSENT,
+      JSON.stringify({
+        hasConsented: true,
+        timestamp: 1,
+        analytics: true,
+        monitoring: false,
+      }),
+    );
+
+    const loaded = consent.load();
+
+    expect(loaded.hasConsented).toBe(true);
+    expect(loaded.analytics).toBe(true);
+    expect(loaded.advertising).toBe(false);
+  });
+
+  it("persists advertising consent", () => {
+    consent.save({ ...preferences(true), advertising: true });
+
+    expect(consent.load().advertising).toBe(true);
   });
 });

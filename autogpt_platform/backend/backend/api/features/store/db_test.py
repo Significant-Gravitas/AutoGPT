@@ -7,6 +7,9 @@ import prisma.models
 import pytest
 from prisma import Prisma
 
+from backend.util.exceptions import NotFoundError
+
+from . import categories as store_categories
 from . import db
 from .model import MyAgentsSortBy, Profile, SubmissionStats
 
@@ -179,16 +182,9 @@ async def test_create_store_submission(mocker):
         metadata="{}",  # type: ignore[reportArgumentType]
         integrations="",
         maxEmailsPerDay=1,
-        notifyOnAgentRun=True,
-        notifyOnZeroBalance=True,
-        notifyOnLowBalance=True,
-        notifyOnBlockExecutionFailed=True,
-        notifyOnContinuousAgentError=True,
-        notifyOnDailySummary=True,
-        notifyOnWeeklySummary=True,
-        notifyOnMonthlySummary=True,
-        notifyOnAgentApproved=True,
-        notifyOnAgentRejected=True,
+        briefingFrequency=prisma.enums.BriefingFrequency.WEEKLY,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
+        alertsEnabled=True,
+        notifyOnStoreVerdict=True,
         timezone="Europe/Delft",
         subscriptionTier=prisma.enums.SubscriptionTier.BASIC,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
     )
@@ -490,7 +486,7 @@ async def test_get_store_agents_with_search_and_filters_parameterized():
 
         assert isinstance(result.agents, list)
         fallback_sql, *fallback_params = fallback_query_raw.call_args.args
-        assert malicious_category in fallback_params
+        assert [malicious_category] in fallback_params
         assert malicious_category not in fallback_sql
         assert [malicious_creator, "creator2"] in fallback_params
 
@@ -513,7 +509,7 @@ async def test_get_store_agents_search_category_array_injection():
 
         assert isinstance(result.agents, list)
         fallback_sql, *fallback_params = fallback_query_raw.call_args.args
-        assert malicious_category in fallback_params
+        assert [malicious_category] in fallback_params
         assert malicious_category not in fallback_sql
 
 
@@ -1140,3 +1136,110 @@ async def test_get_store_submissions_without_org_strict_ownership(mocker):
     where = mock_client.find_many.call_args.kwargs["where"]
     assert where["user_id"] == "user-1"
     assert "AND" not in where
+
+
+# ---- Public agent download: the listing version is the authorization ---- #
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_agent_requires_installable_listing_version(mocker):
+    """`get_agent()` serves the unauthenticated download endpoint, so it must
+    gate on the listing version being publicly installable — APPROVED, not
+    deleted, available, on a listing that still exists."""
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = None
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+    mock_get_graph = mocker.patch.object(db, "get_graph", new_callable=AsyncMock)
+
+    with pytest.raises(NotFoundError):
+        await db.get_agent("version123")
+
+    where = mock_client.find_first.call_args.kwargs["where"]
+    assert where["id"] == "version123"
+    assert where["submissionStatus"] == prisma.enums.SubmissionStatus.APPROVED
+    assert where["isDeleted"] is False
+    assert where["isAvailable"] is True
+    assert where["StoreListing"] == {"is": {"isDeleted": False}}
+    # A non-installable version must never reach the graph.
+    mock_get_graph.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_agent_skips_graph_access_check(mocker):
+    """The caller is anonymous, so `get_graph()` would deny — `get_agent()`
+    authorizes against the listing instead and passes `skip_access_check`."""
+    mock_slv = mocker.Mock()
+    mock_slv.agentGraphId = "graph-1"
+    mock_slv.agentGraphVersion = 3
+
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = mock_slv
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+    mock_graph = mocker.Mock()
+    mock_get_graph = mocker.patch.object(
+        db, "get_graph", new_callable=AsyncMock, return_value=mock_graph
+    )
+
+    result = await db.get_agent("version123")
+
+    assert result is mock_graph
+    mock_get_graph.assert_awaited_once_with(
+        graph_id="graph-1",
+        version=3,
+        user_id=None,
+        for_export=True,
+        skip_access_check=True,
+    )
+
+
+@pytest.fixture
+def store_agent_query(mocker):
+    """Capture the where/order Prisma is asked for, without a database."""
+    mock = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock.return_value.find_many = AsyncMock(return_value=[])
+    mock.return_value.count = AsyncMock(return_value=0)
+    return mock.return_value.find_many
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_category_filter_matches_the_canonical_value_and_its_aliases(
+    store_agent_query,
+):
+    await db.get_store_agents(category="content")
+
+    matches = store_agent_query.call_args.kwargs["where"]["categories"]["has_some"]
+    assert "content" in matches
+    assert "writing" in matches
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uncategorised_listings_are_shown_while_the_setting_is_off(
+    store_agent_query,
+):
+    assert (
+        store_categories.settings.config.marketplace_require_canonical_category is False
+    )
+
+    await db.get_store_agents()
+
+    assert "categories" not in store_agent_query.call_args.kwargs["where"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uncategorised_listings_are_hidden_when_the_setting_is_on(
+    store_agent_query, monkeypatch
+):
+    monkeypatch.setattr(
+        store_categories.settings.config,
+        "marketplace_require_canonical_category",
+        True,
+    )
+
+    await db.get_store_agents()
+
+    matches = store_agent_query.call_args.kwargs["where"]["categories"]["has_some"]
+    assert set(store_categories.all_category_match_values()) == set(matches)

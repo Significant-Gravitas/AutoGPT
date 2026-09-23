@@ -72,6 +72,8 @@ def _adapter() -> MagicMock:
     adapter.stop_typing = AsyncMock()
     adapter.supports_stream_drafts = False
     adapter.send_stream_draft = AsyncMock(return_value=False)
+    adapter.supports_choice_buttons = False
+    adapter.send_choice_buttons = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
@@ -132,6 +134,88 @@ class TestEmptyMessage:
         await handler.handle(_ctx(text="   "), adapter)
         adapter.send_reply.assert_awaited_once()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_attachments_only_dm_gets_problem_report(self):
+        # A DM whose only content was a too-large file must not be silently
+        # dropped — the user gets the problem note instead.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        target, note = adapter.send_message.await_args.args
+        assert target == "dm-1" and "huge.zip" in note
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_channel_mention_replies_in_place(self):
+        # The note replaces the misleading "didn't say anything" nudge and is
+        # sent as an in-channel reply: opening a thread (real and visible on
+        # Discord) just to hold it would leave an orphan behind.
+        api = _api()
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                text="",
+                bot_mentioned=True,
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.create_thread.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+        _channel, note, reply_to = adapter.send_reply.await_args.args
+        assert "huge.zip" in note and reply_to == "msg-1"
+        # These messages still count as received in analytics.
+        assert api.track_event.called
+        assert api.track_event.call_args.kwargs["event_type"] == "message_received"
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_dm_from_unlinked_user_still_gets_the_link_prompt(self):
+        # The note sits behind the link gate like every other message: an
+        # unlinked user gets the Link Account button, not a file complaint.
+        handler = MessageHandler(_api(user_linked=False))
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_reply_in_unowned_thread_still_needs_a_mention(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-9",
+                    text="",
+                    skipped_attachments=(("huge.zip", "is too large"),),
+                ),
+                adapter,
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_reply.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_empty_dm_is_silently_dropped(self):
@@ -563,6 +647,142 @@ class TestBatching:
 
         adapter.send_link.assert_awaited_once()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_sends_question_with_options(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": ["US", "EU"],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            yield "Once you pick, I'll continue."
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        # The question is sent as a normal text message (every adapter
+        # already implements send_message, unlike the setup-required flow's
+        # link button) — so both the question and the trailing text arrive
+        # via send_message.
+        assert adapter.send_message.await_count == 2
+        question_text = adapter.send_message.await_args_list[0].args[1]
+        assert "Which region?" in question_text
+        assert "1. US" in question_text
+        assert "2. EU" in question_text
+        assert "Reply with a number" in question_text
+        assert (
+            "Once you pick, I'll continue."
+            in adapter.send_message.await_args_list[1].args[1]
+        )
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_fires_once_per_turn(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            payload = {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [{"question": "Which region?", "keyword": "region"}],
+            }
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_splits_oversized_message(self):
+        """Regression: ask_question allows up to 10 questions of 25 options
+        each, which can render past a platform's message cap (Discord 2000
+        chars) — the clarification send must chunk like any other long
+        message rather than risk send_message raising on an oversized post.
+        """
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": [f"Option {i}" for i in range(25)],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        adapter.chunk_flush_at = 50
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        msgs = [c.args[1] for c in adapter.send_message.await_args_list]
+        assert len(msgs) > 1
+        assert all(len(m) <= 50 for m in msgs)
+        assert "Option 0" in "".join(msgs)
+        assert "Option 24" in "".join(msgs)
+        assert "Reply with a number" in "".join(msgs)
 
     @pytest.mark.asyncio
     async def test_channel_thread_renames_from_generated_chat_title(self):

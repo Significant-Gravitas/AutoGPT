@@ -60,7 +60,15 @@ export function TourMessageList({ messages, isStreaming, footer }: Props) {
             </MessageContent>
           </Message>
         ))}
-        {showThinking && <ThinkingIndicator active elapsedSeconds={0} />}
+        {/* The demo has no backend status stream, so it names the state
+            itself — the indicator shows no label otherwise. */}
+        {showThinking && (
+          <ThinkingIndicator
+            active
+            elapsedSeconds={0}
+            statusMessage="Thinking…"
+          />
+        )}
         {footer}
       </ConversationContent>
       <ConversationScrollButton />

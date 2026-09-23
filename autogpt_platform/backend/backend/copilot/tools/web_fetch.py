@@ -1,6 +1,8 @@
 """Web fetch tool — safely retrieve public web page content."""
 
 import logging
+import re
+from html import unescape
 from typing import Any
 
 import aiohttp
@@ -48,6 +50,17 @@ def _html_to_text(html: str) -> str:
     h.ignore_images = True
     h.body_width = 0
     return h.handle(html)
+
+
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+
+
+def _extract_title(html: str) -> str | None:
+    match = _TITLE_RE.search(html)
+    if not match:
+        return None
+    title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
+    return title or None
 
 
 class WebFetchTool(BaseTool):
@@ -130,8 +143,11 @@ class WebFetchTool(BaseTool):
         raw = response.content[:_MAX_CONTENT_BYTES]
         text = raw.decode("utf-8", errors="replace")
 
-        if extract_text and "html" in content_type.lower():
-            text = _html_to_text(text)
+        title = None
+        if "html" in content_type.lower():
+            title = _extract_title(text)
+            if extract_text:
+                text = _html_to_text(text)
 
         return WebFetchResponse(
             message=f"Fetched {url}",
@@ -139,6 +155,8 @@ class WebFetchTool(BaseTool):
             status_code=response.status,
             content_type=content_type.split(";")[0].strip(),
             content=text,
-            truncated=False,
+            title=title,
+            content_length=len(response.content),
+            truncated=len(response.content) > _MAX_CONTENT_BYTES,
             session_id=session_id,
         )

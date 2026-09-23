@@ -28,6 +28,15 @@ async def server():
         yield server
 
 
+@pytest.fixture(autouse=True)
+def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
+    """``load_dotenv()`` above copies ``.env`` into ``os.environ``, so a developer
+    who turned on ``FORCE_ALL_FLAGS`` locally would otherwise fail every
+    flag-off test. Tests that want the switch on set it themselves."""
+    monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
+    monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+
+
 @pytest.fixture
 def test_user_id() -> str:
     """Test user ID fixture."""

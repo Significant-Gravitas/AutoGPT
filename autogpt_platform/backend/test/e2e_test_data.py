@@ -12,9 +12,12 @@ Image/Video URL Domains Used:
 - Videos: youtube.com (for store listing video URLs)
 """
 
+import argparse
 import asyncio
 import json
+import os
 import random
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List
@@ -28,6 +31,10 @@ from pydantic import SecretStr
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
 from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.search.embeddings import (
+    backfill_all_content_types,
+    get_embedding_stats,
+)
 from backend.api.features.store.db import (
     create_store_submission,
     review_store_submission,
@@ -40,6 +47,7 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
+from backend.util.clients import get_openai_client
 from backend.util.encryption import JSONCryptor
 from backend.util.json import SafeJson
 
@@ -81,6 +89,13 @@ _DOCKER_TEMPLATE_PATH = Path(
 E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
     _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
 )
+# CI dumps this database for its cache after seeding, so anything left unembedded
+# here is re-embedded on every cache hit. Batch size is concurrency, not a page size.
+EMBEDDING_BACKFILL_BATCH_SIZE = int(os.getenv("E2E_EMBEDDING_BATCH_SIZE", "100"))
+EMBEDDING_BACKFILL_TIMEOUT_SECONDS = float(
+    os.getenv("E2E_EMBEDDING_TIMEOUT_SECONDS", "900")
+)
+
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
     "e2e.qa.auth@example.com",
@@ -91,6 +106,45 @@ SEEDED_TEST_EMAILS = [
     "e2e.qa.parallel.a@example.com",
     "e2e.qa.parallel.b@example.com",
 ]
+
+
+def make_seed_credential(credential_id: str) -> APIKeyCredentials:
+    return APIKeyCredentials(
+        id=credential_id,
+        provider="github",
+        api_key=SecretStr("ghp_kitchensink_seed"),
+        title="Kitchen-sink GitHub",
+    )
+
+
+async def refresh_seeded_credentials() -> None:
+    users = await prisma.user.find_many(where={"email": {"in": SEEDED_TEST_EMAILS}})
+    owner_ids = {user.id for user in users}
+    if len(owner_ids) != len(SEEDED_TEST_EMAILS):
+        raise ValueError("Seeded credential owners are missing")
+    credentials = await prisma.integrationcredential.find_many(
+        where={
+            "ownerType": prisma_enums.CredentialOwnerType.USER,
+            "ownerId": {"in": sorted(owner_ids)},
+            "provider": "github",
+            "displayName": "Kitchen-sink GitHub",
+        }
+    )
+    if (
+        len(credentials) != len(owner_ids)
+        or {credential.ownerId for credential in credentials} != owner_ids
+    ):
+        raise ValueError("Expected one marked credential per seeded user")
+    cryptor = JSONCryptor()
+    for credential in credentials:
+        payload = make_seed_credential(credential.id).model_dump()
+        updated = await prisma.integrationcredential.update(
+            where={"id": credential.id},
+            data={"encryptedPayload": cryptor.encrypt(payload)},
+        )
+        if updated is None or cryptor.decrypt(updated.encryptedPayload) != payload:
+            raise ValueError("Seeded credential failed encryption verification")
+    print(f"Verified {len(credentials)} seeded credentials with the current run key")
 
 
 def get_video_url():
@@ -1157,12 +1211,7 @@ class TestDataCreator:
             # decrypt/validate read path (get_user_credentials) accepts it.
             # (A raw/plaintext payload is silently rejected and never shows.)
             cred_id = str(uuid.uuid4())
-            gh_cred = APIKeyCredentials(
-                id=cred_id,
-                provider="github",
-                api_key=SecretStr("ghp_kitchensink_seed"),
-                title="Kitchen-sink GitHub",
-            )
+            gh_cred = make_seed_credential(cred_id)
             await _try(
                 "credential",
                 prisma.integrationcredential.create(
@@ -1266,6 +1315,8 @@ class TestDataCreator:
         except Exception as e:
             print(f"Error refreshing materialized views: {e}")
 
+        await self.backfill_content_embeddings()
+
         print("E2E test data creation completed successfully!")
 
         # Print summary
@@ -1285,15 +1336,83 @@ class TestDataCreator:
         print(f"   • Library agents per user: >= {MIN_AGENTS_PER_USER}")
         print("\n🚀 Your E2E test database is ready to use!")
 
+    async def backfill_content_embeddings(self):
+        """Drive embedding coverage to 100% so the CI cache dump carries it."""
+        if not get_openai_client():
+            print("⏭️  No embedding backend configured — skipping embedding backfill")
+            return
+
+        print("Backfilling content embeddings...")
+        deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
+        while True:
+            try:
+                # Both awaits reach the network, and one stuck embedding call is
+                # 600s x 3 attempts under the OpenAI client's defaults — longer than
+                # the whole deadline. Checking the clock between them bounds nothing.
+                stats = await asyncio.wait_for(
+                    get_embedding_stats(), _seconds_left(deadline)
+                )
+                # On failure get_embedding_stats reports zero missing, which would
+                # read as complete coverage and cache a dump with no embeddings.
+                if "error" in stats:
+                    print(
+                        "::warning title=e2e-embeddings-unknown::Could not read "
+                        f"embedding stats ({stats['error']}); skipping backfill. "
+                        "The cached dump will be incomplete."
+                    )
+                    return
+
+                totals = stats["totals"]
+                missing = totals["without_embeddings"]
+                if missing == 0:
+                    print(
+                        f"✅ Embeddings complete: {totals['total']} items, "
+                        f"{totals['coverage_percent']}% coverage"
+                    )
+                    return
+
+                print(f"   {missing} items without embeddings — backfilling...")
+                result = await asyncio.wait_for(
+                    backfill_all_content_types(EMBEDDING_BACKFILL_BATCH_SIZE),
+                    _seconds_left(deadline),
+                )
+            except asyncio.TimeoutError:
+                print(
+                    "::warning title=e2e-embeddings-incomplete::Embedding backfill "
+                    f"did not reach full coverage within "
+                    f"{EMBEDDING_BACKFILL_TIMEOUT_SECONDS:.0f}s. The cached dump "
+                    "will be incomplete and every cache hit will re-run the backfill."
+                )
+                return
+
+            if result["totals"]["success"] == 0:
+                print(
+                    "::warning title=e2e-embeddings-stalled::Embedding backfill made "
+                    f"no progress ({result['totals']['message']}); giving up with "
+                    f"{missing} items missing."
+                )
+                return
+
+
+def _seconds_left(deadline: float) -> float:
+    """Remaining budget, floored at 0 so an expired deadline times out at once."""
+    return max(0.0, deadline - time.monotonic())
+
 
 async def main():
     """Main function to run the test data creation."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--refresh-credentials-only", action="store_true")
+    args = parser.parse_args()
     # Connect to database
     await prisma.connect()
 
     try:
-        creator = TestDataCreator()
-        await creator.create_all_test_data()
+        if args.refresh_credentials_only:
+            await refresh_seeded_credentials()
+        else:
+            creator = TestDataCreator()
+            await creator.create_all_test_data()
     finally:
         # Disconnect from database
         await prisma.disconnect()

@@ -133,3 +133,17 @@ class CodexLoginCompletion(BaseModel):
     bundle: CodexAuthBundleV1
     account: CodexAccountSnapshot | None = None
     rate_limits: CodexRateLimitsSnapshot | None = None
+
+
+class CodexStreamEvent(BaseModel):
+    """A streamed increment from a Codex turn.
+
+    Replaces the CLI SDK's ``Notification`` on the HTTP path so nothing outside
+    this package has to import ``openai_codex`` -- that package hard-depends on
+    the 391 MB bundled binary, with no extra to opt out of it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["text_delta", "reasoning_delta"]
+    delta: str
