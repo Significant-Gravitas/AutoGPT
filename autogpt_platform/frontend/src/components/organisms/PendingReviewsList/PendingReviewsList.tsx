@@ -21,7 +21,7 @@ interface PendingReviewsListProps {
 }
 
 // Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
-const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
+export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
 
 export function PendingReviewsList({
   reviews,

@@ -7,6 +7,7 @@ import {
 
 interface Props {
   onSend: (message: string) => void | Promise<void>;
+  onBackendTurn?: () => void;
   /** Defaults to "copilot" — the standalone page. */
   chatSurface?: CopilotChatSurface;
   getExecutionShareToken?: (executionId: string) => string | null | undefined;
@@ -15,13 +16,14 @@ interface Props {
 
 export function CopilotChatActionsProvider({
   onSend,
+  onBackendTurn,
   chatSurface = "copilot",
   getExecutionShareToken,
   children,
 }: Props) {
   return (
     <CopilotChatActionsContext.Provider
-      value={{ onSend, chatSurface, getExecutionShareToken }}
+      value={{ onSend, onBackendTurn, chatSurface, getExecutionShareToken }}
     >
       {children}
     </CopilotChatActionsContext.Provider>

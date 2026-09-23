@@ -109,6 +109,8 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** Follow a turn the server started, e.g. after an approval card is answered. */
+  onBackendTurn?: () => void;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports; the thread header clears them. */
   hasFloatingControls?: boolean;
@@ -149,6 +151,7 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  onBackendTurn,
   hasFloatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -288,7 +291,10 @@ export const ChatContainer = ({
   }, [guardedOnSend, messages]);
 
   return (
-    <CopilotChatActionsProvider onSend={guardedOnSend}>
+    <CopilotChatActionsProvider
+      onSend={guardedOnSend}
+      onBackendTurn={onBackendTurn}
+    >
       <PendingAnswerContexts messages={messages}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">

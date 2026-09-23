@@ -47,10 +47,10 @@ def gate_on():
 
 @pytest.fixture
 def clean_session_state():
-    """No prior approval, nothing rejected in this chat, nothing waiting."""
+    """No prior approval and nothing rejected in this chat."""
     with (
         patch(f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)),
-        patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=False)),
+        patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.asks", AsyncMock(return_value=False)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
@@ -182,7 +182,6 @@ async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert not decision.allowed
-    assert not decision.already_waiting
 
 
 async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
@@ -227,17 +226,18 @@ async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     asks.assert_not_awaited()
 
 
-async def test_only_one_action_waits_at_a_time(gate_on, clean_session_state):
+async def test_a_call_that_cannot_be_kept_is_not_parked(gate_on, clean_session_state):
+    """A card whose call is lost could be approved and then run nothing."""
     open_review = AsyncMock(return_value=True)
     with (
-        patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.remember", AsyncMock(return_value=False)),
         patch(f"{_GATE}.review_store.open_review", open_review),
     ):
         decision = await check_action(
             "post_to_chat_platform", {"text": "hi"}, "u", _session()
         )
     assert not decision.allowed
-    assert decision.already_waiting
+    assert decision.review_id is None
     open_review.assert_not_awaited()
 
 

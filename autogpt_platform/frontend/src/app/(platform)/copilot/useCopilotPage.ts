@@ -168,6 +168,7 @@ export function useCopilotPage() {
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
+    followBackendTurn,
     messages: currentMessages,
     setMessages,
     sendMessage,
@@ -443,5 +444,6 @@ export function useCopilotPage() {
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
+    followBackendTurn,
   };
 }
