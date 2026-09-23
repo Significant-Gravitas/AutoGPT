@@ -436,3 +436,33 @@ async def test_a_gzipped_request_body_within_the_cap_is_swapped_inside_its_encod
     assert json.loads(sent) == {"token": TOKEN}
     assert flow.request.headers["content-length"] == str(len(flow.request.raw_content))
     assert audit(caplog) == [("swapped", "hsurr:github")]
+
+
+async def test_a_token_in_the_second_gzip_member_of_a_response_is_scrubbed(caplog):
+    """A client decodes every member; the scrub must see every member too."""
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    flow.response.headers["content-type"] = "application/json"
+    flow.response.headers["content-encoding"] = "gzip"
+    flow.response.raw_content = gzip.compress(b'{"a": "') + gzip.compress(
+        b'%s"}' % TOKEN.encode()
+    )
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert gzip.decompress(flow.response.raw_content or b"") == b'{"a": "hsurr:github"}'
+    assert audit(caplog) == [("scrubbed", None)]
+
+
+async def test_a_response_with_data_after_its_gzip_stream_is_refused(caplog):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow)
+    flow.live = True
+    flow.response.headers["content-type"] = "application/json"
+    flow.response.headers["content-encoding"] = "gzip"
+    flow.response.raw_content = gzip.compress(b"{}") + TOKEN.encode()
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
