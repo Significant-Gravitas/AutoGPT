@@ -154,3 +154,24 @@ async def test_receipt_outage_returns_retryable_error(connection_fails, operatio
             await action("owner", "https://example.com/upload.png")
     assert error.value.status_code == 503
     assert "try again" in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_managed_specialists_need_no_upload_receipt_but_otto_is_reserved():
+    from backend.api.features.experts.avatar_moderation import require_approved_avatar
+
+    redis = AsyncMock(get=AsyncMock(return_value=None))
+    with patch(
+        "backend.api.features.experts.avatar_moderation.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ) as connect:
+        for identity in ("expert-maria", "expert-mina"):
+            await require_approved_avatar(
+                "owner", f"/autogpt-characters/v1.1/{identity}/neutral/64.webp"
+            )
+        connect.assert_not_awaited()
+        with pytest.raises(HTTPException) as error:
+            await require_approved_avatar(
+                "owner", "/autogpt-characters/v1.1/otto/neutral/64.webp"
+            )
+    assert error.value.status_code == 400
