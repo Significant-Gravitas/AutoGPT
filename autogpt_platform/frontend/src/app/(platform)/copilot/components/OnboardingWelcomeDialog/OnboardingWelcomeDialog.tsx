@@ -73,8 +73,8 @@ const TEAM_CARDS: CapabilityCard[] = [
     icon: SparklesIcon,
   },
   {
-    title: "Hire an expert, or raise your own.",
-    body: "Pick a ready-made expert for marketing, sales or ops, or describe a role and raise one from scratch.",
+    title: "Hire an expert, or create your own.",
+    body: "Pick a ready-made expert for marketing, sales or ops, or describe a role and create one from scratch.",
     icon: UserGroupIcon,
   },
   {

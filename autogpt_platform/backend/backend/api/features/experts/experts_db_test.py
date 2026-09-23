@@ -2060,6 +2060,7 @@ async def test_existing_non_private_hire_is_never_revived():
 async def test_hire_existing_team_expert_fails_closed():
     template = SimpleNamespace(
         id="template-1",
+        isTemplate=True,
         name="Maria",
         avatarUrl=None,
         color="",
@@ -2112,6 +2113,7 @@ async def test_hire_raced_org_expert_fails_closed():
     closed on the retry instead of returning the shared row."""
     template = SimpleNamespace(
         id="template-1",
+        isTemplate=True,
         name="Maria",
         avatarUrl=None,
         color="",
@@ -4428,7 +4430,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
         },
     )
     assert rescoped is not None
-    assert await seed._backfill_hired_copies(rescoped) == 1
+    assert await seed._backfill_hired_copies(rescoped, template) == 1
 
     moved = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
@@ -4456,7 +4458,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
         where={"id": template.id}, data={"tagline": "Briefs, drafts, and page copy."}
     )
     assert refreshed_template is not None
-    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    assert await seed._backfill_hired_copies(refreshed_template, rescoped) == 1
     moved_again = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
     )
@@ -4596,7 +4598,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed_template.dayOne == [
         {"title": "Social listening on your brand", "description": "", "timing": ""}
     ]
-    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    assert await seed._backfill_hired_copies(refreshed_template, template) == 1
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
