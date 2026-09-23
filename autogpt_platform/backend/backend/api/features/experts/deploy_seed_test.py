@@ -14,11 +14,25 @@ from unittest.mock import AsyncMock
 
 import prisma.models
 import pytest
+import pytest_asyncio
 
 from backend.api.features.experts import deploy_seed, experts_db, seed
 from backend.api.features.store import skill_seed
+from backend.data.db import prisma as db_client
 from backend.data.user import get_or_create_user
 from backend.util.test import SpinTestServer
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def absorb_a_stale_event_loop(server: SpinTestServer):
+    """An earlier test can leave the shared Prisma client bound to a loop that
+    has since closed; only the first query on the new loop fails, and the engine
+    re-establishes itself. Spend that failure here rather than in a test."""
+    try:
+        await db_client.execute_raw("SELECT 1")
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
 
 
 def _write(root: Path, relative: str, content: str) -> None:
