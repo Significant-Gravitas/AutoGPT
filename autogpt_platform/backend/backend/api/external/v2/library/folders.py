@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Query, Security
+from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -14,12 +14,11 @@ from backend.data.auth.base import APIAuthorizationInfo
 from ..models import (
     LibraryFolder,
     LibraryFolderCreateRequest,
-    LibraryFolderListResponse,
     LibraryFolderMoveRequest,
     LibraryFolderTree,
-    LibraryFolderTreeResponse,
     LibraryFolderUpdateRequest,
 )
+from ..pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +34,18 @@ async def list_folders(
     parent_id: Optional[str] = Query(
         default=None, description="Filter by parent folder ID. Omit for root folders."
     ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
-) -> LibraryFolderListResponse:
+) -> Page[LibraryFolder]:
     """List folders in the user's library."""
     folders = await library_db.list_folders(
         user_id=auth.user_id,
         parent_id=parent_id,
     )
 
-    return LibraryFolderListResponse(
-        folders=[LibraryFolder.from_internal(f) for f in folders],
-    )
+    return page.slice([LibraryFolder.from_internal(f) for f in folders])
 
 
 @folders_router.get(
@@ -56,16 +54,18 @@ async def list_folders(
     operation_id="getLibraryFolderTree",
 )
 async def get_folder_tree(
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
-) -> LibraryFolderTreeResponse:
-    """Get the full folder tree for the user's library."""
+) -> Page[LibraryFolderTree]:
+    """Get the full folder tree for the user's library.
+
+    Pagination applies to the root folders; each item carries its whole subtree.
+    """
     tree = await library_db.get_folder_tree(user_id=auth.user_id)
 
-    return LibraryFolderTreeResponse(
-        tree=[LibraryFolderTree.from_internal(f) for f in tree],
-    )
+    return page.slice([LibraryFolderTree.from_internal(f) for f in tree])
 
 
 @folders_router.get(

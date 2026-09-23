@@ -7,7 +7,7 @@ Provides endpoints for managing agent presets (saved run configurations).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -21,16 +21,15 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
 from backend.executor import utils as execution_utils
 
-from ..common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from ..models import (
     AgentGraphRun,
     AgentPreset,
     AgentPresetCreateRequest,
-    AgentPresetListResponse,
     AgentPresetRunRequest,
     AgentPresetUpdateRequest,
     AgentTriggerSetupRequest,
 )
+from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
 
 logger = logging.getLogger(__name__)
@@ -45,31 +44,22 @@ presets_router = APIRouter(tags=["library", "presets"])
 )
 async def list_presets(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
-) -> AgentPresetListResponse:
+) -> Page[AgentPreset]:
     """List presets in the user's library, optionally filtered by graph ID."""
     result = await library_db.list_presets(
         user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
         graph_id=graph_id,
     )
 
-    return AgentPresetListResponse(
-        presets=[AgentPreset.from_internal(p) for p in result.presets],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [AgentPreset.from_internal(p) for p in result.presets],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -216,6 +206,7 @@ async def delete_preset(
     path="/presets/{preset_id}/execute",
     summary="Execute agent preset",
     operation_id="executeAgentRunPreset",
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def execute_preset(
     preset_id: str,

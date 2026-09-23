@@ -1,5 +1,7 @@
 {
-  "detail": "connection refused",
-  "hint": "Check server logs and dependent services.",
-  "message": "Failed to process GET /library/agents/some-id"
+  "error": {
+    "code": "internal_error",
+    "details": null,
+    "message": "Failed to process GET /library/agents/some-id"
+  }
 }

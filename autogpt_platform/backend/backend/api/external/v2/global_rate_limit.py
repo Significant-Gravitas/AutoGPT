@@ -10,7 +10,6 @@ On auth-resolution failure or Redis errors the request passes through — the
 endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
 
-import json
 import logging
 
 from fastapi import HTTPException
@@ -19,6 +18,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.api.external.middleware import resolve_auth_info
 from backend.api.utils.rate_limit import RateLimiter
+
+from .errors import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -60,18 +61,10 @@ class GlobalRateLimitMiddleware:
                 )
                 await _anonymous_limiter.check(ip)
         except HTTPException as exc:
-            body = json.dumps({"detail": exc.detail}).encode()
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": exc.status_code,
-                    "headers": [
-                        [b"content-type", b"application/json"],
-                        [b"content-length", str(len(body)).encode()],
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": body})
+            # The middleware sits outside the app, so the v2 exception handlers
+            # never see this — build the same envelope by hand.
+            response = error_response(exc.status_code, str(exc.detail))
+            await response(scope, receive, send)
             return
 
         await self.app(scope, receive, send)

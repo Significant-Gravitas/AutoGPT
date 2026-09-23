@@ -8,7 +8,7 @@ import logging
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, HTTPException, Query, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
@@ -21,7 +21,8 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 
-from ..models import CredentialCreateRequest, CredentialInfo, CredentialListResponse
+from ..models import CredentialCreateRequest, CredentialInfo
+from ..pagination import Page, PageRequest, page_request
 from .helpers import creds_manager
 
 logger = logging.getLogger(__name__)
@@ -39,19 +40,18 @@ async def list_credentials(
         default=None,
         description="Filter by provider name (e.g., 'github', 'google')",
     ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> CredentialListResponse:
+) -> Page[CredentialInfo]:
     """List integration credentials for the authenticated user."""
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
 
     if provider:
         credentials = [c for c in credentials if c.provider.lower() == provider.lower()]
 
-    return CredentialListResponse(
-        credentials=[CredentialInfo.from_internal(c) for c in credentials]
-    )
+    return page.slice([CredentialInfo.from_internal(c) for c in credentials])
 
 
 @credentials_router.post(
