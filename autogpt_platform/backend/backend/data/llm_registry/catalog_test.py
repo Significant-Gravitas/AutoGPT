@@ -465,15 +465,15 @@ def test_ling_3_0_flash_vl_bills_at_authored_rates():
 
 
 def test_gemma_4_31b_it_bills_at_authored_rates():
-    """Google Gemma 4 31B (OpenRouter, list price $0.14/$0.40 per 1M) —
-    flat tier and per-1M projections must match the authored catalog
-    entry."""
+    """Google Gemma 4 31B (OpenRouter live rate $0.09/$0.34 per 1M,
+    $0.05/1M cached input as of 2026-09-23) — flat tier and per-1M
+    projections must match the authored catalog entry."""
     gemma = LLMModel("google/gemma-4-31b-it")
     assert MODEL_COST[gemma] == 1
     assert TOKEN_COST[gemma].model_dump() == {
-        "input": 21.0,
-        "output": 60.0,
-        "cache_read": 0.0,
+        "input": 13.5,
+        "output": 51.0,
+        "cache_read": 7.5,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[gemma].max_output_tokens == 16384
