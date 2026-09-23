@@ -3,11 +3,14 @@
 ``docs/platform/tracking-plan.md`` says what each event means, which side
 sends it and which properties it carries. This module is the code half of
 that plan: emitters take the name from here instead of spelling it out.
+The names follow the product analytics plan ("Every Second Counts").
 
 Never change the value of a member of ``PostHogEvent``. PostHog stores the
 raw string, so a rename orphans every insight, funnel and cohort built on the
-old name, and past events cannot be backfilled. ``posthog_events_test.py``
-pins the values so an accidental rename fails CI.
+old name, and past events cannot be backfilled. The one-time move to the
+analytics plan's names (SECRT-2722) is the exception, and the old names are
+reserved in ``posthog_events_test.py``, which pins the values so an
+accidental rename fails CI.
 """
 
 from enum import StrEnum
@@ -17,11 +20,9 @@ class PostHogEvent(StrEnum):
     """Events the backend emits today."""
 
     # Activation: backend/util/product_analytics.py
-    RUN_AGENT = "run_agent"
-    RUN_AUTOPILOT = "run_autopilot"
-    RUN_EXPERT = "run_expert"
-    AGENT_RUN_COMPLETED = "agent_run_completed"
-    AGENT_RUN_FAILED = "agent_run_failed"
+    AGENT_RUN_STARTED = "agent_run_started"
+    AGENT_RUN_FINISHED = "agent_run_finished"
+    CHAT_MESSAGE_SENT = "chat_message_sent"
     SCHEDULE_CREATED = "schedule_created"
     SCHEDULE_FIRED = "schedule_fired"
     TRIGGER_FIRED = "trigger_fired"
@@ -36,27 +37,26 @@ class PostHogEvent(StrEnum):
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
 
-    # Copilot: backend/copilot/tracking.py
-    COPILOT_TOOL_CALLED = "copilot_tool_called"
-    COPILOT_LIBRARY_CHECK_OUTCOME = "copilot_library_check_outcome"
+    # Chat (Autopilot): backend/copilot/tracking.py
+    CHAT_TOOL_CALLED = "chat_tool_called"
+    CHAT_OUTCOME = "chat_outcome"
+    CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
 
     # Billing: backend/data/credit.py
-    CREDIT_TOPUP_SUCCESS = "credit_topup_success"
+    TOPUP_COMPLETED = "topup_completed"
     SUBSCRIPTION_CANCELLATION_SCHEDULED = "subscription_cancellation_scheduled"
-    SUBSCRIPTION_UPGRADED = "subscription_upgraded"
-    SUBSCRIPTION_PAYMENT_SUCCESS = "subscription_payment_success"
-    SUBSCRIPTION_TIER_RECONCILIATION_DISCREPANCY = (
-        "subscription_tier_reconciliation_discrepancy"
-    )
+    SUBSCRIPTION_CHANGED = "subscription_changed"
+    PAYMENT_SUCCEEDED = "payment_succeeded"
+    SUBSCRIPTION_TIER_RECONCILED = "subscription_tier_reconciled"
 
     # Trial lifecycle: backend/notifications/trial.py
-    SUBSCRIPTION_TRIAL_STARTED = "subscription_trial_started"
-    SUBSCRIPTION_TRIAL_ENDING = "subscription_trial_ending"
-    SUBSCRIPTION_TRIAL_CANCELED = "subscription_trial_canceled"
-    SUBSCRIPTION_TRIAL_RESUMED = "subscription_trial_resumed"
-    SUBSCRIPTION_TRIAL_ENDED = "subscription_trial_ended"
-    SUBSCRIPTION_TRIAL_CONVERTED = "subscription_trial_converted"
-    SUBSCRIPTION_TRIAL_PAYMENT_FAILED = "subscription_trial_payment_failed"
+    TRIAL_STARTED = "trial_started"
+    TRIAL_ENDING = "trial_ending"
+    TRIAL_CANCELED = "trial_canceled"
+    TRIAL_RESUMED = "trial_resumed"
+    TRIAL_ENDED = "trial_ended"
+    TRIAL_CONVERTED = "trial_converted"
+    PAYMENT_FAILED = "payment_failed"
 
 
 class PlannedPostHogEvent(StrEnum):

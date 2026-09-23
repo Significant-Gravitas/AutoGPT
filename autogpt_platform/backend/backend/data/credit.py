@@ -1158,7 +1158,7 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                PostHogEvent.CREDIT_TOPUP_SUCCESS,
+                PostHogEvent.TOPUP_COMPLETED,
                 user_id,
                 {
                     "amount_credits": amount,
@@ -1301,7 +1301,7 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    PostHogEvent.CREDIT_TOPUP_SUCCESS,
+                    PostHogEvent.TOPUP_COMPLETED,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
@@ -2151,9 +2151,10 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                PostHogEvent.SUBSCRIPTION_UPGRADED,
+                PostHogEvent.SUBSCRIPTION_CHANGED,
                 user_id,
                 {
+                    "change_type": "upgrade",
                     "previous_subscription_tier": current_tier.value,
                     "subscription_tier": tier.value,
                     "billing_cycle": billing_cycle,
@@ -2844,9 +2845,10 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            PostHogEvent.SUBSCRIPTION_UPGRADED,
+            PostHogEvent.SUBSCRIPTION_CHANGED,
             user.id,
             {
+                "change_type": "upgrade",
                 "previous_subscription_tier": current_tier.value,
                 "subscription_tier": tier.value,
                 "billing_cycle": billing_cycle,
@@ -2918,9 +2920,7 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = (
-    PostHogEvent.SUBSCRIPTION_TIER_RECONCILIATION_DISCREPANCY
-)
+TIER_RECONCILIATION_DISCREPANCY_EVENT = PostHogEvent.SUBSCRIPTION_TIER_RECONCILED
 
 
 def log_tier_reconciliation_discrepancy(
@@ -3003,7 +3003,7 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         )
 
         _track_billing_event(
-            PostHogEvent.SUBSCRIPTION_PAYMENT_SUCCESS,
+            PostHogEvent.PAYMENT_SUCCEEDED,
             user.id,
             {"subscription_tier": tier, "billing_cycle": billing_cycle},
         )

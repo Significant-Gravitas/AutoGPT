@@ -34,13 +34,13 @@ TrialNoticeKind = Literal[
 ]
 
 TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
-    "started": PostHogEvent.SUBSCRIPTION_TRIAL_STARTED,
-    "ending": PostHogEvent.SUBSCRIPTION_TRIAL_ENDING,
-    "canceled": PostHogEvent.SUBSCRIPTION_TRIAL_CANCELED,
-    "resumed": PostHogEvent.SUBSCRIPTION_TRIAL_RESUMED,
-    "ended": PostHogEvent.SUBSCRIPTION_TRIAL_ENDED,
-    "converted": PostHogEvent.SUBSCRIPTION_TRIAL_CONVERTED,
-    "payment_failed": PostHogEvent.SUBSCRIPTION_TRIAL_PAYMENT_FAILED,
+    "started": PostHogEvent.TRIAL_STARTED,
+    "ending": PostHogEvent.TRIAL_ENDING,
+    "canceled": PostHogEvent.TRIAL_CANCELED,
+    "resumed": PostHogEvent.TRIAL_RESUMED,
+    "ended": PostHogEvent.TRIAL_ENDED,
+    "converted": PostHogEvent.TRIAL_CONVERTED,
+    "payment_failed": PostHogEvent.PAYMENT_FAILED,
 }
 
 

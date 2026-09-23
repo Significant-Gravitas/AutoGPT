@@ -23,22 +23,22 @@ def _only_call(capture: Mock) -> tuple[str, dict]:
 
 def test_track_is_a_noop_without_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
-    product_analytics.track("user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track("user-1", PostHogEvent.AGENT_RUN_STARTED, {"graph_id": "g"})
 
 
 def test_track_is_a_noop_without_user(capture: Mock) -> None:
-    product_analytics.track(None, PostHogEvent.RUN_AGENT, {"graph_id": "g"})
+    product_analytics.track(None, PostHogEvent.AGENT_RUN_STARTED, {"graph_id": "g"})
     capture.assert_not_called()
 
 
 def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
     product_analytics.track(
-        "user-1", PostHogEvent.RUN_AGENT, {"graph_id": "g", "expert_id": None}
+        "user-1", PostHogEvent.AGENT_RUN_STARTED, {"graph_id": "g", "expert_id": None}
     )
 
     event, properties = _only_call(capture)
     assert capture.call_args.kwargs["distinct_id"] == "user-1"
-    assert event == "run_agent"
+    assert event == "agent_run_started"
     assert properties["source"] == "platform"
     assert "environment" in properties
     assert properties["graph_id"] == "g"
@@ -47,11 +47,11 @@ def test_track_adds_base_properties_and_drops_nulls(capture: Mock) -> None:
 
 def test_track_swallows_client_errors(capture: Mock) -> None:
     capture.side_effect = RuntimeError("posthog down")
-    product_analytics.track("user-1", PostHogEvent.RUN_AGENT)
+    product_analytics.track("user-1", PostHogEvent.AGENT_RUN_STARTED)
 
 
 @pytest.mark.parametrize("trigger", ["manual", "api", "copilot"])
-def test_human_run_start_is_run_agent(capture: Mock, trigger: str) -> None:
+def test_human_run_start_is_agent_run_started(capture: Mock, trigger: str) -> None:
     product_analytics.track_agent_run_started(
         user_id="user-1",
         graph_id="graph-1",
@@ -61,9 +61,10 @@ def test_human_run_start_is_run_agent(capture: Mock, trigger: str) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "run_agent"
+    assert event == "agent_run_started"
     assert properties["trigger"] == trigger
     assert properties["trigger_ref"] == "library"
+    assert "kind" not in properties
 
 
 def test_run_start_accepts_enum_trigger(capture: Mock) -> None:
@@ -77,11 +78,13 @@ def test_run_start_accepts_enum_trigger(capture: Mock) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "run_agent"
+    assert event == "agent_run_started"
     assert properties["trigger"] == "manual"
 
 
-def test_expert_workflow_run_start_is_run_expert(capture: Mock) -> None:
+def test_expert_workflow_run_start_is_agent_run_started_with_expert(
+    capture: Mock,
+) -> None:
     product_analytics.track_agent_run_started(
         user_id="user-1",
         graph_id="graph-1",
@@ -91,7 +94,7 @@ def test_expert_workflow_run_start_is_run_expert(capture: Mock) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "run_expert"
+    assert event == "agent_run_started"
     assert properties["kind"] == "workflow_run"
     assert properties["expert_id"] == "expert-1"
 
@@ -129,7 +132,8 @@ def test_run_finished_completed(capture: Mock) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "agent_run_completed"
+    assert event == "agent_run_finished"
+    assert properties["status"] == "completed"
     assert properties["trigger"] == "schedule"
     assert properties["cost_cents"] == 12
     assert properties["duration_seconds"] == 3.5
@@ -159,7 +163,8 @@ def test_run_finished_hook_tells_a_subgraph_run_from_a_top_level_one(
     )
 
     event, properties = _only_call(capture)
-    assert event == "agent_run_failed"
+    assert event == "agent_run_finished"
+    assert properties["status"] == "failed"
     assert properties["expert_id"] == "expert-1"
     assert properties["is_subgraph_run"] is is_subgraph_run
 
@@ -178,7 +183,8 @@ def test_run_finished_failed_carries_failure_reason(capture: Mock) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "agent_run_failed"
+    assert event == "agent_run_finished"
+    assert properties["status"] == "failed"
     assert properties["failure_reason"] == "insufficient_balance"
 
 
@@ -210,11 +216,12 @@ def test_chat_turn_autopilot_vs_expert(capture: Mock) -> None:
     )
 
     events = [c.kwargs["event"] for c in capture.call_args_list]
-    assert events == ["run_autopilot", "run_expert"]
+    assert events == ["chat_message_sent", "chat_message_sent"]
     autopilot_props = capture.call_args_list[0].kwargs["properties"]
     expert_props = capture.call_args_list[1].kwargs["properties"]
     assert autopilot_props["surface"] == "chat"
     assert autopilot_props["kind"] == "chat_turn"
+    assert "expert_id" not in autopilot_props
     assert "message_length" not in autopilot_props
     assert expert_props["surface"] == "slack"
     assert expert_props["expert_id"] == "expert-1"
@@ -226,7 +233,7 @@ def test_chat_turn_carries_the_message_length(capture: Mock) -> None:
     )
 
     event, properties = _only_call(capture)
-    assert event == "run_autopilot"
+    assert event == "chat_message_sent"
     assert properties["message_length"] == 42
 
 
