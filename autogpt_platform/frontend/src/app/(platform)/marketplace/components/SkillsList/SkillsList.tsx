@@ -59,7 +59,13 @@ export function SkillsList({ category }: Props) {
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."
-        filters={<SkillTopicChips selected={topic} onSelect={selectTopic} />}
+        filters={
+          <SkillTopicChips
+            selected={topic}
+            onSelect={selectTopic}
+            size="medium"
+          />
+        }
       />
       {isLoading ? (
         <div

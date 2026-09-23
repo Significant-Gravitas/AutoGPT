@@ -37,6 +37,7 @@ interface Props {
 export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
   const skills = expert.bundled_skills ?? [];
+  const named = skills.slice(0, NAMED_SKILLS);
   const restSkills = skills.slice(NAMED_SKILLS);
   // The area an expert works in, in the same chip the filters use — the row
   // above the shelf and the card below it name the same thing.
@@ -113,10 +114,10 @@ export function ExpertCard({ expert, isHired }: Props) {
         {skills.length > 0 ? (
           <div>
             <div className="mb-1 text-sm text-zinc-500">Skills:</div>
-            <div className="flex flex-wrap items-center gap-x-4">
-              {/* The area's own glyph, so the skills read as that area's
-                  work rather than as a second, unrelated list. */}
-              {skills.slice(0, NAMED_SKILLS).map((skill) => (
+            {/* One skill per line, whatever their length, and the count for
+                the rest on a line of its own. */}
+            <div className="flex flex-col items-start">
+              {named.map((skill) => (
                 <span
                   key={skill.id}
                   className={cn(
@@ -125,6 +126,8 @@ export function ExpertCard({ expert, isHired }: Props) {
                     "h-6 max-w-full border-transparent px-0",
                   )}
                 >
+                  {/* The area's own glyph, so the skills read as that area's
+                      work rather than as a second, unrelated list. */}
                   <Icon
                     icon={areaAccent.icon ?? Book04Icon}
                     size={12}
@@ -151,8 +154,8 @@ export function ExpertCard({ expert, isHired }: Props) {
                   <TooltipPortal>
                     <TooltipContent side="top">
                       <ul className="space-y-0.5">
-                        {restSkills.map((skill) => (
-                          <li key={skill.id}>{skill.title}</li>
+                        {restSkills.map((rest) => (
+                          <li key={rest.id}>{rest.title}</li>
                         ))}
                       </ul>
                     </TooltipContent>

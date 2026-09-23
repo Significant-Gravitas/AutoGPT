@@ -12,7 +12,7 @@ export const HeroSection = () => {
   return (
     <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
-        <h1 className="mb-3 text-center text-3xl font-semibold tracking-[-0.02em] text-zinc-900 md:text-4xl">
+        <h1 className="mb-3 text-center text-3xl font-semibold leading-[1.05] tracking-[-0.02em] text-zinc-900 md:text-[3rem]">
           {isHireExpertsEnabled ? (
             <>
               Hire an AI expert

@@ -9,7 +9,7 @@ import {
   type ExpertAccent,
 } from "../ExpertsSection/helpers";
 
-export type ChipSize = "small" | "default";
+export type ChipSize = "small" | "medium" | "default";
 
 /** The marketplace's chip: a filter wears it on a button, a label on a span,
  *  and the two read as the same object because they are the same classes. */
@@ -17,7 +17,14 @@ export const CHIP_SHAPE =
   "inline-flex items-center rounded-full border border-[#e9e9e9] bg-transparent font-medium text-black";
 export const CHIP_SIZE: Record<ChipSize, string> = {
   small: "h-7 gap-1 px-2 text-xs",
+  medium: "h-8 gap-1 px-2 text-xs",
   default: "h-9 gap-1.5 px-3.5 text-sm",
+};
+
+const CHIP_ICON_SIZE: Record<ChipSize, number> = {
+  small: 12,
+  medium: 13,
+  default: 15,
 };
 
 /** The zinc fallback `getCategoryAccent` hands back for "All", research and
@@ -55,7 +62,7 @@ export function CategoryChip({
     // the variant's hover wash rather than being replaced by it.
     <Button
       variant="outline"
-      size={size === "small" ? "xs" : "small"}
+      size={size === "default" ? "small" : "xs"}
       title={title}
       aria-pressed={isSelected}
       onClick={onClick}
@@ -64,7 +71,7 @@ export function CategoryChip({
         icon ? (
           <Icon
             icon={icon}
-            size={size === "small" ? 12 : 15}
+            size={CHIP_ICON_SIZE[size]}
             className={isSelected ? undefined : accent.icon}
             aria-hidden
           />

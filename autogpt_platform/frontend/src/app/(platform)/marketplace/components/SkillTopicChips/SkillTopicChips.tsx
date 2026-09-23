@@ -22,7 +22,7 @@ export function SkillTopicChips({ selected, onSelect, size = "small" }: Props) {
       aria-label="Filter skills by topic"
       className={cn(
         "flex flex-wrap",
-        size === "small" ? "gap-1 sm:justify-end" : "gap-2",
+        size === "default" ? "gap-2" : "gap-1 sm:justify-end",
       )}
     >
       <CategoryChip
