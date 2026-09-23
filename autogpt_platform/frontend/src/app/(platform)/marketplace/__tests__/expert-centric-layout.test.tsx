@@ -91,17 +91,26 @@ const baseAgent = getGetV2ListStoreAgentsResponseMock().agents[0];
 const agents = Array.from({ length: 10 }, (_, i) => ({
   ...baseAgent,
   slug: `agent-${i}`,
+  agent_graph_id: `graph-${i}`,
   agent_name: `Workflow ${i}`,
   creator: "AutoGPT",
 }));
+
+const agentsResponse = getGetV2ListStoreAgentsResponseMock({
+  agents,
+  pagination: {
+    total_items: agents.length,
+    total_pages: 1,
+    current_page: 1,
+    page_size: agents.length,
+  },
+});
 
 describe("Marketplace with hire-experts on", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
     server.use(
-      getGetV2ListStoreAgentsMockHandler(
-        getGetV2ListStoreAgentsResponseMock({ agents }),
-      ),
+      getGetV2ListStoreAgentsMockHandler(agentsResponse),
       getGetV2ListStoreCreatorsMockHandler(),
       getListExpertTemplatesMockHandler([]),
       getListExpertsMockHandler([]),
@@ -244,5 +253,82 @@ describe("Marketplace with hire-experts on", () => {
     expect(screen.getAllByTestId("workflow-tile")).toHaveLength(10);
     expect(screen.queryByTestId("store-card")).toBeNull();
     expect(screen.getByRole("button", { name: "Show fewer" })).toBeDefined();
+  });
+
+  test("keeps workflows with the same slug from different creators", async () => {
+    const sharedSlugAgents = [
+      {
+        ...baseAgent,
+        agent_graph_id: "graph-first",
+        slug: "shared-slug",
+        creator: "First creator",
+        agent_name: "First workflow",
+      },
+      {
+        ...baseAgent,
+        agent_graph_id: "graph-second",
+        slug: "shared-slug",
+        creator: "Second creator",
+        agent_name: "Second workflow",
+      },
+    ];
+    server.use(
+      getGetV2ListStoreAgentsMockHandler({
+        agents: sharedSlugAgents,
+        pagination: {
+          total_items: sharedSlugAgents.length,
+          total_pages: 1,
+          current_page: 1,
+          page_size: sharedSlugAgents.length,
+        },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findByText("First workflow")).toBeDefined();
+    expect(screen.getByText("Second workflow")).toBeDefined();
+  });
+
+  test("does not promise all workflows when the response is capped", async () => {
+    server.use(
+      getGetV2ListStoreAgentsMockHandler({
+        ...agentsResponse,
+        pagination: { ...agentsResponse.pagination, total_items: 1_001 },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Load 10 workflows" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Load all 10 workflows" }),
+    ).toBeNull();
+  });
+
+  test("shows no runs when an older response omits the count", async () => {
+    server.use(
+      getGetV2ListStoreAgentsMockHandler({
+        agents: [
+          {
+            ...baseAgent,
+            agent_graph_id: "graph-without-runs",
+            runs: null as unknown as number,
+          },
+        ],
+        pagination: {
+          total_items: 1,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 1,
+        },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findByText("No runs")).toBeDefined();
   });
 });

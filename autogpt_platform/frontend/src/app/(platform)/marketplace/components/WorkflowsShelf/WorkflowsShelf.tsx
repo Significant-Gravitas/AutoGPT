@@ -18,9 +18,10 @@ interface Props {
   id: string;
   agents: StoreAgent[];
   featuredAgents: StoreAgent[];
+  total: number;
 }
 
-export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
+export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
   const ordered = featuredFirst(agents, featuredAgents);
 
@@ -43,7 +44,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
       />
       <ul className={SHELF_GRID}>
         {shown.map((agent) => (
-          <WorkflowTile key={agent.slug} agent={agent} />
+          <WorkflowTile key={agent.agent_graph_id} agent={agent} />
         ))}
       </ul>
       <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -51,6 +52,7 @@ export function WorkflowsShelf({ id, agents, featuredAgents }: Props) {
           <ShelfMoreButton
             isExpanded={isExpanded}
             count={ordered.length}
+            isAll={total <= ordered.length}
             noun="workflows"
             onToggle={() => setIsExpanded(!isExpanded)}
           />

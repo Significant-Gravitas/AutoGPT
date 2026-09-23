@@ -4,9 +4,9 @@ export function featuredFirst(
   agents: StoreAgent[],
   featured: StoreAgent[],
 ): StoreAgent[] {
-  const featuredSlugs = new Set(featured.map((agent) => agent.slug));
+  const featuredIDs = new Set(featured.map((agent) => agent.agent_graph_id));
   return [
     ...featured,
-    ...agents.filter((agent) => !featuredSlugs.has(agent.slug)),
+    ...agents.filter((agent) => !featuredIDs.has(agent.agent_graph_id)),
   ];
 }

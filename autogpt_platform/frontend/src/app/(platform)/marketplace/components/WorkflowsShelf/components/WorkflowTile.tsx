@@ -12,6 +12,7 @@ interface Props {
 
 export function WorkflowTile({ agent }: Props) {
   const [imageError, setImageError] = useState(false);
+  const runs = agent.runs ?? 0;
 
   return (
     <ShelfTile
@@ -32,9 +33,7 @@ export function WorkflowTile({ agent }: Props) {
         ) : null
       }
       title={agent.agent_name}
-      subtitle={
-        agent.runs === 0 ? "No runs" : `${agent.runs.toLocaleString()} runs`
-      }
+      subtitle={runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
     />
   );
 }

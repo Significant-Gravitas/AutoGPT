@@ -84,6 +84,7 @@ export const MainMarkeplacePage = () => {
                 id={AGENTS_SECTION_ID}
                 agents={topAgents.agents}
                 featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
+                total={topAgents.pagination.total_items}
               />
             )}
           </>
