@@ -182,4 +182,122 @@ describe("WorkspaceFilePicker", () => {
       await screen.findByRole("button", { name: /load more/i }),
     ).toBeTruthy();
   });
+
+  it("shift-click selects the inclusive range from the last plain click", async () => {
+    mockPage(makeFiles(5));
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+    await screen.findByText("f-0");
+
+    fireEvent.click(card("f-1"));
+    fireEvent.click(card("f-3"), { shiftKey: true });
+
+    expect(selectedNames()).toEqual(["f-1", "f-2", "f-3"]);
+  });
+
+  it("ranges backwards too, and confirms the whole range", async () => {
+    const files = makeFiles(5);
+    mockPage(files);
+    const onConfirm = vi.fn();
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={onConfirm} />,
+    );
+    await screen.findByText("f-0");
+
+    fireEvent.click(card("f-3"));
+    fireEvent.click(card("f-1"), { shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /add 3 file/i }));
+
+    expect(onConfirm).toHaveBeenCalledWith([files[1], files[2], files[3]]);
+  });
+
+  // Firefox reports shiftKey false on the click it synthesises from
+  // Shift+Enter, so the chord is handled on keydown instead.
+  it("ranges from the anchor on Shift+Enter and Shift+Space", async () => {
+    mockPage(makeFiles(5));
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+    await screen.findByText("f-0");
+
+    fireEvent.click(card("f-0"));
+    fireEvent.keyDown(card("f-2"), { key: "Enter", shiftKey: true });
+    expect(selectedNames()).toEqual(["f-0", "f-1", "f-2"]);
+
+    fireEvent.keyDown(card("f-4"), { key: " ", shiftKey: true });
+    expect(selectedNames()).toEqual(["f-0", "f-1", "f-2", "f-3", "f-4"]);
+  });
+
+  it("leaves a plain Enter to the button's own click", async () => {
+    mockPage(makeFiles(3));
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+    await screen.findByText("f-0");
+
+    fireEvent.keyDown(card("f-1"), { key: "Enter" });
+
+    expect(selectedNames()).toEqual([]);
+  });
+
+  it("drops the anchor when the filter changes", async () => {
+    mockPage(makeFiles(5));
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+    await screen.findByText("f-0");
+    fireEvent.click(card("f-1"));
+
+    fireEvent.change(screen.getByLabelText(/search workspace files/i), {
+      target: { value: "f" },
+    });
+    fireEvent.click(card("f-3"), { shiftKey: true });
+
+    // Without an anchor the Shift+click is a plain toggle, not a range.
+    expect(selectedNames()).toEqual(["f-1", "f-3"]);
+  });
+
+  // No listbox role: that promises arrow-key navigation the grid lacks.
+  it("exposes each card's selection as a pressed toggle button", async () => {
+    mockPage(makeFiles(2));
+    render(
+      <WorkspaceFilePicker isOpen onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+    await screen.findByText("f-0");
+
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(card("f-0").getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(card("f-0"));
+    expect(card("f-0").getAttribute("aria-pressed")).toBe("true");
+  });
 });
+
+function mockPage(files: ReturnType<typeof makeFiles>) {
+  mockListWorkspaceFiles.mockResolvedValue({
+    status: 200,
+    data: { files, has_more: false },
+  });
+}
+
+function card(name: string) {
+  return screen.getByRole("button", { name: new RegExp(`^${name}\\b`) });
+}
+
+function selectedNames() {
+  return screen
+    .getAllByRole("button")
+    .filter((el) => el.getAttribute("aria-pressed") === "true")
+    .map((el) => el.querySelector("[title]")?.textContent ?? "")
+    .sort();
+}
+
+function makeFiles(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    ...FILE,
+    id: `id-${i}`,
+    name: `f-${i}`,
+    path: `/workspace/f-${i}`,
+  }));
+}

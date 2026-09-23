@@ -2,6 +2,8 @@
 
 Repository baseline: `45275cbb0bb36aa9aadfd2688de94daab3a8456e` (public master inspected 23 September 2026).
 
+Retargeted to `dev` at `bdb8806affd46e79d412163f94b903615cf677d9`. That branch expands the roster to 32 Experts; its additional roles and saved template cohorts need a follow-up copy/artwork review. V1 still supplies approved specialist artwork only for Maria and Mina.
+
 ## What changes
 
 - Approved v1.1 neutral Otto, Maria and Mina artwork, shared across the product. All 72 image exports retain the source bytes; artwork uses contain sizing, density variants, PNG fallback and an accessible text fallback. No new body motion or expression assets.
@@ -17,7 +19,7 @@ Repository baseline: `45275cbb0bb36aa9aadfd2688de94daab3a8456e` (public master i
 1. Ship the versioned public image files before, or together with, backend defaults and email templates. Older image paths remain available. Do not purge old assets referenced by existing users or emails.
 2. Confirm the existing AutoMod endpoint accepts `type: image` with a base64 data URL and returns the documented approval response. Configure `automod_api_url`, `automod_api_key` and timeout; Redis must be available for approval receipts. Tests mock this service contract. Missing configuration or service errors block new uploads with a retry message; there is no fail-open bypass.
 3. No database migration or roster reseed is needed to show updated catalog defaults. The projection only replaces recorded old defaults on template rows; new hires persist the projected values. Existing hires are deliberately not rewritten by reads.
-4. Do not run the roster seed as a cosmetic migration: it also synchronizes routines, preloads and other behavior. Its presentation backfill reads batches of 100 hires, compares each field with the previous template and guards each write against concurrent edits. Identity rescoping retains the existing recognized-default gate. If a retry no longer has the original role/identity baseline, it defers that legacy hire entirely until that baseline is available, preserving a consistent older profile. Database-backed migration tests still need the isolated integration stack.
+4. Do not run the roster seed as a cosmetic migration: it also synchronizes routines, preloads and other behavior. Saved avatars are excluded from reseed backfills, including unchanged old defaults. Its other presentation backfills read batches of 100 hires, compare each field with the previous template and guard each write against concurrent edits. Identity rescoping retains the existing recognized-default gate. If a retry no longer has the original role/identity baseline, it defers that legacy hire entirely until that baseline is available, preserving a consistent older profile. Database-backed migration tests still need the isolated integration stack.
 5. Hire Experts, onboarding and Files remain separate feature cohorts. This change does not enable flags. Verify each intended release cohort before rollout.
 6. Onboarding tour delivery is managed through MailerLite. Updating these repository templates does not update a live MailerLite campaign. Its source and published copy need a separate owner review.
 
@@ -25,7 +27,7 @@ No production or development sessions were inspected, no browser tests were run,
 
 ## V2, after review
 
-- Approve artwork for the other 13 roster Experts; retain their existing assets for V1.
+- Approve artwork for the remaining roster Experts (30 after the merge from `dev`, up from 13 in the original audit); retain their existing assets for V1.
 - Replace the legacy custom appearance picker and generator with the reviewed mineral library and its constraints. V1 does not claim that legacy Notion artwork meets Clay & Rock.
 - Implement reviewed facial expressions while keeping the body still, with text, reason and next action remaining independently accessible.
 - Add the broader appearance generation workflow, ownership/version metadata where needed, and cooldowns after product approval.

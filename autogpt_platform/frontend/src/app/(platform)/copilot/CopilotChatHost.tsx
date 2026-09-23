@@ -44,16 +44,19 @@ export function CopilotChatHost({
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     hasMoreMessages,
     isLoadingMore,
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -78,6 +81,7 @@ export function CopilotChatHost({
           error={error}
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
+          sessionSentFrom={sessionSentFrom}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
@@ -93,6 +97,7 @@ export function CopilotChatHost({
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}
           isUploadingFiles={isUploadingFiles}
+          pendingSend={pendingSend}
           hasMoreMessages={hasMoreMessages}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
@@ -108,6 +113,8 @@ export function CopilotChatHost({
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
+        failure={platformLimitFailure}
+        sessionId={sessionId}
         onDismiss={dismissRateLimit}
       />
       <ProviderLimitDialog

@@ -1219,6 +1219,7 @@ class RunAgentTool(BaseTool):
         session_id = session.session_id
 
         # Validate schedule params
+        schedule_name = schedule_name.strip()
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",

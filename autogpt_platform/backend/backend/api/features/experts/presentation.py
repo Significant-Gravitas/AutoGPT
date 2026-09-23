@@ -47,7 +47,7 @@ def presentation_changes(
 ) -> dict[str, str | list[str] | None]:
     return {
         field: getattr(replacement, field)
-        for field in ("avatarUrl", "jobTitle", "tagline", "bio", "categories")
+        for field in ("jobTitle", "tagline", "bio", "categories")
         if getattr(current, field) == getattr(previous, field)
         and getattr(current, field) != getattr(replacement, field)
     }

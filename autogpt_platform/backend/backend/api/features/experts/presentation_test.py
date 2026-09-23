@@ -12,7 +12,7 @@ def test_presentation_update_keeps_custom_fields_and_behavior():
         categories=["content"],
     )
     current = SimpleNamespace(
-        avatarUrl="https://example.com/custom.png",
+        avatarUrl="/old.svg",
         jobTitle="My title",
         tagline="Old",
         bio="My biography",

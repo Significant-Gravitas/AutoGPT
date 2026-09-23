@@ -826,12 +826,16 @@ async def test_service():
     service = TestGracefulShutdownService()
     service.start(background=True)
 
-    base_url = f"http://localhost:{service.get_port()}"
-
-    await wait_until_service_ready(base_url)
-    yield service, base_url
-
-    service.stop()
+    # `wait_until_service_ready` raises when the port never answers. Without
+    # the `finally`, the already-started child is orphaned: nothing stops it,
+    # and `multiprocessing`'s atexit handler then joins it forever — so the
+    # session prints its summary line and the process still never exits.
+    try:
+        base_url = f"http://localhost:{service.get_port()}"
+        await wait_until_service_ready(base_url)
+        yield service, base_url
+    finally:
+        service.stop()
 
 
 async def wait_until_service_ready(base_url: str, timeout: float = 10):

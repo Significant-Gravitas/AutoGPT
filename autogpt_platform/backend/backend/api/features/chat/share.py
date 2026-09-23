@@ -24,7 +24,6 @@ from backend.copilot.sharing import db as share_db
 from backend.copilot.sharing.models import SharedChatMessagesPage, SharedChatSession
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
 from backend.data.workspace import get_workspace_file_by_id
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -99,7 +98,6 @@ async def get_chat_share_state(
 @owner_router.post(
     "/sessions/{session_id}/share",
     responses={
-        403: {"description": "Chat sharing is not enabled for this user"},
         404: {"description": "Chat session not found for user"},
     },
 )
@@ -108,13 +106,7 @@ async def enable_chat_sharing(
     user_id: Annotated[str, Security(auth.get_user_id)],
     body: EnableShareRequest = Body(default_factory=EnableShareRequest),
 ) -> ChatShareResponse:
-    """Enable sharing for a chat session.
-
-    Flag-gated: refuses with 403 when ``chat-sharing`` is off so a stale
-    frontend cannot enable shares post-rollback.
-    """
-    if not await is_feature_enabled(Flag.CHAT_SHARING, user_id):
-        raise HTTPException(status_code=403, detail="Chat sharing is not enabled")
+    """Enable sharing for a chat session."""
 
     base_url = settings.config.frontend_base_url
     if not base_url:
@@ -166,8 +158,6 @@ async def disable_chat_sharing(
 
 # --------------------------------------------------------------------------
 # Public routes — mounted at ``/api/public/shared/chats``.
-# Stays on even when ``chat-sharing`` flag is off so revoked-then-fixed
-# rollbacks don't break already-shared URLs mid-flight.
 # --------------------------------------------------------------------------
 
 public_router = APIRouter(tags=["chat", "share", "public"])
