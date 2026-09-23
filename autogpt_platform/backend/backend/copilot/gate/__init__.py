@@ -103,6 +103,11 @@ async def check_action(
         return ALLOW
     assert user_id is not None
 
+    # Reads, workspace work and the ungated tools run in every mode and can
+    # never have been parked, so they skip the review and rule lookups.
+    if effect_for(tool_name) not in _PARKABLE:
+        return ALLOW
+
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 
@@ -125,8 +130,8 @@ async def check_action(
     rule_key = subject.key if subject is not None else tool_name
     mode = resolve_mode(session)
     verdict = verdict_for_effect(mode, effect)
-    # Only a subject that can be parked can have been rejected, so reads and
-    # workspace work skip the Redis round trip.
+    # A block or workflow that only reads can never have been parked, though
+    # the tool calling it can, so it skips the Redis round trip too.
     if effect in _PARKABLE and await chat_rules.asks(session_id, rule_key):
         reason = "You declined this action earlier in this chat."
     elif verdict is Verdict.RUN:
