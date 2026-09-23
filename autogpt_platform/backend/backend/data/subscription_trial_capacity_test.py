@@ -52,12 +52,27 @@ async def test_uncapped_offer_never_counts_seats():
 
 @pytest.mark.asyncio
 async def test_zero_cap_closes_enrolment_without_a_query():
-    with patch.object(capacity, "count_trial_seats", AsyncMock()) as count:
+    with patch.object(
+        capacity, "count_trial_seats", AsyncMock()
+    ) as count, patch.object(capacity, "_holds_seat", AsyncMock(return_value=False)):
         assert await capacity.trial_seat_available(offer(0)) is False
         assert (
-            await capacity.trial_seat_available(offer(0), trial_id="trial-1") is False
+            await capacity.trial_seat_available(offer(0), trial_id="expired-1") is False
         )
     count.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_zero_cap_keeps_a_held_seat():
+    """Pausing enrolment must not strand someone already at the card screen."""
+    with patch.object(
+        capacity, "count_trial_seats", AsyncMock()
+    ) as count, patch.object(
+        capacity, "_holds_seat", AsyncMock(return_value=True)
+    ) as holds:
+        assert await capacity.trial_seat_available(offer(0), trial_id="trial-1") is True
+    count.assert_not_awaited()
+    assert holds.await_args.args[0] == "trial-1"
 
 
 @pytest.mark.asyncio

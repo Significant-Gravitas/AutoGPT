@@ -82,9 +82,9 @@ async def trial_seat_available(
     if offer.max_active_trials is None:
         return True
     if offer.max_active_trials == 0:
-        # A hard pause on enrolment. Trials already running keep running --
-        # nothing here revokes a seat -- but nothing new gets one.
-        return False
+        # A hard pause on enrolment. Seats already held -- running trials and
+        # open checkouts alike -- are kept, but nothing new gets one.
+        return bool(trial_id) and await _holds_seat(trial_id, client=client)
     held_by_others = await count_trial_seats(exclude_trial_id=trial_id, client=client)
     if held_by_others < offer.max_active_trials:
         return True
