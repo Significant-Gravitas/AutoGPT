@@ -115,7 +115,9 @@ async def check_action(
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
-        await chat_rules.set_ask(session_id, review_store.rule_key(review, tool_name))
+        await chat_rules.set_ask(
+            session_id, await held.rule_key(session_id, review_id, tool_name)
+        )
         return Decision(allowed=False, reason=_REJECTED)
 
     subject = await subject_of() if subject_of is not None else None
@@ -126,7 +128,9 @@ async def check_action(
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
-    rule = await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    rule = (
+        await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    )
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     if rule == "ask":
         reason = "You declined this action earlier in this chat."

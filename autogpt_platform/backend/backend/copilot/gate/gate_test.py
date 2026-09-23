@@ -56,6 +56,7 @@ def clean_session_state():
     with (
         patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held._held", AsyncMock(return_value={})),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),

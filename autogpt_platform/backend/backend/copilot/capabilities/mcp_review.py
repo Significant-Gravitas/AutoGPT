@@ -1,16 +1,17 @@
 """Human review for MCP calls made through ``run_capability``.
 
-With the auto-mode gate off, every call to a server that is not in the
-official catalog pauses here: a tool's name is no evidence of what it does,
-and its annotations are the server's own claim.  Catalog servers run without
-a pause.  With the gate on, the gate decides every MCP call on the server's
-effect map instead (``gate/subject.py``) and this review is not opened.
+With the auto-mode gate off, MCP tool annotations are untrusted and mostly
+absent, so a call to a server that is not in the official catalog pauses for
+review when the tool looks like a write; catalog servers run without a pause.
+With the gate on, none of this runs: the server's effect map decides, or the
+tool asks on first use (``gate/subject.py``).
 
 Records reuse the block review table with a synthetic node id so the
 existing approval UI, the pending-review feed and ``resume_capability`` all
 work unchanged.
 """
 
+import re
 import uuid
 from typing import Any
 
@@ -25,6 +26,19 @@ from backend.data.db_accessors import review_db
 
 COPILOT_MCP_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}mcp-"
 
+_WRITE_VERBS = re.compile(
+    r"(^|[_\-.\s])(create|update|delete|remove|send|post|write|set|add|upload|"
+    r"publish|archive|merge|close|assign|move|rename|execute|run|trigger|"
+    r"cancel|approve|reject|pay|transfer|invite|grant|revoke|reset)([_\-.\s]|$)",
+    re.I,
+)
+_READ_VERBS = re.compile(
+    r"(^|[_\-.\s])(get|list|search|find|read|fetch|query|describe|show|"
+    r"lookup|check|count|view)([_\-.\s]|$)",
+    re.I,
+)
+
+
 class MCPReviewPayload(BaseModel):
     """What ``resume_capability`` needs to replay an approved MCP call."""
 
@@ -33,8 +47,14 @@ class MCPReviewPayload(BaseModel):
     arguments: dict[str, Any]
 
 
-def needs_review(*, catalog_server: bool) -> bool:
-    return not catalog_server
+def looks_like_write(tool_name: str) -> bool:
+    if _READ_VERBS.search(tool_name) and not _WRITE_VERBS.search(tool_name):
+        return False
+    return bool(_WRITE_VERBS.search(tool_name)) or not _READ_VERBS.search(tool_name)
+
+
+def needs_review(tool_name: str, *, catalog_server: bool) -> bool:
+    return not catalog_server and looks_like_write(tool_name)
 
 
 def is_mcp_review_id(review_id: str) -> bool:

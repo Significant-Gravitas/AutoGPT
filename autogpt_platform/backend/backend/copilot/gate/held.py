@@ -75,6 +75,26 @@ async def remember(session_id: str, call: HeldCall) -> bool:
         return False
 
 
+async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
+    """What a rejection of this card sets to ask: its subject, else its tool."""
+    call = (await _held(session_id)).get(review_id)
+    return (call.rule_key if call else None) or tool_name
+
+
+async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]:
+    """The subject each held card named; a bare tool or a held read names none."""
+    if not review_ids:
+        return {}
+    held = await _held(session_id)
+    return {
+        review_id: call.rule_key
+        for review_id in review_ids
+        if (call := held.get(review_id))
+        and call.rule_key
+        and call.rule_key != call.tool_name
+    }
+
+
 async def answered(user_id: str, session_id: str) -> list[HeldCall]:
     """Held calls whose card has been answered, oldest first."""
     held = await _held(session_id)

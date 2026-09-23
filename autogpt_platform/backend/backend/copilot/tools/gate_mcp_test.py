@@ -14,7 +14,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules
-from backend.copilot.gate.review import instructions_for, review_payload
+from backend.copilot.gate.review import instructions_for
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.models import MCPToolOutputResponse
 from backend.copilot.tools.run_capability import RunCapabilityTool
@@ -91,7 +91,10 @@ def ran():
 
 
 async def _call(
-    session: ChatSession, server: str, tool: str, arguments: dict[str, Any] | None = None
+    session: ChatSession,
+    server: str,
+    tool: str,
+    arguments: dict[str, Any] | None = None,
 ):
     return await RunCapabilityTool().execute(
         "user-1",
@@ -137,7 +140,7 @@ async def test_an_unmapped_tool_asks_naming_the_host_and_the_tool(gate, ran):
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])
 async def test_a_read_shaped_name_on_an_unknown_server_still_asks(gate, ran, mode):
-    """A tool's name is no evidence: the verb heuristic is gone."""
+    """A tool's name is no evidence: the verb heuristic never runs under the flag."""
     result = await _call(_session(mode), _OPEN_WORLD, "get_things")
     assert _is_held(result)
     ran.assert_not_awaited()
@@ -204,8 +207,29 @@ async def test_listing_a_servers_tools_never_asks(gate, ran):
 
 async def _answer_with_rule(gate, rule: chat_rules.ChatRule) -> None:
     """What the approve endpoint does for the card the gate just opened."""
-    _, _, _, tool_name, args, _, subject = gate.open_review.await_args.args
-    row = SimpleNamespace(
-        status=ReviewStatus.APPROVED, payload=review_payload(tool_name, args, subject)
+    subject = gate.open_review.await_args.args[6]
+    row = SimpleNamespace(status=ReviewStatus.APPROVED)
+    await chat_rules.set_answer_rules(
+        "session-1", {"r": row}, {"r": rule}, {"r": subject.key}
     )
-    await chat_rules.set_answer_rules("session-1", {"r": row}, {"r": rule})
+
+
+@pytest.mark.parametrize(
+    "server, tool, pauses",
+    [
+        (_OPEN_WORLD, "get_things", False),
+        (_OPEN_WORLD, "delete_things", True),
+        # Catalogued servers run, mapped write or not.
+        (_GITHUB, "issue_write", False),
+    ],
+)
+async def test_flag_off_the_verb_heuristic_decides_as_before(ran, server, tool, pauses):
+    own_review = AsyncMock(return_value="copilot-mcp-x:1")
+    with (
+        patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=False)),
+        patch(f"{_CAP}.open_mcp_review", own_review),
+        patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
+    ):
+        await _call(_session(), server, tool)
+    assert own_review.await_count == int(pauses)
+    assert ran.await_count == int(not pauses)

@@ -163,7 +163,7 @@ class RunCapabilityTool(BaseTool):
         entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
             # Open world: a server URL the catalog does not know.  The MCP
-            # path validates the host; calls pause for review.
+            # path validates the host; writes pause for review.
             return await _run_mcp(
                 None, id.strip(), user_id, session, payload, validate_only
             )
@@ -320,12 +320,12 @@ async def _run_mcp(
             session_id=session.session_id,
         )
     host = urlsplit(server_url).hostname or server_url
-    # With the gate on, it has already decided this call on the server's
-    # effect map, so a second card would ask twice.
+    # With the gate on it has already decided this call on the server's
+    # effect map; the verb heuristic is the flag-off path only.
     if (
         tool_name
         and not session.dry_run
-        and needs_review(catalog_server=entry is not None)
+        and needs_review(tool_name, catalog_server=entry is not None)
         and not await gate_active(user_id, session)
     ):
         review = MCPReviewPayload(
@@ -341,7 +341,7 @@ async def _run_mcp(
         )
         return ReviewRequiredResponse(
             message=(
-                f"'{tool_name}' on {host} is a call to a server outside the "
+                f"'{tool_name}' on {host} looks like a write to a server outside the "
                 "official catalog, so it needs the user's approval. Tell the user; "
                 f"after they approve, call resume_capability(review_id='{review_id}')."
             ),

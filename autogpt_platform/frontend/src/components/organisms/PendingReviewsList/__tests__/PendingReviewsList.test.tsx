@@ -183,7 +183,10 @@ test("a card naming a subject can allow it for the rest of the chat", async () =
   render(
     <PendingReviewsList
       reviews={[
-        makeGateReview({ key: "mcp:mcp.example.com/do_thing", name: "x" }),
+        makeGateReview({
+          name: "do_thing on mcp.example.com",
+          effect: "external",
+        }),
       ]}
     />,
   );

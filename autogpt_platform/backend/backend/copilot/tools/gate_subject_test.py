@@ -208,10 +208,14 @@ async def test_the_model_cannot_forge_an_approval(gate, ran):
 
 async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     gate.find_review.return_value = SimpleNamespace(
-        status=ReviewStatus.REJECTED,
-        payload={"subject": {"key": "block:abc", "name": "X", "effect": "external"}},
+        status=ReviewStatus.REJECTED, payload={}
     )
-    with patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()) as set_ask:
+    call = SimpleNamespace(rule_key="block:abc")
+    with (
+        patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()) as set_ask,
+        patch(f"{_GATE}.held._held", AsyncMock(return_value={"x": call})),
+        patch(f"{_GATE}.review_store.review_id_for", return_value="x"),
+    ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
     set_ask.assert_awaited_once_with("session-1", "block:abc")
 

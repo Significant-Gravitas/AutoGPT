@@ -9,6 +9,7 @@ from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app
+from backend.copilot.gate.held import HeldCall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -1283,12 +1284,20 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
 ) -> None:
-    """The rule lands on the subject the server wrote on the row."""
+    """The rule lands on the subject the gate stored with the held call."""
     review = sample_pending_review.model_copy(
-        update={
-            "graph_exec_id": "copilot-session-s1",
-            "payload": {"subject": {"key": "mcp:h/t", "name": "t on h"}},
-        }
+        update={"graph_exec_id": "copilot-session-s1"}
+    )
+    held_call = HeldCall(
+        review_id="test_node_123",
+        tool_name="run_capability",
+        tool_call_id="c",
+        args={},
+        rule_key="mcp:h/t",
+    )
+    mocker.patch(
+        "backend.copilot.gate.held._held",
+        return_value={"test_node_123": held_call},
     )
     routes = "backend.api.features.graph_executions.review.routes"
     mocker.patch(
@@ -1308,7 +1317,11 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
         "/api/review/action",
         json={
             "reviews": [
-                {"node_exec_id": "test_node_123", "approved": True, "chat_rule": "allow"}
+                {
+                    "node_exec_id": "test_node_123",
+                    "approved": True,
+                    "chat_rule": "allow",
+                }
             ]
         },
     )

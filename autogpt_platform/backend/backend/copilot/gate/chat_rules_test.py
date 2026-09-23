@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import chat_rules
+from backend.copilot.gate import chat_rules, held
 
 
 class _Redis:
@@ -25,32 +25,29 @@ def redis():
         yield store
 
 
-def _row(status: ReviewStatus, key: str | None = "mcp:h/t") -> SimpleNamespace:
-    payload = {"tool": "run_capability", "arguments": {}}
-    if key:
-        payload["subject"] = {"key": key, "name": "t on h", "effect": "external"}
-    return SimpleNamespace(status=status, payload=payload)
+def _row(status: ReviewStatus) -> SimpleNamespace:
+    return SimpleNamespace(status=status)
 
 
 async def test_an_approved_card_rules_on_the_subject_it_named(redis):
     await chat_rules.set_answer_rules(
-        "s", {"a": _row(ReviewStatus.APPROVED)}, {"a": "allow"}
+        "s", {"a": _row(ReviewStatus.APPROVED)}, {"a": "allow"}, {"a": "mcp:h/t"}
     )
     assert await chat_rules.rule_for("s", "mcp:h/t") == "allow"
     assert await chat_rules.rule_for("s", "mcp:h/other") is None
 
 
 @pytest.mark.parametrize(
-    "row",
+    "status, keys",
     [
-        _row(ReviewStatus.REJECTED),
-        _row(ReviewStatus.WAITING),
+        (ReviewStatus.REJECTED, {"a": "mcp:h/t"}),
+        (ReviewStatus.WAITING, {"a": "mcp:h/t"}),
         # A bare tool or a held read names no subject, so a click cannot rule on it.
-        _row(ReviewStatus.APPROVED, key=None),
+        (ReviewStatus.APPROVED, {}),
     ],
 )
-async def test_only_an_approved_subject_card_sets_a_rule(redis, row):
-    await chat_rules.set_answer_rules("s", {"a": row}, {"a": "allow"})
+async def test_only_an_approved_subject_card_sets_a_rule(redis, status, keys):
+    await chat_rules.set_answer_rules("s", {"a": _row(status)}, {"a": "allow"}, keys)
     assert redis.data == {}
 
 
@@ -71,3 +68,28 @@ async def test_an_unreadable_store_asks():
         chat_rules, "get_redis_async", AsyncMock(side_effect=ConnectionError)
     ):
         assert await chat_rules.rule_for("s", "mcp:h/t") == "ask"
+
+
+async def test_only_a_held_call_with_a_subject_offers_a_key():
+    calls = {
+        "mcp": held.HeldCall(
+            review_id="mcp",
+            tool_name="run_capability",
+            tool_call_id="c",
+            args={},
+            rule_key="mcp:h/t",
+        ),
+        "tool": held.HeldCall(
+            review_id="tool",
+            tool_name="bash_exec",
+            tool_call_id="c",
+            args={},
+            rule_key="bash_exec",
+        ),
+        "read": held.HeldCall(
+            review_id="read", tool_name="web_fetch", tool_call_id="c", args={}
+        ),
+    }
+    with patch.object(held, "_held", AsyncMock(return_value=calls)):
+        keys = await held.subject_keys("s", ["mcp", "tool", "read", "gone"])
+    assert keys == {"mcp": "mcp:h/t"}

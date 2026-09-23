@@ -43,15 +43,16 @@ async def set_answer_rules(
     session_id: str,
     answered: Mapping[str, PendingHumanReviewModel],
     rules: Mapping[str, ChatRule | None],
+    subject_keys: Mapping[str, str],
 ) -> None:
-    """The rule an approved card asked for, on the subject the card named.
+    """The rule each approved card asked for, on the subject it named.
 
-    The subject is read from the row the server wrote, which the answer
-    cannot edit, so a click can only ever rule on what the card showed.
+    ``subject_keys`` come from the held calls the gate stored, so a click can
+    only ever rule on a subject the server put on a card.
     """
     for review_id, rule in rules.items():
         row = answered.get(review_id)
-        key = subject_key(row) if row is not None else None
+        key = subject_keys.get(review_id)
         if rule and key and row is not None and row.status == ReviewStatus.APPROVED:
             await set_rule(session_id, key, rule)
 
@@ -78,10 +79,3 @@ def _key(session_id: str, rule_key: str) -> str:
     # A flag per (session, subject): the cluster client's set operations are
     # not typed as awaitable.
     return f"{_ASK_KEY}{session_id}:{rule_key}"
-
-
-def subject_key(review: PendingHumanReviewModel) -> str | None:
-    payload = review.payload if isinstance(review.payload, dict) else {}
-    subject = payload.get("subject")
-    key = subject.get("key") if isinstance(subject, dict) else None
-    return key if isinstance(key, str) and key else None

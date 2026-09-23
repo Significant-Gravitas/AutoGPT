@@ -400,6 +400,6 @@ function hasSubject(review: PendingHumanReviewModel) {
   return (
     !!subject &&
     typeof subject === "object" &&
-    typeof (subject as Record<string, unknown>).key === "string"
+    typeof (subject as Record<string, unknown>).name === "string"
   );
 }
