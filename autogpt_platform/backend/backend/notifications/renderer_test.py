@@ -293,12 +293,13 @@ def test_otto_link_does_not_change_workflow_or_billing_destinations(monkeypatch)
     assert urls.unsubscribe.endswith("?token=keep")
 
 
-def test_onboarding_template_names_otto_and_links_to_chat():
+@pytest.mark.parametrize("part, cta", [(1, "Open Otto"), (2, "Try a workflow")])
+def test_onboarding_template_names_otto_and_links_to_chat(part, cta):
     from backend.notifications import renderer
 
     html = renderer._html_env.get_template("onboarding.html.j2").render(
-        part=1, user_name="Sam", urls=URLS
+        part=part, user_name="Sam", urls=URLS
     )
     assert "AutoPilot" not in html
-    assert "Open Otto" in html
+    assert cta in html
     assert 'href="https://p.example/copilot"' in html
