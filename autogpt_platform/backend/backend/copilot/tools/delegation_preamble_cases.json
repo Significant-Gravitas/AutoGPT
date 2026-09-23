@@ -1,0 +1,47 @@
+{
+  "$comment": [
+    "Shared contract for the preamble delegate_to_expert and handoff_to_expert",
+    "prepend to a teammate's task, asserted by both",
+    "backend/copilot/tools/delegation_preamble_cases_test.py and",
+    "frontend/.../ChatMessagesContainer/__tests__/userMessageParts.contract.test.ts.",
+    "message: what the backend sends the receiving session (the stored user row).",
+    "visible: what the frontend shows and copies for that row once the preamble",
+    "is stripped. Rewording a backend preamble fails the backend test until this",
+    "file is updated, and the updated file fails the frontend test until the",
+    "frontend regex is updated to match."
+  ],
+  "cases": [
+    {
+      "kind": "delegation",
+      "caller": "Avery",
+      "context": "",
+      "prompt": "Draft the launch update.",
+      "message": "[Delegated task from Avery, a teammate on this user's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\nDraft the launch update.",
+      "visible": "Draft the launch update."
+    },
+    {
+      "kind": "delegation",
+      "caller": "Avery",
+      "context": "Launch on Friday.",
+      "prompt": "Review **all** links.\n\n- [ ] Footer",
+      "message": "[Delegated task from Avery, a teammate on this user's team — not the user. They cannot see your thread, so report the outcome in your final message. If the task needs something only the user can provide, say what is missing instead of guessing.]\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer",
+      "visible": "[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer"
+    },
+    {
+      "kind": "handoff",
+      "caller": "Avery",
+      "context": "",
+      "prompt": "Draft the launch update.",
+      "message": "[Task handed to you by Avery, a teammate on this user's team. It is yours now: they are not waiting on a report and cannot answer follow-ups. Take it to completion and tell the user the outcome yourself. If something only the user can provide is missing, ask them.]\n\nDraft the launch update.",
+      "visible": "Draft the launch update."
+    },
+    {
+      "kind": "handoff",
+      "caller": "Avery",
+      "context": "Launch on Friday.",
+      "prompt": "Review **all** links.\n\n- [ ] Footer",
+      "message": "[Task handed to you by Avery, a teammate on this user's team. It is yours now: they are not waiting on a report and cannot answer follow-ups. Take it to completion and tell the user the outcome yourself. If something only the user can provide is missing, ask them.]\n\n[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer",
+      "visible": "[Context: Launch on Friday.]\n\nReview **all** links.\n\n- [ ] Footer"
+    }
+  ]
+}

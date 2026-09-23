@@ -23,6 +23,7 @@ export function ExpertPageHeader({ expert, actions }: Props) {
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
+            jobTitle={expert.job_title}
             size="page"
           />
         </div>

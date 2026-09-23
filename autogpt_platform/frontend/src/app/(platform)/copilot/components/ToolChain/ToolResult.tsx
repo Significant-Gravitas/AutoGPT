@@ -15,6 +15,7 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
@@ -501,7 +502,10 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  const card = toolCard(row, output, readOnly);
+  const target = capabilityTargetRow(row);
+  const card =
+    toolCard(target, output, readOnly) ??
+    (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
@@ -515,7 +519,7 @@ export function ToolResult({ row, readOnly = false }: Props) {
     return <KeyValueList value={str(output, "message") ?? ""} />;
 
   return (
-    linkCard(data, asObject(row.input)) ??
+    linkCard(data, asObject(target.input)) ??
     shapeCard(data) ?? <KeyValueList value={data} />
   );
 }

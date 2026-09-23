@@ -11,7 +11,12 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import RaisePage from "../page";
-import { loadDraft, saveDraft, VOICE_SKIPPED_LABEL } from "../helpers";
+import {
+  EMPTY_DRAFT,
+  loadDraft,
+  saveDraft,
+  VOICE_SKIPPED_LABEL,
+} from "../helpers";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
@@ -120,6 +125,7 @@ function seedAtBudget(name = "Otto") {
     step: "budget",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name,
     color: "rose-300",
     avatarUrl: "",
@@ -140,6 +146,7 @@ function seedAtSkills(
     step: "skills",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name,
     color: "rose-300",
     avatarUrl: "",
@@ -198,6 +205,7 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
   expect(captured).toMatchObject({
     name: "Otto",
     role: "marketer",
+    job_title: "Marketing Manager",
     weekly_budget: null,
     attachments: [],
   });
@@ -206,6 +214,25 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
       "/copilot?expertId=raised-1&kickoff=1",
     ),
   );
+});
+
+test("posts null when the job title was skipped", async () => {
+  let captured: unknown = null;
+  server.use(
+    getCreateRaisedExpertMockHandler(async (info) => {
+      captured = await info.request.json();
+      return raiseResult();
+    }),
+  );
+
+  seedAtSkills();
+  saveDraft({ ...loadDraft(), jobTitle: "" });
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: /Bring Otto to life/ }),
+  );
+
+  await waitFor(() => expect(captured).toMatchObject({ job_title: null }));
 });
 
 test("posts a chosen weekly budget", async () => {
@@ -347,6 +374,85 @@ test("toasts failed attachments and still opens copilot", async () => {
   );
 });
 
+test("picking a job title records it and asks for a name", async () => {
+  saveDraft({
+    ...EMPTY_DRAFT,
+    hasStarted: true,
+    role: "marketer",
+    step: "jobTitle",
+  });
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole(
+      "button",
+      { name: "Marketing Manager" },
+      { timeout: 5000 },
+    ),
+  );
+
+  expect(
+    await screen.findByRole(
+      "group",
+      { name: "Suggested names" },
+      { timeout: 5000 },
+    ),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({
+    jobTitle: "Marketing Manager",
+    step: "name",
+  });
+});
+
+test("typing a job title trims it and asks for a name", async () => {
+  saveDraft({
+    ...EMPTY_DRAFT,
+    hasStarted: true,
+    role: "Custom role",
+    step: "jobTitle",
+  });
+  renderRaise();
+  await userEvent.type(
+    await screen.findByRole("textbox", { name: "Job title" }),
+    "  Chief of Staff  ",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Add title" }));
+
+  expect(
+    await screen.findByRole(
+      "group",
+      { name: "Suggested names" },
+      { timeout: 5000 },
+    ),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({
+    jobTitle: "Chief of Staff",
+    step: "name",
+  });
+});
+
+test("skipping a job title records it and asks for a name", async () => {
+  saveDraft({
+    ...EMPTY_DRAFT,
+    hasStarted: true,
+    role: "marketer",
+    step: "jobTitle",
+  });
+  renderRaise();
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+  );
+
+  expect(await screen.findByText("Skipped")).toBeDefined();
+  expect(
+    await screen.findByRole(
+      "group",
+      { name: "Suggested names" },
+      { timeout: 5000 },
+    ),
+  ).toBeDefined();
+  expect(loadDraft()).toMatchObject({ jobTitle: "", step: "name" });
+});
+
 test("picking a weekly budget advances to marketplace workflows", async () => {
   seedAtBudget();
   renderRaise();
@@ -481,6 +587,7 @@ test("back returns to the previous step and the draft survives", async () => {
   expect(draft).toMatchObject({
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name: "Otto",
     color: "rose-300",
   });

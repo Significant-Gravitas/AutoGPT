@@ -93,7 +93,6 @@ export function ChatSidebar() {
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
   const isPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const { expertsById } = useExpertMap();
@@ -271,7 +270,6 @@ export function ChatSidebar() {
         isExporting={exportingSessionIds.has(session.id)}
         isDeleting={isDeleting}
         isPinningEnabled={isPinningEnabled}
-        isSharingEnabled={chatSharingEnabled}
         showProcessing={
           !!session.is_processing &&
           shouldShowSessionProcessingIndicator({
@@ -463,7 +461,11 @@ export function ChatSidebar() {
                       <ExpertSessionGroup
                         key={groupKey}
                         groupKey={groupKey}
-                        role={group.expertId ? expert?.role : "Head of AI"}
+                        role={
+                          group.expertId
+                            ? expert?.jobTitle || expert?.role
+                            : "Head of AI"
+                        }
                         label={
                           group.expertId ? (expert?.name ?? "Expert") : "Otto"
                         }

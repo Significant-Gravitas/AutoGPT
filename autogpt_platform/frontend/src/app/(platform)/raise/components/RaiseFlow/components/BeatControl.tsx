@@ -12,9 +12,13 @@ import {
   selectedCardClassFor,
   textClassFor,
 } from "../../ColorStep/helpers";
+import { JobTitleStep } from "../../JobTitleStep/JobTitleStep";
 import { MarketplaceStep } from "../../MarketplaceStep/MarketplaceStep";
 import { NameStep } from "../../NameStep/NameStep";
-import { nameSuggestionsFor } from "../../RoleStep/helpers";
+import {
+  jobTitleSuggestionsFor,
+  nameSuggestionsFor,
+} from "../../RoleStep/helpers";
 import { RoleStep } from "../../RoleStep/RoleStep";
 import { SkillsStep } from "../../SkillsStep/SkillsStep";
 
@@ -31,6 +35,16 @@ export function BeatControl({ beat, flow }: Props) {
           selectedRole={flow.role}
           color={flow.color}
           onPick={flow.pickRole}
+        />
+      );
+    case "jobTitle":
+      return (
+        <JobTitleStep
+          selectedTitle={flow.jobTitle}
+          suggestions={jobTitleSuggestionsFor(flow.role)}
+          color={flow.color}
+          onSubmit={flow.submitJobTitle}
+          onSkip={flow.skipJobTitle}
         />
       );
     case "name":

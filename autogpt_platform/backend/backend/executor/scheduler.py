@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
@@ -37,10 +38,12 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
@@ -349,9 +352,70 @@ async def _skip_inactive_expert_scope(
         await _reschedule_one_shot_after_expert_unavailable(args)
 
 
+async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
+    """Load the routine behind this job, if it is one.
+
+    A failed lookup returns ``None``, which is the cautious side of both
+    decisions it feeds: the turn lands in a fresh chat rather than one it
+    cannot confirm belongs to this routine, and it runs muted rather than
+    assuming an owner granted it anything.
+    """
+    if args.routine_id is None:
+        return None
+    try:
+        routine = await experts_db().get_routine(args.routine_id)
+    except Exception:
+        logger.warning(
+            "Could not load routine %s for scheduled turn %s; "
+            "firing into a fresh chat with nothing granted",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
+        return None
+    return routine
+
+
+def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
+    """The capability filter a routine's turn runs under.
+
+    Every routine turn gets one, even a fully granted one: no routine may
+    schedule more of itself, because nobody is watching this turn read the page
+    that might ask it to. Passing ``None`` would mean "whatever the session
+    allows", and the point of this object is that the decision is made here, at
+    the boundary, and is visible in the job.
+
+    A routine loaded as ``None`` — the row is gone, or the lookup failed — is
+    treated as ungranted, which is the right way to be wrong.
+    """
+    granted = routine is not None and routine.grants_credentials
+    return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
+
+
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
+    routine = await _routine_for_turn(args)
+    if routine is not None and not routine.enabled:
+        # Deleting a routine's jobs is best effort — the scheduler can refuse,
+        # and a spent one-shot's row outlives its job either way. So "off" has
+        # to mean something at fire time too, or a job that survived being
+        # switched off keeps running work its owner stopped. This is the
+        # fire-time lookup ``delete_routine_schedules`` defers to.
+        logger.info(
+            "Copilot turn schedule %s skipped — routine %s is switched off; "
+            "removing the schedule that outlived it",
+            args.schedule_id,
+            routine.id[:12],
+        )
+        await _self_delete_copilot_turn_schedule(args)
+        return
+    # A THREAD routine keeps one durable conversation: null until its first
+    # fire mints it, reused by every fire after. Resolving it here means the
+    # second fire takes the existing-session branch below and inherits that
+    # branch's ownership and scope re-validation for free.
+    if routine is not None and routine.session_id is not None:
+        args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
         # Resolve the target session.  ``session_id=None`` means "fire into
@@ -410,6 +474,22 @@ async def _execute_copilot_turn(**kwargs):
                 return
             target_session_id = new_session.session_id
             target_session = new_session
+            if routine is not None and routine.session_mode == "THREAD":
+                # First fire of a THREAD routine: remember the conversation so
+                # every later fire continues it instead of leaving a trail of
+                # one-message chats. Best effort — losing this costs a thread,
+                # not a run, and the next fire mints a fresh one.
+                try:
+                    await experts_db().record_routine_thread(
+                        routine.id, target_session_id
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not record thread %s on routine %s",
+                        target_session_id[:12],
+                        routine.id[:12],
+                        exc_info=True,
+                    )
             # Nothing can be forged in a chat that has never existed before:
             # its ``origin="automation"`` refuses the staffing tools outright,
             # so no proposal can be parked here to approve. Persist the opener
@@ -476,7 +556,29 @@ async def _execute_copilot_turn(**kwargs):
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
+            # Per turn, not per session: a PINNED routine fires into a chat the
+            # user also drives themselves, and muting the conversation would
+            # take capabilities away from the person sitting in it. What is
+            # unattended is this turn.
+            permissions=(
+                _routine_turn_permissions(routine)
+                if args.routine_id is not None
+                else None
+            ),
         )
+        if routine is not None and routine.run_at is not None:
+            # APScheduler drops a one-shot job once it fires, so without this
+            # the row would go on describing itself as scheduled for a time
+            # that has passed. After dispatch, not before: a turn that never
+            # reached the queue has not run.
+            try:
+                await experts_db().record_routine_fired(routine.id)
+            except Exception:
+                logger.warning(
+                    "Could not mark one-shot routine %s fired",
+                    routine.id[:12],
+                    exc_info=True,
+                )
         product_analytics.track_schedule_fired(
             user_id=args.user_id,
             schedule_id=args.schedule_id,
@@ -611,6 +713,12 @@ async def _reschedule_one_shot(
             # turn into a plain session, escaping the expert's thread/budget
             # and its isolated memory scope.
             expert_id=args.expert_id,
+            # And for the routine behind it. Dropping this was the worst of
+            # the three: the retried turn resolves no routine, so it runs
+            # with the session's own permissions instead of the routine's —
+            # an ungranted routine that merely lost a race to the concurrency
+            # cap would come back with everything the mute exists to withhold.
+            routine_id=args.routine_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -673,6 +781,23 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
+    # A job with no schedule_id predates the field and cannot be matched
+    # against the ids a routine row holds, so there is nothing to drop.
+    if args.routine_id is None or args.schedule_id is None:
+        return
+    # The row outlives the job it lost, and a routine still listed as switched
+    # on with nothing scheduled behind it is the one state the owner cannot act
+    # on: the UI offers to switch off something that is already not running.
+    # Most often this is a PINNED routine whose chat the owner deleted.
+    try:
+        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not switch off routine %s after removing its schedule %s",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -1536,6 +1661,12 @@ class CopilotTurnJobArgs(BaseModel):
     # and Otto follow-ups in the user's account scope. Optional for
     # backward compat with rows persisted before this field was added.
     expert_id: str | None = None
+    # Set when this job is one fire time of an ``ExpertRoutine``. The row is
+    # what makes a routine more than a followup: it owns the durable thread a
+    # THREAD routine reuses (minted here on the first fire) and the flag that
+    # decides whether the turn may touch a connected service at all. None keeps
+    # ordinary ``schedule_followup`` jobs on their existing path.
+    routine_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1978,7 +2109,10 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc),
+                next_run_time=datetime.now(timezone.utc)
+                + timedelta(
+                    hours=0 if config.scheduler_startup_embedding_backfill else 6
+                ),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
                 misfire_grace_time=None,
@@ -2097,6 +2231,8 @@ class Scheduler(AppService):
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        name = normalize_schedule_name(name)
+
         if expert_id is not None:
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
@@ -2158,6 +2294,7 @@ class Scheduler(AppService):
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
+        routine_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2194,6 +2331,7 @@ class Scheduler(AppService):
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            routine_id=routine_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"

@@ -2,6 +2,8 @@
 
 import importlib
 
+import pytest
+
 from backend.copilot import prompting
 
 
@@ -200,17 +202,32 @@ class TestSchedulingGuidance:
     told not to promise monitoring it never scheduled.
     """
 
-    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+    def test_supplement_names_the_building_gate_before_it_refuses(self):
+        # The gate's refusal used to be the only text naming the tool, so the
+        # model met it by being refused and then stalled retrying the entry.
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `schedule_followup`" in result
-        assert "ONLY way to schedule a future copilot turn" in result
+        assert "call `enter_agent_building_mode` first" in result
+        assert "tool:enter_agent_building_mode" not in result
+
+    def test_supplement_names_schedule_followup_by_capability_id(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Scheduling future work — use `tool:schedule_followup`" in result
+        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+
+    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
+        # Routines ride the flag-gated ``expert_resources`` group, so this
+        # ungated supplement points at the block that appears alongside them
+        # rather than at a tool the session may not be able to call.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "set up a routine for it rather than a" in result
+        assert "schedule_routine" not in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not
         # become a recurring copilot turn that re-decides what to run.
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "use `run_agent` with `schedule_name` +" in result
-        assert "use `setup_agent_webhook_trigger`" in result
+        assert "use `tool:setup_agent_webhook_trigger`" in result
 
     def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -231,3 +248,10 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestMathGuidance:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "`$…$` inline, `$$…$$` for display" in result

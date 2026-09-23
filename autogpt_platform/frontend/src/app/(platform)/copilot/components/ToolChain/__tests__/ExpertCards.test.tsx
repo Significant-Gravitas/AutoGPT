@@ -29,12 +29,6 @@ vi.mock("../../../tools/GenericTool/GenericTool", () => ({
 
 const onSend = vi.fn();
 
-const artifactsFlag = { enabled: false };
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS: "artifacts" },
-  useGetFlag: () => artifactsFlag.enabled,
-}));
-
 function row(tool: string, output: unknown): ChainRow {
   return {
     key: tool,
@@ -48,7 +42,6 @@ function row(tool: string, output: unknown): ChainRow {
 
 describe("expert change cards", () => {
   afterEach(() => {
-    artifactsFlag.enabled = false;
     useCopilotUIStore.getState().resetArtifactPanel();
   });
 
@@ -85,7 +78,6 @@ describe("expert change cards", () => {
   });
 
   it("opens the full charter in the side panel from Show more", async () => {
-    artifactsFlag.enabled = true;
     const user = userEvent.setup();
     render(
       <ExpertChangeCard
@@ -166,7 +158,6 @@ describe("expert change cards", () => {
   });
 
   it("always offers Details when the panel is available", () => {
-    artifactsFlag.enabled = true;
     render(
       <ExpertChangeCard
         artifactId="call-1"

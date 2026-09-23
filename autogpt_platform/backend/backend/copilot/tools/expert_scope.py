@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_NOT_INSTALLED = (
     "'{name}' is not installed on this expert. Experts can only run, edit, "
     "and schedule their installed workflows. Install it first with "
-    "install_expert_workflow, from the marketplace or the owner's library."
+    "tool:install_expert_workflow, from the marketplace or the owner's library."
 )
 EXPERT_OWNER_DENIED = (
     "Experts can only manage their own workflows and integrations. Open "
@@ -35,7 +35,7 @@ EXPERT_OWNER_DENIED = (
 )
 EXPERT_REQUIRED = (
     "Name the expert with expert_id. Personal AutoPilot manages experts' "
-    "resources on their behalf; list_team shows their ids."
+    "resources on their behalf; tool:list_team shows their ids."
 )
 
 
@@ -138,6 +138,50 @@ async def resolve_target_expert(
     return expert.id
 
 
+class RoutineOwner(BaseModel):
+    """Whose standing work a routine call acts on.
+
+    ``expert_id is None`` is not "unknown" — it is the account itself. Otto is
+    the platform's default assistant rather than a row in ``Expert``, so its
+    routines hang off the owner, and a personal AutoPilot session that names no
+    expert is asking about its own.
+    """
+
+    expert_id: str | None = None
+
+
+async def resolve_routine_owner(
+    user_id: str, session: ChatSession, requested_expert_id: str | None
+) -> RoutineOwner | ErrorResponse:
+    """``resolve_target_expert``'s rule, minus the requirement to name someone.
+
+    An expert session still acts on itself and may not name another. Personal
+    AutoPilot may name one of the owner's experts to manage its standing work,
+    and naming nobody means the account's own — the one case where
+    ``resolve_target_expert`` has to refuse and this does not.
+    """
+    if session.expert_id is not None:
+        if requested_expert_id and requested_expert_id != session.expert_id:
+            return ErrorResponse(
+                message=EXPERT_OWNER_DENIED,
+                error="access_denied",
+                session_id=session.session_id,
+            )
+        return RoutineOwner(expert_id=session.expert_id)
+    if not requested_expert_id:
+        return RoutineOwner()
+    expert = await experts_db().get_expert(
+        user_id, requested_expert_id, include_workflows=False
+    )
+    if expert is None:
+        return ErrorResponse(
+            message=f"Expert '{requested_expert_id}' was not found on this account.",
+            error="expert_not_found",
+            session_id=session.session_id,
+        )
+    return RoutineOwner(expert_id=expert.id)
+
+
 async def settle_expert_grants(user_id: str, session: ChatSession) -> None:
     """An expert installing a workflow on itself must not widen its own grants.
 
@@ -175,7 +219,7 @@ async def install_saved_agent(
             update={
                 "message": (
                     f"{result.message} The agent was saved but could not be "
-                    "installed on this expert; run install_expert_workflow "
+                    "installed on this expert; run tool:install_expert_workflow "
                     f"with library_agent_id='{result.library_agent_id}'."
                 )
             }
@@ -290,5 +334,5 @@ async def ungranted_credential_hint(
         "\n\nThe account already has matching credentials that this expert has "
         f"not been granted:\n{lines}\nAsk the user to grant one on the expert's "
         "Integrations page, or from personal AutoPilot with "
-        "grant_expert_credential."
+        "tool:grant_expert_credential."
     )

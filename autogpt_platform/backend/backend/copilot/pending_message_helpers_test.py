@@ -204,6 +204,7 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 409
@@ -235,6 +236,7 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
         message="hi",
         context=None,
         file_ids=None,
+        folder_ids=None,
         expert_id=None,
     )
 
@@ -275,6 +277,7 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 429
@@ -511,9 +514,12 @@ def _make_chat_message_class(
     """Return a simple ChatMessage stand-in that tracks sequence."""
 
     class _Msg:
-        def __init__(self, role: str, content: str) -> None:
+        def __init__(
+            self, role: str, content: str, metadata: dict[str, Any] | None = None
+        ) -> None:
             self.role = role
             self.content = content
+            self.metadata = metadata
             self.sequence: int | None = None
 
     monkeypatch.setattr(helpers_module, "ChatMessage", _Msg)
@@ -568,6 +574,77 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
     assert [m.content for m in session.messages] == ["a", "b"]
     assert tb.entries == ["a", "b"]
     push_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_copies_metadata_onto_the_user_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session-to-session message keeps its sender on the persisted row;
+    a human follow-up gets no metadata at all."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+
+    async def _fake_upsert(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+    pending = [PM(content="from a teammate", metadata=provenance), PM(content="me")]
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.metadata for m in session.messages] == [provenance, None]
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_stamps_metadata_on_the_pending_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    push_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=False)
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    await queue_user_message(session_id="sess", message="hi", metadata=provenance)
+    assert push_mock.await_args.args[1].metadata == provenance
+
+    await queue_user_message(session_id="sess", message="typed")
+    assert push_mock.await_args.args[1].metadata is None
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_in_flight_gate_keeps_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    gated_push = AsyncMock(return_value=2)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", gated_push
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    state = await queue_user_message(
+        session_id="sess",
+        message="hi",
+        require_turn_in_flight=True,
+        metadata=provenance,
+    )
+    assert state.turn_in_flight is True
+    assert gated_push.await_args.args[1].metadata == provenance
 
 
 @pytest.mark.asyncio
@@ -873,6 +950,7 @@ async def test_queue_pending_rejects_file_outside_expert_scope(
             message="hi",
             context=None,
             file_ids=["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            folder_ids=None,
             expert_id="expert-a",
         )
     assert exc_info.value.status_code == 400
@@ -906,9 +984,44 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
         message="hi",
         context=None,
         file_ids=["file-1"],
+        folder_ids=None,
         expert_id="expert-a",
     )
 
     resolve_mock.assert_awaited_once_with(
         "user-1", ["file-1"], session_id="sess-1", expert_id="expert-a"
     )
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_names_attached_folders_in_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = QueuePendingMessageResponse(
+        buffer_length=1,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    queue_mock = AsyncMock(return_value=response)
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+    folder = SimpleNamespace(id="folder-1", name="Invoices", file_count=3)
+    resolve_mock = AsyncMock(return_value=[folder])
+    monkeypatch.setattr(
+        helpers_module, "resolve_attachable_workspace_folders", resolve_mock
+    )
+
+    await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+        folder_ids=["folder-1"],
+        expert_id="expert-a",
+    )
+
+    resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
+    assert "Invoices" in queue_mock.call_args.kwargs["message"]

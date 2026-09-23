@@ -11,7 +11,6 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ClockIcon, File02Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../../store";
 import type { ExpertIdentity } from "../../../useExpertMap";
@@ -60,19 +59,18 @@ export function ThreadHeader({
   // Otto's identity, which would be wrong for an expert session.
   const isResolving = isResolvingExpertIdentity && !expertIdentity;
   const name = expertIdentity?.name ?? "Otto";
-  const role = expertIdentity
-    ? getExpertRoleLabel(expertIdentity.role ?? "")
-    : DEFAULT_EXPERT_ROLE;
+  const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
+  const jobTitle = expertIdentity?.jobTitle;
+  const roleLabel = jobTitle || getExpertRoleLabel(role);
   // Assistive tech gets a loading identity too, not Otto's.
-  const identityLabel = isResolving ? "Loading expert" : `${name}, ${role}`;
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const identityLabel = isResolving
+    ? "Loading expert"
+    : `${name}, ${roleLabel}`;
   // Only the copilot chat mounts the activity card. The builder and memory
   // panels pass a live sessionId and aren't read-only, so without the host's
   // own say-so the chip would render a button whose click writes panel state
   // and fetches a file list for a card that never appears.
-  const isInteractive = Boolean(
-    canOpenActivity && isArtifactsEnabled && !readOnly && sessionId,
-  );
+  const isInteractive = Boolean(canOpenActivity && !readOnly && sessionId);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
@@ -111,7 +109,12 @@ export function ThreadHeader({
         <Skeleton className="h-3.5 w-16 rounded" />
       ) : (
         <span className="min-w-0 max-w-[10rem]">
-          <ExpertIdentityDetails name={name} role={role} size="compact" />
+          <ExpertIdentityDetails
+            name={name}
+            role={role}
+            jobTitle={jobTitle}
+            size="compact"
+          />
         </span>
       )}
       {counters.map(({ icon, count, noun }) => (
@@ -159,7 +162,7 @@ export function ThreadHeader({
                   <div
                     tabIndex={0}
                     aria-label={
-                      isResolving ? identityLabel : `${name} — ${role}`
+                      isResolving ? identityLabel : `${name} — ${roleLabel}`
                     }
                     className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-5"
                   >
@@ -172,7 +175,7 @@ export function ThreadHeader({
                   side="bottom"
                   className="bg-zinc-900 text-zinc-50 outline-none"
                 >
-                  {role}
+                  {roleLabel}
                 </TooltipContent>
               )}
             </Tooltip>

@@ -443,6 +443,25 @@ class TestDelegation:
         assert mock_sessions[0].metadata.delegated_by_expert_id is None
 
     @pytest.mark.asyncio
+    async def test_delegated_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """The teammate's thread renders a "Sent from" badge off the message
+        row, so the delegating session and expert ride its metadata."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
+
+    @pytest.mark.asyncio
     async def test_response_carries_target_identity(
         self, roster, mock_turn, mock_sessions
     ):

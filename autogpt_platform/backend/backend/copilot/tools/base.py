@@ -15,6 +15,7 @@ from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
+from .capability_gates import gate_denied, gate_denied_error
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
+            metadata={"purpose": "tool-output"},
             overwrite=True,
         )
     except Exception:
@@ -417,6 +419,24 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
+
+        # A deferred tool arrives here resolved out of a ``run_capability``
+        # dispatch, so gating it by name has to happen on the way in or it
+        # does not happen at all.
+        if gate_denied(self.name):
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=gate_denied_error(
+                    self.name, session.session_id
+                ).model_dump_json(),
+                success=False,
+            )
+
+        # After the gates, so a refused call never looks to a turn-scoped gate
+        # like the tool having run, and before the await, because the gates ask
+        # whether it was dispatched rather than whether it succeeded.
+        session.announce_inflight_tool_call(self.name, kwargs)
 
         try:
             result = await self._execute(user_id, session, **kwargs)

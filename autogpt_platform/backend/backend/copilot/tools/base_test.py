@@ -96,6 +96,7 @@ class TestPersistAndSummarize:
         call_kwargs = mock_manager.write_file.call_args
         assert call_kwargs.kwargs["content"] == raw.encode("utf-8")
         assert call_kwargs.kwargs["path"] == "tool-outputs/tc-123.json"
+        assert call_kwargs.kwargs["metadata"] == {"purpose": "tool-output"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_workspace_error(self):

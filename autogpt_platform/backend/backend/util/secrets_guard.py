@@ -24,6 +24,11 @@ MISSING_HINT = (
     "file if needed) and run `make init-env` in autogpt_platform/ to generate a "
     "value for it. Values you already set are never overwritten."
 )
+UPGRADE_HINT = (
+    " Upgrading an install that already has connected integrations? They can be "
+    "moved to the new key instead of reconnected: see 'Upgrading: secrets are "
+    "generated per install' in docs/platform/getting-started.md."
+)
 RETIRED_HINT = (
     "Clear the value in autogpt_platform/backend/.env (leave `{name}=`) and run "
     "`make init-env` in autogpt_platform/ to generate a fresh one."
@@ -53,7 +58,7 @@ def check_secrets(settings: Settings | None = None) -> None:
         raise ValueError(
             "ENCRYPTION_KEY is not set. It encrypts stored integration "
             "credentials and signs cached values, so the backend will not "
-            f"start without it. {MISSING_HINT}"
+            f"start without it. {MISSING_HINT}{UPGRADE_HINT}"
         )
 
     for name, value in configured.items():
@@ -61,12 +66,7 @@ def check_secrets(settings: Settings | None = None) -> None:
             _RETIRED_DIGESTS[name]
         ):
             continue
-        rotation_note = (
-            " Credentials stored under the old key become unreadable, so those "
-            "integrations need reconnecting."
-            if name == "ENCRYPTION_KEY"
-            else ""
-        )
+        rotation_note = UPGRADE_HINT if name == "ENCRYPTION_KEY" else ""
         raise ValueError(
             f"{name} is set to a value that was published in this repository's "
             "public .env.default and must be treated as compromised. "

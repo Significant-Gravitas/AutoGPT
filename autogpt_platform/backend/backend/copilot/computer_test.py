@@ -263,6 +263,18 @@ class TestOpenDesktop:
         desktop.start_stream.assert_awaited_once_with("issued-before")
 
     @pytest.mark.asyncio
+    async def test_a_stream_stopped_at_the_pause_reopens_under_a_new_password(self):
+        """The pause leaves an empty marker where the password was: to an open
+        that is no password, so the stack restarts under a fresh one."""
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis("sb-1", stream="")
+        sandbox, desktop = _sandbox("sb-1"), _desktop("sb-1")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p:
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with(None)
+
+    @pytest.mark.asyncio
     async def test_a_password_left_over_from_a_replaced_box_is_not_reused(self):
         """The screen flag names another box: whatever password Redis still
         holds belonged to that one."""

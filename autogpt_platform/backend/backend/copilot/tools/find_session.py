@@ -42,7 +42,7 @@ class FindSessionTool(BaseTool):
         return (
             "List your own live sessions to find one to message: session id, "
             "the expert it is bound to, what it is for, and whether it is "
-            "running. Use with message_session."
+            "running. Use with tool:message_session."
         )
 
     @property

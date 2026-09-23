@@ -42,6 +42,9 @@ export interface SelectFieldProps {
   labelTooltip?: string;
   renderItem?: (option: SelectOption) => React.ReactNode;
   wrapperClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export function Select({
@@ -62,6 +65,9 @@ export function Select({
   labelTooltip,
   renderItem,
   wrapperClassName,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -90,7 +96,9 @@ export function Select({
     <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
         className={triggerStyles}
-        {...(hideLabel ? { "aria-label": label } : {})}
+        aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+        aria-labelledby={ariaLabelledBy}
+        aria-describedby={ariaDescribedBy}
         id={id}
       >
         <SelectValue placeholder={placeholder || label} />

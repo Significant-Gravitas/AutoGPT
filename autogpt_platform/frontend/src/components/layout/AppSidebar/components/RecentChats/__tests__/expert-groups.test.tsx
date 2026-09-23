@@ -171,11 +171,11 @@ describe("RecentChats — expert groups", () => {
     renderRecentChats();
 
     expect(await screen.findByText("expert-maria chat 4")).toBeDefined();
-    expect(await screen.findByText(mariaExpert.role)).toBeDefined();
+    expect(await screen.findByText("Marketing Manager")).toBeDefined();
     expect(
-      screen.getByText(mariaExpert.role).classList.contains("opacity-70"),
+      screen.getByText("Marketing Manager").classList.contains("opacity-70"),
     ).toBe(true);
-    expect(screen.queryByText("Marketing Manager")).toBeNull();
+    expect(screen.queryByText(mariaExpert.role)).toBeNull();
     expect(screen.queryByText("expert-maria chat 5")).toBeNull();
     expect(screen.queryByText("autopilot chat 5")).toBeNull();
 

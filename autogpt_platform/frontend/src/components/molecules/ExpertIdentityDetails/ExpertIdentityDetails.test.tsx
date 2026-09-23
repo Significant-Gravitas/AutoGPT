@@ -20,9 +20,36 @@ describe("ExpertIdentityDetails", () => {
       expect(chip?.classList.contains("bg-zinc-50")).toBe(true);
       expect(chip?.classList.contains("rounded-full")).toBe(true);
       expect(chip?.querySelector("svg")).not.toBeNull();
-      expect(screen.queryByText("Social Media Manager")).toBeNull();
     },
   );
+
+  test("shows the job title in the chip and keeps the area's icon", () => {
+    render(
+      <ExpertIdentityDetails
+        name="Jules"
+        role="Social & Content Repurposing"
+        jobTitle="Social Media Manager"
+      />,
+    );
+
+    const chip = screen.getByText("Social Media Manager").parentElement;
+    expect(chip?.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByText("Social media")).toBeNull();
+  });
+
+  test("shows the job title as the compact text", () => {
+    render(
+      <ExpertIdentityDetails
+        name="Jules"
+        role="Social & Content Repurposing"
+        jobTitle="Social Media Manager"
+        size="compact"
+      />,
+    );
+
+    expect(screen.getByText("Social Media Manager")).toBeDefined();
+    expect(screen.queryByText("Social media")).toBeNull();
+  });
 
   test("keeps the compact area as small plain text", () => {
     const { container } = render(
