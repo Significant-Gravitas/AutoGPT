@@ -6,13 +6,13 @@
 const NODE_INPUT_MASK_PREFIX = "_node_input_mask_";
 
 export type SplitPresetInputs = {
-  inputs: Record<string, any>;
-  triggerConfig: Record<string, any>;
+  inputs: Record<string, unknown>;
+  triggerConfig: Record<string, unknown>;
   maskKey: string | null;
 };
 
 export function splitPresetInputs(
-  presetInputs: Record<string, any> | null | undefined,
+  presetInputs: Record<string, unknown> | null | undefined,
 ): SplitPresetInputs {
   const all = presetInputs ?? {};
   const maskKey =
@@ -25,7 +25,9 @@ export function splitPresetInputs(
   return {
     inputs,
     triggerConfig:
-      mask && typeof mask === "object" && !Array.isArray(mask) ? mask : {},
+      mask && typeof mask === "object" && !Array.isArray(mask)
+        ? (mask as Record<string, unknown>)
+        : {},
     maskKey,
   };
 }
@@ -34,7 +36,7 @@ export function mergePresetInputs({
   inputs,
   triggerConfig,
   maskKey,
-}: SplitPresetInputs): Record<string, any> {
+}: SplitPresetInputs): Record<string, unknown> {
   if (!maskKey) return { ...inputs };
   return { ...inputs, [maskKey]: triggerConfig };
 }

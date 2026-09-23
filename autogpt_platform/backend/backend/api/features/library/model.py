@@ -38,6 +38,21 @@ def node_input_mask_key(node_id: str) -> str:
     return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
 
 
+def split_trigger_inputs(
+    inputs: GraphInput, trigger_node_id: str
+) -> tuple[GraphInput, Any]:
+    """Split a triggered preset's inputs into ``(graph_inputs, trigger_config)``.
+
+    A legacy flat preset the boot backfill has not converted yet has no mask
+    key: all of its inputs are trigger config, as they were before the mask.
+    """
+    graph_inputs = dict(inputs)
+    mask_key = node_input_mask_key(trigger_node_id)
+    if mask_key not in graph_inputs:
+        return {}, graph_inputs
+    return graph_inputs, graph_inputs.pop(mask_key)
+
+
 class LibraryAgentStatus(str, Enum):
     COMPLETED = "COMPLETED"
     HEALTHY = "HEALTHY"

@@ -337,8 +337,48 @@ async def test_update_graph_inputs_and_trigger_config_in_one_call(session):
 
 
 @pytest.mark.asyncio
+async def test_update_trigger_config_on_a_flat_preset_is_stored_nested(session):
+    """A flat triggered preset the boot backfill has not converted yet takes a
+    trigger_config edit, through the real update_triggered_preset, and is saved
+    with its config under the mask as delivery would read it."""
+    from backend.api.features.library import triggers
+
+    current, ldb, _ = _triggered_preset_db({"repo": "owner/repo"})
+    trigger_node = MagicMock(id="abc-123")
+    graph = MagicMock(webhook_input_node=trigger_node, organization_id="o", team_id="t")
+    tdb = MagicMock(update_triggered_preset=triggers.update_triggered_preset)
+    update = AsyncMock(return_value=_preset())
+    tp = "backend.api.features.library.triggers"
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{tp}.db.get_preset", new=AsyncMock(return_value=current)),
+        patch(f"{tp}.get_graph", new=AsyncMock(return_value=graph)),
+        patch(f"{tp}.make_node_credentials_input_map", return_value={}),
+        patch(f"{tp}.validate_and_construct_node_execution_input", new=AsyncMock()),
+        patch(
+            f"{tp}.setup_webhook_for_block",
+            new=AsyncMock(return_value=(MagicMock(id="wh-1"), None)),
+        ),
+        patch(f"{tp}.db.update_preset", new=update),
+        patch(f"{tp}.db.set_preset_webhook", new=AsyncMock(return_value=_preset())),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"events": ["push"]},
+        )
+    assert isinstance(result, PresetUpdatedResponse)
+    assert update.await_args.kwargs["inputs"] == {
+        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_trigger_config_without_a_trigger_is_rejected(session):
-    _, ldb, tdb = _triggered_preset_db({"topic": "weather"})
+    current, ldb, tdb = _triggered_preset_db({"topic": "weather"})
+    current.webhook_id = None
     with (
         patch(f"{_PATH}.library_db", return_value=ldb),
         patch(f"{_PATH}.triggers_db", return_value=tdb),

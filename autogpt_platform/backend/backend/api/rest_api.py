@@ -192,6 +192,8 @@ async def lifespan_context(app: fastapi.FastAPI):
             backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),
             timeout=30,
         )
+    except asyncio.TimeoutError:
+        logger.warning("Triggered-preset input backfill timed out; next boot resumes")
     except Exception:
         logger.error("Triggered-preset input backfill failed", exc_info=True)
 

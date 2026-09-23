@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
-from backend.api.features.library.model import LibraryAgentPreset, node_input_mask_key
+from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -1347,16 +1347,9 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    # Separate the trigger node's input mask from the regular graph inputs. The
-    # trigger config is nested under a per-node key (see setup_triggered_preset).
-    graph_inputs = preset.inputs.copy()
-    # dict(): the copy above is shallow, so writing `payload` below would land in
-    # the nested dict `preset.inputs` still holds.
-    mask = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
-    if mask is None:
-        # A legacy flat preset the boot backfill has not converted yet: all of
-        # its inputs are trigger config, as they were before the mask existed.
-        mask, graph_inputs = graph_inputs, {}
+    graph_inputs, mask = split_trigger_inputs(preset.inputs, trigger_node.id)
+    # dict(): `mask` may be the dict `preset.inputs` holds, and `payload` is
+    # written into it below.
     trigger_inputs = dict(mask)
 
     # The event filter lives in the trigger config, so check it against the

@@ -357,7 +357,7 @@ class UpdatePresetTool(BaseTool):
                 (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
                 None,
             )
-            if new_trigger_config and not mask_key:
+            if new_trigger_config and not (mask_key or current.webhook_id):
                 return ErrorResponse(
                     message="This preset has no webhook trigger to configure.",
                     error="preset_update_failed",
@@ -369,6 +369,10 @@ class UpdatePresetTool(BaseTool):
                     **(current.inputs.get(mask_key) or {}),
                     **(new_trigger_config or {}),
                 }
+            elif new_trigger_config:
+                # A flat preset the boot backfill has not converted: its inputs
+                # are all trigger config, and update_triggered_preset nests them.
+                merged_inputs.update(new_trigger_config)
             # Reuse the stored credentials so the webhook can be re-registered.
             credentials = current.credentials
 

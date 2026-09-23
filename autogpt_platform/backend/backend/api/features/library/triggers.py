@@ -24,7 +24,7 @@ from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFo
 
 from . import db
 from . import model as models
-from .model import node_input_mask_key
+from .model import node_input_mask_key, split_trigger_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -215,13 +215,13 @@ async def update_triggered_preset(
         if trigger_node and (
             current.webhook_id or mask_key in current.inputs or mask_key in inputs
         ):
-            # Trigger config is nested under a per-node key alongside the regular
-            # graph inputs (see setup_triggered_preset).
-            trigger_config = inputs.get(node_input_mask_key(trigger_node.id))
-            if trigger_config is None:
+            # A flat preset the boot backfill has not reached is read as delivery
+            # reads it, and is stored nested below.
+            if mask_key not in inputs and mask_key in current.inputs:
                 raise InvalidInputError(
                     f"Missing trigger configuration for node {trigger_node.id}"
                 )
+            graph_inputs, trigger_config = split_trigger_inputs(inputs, trigger_node.id)
             if not isinstance(trigger_config, dict):
                 raise InvalidInputError(
                     f"Trigger configuration for node {trigger_node.id} must be "
@@ -240,11 +240,6 @@ async def update_triggered_preset(
             # Validate as setup does, before the webhook is registered: a
             # cleared required input would otherwise 200, re-register, and then
             # fail every delivery inside the executor's catch-all.
-            graph_inputs = {
-                key: value
-                for key, value in inputs.items()
-                if key != node_input_mask_key(trigger_node.id)
-            }
             try:
                 await validate_and_construct_node_execution_input(
                     graph_id=graph.id,
@@ -286,10 +281,7 @@ async def update_triggered_preset(
                 )
             # The stored mask overrides preset.credentials at execution, so it
             # must carry the new credentials, not the ones the caller echoed back.
-            inputs = {
-                **inputs,
-                node_input_mask_key(trigger_node.id): trigger_config_with_credentials,
-            }
+            inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
 
     updated = await db.update_preset(
         user_id=user_id,

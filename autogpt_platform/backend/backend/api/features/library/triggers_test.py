@@ -597,9 +597,11 @@ async def test_update_run_template_on_trigger_graph_skips_webhook():
 
 @pytest.mark.asyncio
 async def test_update_reconfigure_missing_input_mask_raises():
-    """Reconfiguring a triggered preset without the ``_node_input_mask_{node_id}``
-    key is rejected before any webhook work happens."""
-    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+    """Reconfiguring a nested triggered preset without the
+    ``_node_input_mask_{node_id}`` key is rejected before any webhook work."""
+    current = _preset(webhook_id="wh-old")
+    current.inputs = {"_node_input_mask_trigger": {"repo": "owner/repo"}}
+    with _update_patches(current=current) as m:
         with pytest.raises(InvalidInputError, match="Missing trigger configuration"):
             await update_triggered_preset(
                 user_id=_USER,
@@ -609,6 +611,26 @@ async def test_update_reconfigure_missing_input_mask_raises():
             )
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_flat_preset_is_stored_nested():
+    """A flat preset the boot backfill has not converted yet is read as delivery
+    reads it — all inputs are trigger config — and saved in the nested shape."""
+    current = _preset(webhook_id="wh-old")
+    current.inputs = {"repo": "owner/old"}
+    with _update_patches(current=current) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/new"},
+            credentials={},
+        )
+    assert m["setup"].await_args.kwargs["trigger_config"] == {"repo": "owner/new"}
+    assert m["update"].await_args.kwargs["inputs"] == {
+        "_node_input_mask_trigger": {"repo": "owner/new"}
+    }
+    m["set_webhook"].assert_awaited_once()
 
 
 @pytest.mark.asyncio
