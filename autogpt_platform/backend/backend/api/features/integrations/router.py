@@ -1353,14 +1353,11 @@ async def _execute_webhook_preset_trigger(
     # dict(): the copy above is shallow, so writing `payload` below would land in
     # the nested dict `preset.inputs` still holds.
     mask = graph_inputs.pop(node_input_mask_key(trigger_node.id), None)
-    trigger_inputs = dict(mask) if mask is not None else None
-    if trigger_inputs is None:
-        # We can't run this, so log a warning and skip
-        logger.warning(
-            f"Preset #{preset.id} is missing trigger parameters for node "
-            f"#{trigger_node.id}"
-        )
-        return
+    if mask is None:
+        # A legacy flat preset the boot backfill has not converted yet: all of
+        # its inputs are trigger config, as they were before the mask existed.
+        mask, graph_inputs = graph_inputs, {}
+    trigger_inputs = dict(mask)
 
     # The event filter lives in the trigger config, so check it against the
     # unwrapped mask rather than the full preset inputs.

@@ -94,15 +94,27 @@ async def test_skips_when_event_type_not_matched():
 
 
 @pytest.mark.asyncio
-async def test_skips_when_input_mask_missing():
-    """A preset without the ``_node_input_mask_{node_id}`` key can't be run."""
-    graph, _trigger_node, _block = _graph_with_trigger()
-    preset = _preset({"regular": "x"})
+async def test_runs_a_legacy_flat_preset_the_backfill_has_not_reached():
+    """The boot backfill is time-boxed, so an attached preset can still be flat
+    when a delivery arrives; its inputs are the trigger config, as on dev."""
+    graph, trigger_node, block = _graph_with_trigger()
+    preset = _preset({"events": {"push": True}})
 
     with (
         patch(f"{_PATH}.get_graph", AsyncMock(return_value=graph)),
         patch(f"{_PATH}.add_graph_execution", AsyncMock()) as add_exec,
     ):
-        await _execute_webhook_preset_trigger(preset, _webhook(), "wh-1", "push", {})
+        await _execute_webhook_preset_trigger(
+            preset, _webhook(), "wh-1", "push", {"some": "payload"}
+        )
 
-    add_exec.assert_not_awaited()
+    assert block.is_triggered_by_event_type.call_args.args[0]["events"] == {
+        "push": True
+    }
+    add_exec.assert_awaited_once()
+    kwargs = add_exec.await_args.kwargs
+    assert kwargs["inputs"] == {}
+    assert kwargs["nodes_input_masks"] == {
+        trigger_node.id: {"events": {"push": True}, "payload": {"some": "payload"}}
+    }
+    assert preset.inputs == {"events": {"push": True}}
