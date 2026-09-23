@@ -2,6 +2,7 @@
 
 import { environment } from "@/services/environment";
 import { usePostHog } from "@posthog/react";
+import isEqual from "lodash/isEqual";
 import { useEffect } from "react";
 import { isPostHogFlagsEnabled } from "../flag-backend";
 import type { FlagSourceResult } from "../flag-source";
@@ -43,8 +44,9 @@ function useReportMismatch(
     isPostHogFlagsEnabled() &&
     launchDarkly.resolved &&
     postHog.resolved;
-  const agree =
-    JSON.stringify(launchDarkly.value) === JSON.stringify(postHog.value);
+  // Key-order-insensitive, like the backend's dict comparison: the vendors
+  // need not serialise a JSON flag's keys in the same order.
+  const agree = isEqual(launchDarkly.value, postHog.value);
 
   useEffect(() => {
     if (!comparable || agree) return;
