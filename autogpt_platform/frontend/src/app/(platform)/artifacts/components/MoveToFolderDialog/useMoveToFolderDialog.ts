@@ -4,6 +4,7 @@ import {
   buildTreeRows,
   initiallyExpanded,
   rowKey,
+  selectedTarget,
   type MoveSubject,
 } from "./helpers";
 
@@ -30,6 +31,7 @@ export function useMoveToFolderDialog({ move, canMoveToRoot, onDone }: Args) {
   const [isMovingFiles, setIsMovingFiles] = useState(false);
 
   const rows = buildTreeRows({ folders, move, expanded, canMoveToRoot });
+  const target = selectedTarget({ folders, move, canMoveToRoot, selectedKey });
 
   function toggleExpanded(folderId: string) {
     setExpanded((prev) => {
@@ -41,8 +43,7 @@ export function useMoveToFolderDialog({ move, canMoveToRoot, onDone }: Args) {
   }
 
   function confirm() {
-    const target = rows.find((row) => rowKey(row.id) === selectedKey);
-    if (!target || target.disabledReason) return;
+    if (!target) return;
     // Closes only on success; the hook toasts on error and the dialog stays
     // open so the user can pick another destination without reopening it.
     if (move.kind === "folder") {
@@ -65,7 +66,7 @@ export function useMoveToFolderDialog({ move, canMoveToRoot, onDone }: Args) {
     select: (id: string | null) => setSelectedKey(rowKey(id)),
     toggleExpanded,
     confirm,
-    canConfirm: selectedKey !== null,
+    canConfirm: target !== null,
     isMoving: isMovingFolder || isMovingFiles,
   };
 }

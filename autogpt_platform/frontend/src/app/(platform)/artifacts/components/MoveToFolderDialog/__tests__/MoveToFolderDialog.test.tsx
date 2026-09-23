@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
 import { MoveToFolderDialog } from "../MoveToFolderDialog";
@@ -51,6 +56,33 @@ describe("MoveToFolderDialog", () => {
     expect(subject?.textContent).toContain("Folder being moved");
     const parent = rows.find((r) => r.textContent?.startsWith("Reports"));
     expect(parent?.textContent).toContain("Current location");
+  });
+
+  test("moves to a selected folder after its parent row is collapsed", async () => {
+    let movedTo: unknown = "not called";
+    server.use(
+      http.post(`${PROXY}/folders/files/bulk-move`, async ({ request }) => {
+        movedTo = ((await request.json()) as { folder_id: unknown }).folder_id;
+        return HttpResponse.json({});
+      }),
+    );
+    render(
+      <MoveToFolderDialog
+        move={{ kind: "files", fileIds: ["file-1"], currentFolderId: "fld-2" }}
+        subject="“a.txt”"
+        isOpen
+        setIsOpen={() => {}}
+      />,
+    );
+
+    fireEvent.click(await screen.findByText("Q3"));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Reports" }));
+    await waitFor(() => expect(screen.queryByText("Q3")).toBeNull());
+
+    const move = screen.getByTestId("confirm-move-to-folder");
+    expect(move.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(move);
+    await waitFor(() => expect(movedTo).toBe("fld-3"));
   });
 });
 

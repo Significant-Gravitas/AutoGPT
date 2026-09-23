@@ -81,6 +81,24 @@ export function rowKey(id: string | null): string {
   return id ?? ROOT_KEY;
 }
 
+/**
+ * The destination a selection names, or null once it is refused or gone.
+ * Resolved against every folder, not the visible rows: collapsing a selected
+ * row's parent must not turn Move into a silent no-op.
+ */
+export function selectedTarget(args: {
+  folders: WorkspaceFolder[];
+  move: MoveSubject;
+  canMoveToRoot: boolean;
+  selectedKey: string | null;
+}): { id: string | null } | null {
+  const { folders, move, canMoveToRoot, selectedKey } = args;
+  if (selectedKey === null) return null;
+  if (refusedTargets(folders, move).has(selectedKey)) return null;
+  if (selectedKey === ROOT_KEY) return canMoveToRoot ? { id: null } : null;
+  return folders.some((f) => f.id === selectedKey) ? { id: selectedKey } : null;
+}
+
 const ROOT_KEY = "__root__";
 
 function refusedTargets(
