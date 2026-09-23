@@ -9,12 +9,16 @@ import asyncio
 import logging
 import mimetypes
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db, workspace_skill_db
+from backend.data.db_accessors import (
+    workspace_db,
+    workspace_folder_db,
+    workspace_skill_db,
+)
 from backend.data.skill_capacity import (
     MAX_SKILLS_PER_EXPERT,
     SKILL_ORIGIN_LABELS,
@@ -35,6 +39,9 @@ from backend.data.workspace_skill import WorkspaceSkillWrite
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+
+if TYPE_CHECKING:
+    from backend.data.workspace_folder import WorkspaceFolder
 
 
 def format_bytes(n: int) -> str:
@@ -116,6 +123,15 @@ class WorkspaceManager:
         if requested is None:
             return allowed
         return [p for p in requested if any(p.startswith(a) for a in allowed)]
+
+    def _include_user_files(self, requested: bool) -> bool:
+        """Whether a listing also spans the owner's own files.
+
+        A scoped manager answers from its own grant: the scope is resolved
+        from persisted attribution, so it decides both directions and a
+        caller's argument is only consulted when there is no scope to ask.
+        """
+        return self.scope.reads_user_files if self.scope is not None else requested
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -456,6 +472,13 @@ class WorkspaceManager:
 
         return file
 
+    async def list_folders(self) -> list["WorkspaceFolder"]:
+        """The folder tree; empty for a scope without the owner's files, whose
+        folders these are."""
+        if self.scope is not None and not self.scope.reads_user_files:
+            return []
+        return await workspace_folder_db().list_workspace_folders(self.workspace_id)
+
     async def list_files(
         self,
         path: Optional[str] = None,
@@ -467,8 +490,10 @@ class WorkspaceManager:
         metadata_equals: Optional[dict] = None,
         metadata_not_equals: Optional[dict] = None,
         folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
         root_only: bool = False,
         allowed_path_prefixes: Optional[list[str]] = None,
+        include_user_files: bool = False,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -492,15 +517,29 @@ class WorkspaceManager:
             metadata_not_equals: Match files whose ``metadata`` does not equal
                 this object (Artifacts "Generated" filter).
             folder_id: If set, only return files in this folder.
+            folder_ids: If set, only return files in any of these folders.
             root_only: If True, only return root-level files (folderId IS NULL).
+                Every folder filter is a workspace-wide axis, so any of them
+                lifts the current-session default the way
+                ``include_all_sessions`` does; an expert's scope still confines
+                the result.
             allowed_path_prefixes: Only list files under these prefixes. When
                 the manager carries a scope the prefixes are intersected with
                 it (see :meth:`_allowed_prefixes`).
+            include_user_files: Also list the owner's own files. A scoped
+                manager takes this from its scope instead
+                (see :meth:`_include_user_files`).
 
         Returns:
             List of WorkspaceFile instances
         """
-        effective_path = self._get_effective_path(path, include_all_sessions)
+        effective_path = self._get_effective_path(
+            path,
+            include_all_sessions
+            or folder_id is not None
+            or folder_ids is not None
+            or root_only,
+        )
         db = workspace_db()
 
         return await db.list_workspace_files(
@@ -513,8 +552,10 @@ class WorkspaceManager:
             metadata_equals=metadata_equals,
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
+            folder_ids=folder_ids,
             root_only=root_only,
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
+            include_user_files=self._include_user_files(include_user_files),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -628,7 +669,11 @@ class WorkspaceManager:
         self,
         path: Optional[str] = None,
         include_all_sessions: bool = False,
+        folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
+        root_only: bool = False,
         allowed_path_prefixes: Optional[list[str]] = None,
+        include_user_files: bool = False,
     ) -> int:
         """
         Get number of files in workspace.
@@ -640,15 +685,28 @@ class WorkspaceManager:
             path: Optional path prefix to filter (e.g., "/documents/")
             include_all_sessions: If True, count all files in workspace.
                                   If False (default), only count current session's files.
+            folder_id: See :meth:`list_files`.
+            folder_ids: See :meth:`list_files`.
+            root_only: See :meth:`list_files`.
 
         Returns:
             Number of files
         """
-        effective_path = self._get_effective_path(path, include_all_sessions)
+        effective_path = self._get_effective_path(
+            path,
+            include_all_sessions
+            or folder_id is not None
+            or folder_ids is not None
+            or root_only,
+        )
         db = workspace_db()
 
         return await db.count_workspace_files(
             self.workspace_id,
             path_prefix=effective_path,
+            folder_id=folder_id,
+            folder_ids=folder_ids,
+            root_only=root_only,
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
+            include_user_files=self._include_user_files(include_user_files),
         )

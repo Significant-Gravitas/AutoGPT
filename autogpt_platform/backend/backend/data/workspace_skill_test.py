@@ -120,12 +120,11 @@ async def test_concurrent_new_roots_cannot_both_take_last_slot(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_upserts_at_capacity_never_expose_a_free_slot(workspace_id: str):
     await seed(workspace_id, MAX_SKILLS_PER_EXPERT)
-    existing = await db.prisma.userworkspacefile.find_unique(
+    existing = await db.prisma.userworkspacefile.find_first(
         where={
-            "workspaceId_path": {
-                "workspaceId": workspace_id,
-                "path": "/skills/skill-0/SKILL.md",
-            }
+            "workspaceId": workspace_id,
+            "path": "/skills/skill-0/SKILL.md",
+            "isDeleted": False,
         }
     )
     assert existing is not None
@@ -334,8 +333,8 @@ async def test_concurrent_marketplace_install_cannot_replace_owner_saved_root(
     )
     assert results[0].status == "stored"
     assert results[1].status in {"stored", "owned"}
-    row = await db.prisma.userworkspacefile.find_unique(
-        where={"workspaceId_path": {"workspaceId": workspace_id, "path": saved.path}}
+    row = await db.prisma.userworkspacefile.find_first(
+        where={"workspaceId": workspace_id, "path": saved.path, "isDeleted": False}
     )
     assert row is not None
     assert row.id == saved.file_id
