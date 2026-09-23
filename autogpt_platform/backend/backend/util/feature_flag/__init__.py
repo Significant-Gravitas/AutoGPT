@@ -510,15 +510,14 @@ def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
         if not isinstance(value, bool):
             return
         sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
-        # A pseudo-flag in the same buffer, so it travels only where the values do;
-        # a later real answer clears it rather than leaving a stale outage marker.
+        # A pseudo-flag on the scope's buffer only: a span keeps 10 flags and then
+        # ignores every write, so there it would take a value's slot and never clear.
+        flags = sentry_sdk.get_isolation_scope().flags
         marker = f"{flag_key}.fallback"
         if not evaluated:
-            sentry_sdk.feature_flags.add_feature_flag(marker, True)
-        elif any(
-            f["flag"] == marker for f in sentry_sdk.get_isolation_scope().flags.get()
-        ):
-            sentry_sdk.feature_flags.add_feature_flag(marker, False)
+            flags.set(marker, True)
+        elif any(f["flag"] == marker for f in flags.get()):
+            flags.set(marker, False)
     except Exception:
         logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 

@@ -11,6 +11,7 @@ import sentry_sdk
 import sentry_sdk.feature_flags
 from fastapi import HTTPException
 from ldclient import Context, LDClient
+from sentry_sdk.tracing import Span
 
 import backend.util.feature_flag as ff
 import backend.util.feature_flag.posthog as ph
@@ -791,6 +792,23 @@ class TestSentryFlagContext:
             Flag.HIRE_EXPERTS.value: False,
             f"{Flag.HIRE_EXPERTS.value}.fallback": True,
         }
+
+    @pytest.mark.asyncio
+    async def test_a_fallback_marker_stays_off_the_span(
+        self, mocker, user_context, sentry_flags
+    ):
+        client = mocker.Mock(spec=LDClient)
+        client.is_initialized.return_value = False
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        span = Span()
+        scope = sentry_sdk.get_current_scope()
+        previous, scope.span = scope.span, span
+        try:
+            await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        finally:
+            scope.span = previous
+
+        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": False}
 
     @pytest.mark.asyncio
     async def test_a_real_answer_clears_an_earlier_fallback(
