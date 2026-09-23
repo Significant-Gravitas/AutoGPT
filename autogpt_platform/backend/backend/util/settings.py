@@ -63,6 +63,19 @@ class FeatureFlagBackend(str, Enum):
     DUAL = "dual"
 
 
+class FlagDefinitionCacheBackend(str, Enum):
+    """Where PostHog flag definitions are shared between processes.
+
+    PostHog bills one definitions fetch as ten flag requests, so a poller in
+    every process makes the bill scale with replica count. ``REDIS`` elects one
+    refresher and serves every other process from its copy.
+    """
+
+    REDIS = "redis"
+    MEMORY = "memory"
+    NONE = "none"
+
+
 class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
@@ -768,6 +781,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
                 f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
             )
             return FeatureFlagBackend.LAUNCHDARKLY
+
+    posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
+        default=FlagDefinitionCacheBackend.REDIS,
+        description="Where PostHog flag definitions are shared: redis "
+        "(default; one elected refresher, every other process reads its copy), "
+        "memory (process-local), or none (every process polls PostHog itself). "
+        "Only read when PostHog answers flag reads.",
+    )
+
+    @field_validator("posthog_flag_definition_cache", mode="before")
+    @classmethod
+    def _default_unknown_definition_cache(cls, v):
+        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return FlagDefinitionCacheBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown POSTHOG_FLAG_DEFINITION_CACHE {v!r}, "
+                f"falling back to {FlagDefinitionCacheBackend.REDIS.value}"
+            )
+            return FlagDefinitionCacheBackend.REDIS
+
+    posthog_flag_definition_refresh_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="How often the elected refresher fetches PostHog flag "
+        "definitions, and how often every other process re-reads the shared copy.",
+    )
+
+    posthog_flag_definition_cache_ttl_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="How long a shared copy of the PostHog flag definitions stays "
+        "readable. Past it the cache is empty and the next process to poll fetches "
+        "from PostHog directly.",
+    )
 
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
