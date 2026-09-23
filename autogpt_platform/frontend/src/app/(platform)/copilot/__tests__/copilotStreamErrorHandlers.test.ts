@@ -114,6 +114,25 @@ describe("handleStreamError", () => {
     expect(arg.title).toBe("Your expert ran into a problem");
   });
 
+  it("keeps a turn budget error distinct from account admission limits", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:max_budget_exhausted] Send a follow-up. If your account usage limit is also reached, wait for its reset.",
+      ),
+      onRateLimit,
+      onReconnect,
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Turn budget reached" }),
+    );
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("uses fallbackDescription when the backend message is empty", () => {
     handleStreamError({
       error: new Error("[code:tool_stalled]"),
