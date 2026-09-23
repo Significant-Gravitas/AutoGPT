@@ -5,7 +5,9 @@ module dispatches to this one, so a back-import would be a cycle.
 """
 
 import asyncio
+import functools
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from posthog import Posthog
@@ -15,6 +17,13 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 
 settings = Settings()
+
+# Without the personal key every read is a remote /flags call; on the default
+# executor a burst of those starves every other `asyncio.to_thread` caller.
+FLAG_READ_WORKERS = 8
+_read_executor = ThreadPoolExecutor(
+    max_workers=FLAG_READ_WORKERS, thread_name_prefix="posthog-flags"
+)
 
 _client: Posthog | None = None
 _init_attempted = False
@@ -50,11 +59,14 @@ async def evaluate_flag(
     try:
         # evaluate_flags does network I/O whenever the local-evaluation poller
         # has no definition for the flag, so it cannot run on the event loop.
-        snapshot = await asyncio.to_thread(
-            client.evaluate_flags,
-            distinct_id,
-            person_properties=person_properties or None,
-            flag_keys=[flag_key],
+        snapshot = await asyncio.get_running_loop().run_in_executor(
+            _read_executor,
+            functools.partial(
+                client.evaluate_flags,
+                distinct_id,
+                person_properties=person_properties or None,
+                flag_keys=[flag_key],
+            ),
         )
     except Exception as e:
         logger.warning(
