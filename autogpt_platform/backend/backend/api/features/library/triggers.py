@@ -278,6 +278,12 @@ async def update_triggered_preset(
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
+            # The stored mask overrides preset.credentials at execution, so it
+            # must carry the new credentials, not the ones the caller echoed back.
+            inputs = {
+                **inputs,
+                node_input_mask_key(trigger_node.id): trigger_config_with_credentials,
+            }
 
     updated = await db.update_preset(
         user_id=user_id,

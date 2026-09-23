@@ -553,6 +553,32 @@ async def test_update_reconfigure_validates_mask_apart_from_graph_inputs(
 
 
 @pytest.mark.asyncio
+async def test_update_reconfigure_stores_new_credentials_in_mask():
+    """The stored mask wins over preset.credentials at execution, so replaced
+    credentials the caller echoed back in the mask must not survive the update."""
+    old_creds = {"id": "cred-old", "provider": "github", "type": "api_key"}
+    new_creds = {"id": "cred-new", "provider": "github", "type": "api_key"}
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        m["creds_map"].return_value = {"trigger-node": {"credentials": new_creds}}
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={
+                "_node_input_mask_trigger": {
+                    "repo": "owner/repo",
+                    "credentials": old_creds,
+                },
+                "topic": "weather",
+            },
+            credentials={"credentials": MagicMock()},
+        )
+    assert m["update"].await_args.kwargs["inputs"] == {
+        "_node_input_mask_trigger": {"repo": "owner/repo", "credentials": new_creds},
+        "topic": "weather",
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_reconfigure_missing_input_mask_raises():
     """Reconfiguring a triggered preset without the ``_node_input_mask_{node_id}``
     key is rejected before any webhook work happens."""
