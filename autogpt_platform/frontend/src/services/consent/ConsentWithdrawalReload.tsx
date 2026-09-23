@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import {
   getConsent,
+  getConsentAnswer,
   subscribeToConsent,
   type ConsentCategory,
   type ConsentState,
@@ -15,7 +16,12 @@ export function ConsentWithdrawalReload() {
   useEffect(() => {
     let previous = getConsent();
     return subscribeToConsent(() => {
-      const next = getConsent();
+      // No answer means Cookiebot is asking again (a stored answer it
+      // invalidated, or a region change). Reloading then would loop, since
+      // the stale cookie grants again on the next load until the visitor
+      // replies; their reply reloads if it takes anything back.
+      const next = getConsentAnswer();
+      if (!next) return;
       const withdrawn = wasWithdrawn(previous, next);
       previous = next;
       if (withdrawn) window.location.reload();

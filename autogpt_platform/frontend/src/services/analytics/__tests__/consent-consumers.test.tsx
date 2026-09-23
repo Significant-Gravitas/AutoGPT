@@ -182,6 +182,24 @@ describe("ConsentWithdrawalReload", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it("does not reload when Cookiebot invalidates a stale granting cookie, only on the visitor's reply", () => {
+    const stale =
+      "{stamp:'abc',necessary:true,preferences:false,statistics:true,marketing:false,method:'explicit',ver:1,utc:1,region:'de'}";
+    document.cookie = `CookieConsent=${encodeURIComponent(stale)}; Path=/`;
+    render(<ConsentWithdrawalReload />);
+
+    act(() => {
+      installCookiebot();
+      window.dispatchEvent(new Event("CookiebotOnLoad"));
+    });
+
+    expect(reload).not.toHaveBeenCalled();
+
+    act(() => answerCookiebot({}));
+
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
   it("does not reload when the visitor grants more, or repeats the same answer", () => {
     installCookiebot();
     render(<ConsentWithdrawalReload />);
