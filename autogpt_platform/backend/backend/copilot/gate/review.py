@@ -86,7 +86,8 @@ def review_payload(
     per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
     shown = {key: _clip(value, per_value) for key, value in redacted.items()}
     payload: dict[str, Any] = {"tool": tool_name, "arguments": shown}
-    if subject is not None:
+    # Reads never consult a chat rule, so a money card must not offer one.
+    if subject is not None and spend is None:
         payload["subject"] = subject.model_dump(mode="json", include={"name", "effect"})
     if spend is not None:
         payload[_SPEND] = spend

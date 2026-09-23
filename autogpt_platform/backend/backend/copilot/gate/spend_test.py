@@ -8,30 +8,36 @@ the ones production runs.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.pinecone import PineconeQueryBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
 from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.review import review_payload
 from backend.copilot.gate.subject import Subject, block_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
 from backend.copilot.tools.helpers import _charge_block_credits
 from backend.copilot.tools.run_agent import RunAgentTool
+from backend.copilot.tools.run_capability import RunCapabilityTool
 from backend.copilot.tree import TreeLedger, admit_turn, charge_credits, root_envelope
 from backend.copilot.tree_test import FakeRedis
+from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
+from backend.data.model import CredentialsMetaInput
 from backend.data.redis_client import AsyncRedisClient
 
 _GATE = "backend.copilot.gate"
 _RUN = "backend.copilot.tools.run_agent"
+_CAP = "backend.copilot.tools.run_capability"
 _PAID = Subject(
     key="block:paid", name="Paid Search", effect=Effect.READ, estimate=50_000
 )
@@ -220,6 +226,34 @@ def test_a_paid_block_carries_its_estimate_and_pure_computation_none():
         assert block_subject(StoreValueBlock(), {}).estimate == 0
 
 
+async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
+    """Kills: pricing the model's raw arguments (every LLM block estimates $0)."""
+    cost = BLOCK_COSTS[AITextGeneratorBlock][0].cost_filter
+    platform = CredentialsMetaInput.model_validate(cost["credentials"])
+    session = _session()
+    with patch(
+        f"{_CAP}.resolve_block_credentials",
+        AsyncMock(return_value=({"credentials": platform}, [])),
+    ):
+        subject = await RunCapabilityTool().gate_subject(
+            "user-1",
+            session,
+            {
+                "id": AITextGeneratorBlock().id,
+                "input": {"prompt": "Summarise", "model": cost["model"]},
+            },
+        )
+    assert subject is not None and subject.effect is Effect.READ
+    assert subject.estimate > 0
+
+
+def test_a_money_card_offers_no_chat_rule():
+    """Reads never consult a rule, so the card must not name a subject to rule on."""
+    spend = {"estimate": "$0.05", "spent": "$0.00", "ceiling": "$0.00"}
+    assert "subject" not in review_payload("t", {}, _PAID, spend)
+    assert "subject" in review_payload("t", {}, _SEND)
+
+
 async def test_flag_on_a_root_turn_opens_its_tree(ledger):
     with (
         patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
@@ -239,5 +273,7 @@ async def test_flag_off_opens_no_ledger_and_charges_nothing(ledger):
         assert await ledger.snapshot("turn-1") == {}
         # A spawned turn's tree exists with the flag off; spend must not reach it.
         await _open(ledger, ceiling=10_000_000)
-        await charge_credits("user-1", 7)
+        priced = MagicMock(return_value=7)
+        await charge_credits("user-1", priced)
     assert (await ledger.snapshot("turn-1"))["spent"] == 0
+    priced.assert_not_called()

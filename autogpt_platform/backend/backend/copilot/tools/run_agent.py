@@ -1015,7 +1015,7 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs[library_agent.graph_id] = (
                 session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
             )
-            await charge_credits(user_id, graph_cost_credits(graph))
+            await charge_credits(user_id, lambda: graph_cost_credits(graph))
 
         # Track in PostHog
         track_agent_run_success(

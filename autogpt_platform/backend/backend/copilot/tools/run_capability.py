@@ -25,6 +25,7 @@ from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.gate import gate_active
+from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
@@ -34,7 +35,7 @@ from backend.data.activity_event import ActivityEventDraft
 from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
-from .helpers import required_input_keys
+from .helpers import required_input_keys, resolve_block_credentials
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
@@ -122,7 +123,15 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if not required_input_keys(block) <= set(payload or {}):
             return NO_OP  # a schema lookup: run_block answers with the schema
-        return block_subject(block, payload or {})
+        subject = block_subject(block, payload or {})
+        if subject.effect is not Effect.READ:
+            return subject
+        # Most cost tables filter on the credentials, which the run injects.
+        matched, _ = await resolve_block_credentials(
+            user_id, block, dict(payload or {}), session.expert_id, session.session_id
+        )
+        creds = {field: meta.model_dump() for field, meta in matched.items()}
+        return block_subject(block, {**creds, **(payload or {})})
 
     def activity_event(
         self, session: ChatSession, result: ToolResponseBase, **kwargs

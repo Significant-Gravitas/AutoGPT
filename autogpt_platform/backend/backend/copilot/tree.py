@@ -38,7 +38,7 @@ pass ``True``, so no leaf is created in production).
 """
 
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -547,13 +547,14 @@ async def meters_spend(user_id: str | None) -> bool:
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
 
 
-async def charge_credits(user_id: str | None, credits: int) -> None:
+async def charge_credits(user_id: str | None, credits: Callable[[], int]) -> None:
     """Charge block or workflow spend to the running turn's tree, beside the
-    model tokens ``token_tracking`` charges there."""
+    model tokens ``token_tracking`` charges there. ``credits`` is priced only
+    when the turn is metered."""
     envelope = get_current_envelope()
-    if credits <= 0 or envelope is None or not await meters_spend(user_id):
+    if envelope is None or not await meters_spend(user_id):
         return
-    await charge_turn(envelope, credits * MICRODOLLARS_PER_CREDIT)
+    await charge_turn(envelope, credits() * MICRODOLLARS_PER_CREDIT)
 
 
 async def spent_past_ceiling() -> tuple[int, int] | None:
