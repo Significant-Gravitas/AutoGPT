@@ -10,6 +10,7 @@ from ldclient import Context, LDClient
 from ldclient.config import Config
 from ldclient.integrations.test_data import TestData
 
+import backend
 import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
     _NON_BOOLEAN_FLAG_VALUES,
@@ -192,7 +193,7 @@ def _flags_read_via_get_feature_flag_value() -> set[str]:
     a non-literal (``feature_flag``'s own raw-string key) are skipped —
     there is no flag identity to check there.
     """
-    backend_root = Path(feature_flag_module.__file__).parent.parent
+    backend_root = Path(backend.__file__).parent
     found: set[str] = set()
     for path in backend_root.rglob("*.py"):
         if path.name.endswith("_test.py"):

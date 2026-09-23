@@ -9,11 +9,12 @@ import { useMemo } from "react";
 import { getAnonymousID } from "../analytics/anonymous-id";
 import { environment } from "../environment";
 import { LD_INIT_TIMEOUT_SECONDS } from "./constants";
+import { usesLaunchDarkly } from "./flag-backend";
 import { buildLDContext } from "./helpers";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useAuth();
-  const envEnabled = environment.areFeatureFlagsEnabled();
+  const envEnabled = usesLaunchDarkly() && environment.areFeatureFlagsEnabled();
   const clientId = environment.getLaunchDarklyClientId();
 
   const context = useMemo(() => {

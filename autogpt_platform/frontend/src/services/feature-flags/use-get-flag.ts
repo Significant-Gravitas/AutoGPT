@@ -2,8 +2,9 @@
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useEffect, useState } from "react";
+import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { useFlagSource } from "./flag-source";
 
 export enum Flag {
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
@@ -202,9 +203,8 @@ export function envFlagOverride<T extends Flag>(
 }
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
-  const currentFlags = useFlags<FlagValues>();
-  const flagValue = currentFlags[flag];
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+  const { value } = useFlagSource(flag);
+  const areFlagsEnabled = areFeatureFlagsEnabled();
 
   const override = envFlagOverride(flag);
   if (override !== undefined) {
@@ -215,24 +215,25 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
     return defaultFlags[flag];
   }
 
-  return flagValue ?? defaultFlags[flag];
+  return resolveFlagValue(flag, value);
 }
 
 const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
 
 /**
- * Same as ``useGetFlag`` but also surfaces whether LaunchDarkly has
+ * Same as ``useGetFlag`` but also surfaces whether the flag vendor has
  * actually answered for this flag. Callers that gate a whole route on a
  * flag should branch on ``ready`` first — short-circuiting to
- * ``notFound()`` before LD responds 404s users that actually have the
- * flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS`` so
- * a flag key that LD never registers doesn't spin forever.
+ * ``notFound()`` before the vendor responds 404s users that actually have
+ * the flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS``
+ * so an unregistered flag key doesn't spin forever; ``answered`` stays
+ * false then, for callers that must not act on a timeout.
  */
 export function useFlagStatus<T extends Flag>(
   flag: T,
-): { enabled: FlagValues[T]; ready: boolean } {
-  const currentFlags = useFlags<FlagValues>();
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
+  const { value, resolved } = useFlagSource(flag);
+  const areFlagsEnabled = areFeatureFlagsEnabled();
   const override = envFlagOverride(flag);
 
   const [timedOut, setTimedOut] = useState(false);
@@ -245,15 +246,52 @@ export function useFlagStatus<T extends Flag>(
   }, []);
 
   if (override !== undefined) {
-    return { enabled: override, ready: true };
+    return { enabled: override, ready: true, answered: true };
   }
   if (!areFlagsEnabled || isPwMockEnabled) {
-    return { enabled: defaultFlags[flag], ready: true };
+    return { enabled: defaultFlags[flag], ready: true, answered: true };
   }
 
-  const ldResponded = flag in currentFlags;
   return {
-    enabled: (currentFlags[flag] ?? defaultFlags[flag]) as FlagValues[T],
-    ready: ldResponded || timedOut,
+    enabled: resolveFlagValue(flag, value),
+    ready: resolved || timedOut,
+    answered: resolved,
   };
+}
+
+// PostHog answers a flag with no payload as a bare boolean, so a JSON-valued
+// flag can arrive as `true` and reach a consumer that calls `.map` on it.
+// `typeof` alone can't separate an array from an object; both are "object".
+export function resolveFlagValue<T extends Flag>(
+  flag: T,
+  value: unknown,
+): FlagValues[T] {
+  const fallback = defaultFlags[flag];
+
+  if (value === undefined || value === null) return fallback;
+
+  if (Array.isArray(fallback)) {
+    return (Array.isArray(value) ? value : fallback) as FlagValues[T];
+  }
+
+  if (fallback !== null && typeof fallback === "object") {
+    const isPlainObject = typeof value === "object" && !Array.isArray(value);
+    return (isPlainObject ? value : fallback) as FlagValues[T];
+  }
+
+  return (typeof value === typeof fallback ? value : fallback) as FlagValues[T];
+}
+
+// ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
+// deliberately stays that way — it is what the provider and the flag test
+// mocks stub. This is the same question asked of whichever vendor is configured.
+function areFeatureFlagsEnabled() {
+  switch (FLAG_BACKEND) {
+    case "posthog":
+      return isPostHogFlagsEnabled();
+    case "dual":
+      return environment.areFeatureFlagsEnabled() || isPostHogFlagsEnabled();
+    default:
+      return environment.areFeatureFlagsEnabled();
+  }
 }
