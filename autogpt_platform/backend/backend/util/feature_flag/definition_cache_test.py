@@ -342,10 +342,14 @@ class TestSelection:
 
     @pytest.mark.parametrize("field", ["refresh_seconds", "cache_ttl_seconds"])
     @pytest.mark.parametrize("value", [0, -1])
-    def test_a_non_positive_duration_is_refused_at_startup(self, field, value):
+    def test_a_non_positive_duration_is_refused_at_startup(
+        self, monkeypatch, field, value
+    ):
         """0 clamped the poll to one second and made Redis reject every write."""
+        # Init kwargs rank below the environment and .env, which carry these keys.
+        monkeypatch.setenv(f"POSTHOG_FLAG_DEFINITION_{field.upper()}", str(value))
         with pytest.raises(ValidationError):
-            Config(**{f"posthog_flag_definition_{field}": value})
+            Config(_env_file=None)
 
     def test_redis_is_the_default(self):
         assert (
