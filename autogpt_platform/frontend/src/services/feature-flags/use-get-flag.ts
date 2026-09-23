@@ -6,17 +6,12 @@ import { useFlags } from "launchdarkly-react-client-sdk";
 import { useEffect, useState } from "react";
 
 export enum Flag {
-  BETA_BLOCKS = "beta-blocks",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
-  ARTIFACTS = "artifacts",
   ARTIFACTS_PAGE = "artifacts-page",
   CHAT_MODE_OPTION = "chat-mode-option",
-  BUILDER_CHAT_PANEL = "builder-chat-panel",
-  AGENT_BRIEFING = "agent-briefing",
   GENERIC_TRIGGER_AGENTS = "generic-trigger-agents",
   CHAT_SEARCH = "chat-search",
-  CHAT_SHARING = "chat-sharing",
   AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
@@ -64,17 +59,12 @@ export enum Flag {
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const defaultFlags = {
-  [Flag.BETA_BLOCKS]: [],
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.ARTIFACTS]: false,
   [Flag.ARTIFACTS_PAGE]: false,
   [Flag.CHAT_MODE_OPTION]: false,
-  [Flag.BUILDER_CHAT_PANEL]: false,
-  [Flag.AGENT_BRIEFING]: true,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_SEARCH]: false,
-  [Flag.CHAT_SHARING]: false,
   [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
@@ -120,30 +110,20 @@ type FlagValues = typeof defaultFlags;
  */
 function readEnvOverride(flag: Flag): string | undefined {
   switch (flag) {
-    case Flag.BETA_BLOCKS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_BETA_BLOCKS;
     case Flag.MARKETPLACE_SEARCH_TERMS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
     case Flag.SKILLS_HUB:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
-    case Flag.ARTIFACTS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
     case Flag.ARTIFACTS_PAGE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS_PAGE;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
-    case Flag.BUILDER_CHAT_PANEL:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL;
-    case Flag.AGENT_BRIEFING:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_AGENT_BRIEFING;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_SEARCH:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SEARCH;
-    case Flag.CHAT_SHARING:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING;
     case Flag.AUTOGPT_NEW_LAYOUT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
@@ -177,13 +157,12 @@ function readEnvOverride(flag: Flag): string | undefined {
   }
 }
 
-// Array-typed flags (e.g. ``BETA_BLOCKS``, ``MARKETPLACE_SEARCH_TERMS``)
+// Array-typed flags (e.g. ``MARKETPLACE_SEARCH_TERMS``)
 // cannot be meaningfully overridden through a single boolean string env
 // var — returning ``true`` / ``false`` would clash with the array type
 // callers expect.  These flags are still subject to LaunchDarkly + the
 // ``defaultFlags`` fallback; the env override path just skips them.
 const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
-  Flag.BETA_BLOCKS,
   Flag.MARKETPLACE_SEARCH_TERMS,
   Flag.COPILOT_BOT_PLATFORMS,
 ]);
@@ -193,9 +172,16 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
 // ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
 // with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
 // their LaunchDarkly / default values.
-const isForceAllFlags = ["1", "true", "yes", "on"].includes(
-  (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
-);
+//
+// Inert in a production build, mirroring the backend's app_env guard:
+// NEXT_PUBLIC_* vars are inlined at build time, so one stray value in a
+// production env file would otherwise bake every fail-closed gate open into
+// the client bundle. Per-flag overrides are unaffected.
+const isForceAllFlags =
+  process.env.NODE_ENV !== "production" &&
+  ["1", "true", "yes", "on"].includes(
+    (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
+  );
 
 export function envFlagOverride<T extends Flag>(
   flag: T,

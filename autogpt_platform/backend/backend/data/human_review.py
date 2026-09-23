@@ -425,9 +425,9 @@ async def _enrich_pending_reviews(
     rather than one round-trip per row:
       - ``node_id``, from the node executions
       - expert attribution (from the graph execution, or from the chat
-        session for CoPilot run_block reviews)
+        session for CoPilot run_capability reviews)
       - the requesting agent's display name and library agent id
-      - the chat session id, for CoPilot run_block reviews
+      - the chat session id, for CoPilot run_capability reviews
 
     Mutates and returns the given models in place.
     """
@@ -756,7 +756,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
 async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
-    Used by CoPilot's continue_run_block to clean up one-time-use review records
+    Used by CoPilot's resume_capability to clean up one-time-use review records
     after successful execution.
 
     Args:

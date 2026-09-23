@@ -895,7 +895,7 @@ class OrchestratorBlock(Block):
 
     async def _attempt_llm_call_with_validation(
         self,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: Input,
         current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
@@ -1322,7 +1322,7 @@ class OrchestratorBlock(Block):
         messages: list[dict[str, Any]],
         tools: Sequence[Any],
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: "OrchestratorBlock.Input",
     ) -> LLMLoopResponse:
         """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
@@ -1462,7 +1462,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_agent_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         graph_exec_id: str,
@@ -1657,7 +1657,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_sdk_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         execution_params: ExecutionParams,
@@ -1697,8 +1697,7 @@ class OrchestratorBlock(Block):
         # Extended thinking does not support subscription-mode (platform-managed credits).
         # Use *credential* provider for routing (not model metadata provider),
         # because a user may select an Anthropic model but route through OpenRouter.
-        provider = credentials.provider
-        if not credentials.api_key:
+        if credentials is None or not credentials.api_key:
             yield (
                 "error",
                 (
@@ -1707,6 +1706,7 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
+        provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
             # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
@@ -1979,7 +1979,7 @@ class OrchestratorBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None = None,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,

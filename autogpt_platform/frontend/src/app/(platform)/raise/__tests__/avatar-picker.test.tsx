@@ -61,6 +61,7 @@ function seedAtAvatar(name = "Maria", color: string | null = "violet-300") {
     step: "avatar",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name,
     color,
     avatarUrl: null,

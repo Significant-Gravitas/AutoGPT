@@ -3,6 +3,57 @@ export interface ClarifyingQuestion {
   keyword: string;
   example?: string;
   options?: string[];
+  /** Several of `options` may be picked. Never set without options. */
+  allow_multiple?: boolean;
+}
+
+/** A multi-select answer: the ticked options, and any typed text kept in its
+ *  own slot rather than mixed in with them. Membership of `options` cannot
+ *  tell the two apart — "Research" on the way to "Research and development"
+ *  is typing, not a tick — so the shape has to. */
+export interface MultiAnswer {
+  selected: string[];
+  custom: string;
+}
+
+/** One question's answer: a single-select pick or typed text is a string, a
+ *  multi-select one is a MultiAnswer. */
+export type QuestionAnswer = string | MultiAnswer;
+
+/** An answer as its list of picks, blanks dropped — so an empty list is the
+ *  one definition of "not answered yet" every caller shares. */
+export function toAnswerList(answer: QuestionAnswer | undefined): string[] {
+  const picks =
+    typeof answer === "string" || answer === undefined
+      ? [answer ?? ""]
+      : [...answer.selected, answer.custom];
+  return picks.flatMap((pick) => (pick.trim() ? [pick.trim()] : []));
+}
+
+export function isAnswered(answer: QuestionAnswer | undefined): boolean {
+  return toAnswerList(answer).length > 0;
+}
+
+/** An answer as the raw text of a single-answer field. Untrimmed, so the
+ *  space the user just typed survives the round trip through state. */
+export function toAnswerText(answer: QuestionAnswer | undefined): string {
+  return typeof answer === "string" ? answer : "";
+}
+
+/** An answer as a multi-select field reads it. A string answer was never a
+ *  pick, so it becomes the typed text. */
+export function toMultiAnswer(answer: QuestionAnswer | undefined): MultiAnswer {
+  if (typeof answer === "string") return { selected: [], custom: answer };
+  return answer ?? { selected: [], custom: "" };
+}
+
+/** The answer as it reads in the message sent back: several picks become a
+ *  bullet list, one stays inline so single-select replies are unchanged. */
+export function formatAnswer(answer: QuestionAnswer | undefined): string {
+  const picks = toAnswerList(answer);
+  return picks.length > 1
+    ? picks.map((pick) => `- ${pick}`).join("\n")
+    : (picks[0] ?? "");
 }
 
 function toOptions(value: unknown): string[] | undefined {
@@ -19,6 +70,7 @@ export function normalizeClarifyingQuestions(
     keyword: string;
     example?: unknown;
     options?: unknown;
+    allow_multiple?: unknown;
   }>,
 ): ClarifyingQuestion[] {
   const seen = new Set<string>();
@@ -48,6 +100,9 @@ export function normalizeClarifyingQuestions(
     if (example) item.example = example;
     const options = toOptions(q.options);
     if (options) item.options = options;
+    // Without options the card has nothing to toggle, so the flag would only
+    // promise a multi-select the user never gets.
+    if (options && q.allow_multiple === true) item.allow_multiple = true;
     return item;
   });
 }
@@ -97,32 +152,33 @@ export function extractClarifyingQuestions(source: {
 }): ClarifyingQuestion[] {
   const fromInput = questionItems(source.input);
   const raw = questionItems(source.output) ?? fromInput ?? [];
-  // Older tool outputs collapse options into the example string, so when the
-  // output is the source the selectable options only survive in the input.
-  // This runs per render on an unmemoized chain row, so skip the whole map
-  // when every item already carries its own options.
-  const inputOptions = new Map<string, string[]>();
-  if (raw.some((item) => !toOptions(item.options))) {
-    for (const item of fromInput ?? []) {
-      const options = toOptions(item.options);
-      if (options) inputOptions.set(recoveryKey(item), options);
-    }
+  // Older tool outputs collapse options into the example string and predate
+  // allow_multiple, so when the output is the source both only survive in the
+  // input the model actually sent.
+  const fromInputByKey = new Map<string, Record<string, unknown>>();
+  for (const item of fromInput ?? []) {
+    fromInputByKey.set(recoveryKey(item), item);
   }
-  const valid = raw.flatMap((item) =>
-    typeof item.question === "string" &&
-    item.question.trim() &&
-    typeof item.keyword === "string"
-      ? [
-          {
-            question: item.question.trim(),
-            keyword: item.keyword,
-            example: item.example,
-            options:
-              toOptions(item.options) ?? inputOptions.get(recoveryKey(item)),
-          },
-        ]
-      : [],
-  );
+  const valid = raw.flatMap((item) => {
+    if (
+      typeof item.question !== "string" ||
+      !item.question.trim() ||
+      typeof item.keyword !== "string"
+    ) {
+      return [];
+    }
+    const asked = fromInputByKey.get(recoveryKey(item));
+    return [
+      {
+        question: item.question.trim(),
+        keyword: item.keyword,
+        example: item.example,
+        options: toOptions(item.options) ?? toOptions(asked?.options),
+        allow_multiple:
+          item.allow_multiple === true || asked?.allow_multiple === true,
+      },
+    ];
+  });
   return normalizeClarifyingQuestions(valid);
 }
 
@@ -130,15 +186,12 @@ export function extractClarifyingQuestions(source: {
  * Formats clarification answers as a context message and sends it via onSend.
  */
 export function buildClarificationAnswersMessage(
-  answers: Record<string, string>,
+  answers: Record<string, QuestionAnswer>,
   rawQuestions: Array<{ question: string; keyword: string }>,
   mode: "create" | "edit",
 ): string {
   const contextMessage = rawQuestions
-    .map((q) => {
-      const answer = answers[q.keyword] || "";
-      return `> ${q.question}\n\n${answer}`;
-    })
+    .map((q) => `> ${q.question}\n\n${formatAnswer(answers[q.keyword])}`)
     .join("\n\n");
 
   const action = mode === "create" ? "creating" : "editing";

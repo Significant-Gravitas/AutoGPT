@@ -65,7 +65,7 @@ class PendingHumanReviewModel(BaseModel):
     )
     library_agent_id: str | None = Field(default=None, description="For run deep links")
     session_id: str | None = Field(
-        default=None, description="Chat session id for copilot run_block reviews"
+        default=None, description="Chat session id for copilot run_capability reviews"
     )
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None

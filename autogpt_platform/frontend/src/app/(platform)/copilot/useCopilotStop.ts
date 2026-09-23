@@ -11,7 +11,7 @@ import { resolveInProgressTools } from "./helpers";
  * reload shows the same state. Must match `COPILOT_ERROR_PREFIX` in
  * `ChatMessagesContainer/helpers.ts`.
  */
-const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
+export const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
 
 interface UseCopilotStopArgs {
   sessionId: string | null;

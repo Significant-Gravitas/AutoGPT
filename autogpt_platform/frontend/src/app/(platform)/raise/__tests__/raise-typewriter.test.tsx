@@ -66,6 +66,7 @@ test("renders restored conversation messages instantly after reload", async () =
     step: "avatar",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name: "Nova",
     color: null,
     avatarUrl: null,

@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { BubbleChatIcon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWeeklySpend } from "../../../helpers";
 import { formatUntil } from "../../NowNext/helpers";
 import { StatusBadge } from "./StatusBadge";
@@ -66,6 +67,11 @@ export function AgentRow({ agent }: Props) {
           size="icon-sm"
           leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
+          onClick={() =>
+            trackFunnel("home_team_member_clicked", {
+              expert_id: agent.expert.id,
+            })
+          }
         />
       </div>
     </div>

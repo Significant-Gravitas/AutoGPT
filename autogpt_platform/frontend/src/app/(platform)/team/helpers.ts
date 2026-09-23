@@ -178,17 +178,6 @@ export function getLastRunLabel(expert: Expert) {
   return `Last run ${when}`;
 }
 
-/** The line under an expert's name on their card: their tagline, falling back
- *  to the opening of their identity when they have none. */
-export function getExpertBlurb(expert: Expert) {
-  if (expert.tagline?.trim()) return expert.tagline;
-  const lines = expert.identity
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.slice(0, 2).join(" ") || null;
-}
-
 export function getWeeklySpend(expert: Expert) {
   if (expert.weekly_budget == null || expert.weekly_budget <= 0) return null;
   return { spent: expert.weekly_spend ?? 0, budget: expert.weekly_budget };

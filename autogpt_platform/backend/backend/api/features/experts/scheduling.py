@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import prisma.models
 from prisma.enums import ResourceVisibility
 
+from backend.api.features.experts import routine_jobs
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
@@ -297,6 +298,11 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
         },
         data={"isActive": False, "deactivatedByExpertArchive": True},
     )
+    # Routines are copilot-turn schedules, which `_get_expert_schedules` does
+    # not see (it is graph-only), so they need their own pass. Without it an
+    # archived expert's routines keep their next run time, re-arm on every
+    # tick, and stay listed as scheduled chats for an expert the owner let go.
+    await routine_jobs.pause_routines_for_archive(user_id, expert_id)
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
@@ -408,6 +414,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
             "teamId": team_id,
         },
     )
+    # Scoped to the routines archiving paused, never one the owner had already
+    # switched off — the same distinction `deactivatedByExpertArchive` draws
+    # for presets just above.
+    await routine_jobs.resume_routines_after_revive(user_id, expert_id)
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(
         user_id, expert_id, include_paused=True

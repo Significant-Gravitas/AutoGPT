@@ -70,7 +70,10 @@ async def get_trial_offer(user_id: str) -> TrialOffer | None:
         raw = await get_feature_flag_value(
             Flag.CARD_REQUIRED_TRIAL_OFFER, user_id, None
         )
-        if raw is None:
+        # The flag's disabled variation is an object ({"enabled": false}), not
+        # null, so only a payload claiming to be an offer is worth an error.
+        if not isinstance(raw, dict) or "version" not in raw:
+            logger.debug("No card-required trial offer configured")
             return None
         return TrialOffer.model_validate(raw)
     except (ValidationError, ValueError, TypeError):

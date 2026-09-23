@@ -105,7 +105,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                 // Without this, approving on the phone drops the user back on
                 // the initial "Connect <provider>" screen, which reads as a
                 // failure. OAuth and API key both return to the list.
-                onDeviceAuthSuccess={handleBackToList}
+                onInlineConnectSuccess={handleBackToList}
               />
             </motion.div>
           ) : (

@@ -136,6 +136,35 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     subject: (_input, context) =>
       quotedName(getBlockDisplayName(context.displayName, context.output)),
   },
+  find_capability: {
+    category: "block",
+    running: "Searching capabilities for",
+    done: "Searched capabilities for",
+    subject: (input) => quoted(input, "query"),
+  },
+  describe_capability: {
+    category: "block",
+    running: "Reading capability",
+    done: "Read capability",
+    subject: (input) => quotedName(strField(input, "id")),
+  },
+  run_capability: {
+    category: "block",
+    running: "Running",
+    done: "Ran",
+    subject: (input, context) =>
+      quotedName(
+        getBlockDisplayName(context.displayName, context.output) ??
+          strField(input, "id"),
+      ),
+  },
+  resume_capability: {
+    category: "block",
+    running: "Resuming",
+    done: "Resumed",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
+  },
   schedule_agent: {
     category: "agent",
     running: "Scheduling agent",

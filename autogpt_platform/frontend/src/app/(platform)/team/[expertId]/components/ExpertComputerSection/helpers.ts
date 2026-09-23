@@ -23,6 +23,17 @@ export function formatResources(summary: SandboxSummary | null | undefined) {
   return `${summary.cpu_count} vCPU · ${memory}`;
 }
 
+export function formatScreen(
+  computer: Pick<ComputerInfo, "box" | "screen_on">,
+) {
+  if (!computer.box) {
+    return "Screen off. It comes on the first time a task needs a browser or GUI app.";
+  }
+  return computer.screen_on
+    ? "Screen on. Open the desktop to watch or take over."
+    : "Screen off. Turning it on happens inside this same machine.";
+}
+
 export function describeMount(
   path: string,
   computer: Pick<ComputerInfo, "workspace_path" | "shared_path" | "owner_kind">,
@@ -39,8 +50,6 @@ export function describeMount(
 }
 
 export function desktopActionLabel(computer: ComputerInfo | null | undefined) {
-  if (!computer?.desktop) return "Start desktop";
-  return computer.desktop.state === "running"
-    ? "Open desktop"
-    : "Resume desktop";
+  if (!computer?.box || !computer.screen_on) return "Turn on screen";
+  return computer.box.state === "running" ? "Open desktop" : "Resume desktop";
 }

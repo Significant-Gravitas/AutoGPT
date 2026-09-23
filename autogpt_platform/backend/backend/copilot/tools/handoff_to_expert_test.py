@@ -461,6 +461,22 @@ class TestTransfer:
         assert mock_turn.await_args.kwargs["timeout"] == 0
 
     @pytest.mark.asyncio
+    async def test_handed_off_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
+
+    @pytest.mark.asyncio
     async def test_framing_transfers_ownership(self, roster, mock_turn, mock_sessions):
         await HandoffToExpertTool()._execute(
             user_id="alice",
@@ -719,26 +735,31 @@ class TestExecuteToolEnforcesDisabledGroups:
     handed to the model — a presentation filter. ``execute_tool`` is the
     actual enforcement boundary: a model that names a hidden tool anyway
     must be refused BEFORE ``tool.execute`` runs, not just told about it
-    afterwards."""
+    afterwards.
+
+    Both cases use an eager tool on purpose. A deferred one is refused here
+    whatever its group, so it cannot tell a working group gate from a broken
+    one — and it can never dispatch, which is the point of the second test.
+    """
 
     @pytest.mark.asyncio
     async def test_a_tool_in_a_disabled_group_is_refused_without_dispatching(
         self,
     ) -> None:
         session = _session()
-        tool = get_tool("hire_expert")
+        tool = get_tool("handoff_to_expert")
         assert tool is not None
 
         with patch.object(
             tool, "execute", new=AsyncMock(return_value="should never run")
         ) as execute_mock:
             result = await execute_tool(
-                tool_name="hire_expert",
+                tool_name="handoff_to_expert",
                 parameters={},
                 user_id="alice",
                 session=session,
                 tool_call_id="call-1",
-                disabled_groups=["expert_admin"],
+                disabled_groups=["experts"],
                 disabled_tools=(),
             )
 
@@ -750,14 +771,14 @@ class TestExecuteToolEnforcesDisabledGroups:
     @pytest.mark.asyncio
     async def test_a_tool_outside_any_disabled_group_still_dispatches(self) -> None:
         session = _session()
-        tool = get_tool("hire_expert")
+        tool = get_tool("handoff_to_expert")
         assert tool is not None
 
         with patch.object(
             tool, "execute", new=AsyncMock(return_value="it ran")
         ) as execute_mock:
             result = await execute_tool(
-                tool_name="hire_expert",
+                tool_name="handoff_to_expert",
                 parameters={},
                 user_id="alice",
                 session=session,

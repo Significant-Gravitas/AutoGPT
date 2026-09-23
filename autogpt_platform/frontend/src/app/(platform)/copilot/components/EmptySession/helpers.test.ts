@@ -32,7 +32,7 @@ describe("getExpertRoleLabel", () => {
   test.each([
     ["Marketing", "Marketing expert"],
     ["Customer Success", "Customer Success expert"],
-    ["Social Media", "Social Media expert"],
+    ["Social Media", "Social media expert"],
     ["SEO", "SEO expert"],
     ["Legal", "Legal expert"],
   ])("calls the bare-domain custom role %s an expert", (role, expected) => {
@@ -40,8 +40,8 @@ describe("getExpertRoleLabel", () => {
   });
 
   test.each([
-    ["Social & Content Repurposing", "Social Media expert"],
-    ["Market & Competitor Intelligence", "Market Intelligence expert"],
+    ["Social & Content Repurposing", "Social media expert"],
+    ["Market & Competitor Intelligence", "Market intelligence expert"],
   ])("shortens the roster role %s to %s", (role, expected) => {
     expect(getExpertRoleLabel(role)).toBe(expected);
   });

@@ -505,8 +505,8 @@ Check a flag in a client component:
 ```tsx
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-export function AgentActivityPanel() {
-  const enabled = useGetFlag(Flag.AGENT_ACTIVITY);
+export function SkillsPanel() {
+  const enabled = useGetFlag(Flag.SKILLS_HUB);
   if (!enabled) return null;
   return <div>Feature is enabled!</div>;
 }

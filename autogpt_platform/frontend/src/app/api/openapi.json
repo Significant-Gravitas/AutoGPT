@@ -2747,6 +2747,44 @@
         }
       }
     },
+    "/api/analytics/attribution": {
+      "post": {
+        "tags": ["analytics"],
+        "summary": "Report user attribution",
+        "description": "Store where this user came from. Fields are only ever filled once.\n\nThe DataFast ids come from the request headers the frontend attaches to\nevery call, so the body never has to carry them.",
+        "operationId": "postAnalyticsReport user attribution",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserAttributionInput" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserAttribution" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -4011,7 +4049,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_capability and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -4232,7 +4270,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session Computer",
-        "description": "The computer behind this chat.\n\nA plain chat has its own boxes; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
+        "description": "The computer behind this chat.\n\nA plain chat has its own box; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
         "operationId": "getV2GetSessionComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4309,6 +4347,59 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/credential-selection": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Record credential picks for this chat",
+        "description": "Keep the account the user chose on a connect card for the rest of the chat.\n\nThe card shows one account and the tools used to re-match on their own, so\nwith two accounts for a provider a run could land on the other one. The\ntools now use exactly what is recorded here, and ask when several\ncredentials qualify and nothing was picked.\n\nEvery id is checked against the caller's own credentials and the provider\nit is filed under; one bad entry rejects the request and records nothing.",
+        "operationId": "putV2Record credential picks for this chat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Putv2Record Credential Picks For This Chat"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session or credential not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4544,7 +4635,7 @@
       "post": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Enable Chat Sharing",
-        "description": "Enable sharing for a chat session.\n\nFlag-gated: refuses with 403 when ``chat-sharing`` is off so a stale\nfrontend cannot enable shares post-rollback.",
+        "description": "Enable sharing for a chat session.",
         "operationId": "postV2EnableChatSharing",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4567,16 +4658,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__chat__share__ShareResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/ChatShareResponse" }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "403": { "description": "Chat sharing is not enabled for this user" },
           "404": { "description": "Chat session not found for user" },
           "422": {
             "description": "Validation Error",
@@ -6965,7 +7053,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
-        "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "description": "The expert's own computer: its box as E2B lists it, and whether its\nscreen is on. E2B knows nothing about the screen; that flag is ours,\nkept beside the box id, because asking the box would wake it.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
         "operationId": "getV2GetExpertComputer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7540,7 +7628,7 @@
       "post": {
         "tags": ["v1", "files"],
         "summary": "Upload file to cloud storage",
-        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
+        "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -7571,7 +7659,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                  "$ref": "#/components/schemas/CloudStorageUploadResponse"
                 }
               }
             }
@@ -8027,7 +8115,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShareRequest",
+                "$ref": "#/components/schemas/ExecutionShareRequest",
                 "default": {}
               }
             }
@@ -8039,7 +8127,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__graph_executions__model__ShareResponse"
+                  "$ref": "#/components/schemas/ExecutionShareResponse"
                 }
               }
             }
@@ -8554,7 +8642,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nOfficial MCP catalog entries are appended as display metadata and use the\ngeneric MCP connection flow. They are not registered credential providers,\nso PROVIDER_NAMES continues to contain only credential-provider names.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
@@ -10475,7 +10563,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth credential.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically unless use_saved_credentials is false.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -13935,7 +14023,7 @@
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
-        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
+        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-expert cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15638,7 +15726,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Skill or expert not found" },
-          "409": { "description": "Per-user skill limit reached" },
+          "409": {
+            "description": "Skill limit reached, or the skill name is already used by an owner-saved skill"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16133,7 +16223,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16229,10 +16319,22 @@
                 { "type": "string", "minLength": 1 },
                 { "type": "null" }
               ],
-              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id.",
               "title": "Expert Id"
             },
-            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
+            "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id."
+          },
+          {
+            "name": "include_user_files",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id.",
+              "default": false,
+              "title": "Include User Files"
+            },
+            "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
           }
         ],
         "responses": {
@@ -16303,7 +16405,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                  "$ref": "#/components/schemas/WorkspaceFileUploadResponse"
                 }
               }
             }
@@ -16394,7 +16496,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "File not found" },
-          "409": { "description": "A file with this name already exists here" },
+          "409": {
+            "description": "File name conflict or skill capacity reached"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16502,6 +16606,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace folders",
+        "description": "Every folder in the workspace, flat; nesting is read off ``parent_id``.\n\n``file_count`` counts the files directly in each folder, not its subtree.",
         "operationId": "listWorkspaceFolders",
         "responses": {
           "200": {
@@ -16546,6 +16651,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Parent folder not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -16604,6 +16710,7 @@
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete workspace folder",
+        "description": "Delete a folder and its subfolders; their files return to the root.",
         "operationId": "deleteWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16633,6 +16740,7 @@
       "patch": {
         "tags": ["workspace"],
         "summary": "Update workspace folder",
+        "description": "Rename a folder, change its icon, and/or move it.\n\nSending ``parent_id: null`` moves the folder to the workspace root;\nleaving the field out keeps it where it is. Move and rename are applied\ntogether or not at all, and the new name is checked for a clash against\nthe destination.",
         "operationId": "updateWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16662,10 +16770,13 @@
               }
             }
           },
+          "400": {
+            "description": "A folder cannot be moved into its own subtree"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Folder or destination not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -17837,7 +17948,7 @@
         "type": "object",
         "required": ["message", "block"],
         "title": "BlockDetailsResponse",
-        "description": "Response for block details (first run_block attempt)."
+        "description": "Response for block details (describe_capability / first run attempt)."
       },
       "BlockInfo": {
         "properties": {
@@ -17977,13 +18088,13 @@
           "usage_hint": {
             "type": "string",
             "title": "Usage Hint",
-            "default": "To execute a block, call run_block with block_id set to the block's 'id' field and input_data containing the fields listed in required_inputs."
+            "default": "To execute a block, call run_capability with id set to the block's 'id' field and input containing the fields listed in required_inputs."
           }
         },
         "type": "object",
         "required": ["message", "blocks", "count", "query"],
         "title": "BlockListResponse",
-        "description": "Response for find_block tool."
+        "description": "Response for a block search (find_capability / legacy find_block)."
       },
       "BlockOutputResponse": {
         "properties": {
@@ -18016,7 +18127,7 @@
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
         "title": "BlockOutputResponse",
-        "description": "Response for run_block tool."
+        "description": "Response for a block run via run_capability."
       },
       "BlockResponse": {
         "properties": {
@@ -18803,6 +18914,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
           },
+          "purpose": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Purpose"
+          },
           "pending_question": {
             "anyOf": [
               { "$ref": "#/components/schemas/PendingQuestion" },
@@ -18813,6 +18928,15 @@
         "type": "object",
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
+      "ChatShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ChatShareResponse"
       },
       "ChatShareStateResponse": {
         "properties": {
@@ -18921,12 +19045,35 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Options"
+          },
+          "allow_multiple": {
+            "type": "boolean",
+            "title": "Allow Multiple",
+            "default": false
           }
         },
         "type": "object",
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CloudStorageUploadResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "CloudStorageUploadResponse"
       },
       "CoPilotUsagePublic": {
         "properties": {
@@ -19155,17 +19302,16 @@
           },
           "owner_id": { "type": "string", "title": "Owner Id" },
           "e2b_active": { "type": "boolean", "title": "E2B Active" },
-          "shell": {
+          "box": {
             "anyOf": [
               { "$ref": "#/components/schemas/SandboxSummary" },
               { "type": "null" }
             ]
           },
-          "desktop": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/SandboxSummary" },
-              { "type": "null" }
-            ]
+          "screen_on": {
+            "type": "boolean",
+            "title": "Screen On",
+            "default": false
           },
           "mounts": {
             "additionalProperties": { "type": "string" },
@@ -19187,7 +19333,7 @@
         "type": "object",
         "required": ["owner_kind", "owner_id", "e2b_active"],
         "title": "ComputerInfo",
-        "description": "The owner's computer: its boxes and the volumes they mount."
+        "description": "The owner's computer: its one box, whether its screen is on, its volumes."
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -19407,6 +19553,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "routine_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -19712,6 +19862,13 @@
             ],
             "title": "Role"
           },
+          "job_title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Job Title"
+          },
           "avatar_url": {
             "anyOf": [
               { "type": "string", "maxLength": 2000 },
@@ -19801,7 +19958,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -19947,6 +20104,21 @@
         "required": ["provider", "detail"],
         "title": "CredentialRejection",
         "description": "A stored credential that the provider refused at use time."
+      },
+      "CredentialSelectionRequest": {
+        "properties": {
+          "selections": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "maxProperties": 20,
+            "title": "Selections",
+            "description": "Provider slug to credential id."
+          }
+        },
+        "type": "object",
+        "required": ["selections"],
+        "title": "CredentialSelectionRequest",
+        "description": "The credential the user picked for each provider on a connect card."
       },
       "CredentialsDeletionNeedsConfirmationResponse": {
         "properties": {
@@ -20447,6 +20619,12 @@
             "type": "string",
             "title": "Server Url",
             "description": "URL of the MCP server"
+          },
+          "use_saved_credentials": {
+            "type": "boolean",
+            "title": "Use Saved Credentials",
+            "description": "Use a saved credential when no auth token is supplied. Set false to discover public tools without signing in.",
+            "default": true
           },
           "auth_token": {
             "anyOf": [
@@ -21259,6 +21437,22 @@
         "title": "ExecutionOutputInfo",
         "description": "Summary of a single execution's outputs."
       },
+      "ExecutionShareRequest": {
+        "properties": {},
+        "type": "object",
+        "title": "ExecutionShareRequest",
+        "description": "Optional request body for share endpoint."
+      },
+      "ExecutionShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ExecutionShareResponse",
+        "description": "Response from share endpoints."
+      },
       "ExecutionStartedResponse": {
         "properties": {
           "type": {
@@ -21321,6 +21515,10 @@
           },
           "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
@@ -21495,11 +21693,11 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" }
         },
         "type": "object",
-        "required": ["id", "slug", "name", "description"],
+        "required": ["id", "slug", "title", "description"],
         "title": "ExpertBundledSkill",
         "description": "A live Skills Hub listing a roster template comes with."
       },
@@ -21572,6 +21770,10 @@
             "title": "Color"
           },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },
         "type": "object",
@@ -21792,7 +21994,7 @@
           "skills": {
             "items": { "type": "string" },
             "type": "array",
-            "maxItems": 50,
+            "maxItems": 150,
             "title": "Skills"
           },
           "marketplace_listing_ids": {
@@ -21877,6 +22079,10 @@
           },
           "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
+          "job_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Job Title"
+          },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Tagline"
@@ -24874,6 +25080,14 @@
             "type": "string",
             "title": "Server Url",
             "description": "URL of the MCP server that requires OAuth"
+          },
+          "scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Scopes",
+            "description": "OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; an empty list requests no scopes."
           }
         },
         "type": "object",
@@ -24890,6 +25104,91 @@
         "required": ["login_url", "state_token"],
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
+      },
+      "MCPServerMetadata": {
+        "properties": {
+          "server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Url"
+          },
+          "documentation_url": {
+            "type": "string",
+            "title": "Documentation Url"
+          },
+          "setup_instructions": {
+            "type": "string",
+            "title": "Setup Instructions"
+          },
+          "connection_mode": {
+            "type": "string",
+            "enum": ["hosted", "custom"],
+            "title": "Connection Mode"
+          },
+          "auth_methods": {
+            "items": {
+              "type": "string",
+              "enum": ["oauth", "bearer", "basic", "none"]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Auth Methods"
+          },
+          "server_url_options": {
+            "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
+            "type": "array",
+            "title": "Server Url Options"
+          },
+          "oauth_server_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Oauth Server Url"
+          },
+          "oauth_scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Oauth Scopes"
+          },
+          "oauth_write_scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Oauth Write Scopes"
+          },
+          "icon_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+              { "type": "null" }
+            ],
+            "title": "Icon Id"
+          },
+          "provider": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z0-9_]+$" },
+              { "type": "null" }
+            ],
+            "title": "Provider",
+            "description": "Block provider this server belongs to, when the platform also ships blocks for it. Lets the UI file an MCP connection under the same service as its API-key credential instead of a generic MCP group."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documentation_url",
+          "setup_instructions",
+          "connection_mode",
+          "auth_methods"
+        ],
+        "title": "MCPServerMetadata"
+      },
+      "MCPServerURLPreset": {
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "title": "Label" },
+          "url": { "type": "string", "title": "Url" }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "url"],
+        "title": "MCPServerURLPreset"
       },
       "MCPStoreTokenRequest": {
         "properties": {
@@ -25024,6 +25323,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25043,12 +25343,26 @@
           "creator_avatar": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Creator Avatar"
+          },
+          "source_repo": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Repo",
+            "description": "GitHub repo a vendored skill was taken from, as owner/name."
+          },
+          "source_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "License"
           }
         },
         "type": "object",
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
@@ -25060,6 +25374,7 @@
         "properties": {
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
+          "title": { "type": "string", "title": "Title" },
           "description": { "type": "string", "title": "Description" },
           "categories": {
             "items": { "type": "string" },
@@ -25079,6 +25394,19 @@
           "creator_avatar": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Creator Avatar"
+          },
+          "source_repo": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Repo",
+            "description": "GitHub repo a vendored skill was taken from, as owner/name."
+          },
+          "source_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "License"
           },
           "skill_listing_version_id": {
             "type": "string",
@@ -25106,6 +25434,7 @@
         "required": [
           "slug",
           "name",
+          "title",
           "description",
           "categories",
           "required_providers",
@@ -26254,7 +26583,7 @@
           "session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Id",
-            "description": "Chat session id for copilot run_block reviews"
+            "description": "Chat session id for copilot run_capability reviews"
           },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -27134,6 +27463,18 @@
             "title": "Name",
             "description": "Provider slug (e.g. ``github``)"
           },
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name",
+            "description": "Human-readable provider name"
+          },
+          "mcp_server": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MCPServerMetadata" },
+              { "type": "null" }
+            ],
+            "description": "Official MCP catalog connection and setup metadata"
+          },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description",
@@ -27310,6 +27651,13 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids"
           }
         },
         "type": "object",
@@ -27729,12 +28077,16 @@
           "block_details",
           "block_output",
           "review_required",
+          "capability_list",
+          "capability_details",
           "schedule_list",
           "schedule_deleted",
           "schedule_toggled",
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
+          "routines",
+          "routine",
           "credential_grant_requested",
           "schedule_created",
           "agent_trigger_list",
@@ -27776,6 +28128,7 @@
           "platform_info",
           "chat_platform_channel_list",
           "chat_platform_posted",
+          "chat_platform_edited",
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
@@ -27786,7 +28139,10 @@
           "team_roster",
           "expert_chat_list",
           "expert_chat_transcript",
-          "expert_onboarding"
+          "expert_onboarding",
+          "team_consult",
+          "session_list",
+          "session_message"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -27960,11 +28316,6 @@
       },
       "SandboxSummary": {
         "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["shell", "desktop"],
-            "title": "Kind"
-          },
           "sandbox_id": { "type": "string", "title": "Sandbox Id" },
           "state": {
             "type": "string",
@@ -27983,7 +28334,6 @@
         },
         "type": "object",
         "required": [
-          "kind",
           "sandbox_id",
           "state",
           "started_at",
@@ -27993,7 +28343,7 @@
           "mounts_attached"
         ],
         "title": "SandboxSummary",
-        "description": "One of the owner's sandboxes as E2B reports it, without waking it."
+        "description": "The owner's box as E2B reports it, without waking it."
       },
       "ScheduleCleanupRequest": {
         "properties": {
@@ -28029,7 +28379,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
-          "name": { "type": "string", "title": "Name" },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "inputs": {
             "additionalProperties": true,
@@ -28597,12 +28952,6 @@
         "required": ["message", "setup_info"],
         "title": "SetupRequirementsResponse",
         "description": "Response for validate action."
-      },
-      "ShareRequest": {
-        "properties": {},
-        "type": "object",
-        "title": "ShareRequest",
-        "description": "Optional request body for share endpoint."
       },
       "SharedChatLinkedExecution": {
         "properties": {
@@ -29665,6 +30014,14 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids",
+            "description": "Workspace folder IDs attached to this message. Named in the message for the model to open, never expanded into their files."
           },
           "model": {
             "anyOf": [
@@ -31996,6 +32353,165 @@
         "required": ["graph_id", "cost_cents", "run_count"],
         "title": "UserAgentCostRollup"
       },
+      "UserAttribution": {
+        "properties": {
+          "anonymous_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Anonymous Id"
+          },
+          "posthog_distinct_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Posthog Distinct Id"
+          },
+          "datafast_visitor_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Visitor Id"
+          },
+          "datafast_session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Session Id"
+          },
+          "landing_path": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Landing Path"
+          },
+          "referrer": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Referrer"
+          },
+          "utm_source": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Source"
+          },
+          "utm_medium": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Medium"
+          },
+          "utm_campaign": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Campaign"
+          },
+          "signup_method": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Signup Method"
+          },
+          "user_id": { "type": "string", "title": "User Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "created_at"],
+        "title": "UserAttribution"
+      },
+      "UserAttributionInput": {
+        "properties": {
+          "anonymous_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Anonymous Id"
+          },
+          "posthog_distinct_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Posthog Distinct Id"
+          },
+          "datafast_visitor_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Visitor Id"
+          },
+          "datafast_session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Datafast Session Id"
+          },
+          "landing_path": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Landing Path"
+          },
+          "referrer": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2048 },
+              { "type": "null" }
+            ],
+            "title": "Referrer"
+          },
+          "utm_source": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Source"
+          },
+          "utm_medium": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Medium"
+          },
+          "utm_campaign": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256 },
+              { "type": "null" }
+            ],
+            "title": "Utm Campaign"
+          },
+          "signup_method": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Signup Method"
+          }
+        },
+        "type": "object",
+        "title": "UserAttributionInput"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -32703,6 +33219,18 @@
         ],
         "title": "WorkspaceFileItem"
       },
+      "WorkspaceFileUploadResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "WorkspaceFileUploadResponse"
+      },
       "WorkspaceFolder": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -32711,6 +33239,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
           },
           "created_at": {
             "type": "string",
@@ -32744,6 +33276,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",
@@ -32774,6 +33310,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",
@@ -32816,55 +33356,6 @@
         "required": ["content"],
         "title": "WriteSummary",
         "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
-      },
-      "backend__api__features__chat__share__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse"
-      },
-      "backend__api__features__graph_executions__model__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse",
-        "description": "Response from share endpoints."
-      },
-      "backend__api__features__workspace__routes__UploadFileResponse": {
-        "properties": {
-          "file_id": { "type": "string", "title": "File Id" },
-          "name": { "type": "string", "title": "Name" },
-          "path": { "type": "string", "title": "Path" },
-          "mime_type": { "type": "string", "title": "Mime Type" },
-          "size_bytes": { "type": "integer", "title": "Size Bytes" }
-        },
-        "type": "object",
-        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
-        "title": "UploadFileResponse"
-      },
-      "backend__api__model__UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {

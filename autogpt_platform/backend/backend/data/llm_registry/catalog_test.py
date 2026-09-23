@@ -81,6 +81,17 @@ def test_routing_cells_reference_enabled_models():
 
 _SNAPSHOT_PATH = Path(__file__).parent / "pre_catalog_costs_snapshot.json"
 
+# open_router models bill via COST_USD against the response's x-total-cost,
+# never from TOKEN_COST (block_cost_config._open_router_llm_cost). Their
+# per-1M rates are display only, and OpenRouter reprices continuously, so
+# pinning those values to the cutover snapshot pins a number that is
+# expected to drift and that no user is ever charged. Their *presence* in
+# the snapshot stays pinned by the absence-parity check below; only the
+# values are exempt. Every genuinely billed provider keeps full parity.
+_DISPLAY_ONLY_TOKEN_COST_SLUGS = frozenset(
+    m.slug for m in CATALOG.models if m.provider == "open_router"
+)
+
 
 def test_billing_matches_pre_catalog_snapshot():
     """Cutover-parity proof: the catalog-derived cost dicts reproduce the
@@ -94,9 +105,12 @@ def test_billing_matches_pre_catalog_snapshot():
     for slug, credits in snapshot["model_cost"].items():
         assert MODEL_COST[LLMModel(slug)] == credits, slug
     for slug, rate in snapshot["token_cost"].items():
+        if slug in _DISPLAY_ONLY_TOKEN_COST_SLUGS:
+            continue
         assert TOKEN_COST[LLMModel(slug)].model_dump() == rate, slug
     # Absence parity: the cutover itself must not silently move a model
-    # between flat-rate and token billing.
+    # between flat-rate and token billing. Presence is still pinned for the
+    # display-only slugs above — only their values are allowed to move.
     pre_cutover = set(snapshot["model_cost"])
     token_billed = {m.value for m in TOKEN_COST}
     assert token_billed & pre_cutover == set(snapshot["token_cost"])
@@ -126,12 +140,33 @@ def test_exactly_one_enabled_recommended_model():
 
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
-    and per-1M token rates — must match its authored catalog entry."""
+    and per-1M token rates — must match its authored catalog entry.
+
+    Pin updated for a live OpenRouter reprice ($1.70/$8.50 -> $3.00/$15.00
+    per Mtok, verified 2026-09-22)."""
     k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
         "input": 450.0,
         "output": 2250.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+
+
+def test_deepseek_chat_display_rate_tracks_openrouter():
+    """SECRT-2701 regression pin: deepseek-chat's shown price had drifted to
+    ~3x understated ($0.14/$0.28 displayed against a live $0.32/$0.89) and
+    nothing caught it. These figures are display only — open_router settles
+    COST_USD against x-total-cost — but a wrong number shown before the user
+    picks a model is still wrong. Re-derive with
+    ``poetry run python scripts/check_openrouter_prices.py`` and move both
+    sides together when OpenRouter reprices.
+    """
+    chat = LLMModel("deepseek/deepseek-chat")
+    assert TOKEN_COST[chat].model_dump() == {
+        "input": 48.0,  # $0.32/1M x 150 cr/$
+        "output": 133.5,  # $0.89/1M x 150 cr/$
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
@@ -283,16 +318,37 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
     assert qwen_max_entry.context_window == 262144
 
 
+def test_qwen3_8_flash_bills_at_authored_rates():
+    """Qwen 3.8 Flash (OpenRouter, live list price $0.15/$0.47 per 1M,
+    $0.016/1M cached input, $0.20/1M cache write) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    qwen_flash = LLMModel("qwen/qwen3.8-flash")
+    assert MODEL_COST[qwen_flash] == 1
+    assert TOKEN_COST[qwen_flash].model_dump() == {
+        "input": 22.5,
+        "output": 70.5,
+        "cache_read": 2.4,
+        "cache_creation": 30.0,
+    }
+    assert MODEL_METADATA[qwen_flash].max_output_tokens == 131072
+    qwen_flash_entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen3.8-flash")
+    assert qwen_flash_entry.price_tier == 1
+    assert qwen_flash_entry.context_window == 1000000
+    assert qwen_flash_entry.supports_tools is True
+    assert qwen_flash_entry.supports_json_output is True
+    assert qwen_flash_entry.supports_reasoning is True
+
+
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter, DeepSeek list price $0.15/$0.60 per
-    1M, $0.003/1M cached input) — flat tier and per-1M projections must
-    match the authored catalog entry."""
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.06/$0.32 per 1M,
+    $0.01/1M cached input as of 2026-09-23) — flat tier and per-1M
+    projections must match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 22.5,
-        "output": 90.0,
-        "cache_read": 0.45,
+        "input": 9.0,
+        "output": 48.0,
+        "cache_read": 1.5,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000
@@ -322,6 +378,108 @@ def test_fugu_ultra_v2_bills_at_authored_rates():
     assert fugu_entry.supports_tools is True
     assert fugu_entry.supports_json_output is True
     assert fugu_entry.supports_reasoning is True
+
+
+def test_mercury_2_5_bills_at_authored_rates():
+    """Inception Mercury 2.5 (OpenRouter, Inception list price $0.04/$0.15
+    per 1M, $0.004/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    mercury = LLMModel("inception/mercury-2.5")
+    assert MODEL_COST[mercury] == 1
+    assert TOKEN_COST[mercury].model_dump() == {
+        "input": 6.0,
+        "output": 22.5,
+        "cache_read": 0.6,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[mercury].max_output_tokens == 65536
+    mercury_entry = next(m for m in CATALOG.models if m.slug == "inception/mercury-2.5")
+    assert mercury_entry.price_tier == 1
+    assert mercury_entry.context_window == 260000
+    assert mercury_entry.supports_tools is True
+    assert mercury_entry.supports_json_output is True
+    assert mercury_entry.supports_reasoning is True
+    assert mercury_entry.supports_parallel_tool_calls is True
+
+
+def test_hy4_preview_bills_at_authored_rates():
+    """Tencent Hy4 Preview (OpenRouter, live list price $0.834/$2.501 per
+    1M, $0.042/1M cached input) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    hy4 = LLMModel("tencent/hy4-preview")
+    assert MODEL_COST[hy4] == 2
+    assert TOKEN_COST[hy4].model_dump() == {
+        "input": 125.1,
+        "output": 375.15,
+        "cache_read": 6.3,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[hy4].max_output_tokens == 64000
+    hy4_entry = next(m for m in CATALOG.models if m.slug == "tencent/hy4-preview")
+    assert hy4_entry.price_tier == 2
+    assert hy4_entry.context_window == 1048576
+    assert hy4_entry.supports_tools is True
+    assert hy4_entry.supports_reasoning is True
+
+
+def test_pareto_bills_at_authored_rates():
+    """Unbiased Pareto (OpenRouter, list price $2.50/$7.50 per 1M, $0.25/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    pareto = LLMModel("unbiased/pareto")
+    assert MODEL_COST[pareto] == 1
+    assert TOKEN_COST[pareto].model_dump() == {
+        "input": 375.0,
+        "output": 1125.0,
+        "cache_read": 37.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[pareto].max_output_tokens == 131072
+    pareto_entry = next(m for m in CATALOG.models if m.slug == "unbiased/pareto")
+    assert pareto_entry.price_tier == 2
+    assert pareto_entry.context_window == 262144
+    assert pareto_entry.supports_tools is True
+
+
+def test_ling_3_0_flash_vl_bills_at_authored_rates():
+    """InclusionAI Ling 3.0 Flash VL (OpenRouter, list price $0.06/$0.18
+    per 1M) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    ling = LLMModel("inclusionai/ling-3.0-flash-vl")
+    assert MODEL_COST[ling] == 1
+    assert TOKEN_COST[ling].model_dump() == {
+        "input": 9.0,
+        "output": 27.0,
+        "cache_read": 1.8,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[ling].max_output_tokens == 32768
+    ling_entry = next(
+        m for m in CATALOG.models if m.slug == "inclusionai/ling-3.0-flash-vl"
+    )
+    assert ling_entry.price_tier == 1
+    assert ling_entry.context_window == 131072
+    assert ling_entry.supports_tools is True
+    assert ling_entry.supports_json_output is True
+    assert ling_entry.supports_reasoning is True
+
+
+def test_gemma_4_31b_it_bills_at_authored_rates():
+    """Google Gemma 4 31B (OpenRouter live rate $0.09/$0.34 per 1M,
+    $0.05/1M cached input as of 2026-09-23) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    gemma = LLMModel("google/gemma-4-31b-it")
+    assert MODEL_COST[gemma] == 1
+    assert TOKEN_COST[gemma].model_dump() == {
+        "input": 13.5,
+        "output": 51.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[gemma].max_output_tokens == 16384
+    gemma_entry = next(m for m in CATALOG.models if m.slug == "google/gemma-4-31b-it")
+    assert gemma_entry.price_tier == 1
+    assert gemma_entry.context_window == 262144
 
 
 def test_provider_usd_prices_are_all_or_nothing():

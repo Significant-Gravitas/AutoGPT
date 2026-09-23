@@ -60,7 +60,17 @@ export function useRaisePage() {
   }
 
   function pickRole(roleId: string) {
-    update({ role: roleId, step: "name" });
+    update({ role: roleId, step: "jobTitle" });
+  }
+
+  function submitJobTitle(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    update({ jobTitle: trimmed, step: "name" });
+  }
+
+  function skipJobTitle() {
+    update({ jobTitle: "", step: "name" });
   }
 
   function submitName(value: string) {
@@ -158,6 +168,7 @@ export function useRaisePage() {
     step: draft.step,
     hasStarted: draft.hasStarted,
     role: draft.role,
+    jobTitle: draft.jobTitle,
     color: draft.color,
     avatarUrl: draft.avatarUrl,
     about: draft.about,
@@ -175,6 +186,8 @@ export function useRaisePage() {
     restart,
     revealStep: (beat: BeatKey) => progress.revealStep(beat),
     pickRole,
+    submitJobTitle,
+    skipJobTitle,
     submitName,
     pickAvatar,
     submitAbout,

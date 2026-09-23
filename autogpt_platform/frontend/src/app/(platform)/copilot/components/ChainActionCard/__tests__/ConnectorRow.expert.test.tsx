@@ -1,4 +1,5 @@
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { ExistingCredentialsOffer } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/helpers";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,7 +13,11 @@ import {
 import { useState, type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectorRow } from "../ConnectorRow";
-import type { ConnectorRow as Row } from "../helpers";
+import {
+  toConnectorRows,
+  type ConnectorRequest,
+  type ConnectorRow as Row,
+} from "../helpers";
 
 const mockGrant = vi.fn();
 // What the mocked dialog reports as the credential a sign-in produced.
@@ -192,6 +197,7 @@ function row(overrides: Partial<Row> = {}): Row {
     description: "Connect your GitHub account",
     schema: { credentials_provider: ["github"], credentials_types: ["oauth2"] },
     selected: undefined,
+    hasUnansweredTarget: false,
     select: vi.fn(),
     onConnected: vi.fn(),
     ...overrides,
@@ -215,6 +221,134 @@ function StatefulRow({ current }: { current: Row }) {
     />
   );
 }
+
+/** The chain as the card really builds it: one row per provider, answering
+ *  every request that asked for it, with the values fed back through state. */
+function Chain({
+  ids,
+  onWrite,
+}: {
+  ids: string[];
+  onWrite: (id: string, value?: CredentialsMetaInput) => void;
+}) {
+  const [values, setValues] = useState<
+    Record<string, CredentialsMetaInput | undefined>
+  >({});
+  const requests: ConnectorRequest[] = ids.map((id) => ({
+    id,
+    fields: [
+      [
+        "credentials",
+        {
+          credentials_provider: ["github"],
+          credentials_types: ["oauth2"],
+          expert_grant: { expertId: "expert-a", credentials: [] },
+        },
+      ],
+    ],
+    selected: { credentials: values[id] },
+    onChange: (key: string, value?: CredentialsMetaInput) => {
+      onWrite(id, value);
+      setValues((current) => ({ ...current, [id]: value }));
+    },
+    onConnected: vi.fn(),
+  }));
+  return (
+    <>
+      {toConnectorRows(requests, []).map((row) => (
+        <ConnectorRow key={row.provider} row={row} />
+      ))}
+    </>
+  );
+}
+
+describe("a second card asking for a provider the row already answered", () => {
+  it("gives the new card the credential the expert was granted", async () => {
+    // #14615, from the screenshot: the row shows the provider as granted from
+    // the first card, the second card's field stays empty, and the run it
+    // belongs to reports the credential as not shared with the expert.
+    serverGrants = ["spare-cred"];
+    const onWrite = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <Chain ids={["first"]} onWrite={onWrite} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(onWrite).toHaveBeenCalledWith(
+        "first",
+        expect.objectContaining({ id: "spare-cred" }),
+      ),
+    );
+
+    rerender(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <Chain ids={["first", "second"]} onWrite={onWrite} />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    await waitFor(() =>
+      expect(onWrite).toHaveBeenCalledWith(
+        "second",
+        expect.objectContaining({ id: "spare-cred" }),
+      ),
+    );
+  });
+
+  it("does not read Granted while the new card is unanswered", async () => {
+    serverGrants = ["spare-cred"];
+    const row = toConnectorRows(
+      [
+        {
+          id: "first",
+          fields: [
+            [
+              "credentials",
+              {
+                credentials_provider: ["github"],
+                credentials_types: ["oauth2"],
+                expert_grant: { expertId: "expert-a", credentials: [] },
+              },
+            ],
+          ],
+          selected: {
+            credentials: {
+              id: "spare-cred",
+              provider: "github",
+              type: "oauth2",
+              title: "GH spare",
+            },
+          },
+          onChange: vi.fn(),
+          onConnected: vi.fn(),
+        },
+        {
+          id: "second",
+          fields: [
+            [
+              "credentials",
+              {
+                credentials_provider: ["github"],
+                credentials_types: ["oauth2"],
+                expert_grant: { expertId: "expert-a", credentials: [] },
+              },
+            ],
+          ],
+          selected: {},
+          onChange: vi.fn(),
+          onConnected: vi.fn(),
+        },
+      ],
+      [],
+    )[0];
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={row} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByText("Granted")).toBeNull();
+  });
+});
 
 describe("ConnectorRow in an expert chat", () => {
   it("restores a persisted expert grant without triggering another run", async () => {

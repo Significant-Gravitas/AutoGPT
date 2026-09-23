@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CancelTrialDialog } from "./CancelTrialDialog";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
 import { TrialRejection } from "./TrialRejection";
+import { TrialTitle } from "./TrialTitle/TrialTitle";
 
 interface Props {
   trial: TrialStatusResponse;
@@ -17,10 +18,10 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
   const end = formatTrialEnd(trial.ends_at);
   return (
     <div className="flex flex-col gap-3">
-      <Text variant="h4">
+      <TrialTitle>
         {trial.active ? "Your trial" : "Your trial has ended"}
-      </Text>
-      <Text variant="body" unmask={false}>
+      </TrialTitle>
+      <Text variant="body" unmask={false} className="!text-zinc-800">
         {trial.status === "canceled"
           ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
           : trial.cancel_at_period_end
@@ -30,10 +31,14 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
               : "Paid access requires a successful payment. Review your payment method and plan below."}
       </Text>
       {trial.active ? (
-        <Text variant="small">Canceling ends trial access immediately.</Text>
+        <Text variant="small" className="!text-zinc-500">
+          Canceling ends trial access immediately.
+        </Text>
       ) : null}
       {trial.active && !trial.cancel_at_period_end ? (
-        <CancelTrialDialog isCanceling={isCanceling} onCancel={onCancel} />
+        <div className="mt-1">
+          <CancelTrialDialog isCanceling={isCanceling} onCancel={onCancel} />
+        </div>
       ) : null}
     </div>
   );

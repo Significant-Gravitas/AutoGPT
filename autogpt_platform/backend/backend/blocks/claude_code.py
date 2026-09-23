@@ -222,6 +222,7 @@ class ClaudeCodeBlock(Block):
     def __init__(self):
         super().__init__(
             id="4e34f4a5-9b89-4326-ba77-2dd6750b7194",
+            capability_kind="primitive",
             description=(
                 "Execute tasks using Claude Code in an E2B sandbox. "
                 "Claude Code can create files, install tools, run commands, "

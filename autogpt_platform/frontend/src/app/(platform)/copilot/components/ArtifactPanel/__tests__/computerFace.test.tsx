@@ -53,6 +53,78 @@ describe("copilot store: computer face", () => {
     );
   });
 
+  it("opening a document over the computer face turns the flag off with the mode", () => {
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore.getState().openArtifact(
+      {
+        id: "a1",
+        title: "notes.md",
+        sourceUrl: "/x",
+        origin: "assistant",
+      } as never,
+      { persist: false },
+    );
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.mode).toBe("artifact");
+    expect(panel.isComputerOpen).toBe(false);
+    // A desktop started now must not flip the panel over the document.
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    expect(useCopilotUIStore.getState().artifactPanel.mode).toBe("artifact");
+  });
+
+  it("the files tab takes the panel from the computer face instead of closing it", () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore.getState().toggleContextPanelTab("files");
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(true);
+    expect(panel.activeTab).toBe("files");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+    // The same click with the tab already showing closes, as before.
+    useCopilotUIStore.getState().toggleContextPanelTab("files");
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("the panel header's files button leaves the computer face", () => {
+    useCopilotUIStore.getState().openComputer();
+    useCopilotUIStore.getState().showFilesTab();
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.activeTab).toBe("files");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+  });
+
+  it("a card that remounts does not reopen a computer the user hid", () => {
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    useCopilotUIStore.getState().closeComputer();
+    // The streaming chain unmounts and remounts the desktop row.
+    useCopilotUIStore.getState().registerComputerStream(STREAM);
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.isOpen).toBe(false);
+    // A different box is news again.
+    useCopilotUIStore
+      .getState()
+      .registerComputerStream({ ...STREAM, sandbox_id: "sbx-2" });
+    expect(useCopilotUIStore.getState().artifactPanel.isComputerOpen).toBe(
+      true,
+    );
+  });
+
+  it("remembers a desktop without opening anything when asked not to show it", () => {
+    useCopilotUIStore
+      .getState()
+      .registerComputerStream(STREAM, { show: false });
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.computer?.sandbox_id).toBe("sbx-1");
+    expect(panel.isComputerOpen).toBe(false);
+    expect(panel.isOpen).toBe(false);
+    expect(panel.mode).toBe("artifact");
+  });
+
   it("closing the panel and entering a new chat both drop the computer face", () => {
     useCopilotUIStore.getState().registerComputerStream(STREAM);
     useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
@@ -97,8 +169,7 @@ describe("ComputerPanelContent", () => {
         owner_kind: "expert",
         owner_id: "exp-1",
         e2b_active: true,
-        shell: {
-          kind: "shell",
+        box: {
           sandbox_id: "sb",
           state: "paused",
           started_at: new Date("2026-09-05T12:00:00Z"),
@@ -107,7 +178,7 @@ describe("ComputerPanelContent", () => {
           template_id: "base",
           mounts_attached: true,
         },
-        desktop: null,
+        screen_on: false,
         mounts: {},
         workspace_path: "/home/user/workspace",
         shared_path: "/home/user/shared",
@@ -124,7 +195,7 @@ describe("ComputerPanelContent", () => {
     expect(await screen.findByText("Suspended")).toBeDefined();
     expect(screen.getByText(/expert's own computer/)).toBeDefined();
     await userEvent.click(
-      screen.getByRole("button", { name: "Start desktop" }),
+      screen.getByRole("button", { name: "Turn on screen" }),
     );
     await waitFor(
       () =>

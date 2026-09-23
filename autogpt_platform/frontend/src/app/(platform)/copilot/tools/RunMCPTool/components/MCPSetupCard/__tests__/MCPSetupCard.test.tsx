@@ -30,6 +30,10 @@ vi.mock(
 // Mock the OAuth popup utility
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
+  // Defaults to null — the browser-blocked case — so every cell that does not
+  // care about the sign-in window behaves as it did before the window was
+  // pre-opened at all.
+  preOpenOAuthPopup: vi.fn(() => null),
 }));
 
 // Mock the generated API functions
@@ -222,7 +226,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -234,7 +238,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
   });
 
   it("surfaces a rejected authorization response instead of offering a token", async () => {
@@ -292,12 +296,12 @@ describe("MCPSetupCard", () => {
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never)
       .mockResolvedValueOnce({
         status: 400,
-        data: { detail: "No OAuth support" },
+        data: { detail: { code: "no_oauth", message: "No OAuth support" } },
         headers: new Headers(),
       } as never);
 
@@ -342,7 +346,7 @@ describe("MCPSetupCard", () => {
     // First click: OAuth fails with 400 → shows manual token input
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -391,7 +395,7 @@ describe("MCPSetupCard", () => {
 
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -446,7 +450,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -497,7 +501,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -512,7 +516,7 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
-    expect(screen.getByText(/does not support OAuth/)).toBeDefined();
+    expect(screen.getByText(/No OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
@@ -531,7 +535,7 @@ describe("MCPSetupCard", () => {
     );
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth support" },
+      data: { detail: { code: "no_oauth", message: "No OAuth support" } },
       headers: new Headers(),
     } as never);
 
@@ -578,12 +582,85 @@ describe("MCPSetupCard", () => {
     // Drain the in-flight promise so React doesn't warn on unmount.
     resolveLogin?.({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     });
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
+  });
+
+  // #14532: the sign-in window has to be opened inside the tap, before the
+  // initiate request is awaited — iOS Safari discards the gesture context at
+  // the first async break and then blocks window.open() outright.
+  it("opens the sign-in window before the initiate await and hands it over", async () => {
+    const callOrder: string[] = [];
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { openOAuthPopup, preOpenOAuthPopup } = await import(
+      "@/lib/oauth-popup"
+    );
+    vi.mocked(preOpenOAuthPopup).mockClear();
+    vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
+      callOrder.push("preOpen");
+      return fakeWindow as unknown as Window;
+    });
+    vi.mocked(openOAuthPopup).mockReturnValue({
+      promise: new Promise(() => {}),
+      cleanup: { abort: vi.fn() },
+    } as never);
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
+      async () => {
+        callOrder.push("initiate");
+        return {
+          status: 200,
+          data: { login_url: "https://login.example.com", state_token: "tok" },
+          headers: new Headers(),
+        } as never;
+      },
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
+    // The ordering IS the fix — asserting only that it was called would pass
+    // on a version that called it after the await, which is the bug.
+    expect(callOrder).toEqual(["preOpen", "initiate"]);
+    expect(vi.mocked(openOAuthPopup)).toHaveBeenCalledWith(
+      "https://login.example.com",
+      expect.objectContaining({ preOpenedWindow: fakeWindow }),
+    );
+    expect(fakeWindow.close).not.toHaveBeenCalled();
+  });
+
+  it("closes the sign-in window when the server has no OAuth", async () => {
+    const fakeWindow = { closed: false, close: vi.fn() };
+    const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(preOpenOAuthPopup).mockReturnValue(
+      fakeWindow as unknown as Window,
+    );
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    // openOAuthPopup never runs on this path, so nothing else can reach the
+    // about:blank window it left behind.
+    await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
   });
 
   it("shows timeout-specific error message when OAuth popup times out", async () => {
@@ -700,7 +777,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -794,7 +871,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
@@ -829,7 +906,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 
@@ -864,7 +941,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
     // Never settles: pins the in-flight state.
@@ -901,7 +978,7 @@ describe("MCPSetupCard", () => {
     } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
       status: 400,
-      data: { detail: "No OAuth" },
+      data: { detail: { code: "no_oauth", message: "No OAuth" } },
       headers: new Headers(),
     } as never);
 

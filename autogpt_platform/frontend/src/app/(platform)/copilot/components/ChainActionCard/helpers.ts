@@ -4,15 +4,18 @@ import { formatProviderName } from "@/components/contextual/IntegrationsPanel/he
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type {
+  ClarifyingQuestion,
+  QuestionAnswer,
+} from "../../tools/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
  *  keeps the answers so it can still build its own message. */
 export interface QuestionRequest {
   id: string;
   questions: ClarifyingQuestion[];
-  answers: Record<string, string>;
-  onAnswer: (keyword: string, value: string) => void;
+  answers: Record<string, QuestionAnswer>;
+  onAnswer: (keyword: string, value: QuestionAnswer) => void;
   onSkip: () => void;
 }
 
@@ -81,6 +84,10 @@ export interface ConnectorRow {
    *  expert has been granted it, so the connect dialog offers the account's
    *  existing credentials first and a freshly connected one is granted. */
   expertGrant?: ExpertGrant;
+  /** A merged request whose own field does not hold `selected`. The row
+   *  reports the FIRST target's value, so without this a second card asking
+   *  for the same provider reads as answered while its field is still empty. */
+  hasUnansweredTarget: boolean;
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -140,6 +147,9 @@ export function toConnectorRows(
     schema: row.schema,
     selected: row.selected,
     expertGrant: row.expertGrant,
+    hasUnansweredTarget: row.targets.some(
+      ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
+    ),
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
     onConnected: () =>

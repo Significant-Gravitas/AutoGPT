@@ -27,13 +27,30 @@ repos:
         files: ^autogpt_platform/
         # The style eval's baseline is generated and holds sha256 content
         # hashes of the assembled prompts, which read as high-entropy hex.
-        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template)|copilot/eval/style/baseline\.json)$
+        # .env.default files are deliberately NOT excluded: they are public, so
+        # a working value committed to one is a published secret (SECRT-2611).
+        exclude: (pnpm-lock\.yaml|copilot/eval/style/baseline\.json)$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
     hooks:
       - id: gitleaks
         name: Detect secrets (gitleaks)
+
+  - repo: local
+    hooks:
+      - id: check-env-defaults-blank
+        name: Check .env.default ships no working secrets
+        description: >-
+          .env.default is public, so a working value committed to one is a
+          published secret. Entropy scanners miss a freshly generated key, so
+          the retired settings are asserted blank directly (SECRT-2611).
+        entry: >-
+          python3 autogpt_platform/single-container/runtime_config.py
+          check-env-defaults --root autogpt_platform
+        language: system
+        files: ^autogpt_platform/(backend|frontend)/\.env\.default$
+        pass_filenames: false
 
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.

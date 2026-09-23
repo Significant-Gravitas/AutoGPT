@@ -15,7 +15,9 @@ import {
   getGetV1ListCredentialsMockHandler401,
   getGetV1ListProvidersMockHandler,
   getPostV1CreateCredentialsMockHandler,
+  getPostV1InitiateDeviceCodeOauthFlowMockHandler200,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getGetV2ListChatConnectionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 
@@ -55,7 +57,7 @@ describe("SettingsIntegrationsPage — list", () => {
     render(<SettingsIntegrationsPage />);
 
     expect(
-      await screen.findByRole("heading", { name: /integrations/i }),
+      await screen.findByRole("heading", { name: /^integrations$/i }),
     ).toBeDefined();
     const connectButtons = screen.getAllByRole("button", {
       name: /connect.*service/i,
@@ -285,6 +287,83 @@ describe("SettingsIntegrationsPage — search", () => {
 });
 
 describe("SettingsIntegrationsPage — connect dialog", () => {
+  test("starts Microsoft device sign-in from the AI subscriptions logo card", async () => {
+    server.use(
+      getGetV2ListChatConnectionsMockHandler200({ offers: [] }),
+      getGetV1ListCredentialsMockHandler([]),
+      getPostV1InitiateDeviceCodeOauthFlowMockHandler200({
+        state_token: "test-state",
+        user_code: "TEST-CODE",
+        verification_url: "https://microsoft.com/devicelogin",
+        verification_url_complete: null,
+        expires_in: 900,
+        interval: 5,
+      }),
+    );
+    render(<SettingsIntegrationsPage />);
+
+    const card = await screen.findByRole("button", {
+      name: "Microsoft 365 Copilot",
+    });
+    expect(card.querySelector("img")?.getAttribute("src")).toContain(
+      "/integrations/microsoft.webp",
+    );
+    fireEvent.click(card);
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Connect Microsoft 365 Copilot",
+      }),
+    );
+    expect(await within(dialog).findByText("TEST-CODE")).toBeDefined();
+    expect(
+      within(dialog)
+        .getByRole("link", { name: "Open Microsoft 365 Copilot" })
+        .getAttribute("href"),
+    ).toBe("https://microsoft.com/devicelogin");
+  });
+
+  test("uses the Microsoft logo in the service catalog and sign-in details", async () => {
+    server.use(
+      getGetV2ListChatConnectionsMockHandler200({ offers: [] }),
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "microsoft_365_copilot",
+          description: "Use your work or school Microsoft 365 Copilot plan",
+          supported_auth_types: ["device_code"],
+        }),
+      ]),
+    );
+    render(<SettingsIntegrationsPage />);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: /connect.*service/i }))[0],
+    );
+    const dialog = await screen.findByRole("dialog");
+    const provider = await within(dialog).findByRole("button", {
+      name: /Microsoft 365 Copilot/,
+    });
+    expect(provider.querySelector("img")?.getAttribute("src")).toContain(
+      "/integrations/microsoft.webp",
+    );
+    fireEvent.click(provider);
+    expect(
+      (
+        await within(dialog).findByAltText("Microsoft 365 Copilot logo")
+      ).getAttribute("src"),
+    ).toContain("/integrations/microsoft.webp");
+    expect(
+      within(dialog).getByRole("button", {
+        name: "Connect Microsoft 365 Copilot",
+      }),
+    ).toBeDefined();
+  });
+
   test("Connect Service opens a dialog with the provider list", async () => {
     server.use(
       getGetV1ListCredentialsMockHandler([]),

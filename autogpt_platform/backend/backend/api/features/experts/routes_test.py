@@ -200,7 +200,7 @@ def test_list_expert_templates_links_live_hub_skills(
         {
             "id": "listing-1",
             "slug": "brand-voice-guide",
-            "name": "brand-voice-guide",
+            "title": "Brand voice guide",
             "description": "Keeps every draft on-brand.",
         }
     ]
@@ -249,6 +249,7 @@ def _mock_templates_with_hub_skill(
             "listing-1": MarketplaceSkill(
                 slug="brand-voice-guide",
                 name="brand-voice-guide",
+                title="Brand voice guide",
                 description="Keeps every draft on-brand.",
                 categories=[],
                 required_providers=[],
@@ -372,6 +373,7 @@ def test_create_raised_expert_returns_expert(
         "Otto",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -408,6 +410,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         json={
             "name": "Nova",
             "role": "Research Assistant",
+            "job_title": "  Market Research Analyst  ",
             "voice_preferences": "Warm and detailed.",
             "weekly_budget": 250,
             "attachments": [
@@ -428,6 +431,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         "Nova",
         "Research Assistant",
         "Warm and detailed.",
+        job_title="Market Research Analyst",
         avatar_url=None,
         color=None,
         about=None,
@@ -441,6 +445,28 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
     )
+
+
+def test_create_raised_expert_trims_job_title_before_length_check(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+    job_title = "j" * 100
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "job_title": f"  {job_title}  "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["job_title"] == job_title
 
 
 def test_create_raised_expert_forwards_about(
@@ -467,6 +493,7 @@ def test_create_raised_expert_forwards_about(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about="Always cites a source.",
@@ -518,6 +545,7 @@ def test_create_raised_expert_reports_attachment_installation_failure(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -581,6 +609,7 @@ def test_create_raised_expert_passes_avatar_and_color(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         about=None,
@@ -656,6 +685,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
 
     assert response.status_code == 200
     assert mock_create.await_args.kwargs == {
+        "job_title": None,
         "avatar_url": None,
         "color": None,
         "about": None,
@@ -861,6 +891,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "avatar_url": None,
             "color": "orange-500",
             "role": "Marketing Specialist",
+            "job_title": None,
             "is_archived": True,
         }
     ]

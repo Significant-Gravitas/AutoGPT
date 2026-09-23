@@ -400,7 +400,7 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Agent '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
-                        "setup_agent_webhook_trigger using the trigger block's "
+                        "tool:setup_agent_webhook_trigger using the trigger block's "
                         "config (see trigger_info.config_schema). For provider "
                         "webhooks (e.g. GitHub), ask the user which connected "
                         "account to register the webhook under — never auto-pick."
@@ -670,7 +670,7 @@ class RunAgentTool(BaseTool):
             (graph_credentials, error_response) — error_response is None when ready.
         """
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph, expert_id
+            user_id, graph, expert_id, session_id=session_id
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
@@ -867,8 +867,8 @@ class RunAgentTool(BaseTool):
                 message=(
                     f"Preset '{params.preset_id}' is a webhook trigger — it runs "
                     "automatically when its event fires, so it can't be run on "
-                    "demand. Use update_preset to reconfigure or pause it "
-                    "(is_active=false), or delete_preset to remove it."
+                    "demand. Use tool:update_preset to reconfigure or pause it "
+                    "(is_active=false), or tool:delete_preset to remove it."
                 ),
                 error="preset_is_webhook_trigger",
                 session_id=session_id,
@@ -1157,7 +1157,7 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
                         f"The user can approve or reject inline. After approval, "
-                        f"the execution resumes automatically. Use view_agent_output "
+                        f"the execution resumes automatically. Use tool:view_agent_output "
                         f"with execution_id='{execution.id}' to check the result."
                     ),
                     session_id=session_id,
@@ -1178,7 +1178,7 @@ class RunAgentTool(BaseTool):
                         f"Agent '{library_agent.name}' is still {status} after "
                         f"{wait_for_result}s. Check results later at "
                         f"{library_agent_link}. "
-                        f"Use view_agent_output with wait_if_running to check again."
+                        f"Use tool:view_agent_output with wait_if_running to check again."
                     ),
                     session_id=session_id,
                     execution_id=execution.id,
@@ -1219,6 +1219,7 @@ class RunAgentTool(BaseTool):
         session_id = session.session_id
 
         # Validate schedule params
+        schedule_name = schedule_name.strip()
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",

@@ -2,6 +2,8 @@
 
 import importlib
 
+import pytest
+
 from backend.copilot import prompting
 
 
@@ -62,31 +64,34 @@ class TestCredentialsSurfacingGuardrails:
 
 
 class TestToolDiscoveryPriorityAntiPattern:
-    """The Tool Discovery Priority section must forbid claiming a capability
-    gap without calling ``find_block`` first — this is the regression the
+    """The Discovery section must forbid claiming a capability gap without
+    calling ``find_capability`` first — this is the regression the
     LinkedIn-skip incident on dev (May 2026) exposed.
     """
 
-    def test_supplement_contains_find_block_mandatory_language(self):
+    def test_supplement_contains_find_capability_mandatory_language(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The header must signal that find_block is mandatory before any
-        # "no integration" reply.
-        assert "find_block` is MANDATORY" in result
+        # The header must signal that find_capability is mandatory before
+        # any "no integration" reply.
+        assert "find_capability` is MANDATORY" in result
 
     def test_supplement_lists_the_forbidden_phrases(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
         # The anti-pattern section must explicitly enumerate the
         # phrases the model emitted in the regression so the model
         # can pattern-match on its own draft and reject it.
-        assert "We don't have a native X integration yet." in result
-        assert "There's no block for X." in result
+        assert "we don't have an X integration" in result
+        assert "there's no block for X" in result
 
-    def test_supplement_includes_correct_flow_template(self):
+    def test_supplement_includes_the_flow_and_no_legacy_names(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        # The 3-step correct-flow block must be present so the model
-        # has a concrete template to follow, not just a prohibition.
-        assert "Correct flow" in result
-        assert 'find_block(query="<service> <action>")' in result
+        # The numbered flow gives the model a concrete template to follow,
+        # not just a prohibition; the retired tools must not be named.
+        assert 'find_capability(query="<service>' in result
+        assert "describe_capability(id)" in result
+        assert "resume_capability(review_id)" in result
+        for legacy in ("find_block", "run_block", "run_mcp_tool", "get_mcp_guide"):
+            assert legacy not in result, legacy
 
 
 class TestGraphitiMemoryScope:
@@ -197,17 +202,32 @@ class TestSchedulingGuidance:
     told not to promise monitoring it never scheduled.
     """
 
-    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+    def test_supplement_names_the_building_gate_before_it_refuses(self):
+        # The gate's refusal used to be the only text naming the tool, so the
+        # model met it by being refused and then stalled retrying the entry.
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `schedule_followup`" in result
-        assert "ONLY way to schedule a future copilot turn" in result
+        assert "call `enter_agent_building_mode` first" in result
+        assert "tool:enter_agent_building_mode" not in result
+
+    def test_supplement_names_schedule_followup_by_capability_id(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Scheduling future work — use `tool:schedule_followup`" in result
+        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+
+    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
+        # Routines ride the flag-gated ``expert_resources`` group, so this
+        # ungated supplement points at the block that appears alongside them
+        # rather than at a tool the session may not be able to call.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "set up a routine for it rather than a" in result
+        assert "schedule_routine" not in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not
         # become a recurring copilot turn that re-decides what to run.
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "use `run_agent` with `schedule_name` +" in result
-        assert "use `setup_agent_webhook_trigger`" in result
+        assert "use `tool:setup_agent_webhook_trigger`" in result
 
     def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -228,3 +248,10 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestMathGuidance:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "`$…$` inline, `$$…$$` for display" in result

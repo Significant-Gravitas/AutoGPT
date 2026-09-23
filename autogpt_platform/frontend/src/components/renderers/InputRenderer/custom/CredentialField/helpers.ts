@@ -184,11 +184,6 @@ export const getCredentialProviderFromSchema = (
     return discriminatedProvider;
   }
 
-  // Single-provider fields used to return their one provider unconditionally,
-  // ignoring the discriminator. That is wrong when a field declares a mapping:
-  // an unmapped value means "this choice needs no credential" — Otto's
-  // `platform` transport, which is deliberately absent from the mapping — and
-  // the input must hide rather than ask for a credential nothing will use.
   if (discriminator && discriminatorMapping) {
     return discriminatedProvider ?? null;
   }
@@ -196,12 +191,6 @@ export const getCredentialProviderFromSchema = (
   return providers[0];
 };
 
-/**
- * True when the field has no usable credential route for the current state.
- *
- * An unmapped value needs no credential. An unset discriminator also has no
- * actionable control unless a saved provider identifies a legacy selection.
- */
 export const credentialNotApplicable = (
   formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
@@ -213,5 +202,20 @@ export const credentialNotApplicable = (
   const value = getDiscriminatorValue(formData, schema);
   if (value === undefined || value === null) return !selectedProvider;
 
-  return !Object.hasOwn(mapping, String(value));
+  return (
+    schema.credential_free_discriminator_values?.some(
+      (freeValue) => String(freeValue) === value,
+    ) ?? false
+  );
 };
+
+export function credentialRequiredForSelection(
+  formData: Record<string, unknown>,
+  schema: BlockIOCredentialsSubSchema,
+): boolean {
+  return (
+    schema.credential_free_discriminator_values !== undefined &&
+    getDiscriminatorValue(formData, schema) !== undefined &&
+    !credentialNotApplicable(formData, schema)
+  );
+}

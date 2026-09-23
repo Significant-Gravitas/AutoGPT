@@ -9,7 +9,7 @@ import { findSavedUserCredentialByProviderAndType } from "@/components/contextua
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ConnectorRow } from "./helpers";
 
 export function useExpertCredentialSelection(
@@ -80,25 +80,38 @@ export function useExpertCredentialSelection(
     hasGrant && !grants.isError && grants.data && keepsSelection,
   );
 
+  // `select` writes every merged target at once, so the effect has to run
+  // again when a second card joins the row: the row reports the first
+  // target's value, so it still reads as settled while the new field is
+  // empty, and the run that field belongs to is blocked on a credential the
+  // expert already holds.
+  const { hasUnansweredTarget } = row;
+  const rowRef = useRef(row);
+  rowRef.current = row;
+
   useEffect(() => {
     if (!hasGrant || !grants.data || !providers || grants.isFetching) return;
-    if (keepsSelection || selectedID === hydrated?.id) return;
-    row.select(
-      hydrated
-        ? {
-            id: hydrated.id,
-            provider: row.provider,
-            type: hydrated.type as CredentialsMetaInput["type"],
-            title: hydrated.title ?? undefined,
-          }
-        : undefined,
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- row is rebuilt each render by the card; track the fields it reads
+    const settled = keepsSelection || selectedID === hydrated?.id;
+    if (settled && !hasUnansweredTarget) return;
+    const current = rowRef.current;
+    // A kept selection is written as-is: `hydrated` is undefined precisely
+    // when the current one stays, so writing that would clear the row.
+    const value = keepsSelection
+      ? current.selected
+      : hydrated && {
+          id: hydrated.id,
+          provider: current.provider,
+          type: hydrated.type as CredentialsMetaInput["type"],
+          title: hydrated.title ?? undefined,
+        };
+    current.select(value ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the row is read through rowRef; these are the values that decide whether to write
   }, [
     hasGrant,
     selectedID,
     hydrated?.id,
     keepsSelection,
+    hasUnansweredTarget,
     grants.data,
     grants.isFetching,
     providers,

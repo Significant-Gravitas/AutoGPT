@@ -17,6 +17,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { analytics } from "@/services/analytics";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -179,6 +180,9 @@ export function useInstallWorkflowPicker({
     }
     try {
       await installWorkflow({ expertId: expert.id, data });
+      analytics.sendDatafastEvent("workflow_installed_on_expert", {
+        expert_id: expert.id,
+      });
       // Both: the picker is opened from the team list and from one expert's
       // own page, whose workflow section reads the single-expert query.
       await Promise.all([

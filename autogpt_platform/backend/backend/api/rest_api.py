@@ -32,6 +32,7 @@ import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.billing.credits.routes as credits_routes
 import backend.api.features.billing.subscriptions.routes as subscriptions_routes
+import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -51,6 +52,7 @@ import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding.routes as onboarding_routes
 import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
@@ -67,7 +69,7 @@ import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
-import backend.api.features.v1
+import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -391,7 +393,6 @@ app.add_exception_handler(
 app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
-app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
@@ -429,6 +430,21 @@ app.include_router(
 app.include_router(
     subscriptions_routes.router,
     tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    blocks_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    onboarding_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    user_routes.router,
+    tags=["v1"],
     prefix="/api",
 )
 app.include_router(

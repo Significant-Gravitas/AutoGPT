@@ -219,6 +219,23 @@ describe("WorkspaceFileCards", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("steps aside while the computer face covers the panel", () => {
+    useCopilotUIStore.setState({
+      artifactPanel: {
+        isOpen: true,
+        activeArtifact: null,
+        history: [],
+        activeTab: "files",
+        lastArtifact: null,
+        mode: "computer",
+        computer: null,
+        isComputerOpen: true,
+      },
+    });
+    const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
+    expect(container.textContent).toBe("");
+  });
+
   it("requests the file list only while the card is open", async () => {
     let listRequests = 0;
     server.use(

@@ -53,7 +53,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -339,7 +339,9 @@ class ChatConfig(BaseSettings):
     )
     langfuse_prompt_cache_ttl: int = Field(
         default=300,
-        description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
+        ge=0,
+        description="How long a process may serve a cached Langfuse prompt before "
+        "re-fetching it (0 to disable caching)",
     )
 
     # Rate limiting — cost-based limits per day and per week, stored in
@@ -701,7 +703,10 @@ class ChatConfig(BaseSettings):
         "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
         "no display started), built on the team automatically the first time "
         "it is needed; see backend.util.e2b_template. Any other value is used "
-        "as-is and must already exist on the team.",
+        "as-is and must already exist on the team, and it must carry what the "
+        "desktop needs (Xvfb, XFCE, x11vnc and noVNC, as E2B's desktop image "
+        "does): the screen is turned on inside this same box, so a plain "
+        "image such as 'base' makes every start_desktop fail.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries
@@ -712,21 +717,6 @@ class ChatConfig(BaseSettings):
     e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
-    )
-    e2b_desktop_template: str = Field(
-        default="desktop",
-        description="E2B template for the on-demand start_desktop sandbox. E2B's "
-        "public 'desktop' is 8 vCPU / 8 GiB (~$0.53/h running); build a smaller "
-        "one on the team with `poetry run build-desktop-template` "
-        "(agpt-desktop-1x1: 1 vCPU / 1 GiB, ~$0.07/h) and set this to its alias.",
-    )
-    e2b_desktop_timeout: int = Field(
-        default=900,
-        description="Running-time timeout (seconds) for the on-demand desktop "
-        "sandbox. Unlike the bash sandbox it is NOT paused at turn end — the "
-        "user may still be watching the stream — so this is the only thing "
-        "stopping the meter; it auto-pauses (free) when the timeout lapses "
-        "and resumes on the next start_desktop call.",
     )
 
     @property
@@ -1140,7 +1130,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-4-8`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-5`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1149,7 +1139,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-5`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.

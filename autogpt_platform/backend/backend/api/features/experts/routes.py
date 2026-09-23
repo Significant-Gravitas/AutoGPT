@@ -42,7 +42,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig
-from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandboxes
+from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.util import product_analytics
 from backend.util.exceptions import NotFoundError
 
@@ -103,6 +103,7 @@ class AssignPodRequest(BaseModel):
 class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
+    job_title: str | None = Field(default=None, max_length=100)
     avatar_url: str | None = Field(
         default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
     )
@@ -134,11 +135,11 @@ class CreateRaisedExpertRequest(BaseModel):
     def check_avatar_url(cls, value: str | None) -> str | None:
         return validate_avatar_url(value)
 
-    @field_validator("color", "about")
+    @field_validator("job_title", "color", "about", mode="before")
     @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def strip_optional_text(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         return value.strip() or None
 
 
@@ -221,6 +222,7 @@ async def create_raised_expert(
             request.name,
             request.role,
             request.voice_preferences,
+            job_title=request.job_title,
             avatar_url=request.avatar_url,
             color=request.color,
             about=request.about,
@@ -379,7 +381,9 @@ async def get_expert_computer(
     expert_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ComputerInfo:
-    """The expert's own computer: its shell and desktop boxes as E2B lists them.
+    """The expert's own computer: its box as E2B lists it, and whether its
+    screen is on. E2B knows nothing about the screen; that flag is ours,
+    kept beside the box id, because asking the box would wake it.
 
     Listing never wakes a paused box, so the Computer tab can refresh freely.
     """
@@ -674,10 +678,10 @@ async def archive_expert(
     # deliberately kept — files outlive the machine.
     if api_key := ChatConfig().active_e2b_api_key:
         try:
-            await kill_expert_sandboxes(expert_id, api_key)
+            await kill_expert_sandbox(expert_id, api_key)
         except Exception:
             logger.warning(
-                "[E2B] Failed to kill sandboxes for archived expert %s",
+                "[E2B] Failed to kill the sandbox for archived expert %s",
                 expert_id[:12],
                 exc_info=True,
             )

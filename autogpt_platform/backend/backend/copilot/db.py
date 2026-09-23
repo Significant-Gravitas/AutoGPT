@@ -1370,6 +1370,38 @@ async def list_chat_sessions_by_status(
     return [ChatSessionInfo.from_db(r) for r in rows]
 
 
+async def list_recent_chat_sessions(
+    *,
+    user_id: str,
+    expert_id: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    skip: int = 0,
+) -> list[ChatSessionInfo]:
+    """The user's most recently active sessions, newest first.
+
+    Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
+    another user's session is invisible rather than merely unlisted. The
+    expert and status filters are applied in the query too, so ``limit``
+    bounds the matches rather than the rows scanned — filtering them in
+    Python would silently drop matches older than the window. ``skip`` pages
+    the caller past rows it has already looked at, for the one filter that
+    cannot move into the query (``task`` reads the metadata JSON).
+    """
+    where: ChatSessionWhereInput = {"userId": user_id}
+    if expert_id:
+        where["expertId"] = expert_id
+    if status:
+        where["chatStatus"] = status
+    rows = await PrismaChatSession.prisma().find_many(
+        where=where,
+        order={"updatedAt": "desc"},
+        take=limit,
+        skip=skip,
+    )
+    return [ChatSessionInfo.from_db(r) for r in rows]
+
+
 async def get_latest_user_message_in_session(
     session_id: str,
 ) -> ChatMessage | None:
