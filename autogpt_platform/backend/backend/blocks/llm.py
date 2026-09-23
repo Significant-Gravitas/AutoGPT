@@ -23,6 +23,7 @@ from pydantic_core import PydanticUndefined
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -562,6 +563,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ),
                 "get_collision_proof_output_tag_id": lambda *args: "test123456",
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
@@ -1066,6 +1068,7 @@ class AITextGeneratorBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
@@ -1180,6 +1183,7 @@ class AITextSummarizerBlock(AIBlockBase):
                     else {"summary": "Summary of a chunk of text"}
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1419,6 +1423,7 @@ class AIConversationBlock(AIBlockBase):
                     response="The 2020 World Series was played at Globe Life Field in Arlington, Texas."
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
@@ -1576,6 +1581,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     ]
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(

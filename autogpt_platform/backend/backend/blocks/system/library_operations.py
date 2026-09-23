@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -86,6 +87,7 @@ class AddToLibraryFromStoreBlock(Block):
                     agent_name="Test Agent",
                 )
             },
+            effect=BlockEffect.PLATFORM,
         )
 
     async def run(
@@ -223,6 +225,7 @@ class ListLibraryAgentsBlock(Block):
                     "total_pages": 1,
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -292,6 +293,7 @@ class AIShortformVideoCreatorBlock(Block):
                 "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -482,6 +484,7 @@ class AIAdMakerVideoCreatorBlock(Block):
                 "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
@@ -677,6 +680,7 @@ class AIScreenshotToVideoAdBlock(Block):
                 "wait_for_video": lambda *args, **kwargs: "data:video/mp4;base64,AAAA",
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.WORKSPACE,
         )
 
     async def run(
