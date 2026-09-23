@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 import uuid
 
 import pytest
@@ -114,8 +115,6 @@ def provider(redis, *, ttl=600) -> cache.RedisFlagDefinitionCache:
 
 def store_definitions(redis, *, age_seconds=0.0, definitions=None):
     """Write the shared copy as the refresher would have, `age_seconds` ago."""
-    import time
-
     redis.set(
         cache._DATA_KEY,
         json.dumps(
@@ -257,6 +256,61 @@ class TestFailureModes:
         redis.advance(601)
 
         assert p.get_flag_definitions() is None
+
+
+class TestFailFastRedis:
+    """An optional cache must not hold the SDK's poller thread on a dead Redis."""
+
+    def test_it_connects_once_with_short_timeouts(self, mocker):
+        connect = mocker.patch.object(
+            cache, "connect_once", side_effect=ConnectionError("redis is down")
+        )
+        p = cache.RedisFlagDefinitionCache(refresh_interval=REFRESH, ttl=600)
+
+        assert p.should_fetch_flag_definitions() is True
+        connect.assert_called_once_with(timeout=cache._REDIS_TIMEOUT_SECONDS)
+
+    def test_connect_once_gives_up_at_once(self, monkeypatch):
+        monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+        monkeypatch.setattr(redis_client, "PORT", 1)
+        started = time.monotonic()
+
+        with pytest.raises(Exception):
+            redis_client.connect_once(timeout=0.5)
+        assert time.monotonic() - started < 5
+
+    def test_a_failure_drops_the_client_for_a_fresh_one(self, redis):
+        connects = []
+        p = cache.RedisFlagDefinitionCache(
+            refresh_interval=REFRESH,
+            ttl=600,
+            redis_factory=lambda: connects.append(1) or redis,
+        )
+        p.should_fetch_flag_definitions()
+        p.should_fetch_flag_definitions()
+        assert len(connects) == 1
+
+        redis.fail = True
+        p.should_fetch_flag_definitions()
+        redis.fail = False
+        p.should_fetch_flag_definitions()
+
+        assert len(connects) == 2
+
+    def test_shutdown_never_connects(self, redis):
+        connects = []
+        p = cache.RedisFlagDefinitionCache(
+            refresh_interval=REFRESH,
+            ttl=600,
+            redis_factory=lambda: connects.append(1) or redis,
+        )
+        p.should_fetch_flag_definitions()
+        redis.fail = True
+        p.get_flag_definitions()
+
+        p.shutdown()
+
+        assert len(connects) == 1
 
 
 class TestMemoryCache:
@@ -408,6 +462,24 @@ class TestAgainstTheRealSDK:
         leader._load_feature_flags()
 
         fetches.assert_called_once()
+        shared = provider(redis).get_flag_definitions()
+        assert shared is not None
+        assert shared["flags"] == DEFINITIONS["flags"]
+
+    def test_unchanged_definitions_keep_the_shared_copy_alive(self, redis, fetches):
+        unchanged = GetResponse(data=None, etag="e1", not_modified=True)
+        fetches.side_effect = [
+            GetResponse(data=DEFINITIONS, etag="e1"),
+            unchanged,
+            unchanged,
+        ]
+        leader = self.client(provider(redis, ttl=LOCK_TTL))
+
+        for _ in range(3):
+            leader._load_feature_flags()
+            redis.advance(REFRESH + 1)
+
+        assert fetches.call_count == 3
         shared = provider(redis).get_flag_definitions()
         assert shared is not None
         assert shared["flags"] == DEFINITIONS["flags"]
