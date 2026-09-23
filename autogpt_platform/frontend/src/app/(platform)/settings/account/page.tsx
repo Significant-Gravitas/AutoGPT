@@ -9,7 +9,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountCard } from "./components/AccountCard/AccountCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
-import { PrivacyCard } from "./components/PrivacyCard/PrivacyCard";
+import { CookieSettingsCard } from "./components/CookieSettingsCard/CookieSettingsCard";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
 import { TimezoneCard } from "./components/TimezoneCard/TimezoneCard";
@@ -79,7 +79,7 @@ export default function SettingsPreferencesPage() {
         />
       ) : null}
 
-      {isConsentManagerConfigured() ? <PrivacyCard index={3} /> : null}
+      {isConsentManagerConfigured() ? <CookieSettingsCard index={3} /> : null}
 
       <SaveBar
         visible={dirty}
