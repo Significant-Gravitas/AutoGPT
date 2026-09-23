@@ -62,6 +62,19 @@ describe("escapeCurrencyAmounts", () => {
     expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
   });
 
+  it.each([
+    ["a thematic break", "-   item\n    ***\n        echo $5 and $10"],
+    ["a tab-indented thematic break", "-\titem\n\t***\n\t    echo $5 and $10"],
+    [
+      "a setext heading",
+      "-   item\n    para\n    ---\n        echo $5 and $10",
+    ],
+    ["an ATX heading", "-   item\n    # Head\n        echo $5 and $10"],
+    ["a fenced block", "-   item\n\n    ```\n    echo $5 and $10\n    ```"],
+  ])("reads %s indented inside a list item as a block", (_, markdown) => {
+    expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
+  });
+
   it("does not open a fence indented by a tab, which is indented code", () => {
     expect(escapeCurrencyAmounts("\t```\nprose $5 and $10")).toBe(
       "\t```\nprose \\$5 and \\$10",

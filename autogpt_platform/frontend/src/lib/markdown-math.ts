@@ -1,9 +1,9 @@
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE_RE = /^(`{3,}|~{3,})/;
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
 const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
-const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
-const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
-const SETEXT_UNDERLINE_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
+const HEADING_RE = /^#{1,6}(?:\s|$)/;
+const THEMATIC_BREAK_RE = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const SETEXT_UNDERLINE_RE = /^(?:=+|-+)[ \t]*$/;
 
 // With single-dollar math on, remark-math reads "$5 and $10" as one formula. A "$"
 // before a digit is therefore currency unless the span up to the next "$" on that
@@ -18,7 +18,11 @@ export function escapeCurrencyAmounts(markdown: string): string {
   return markdown
     .split("\n")
     .map((line) => {
-      const fence = FENCE_RE.exec(line)?.[1];
+      const indent = indentWidth(line);
+      const content = line.trimStart();
+      // Block markers may be indented up to three columns past the list item's content.
+      const startsBlock = indent < listIndent + 4;
+      const fence = startsBlock ? FENCE_RE.exec(content)?.[1] : undefined;
 
       if (openFence) {
         if (
@@ -36,7 +40,6 @@ export function escapeCurrencyAmounts(markdown: string): string {
         return line;
       }
 
-      const indent = indentWidth(line);
       if (codeIndent !== null && indent >= codeIndent) return line;
       codeIndent = null;
 
@@ -47,9 +50,9 @@ export function escapeCurrencyAmounts(markdown: string): string {
       }
 
       if (
-        indent < listIndent + 4 &&
-        (THEMATIC_BREAK_RE.test(line) ||
-          (inParagraph && SETEXT_UNDERLINE_RE.test(line)))
+        startsBlock &&
+        (THEMATIC_BREAK_RE.test(content) ||
+          (inParagraph && SETEXT_UNDERLINE_RE.test(content)))
       ) {
         inParagraph = false;
         return line;
@@ -69,7 +72,7 @@ export function escapeCurrencyAmounts(markdown: string): string {
         return line;
       }
 
-      inParagraph = !HEADING_RE.test(line);
+      inParagraph = !(startsBlock && HEADING_RE.test(content));
       return escapeCurrencyAmountsInLine(line);
     })
     .join("\n");
