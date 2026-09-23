@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import active_mode, check_action, gate_active
+from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -21,6 +21,8 @@ from backend.copilot.model import (
 )
 
 _GATE = "backend.copilot.gate"
+# The fixtures stub the rule lookup; the outage tests need the real one.
+_REAL_ASK_REASON = chat_rules.ask_reason
 _MODES: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
 
 
@@ -52,7 +54,7 @@ def clean_session_state():
         patch(f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)),
         patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=False)),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.chat_rules.asks", AsyncMock(return_value=False)),
+        patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
     ):
         yield
@@ -209,7 +211,7 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
 async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state, mode):
     supervisor = AsyncMock(return_value=(True, "fine"))
     with (
-        patch(f"{_GATE}.chat_rules.asks", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value="declined")),
         patch(f"{_GATE}.classify", supervisor),
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
@@ -220,8 +222,8 @@ async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state,
 
 async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     """A Redis outage reads as 'asks', which must not turn every search into a card."""
-    asks = AsyncMock(return_value=True)
-    with patch(f"{_GATE}.chat_rules.asks", asks):
+    asks = AsyncMock(return_value="unreadable")
+    with patch(f"{_GATE}.chat_rules.ask_reason", asks):
         decision = await check_action("web_search", {"query": "x"}, "u", _session())
     assert decision.allowed
     asks.assert_not_awaited()
@@ -265,11 +267,26 @@ async def test_an_unrecordable_approval_refuses_rather_than_runs(
     assert decision.review_id is None
 
 
-async def test_an_unreadable_ask_rule_counts_as_asking():
-    from backend.copilot.gate import chat_rules
-
-    with patch(
-        "backend.copilot.gate.chat_rules.get_redis_async",
-        AsyncMock(side_effect=ConnectionError("redis down")),
+@pytest.mark.parametrize("mode", _MODES)
+async def test_an_unreadable_ask_rule_asks_without_claiming_a_decline(
+    gate_on, clean_session_state, mode
+):
+    """Unsupervised included: the rule it could not read may be a rejection."""
+    with (
+        patch(
+            f"{_GATE}.chat_rules.get_redis_async",
+            AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        patch(f"{_GATE}.chat_rules.ask_reason", _REAL_ASK_REASON),
+        patch(f"{_GATE}.classify", AsyncMock(return_value=(True, "fine"))),
     ):
-        assert await chat_rules.asks("session-1", "bash_exec") is True
+        decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
+    assert not decision.allowed
+    assert decision.reason == chat_rules.UNREADABLE
+
+
+async def test_a_rejected_tool_says_the_user_declined_it():
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value="1")
+    with patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=redis)):
+        assert await chat_rules.ask_reason("s", "bash_exec") == chat_rules.DECLINED

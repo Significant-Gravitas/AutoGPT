@@ -119,8 +119,8 @@ async def check_action(
 
     mode = resolve_mode(session)
     verdict = verdict_for(mode, tool_name)
-    if await chat_rules.asks(session_id, tool_name):
-        reason = "You declined this action earlier in this chat."
+    if rule_reason := await chat_rules.ask_reason(session_id, tool_name):
+        reason = rule_reason
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK:
