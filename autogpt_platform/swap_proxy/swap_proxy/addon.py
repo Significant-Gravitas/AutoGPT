@@ -344,6 +344,9 @@ class SwapProxyAddon:
             # Never completes a handshake, but no context of ours offers
             # anything below TLS 1.2.
             context.set_min_proto_version(SSL.TLS1_2_VERSION)
+            context.set_options(
+                SSL.OP_NO_SSLv2 | SSL.OP_NO_SSLv3 | SSL.OP_NO_TLSv1 | SSL.OP_NO_TLSv1_1
+            )
             refused = SSL.Connection(context)
             refused.set_accept_state()
             data.ssl_conn = refused
