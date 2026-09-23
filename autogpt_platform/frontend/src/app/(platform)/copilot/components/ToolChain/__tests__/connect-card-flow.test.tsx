@@ -51,6 +51,14 @@ vi.mock("@/lib/oauth-popup", () => ({
   }),
 }));
 
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn() }),
+  useToastOnFail: () => () => {},
+}));
+
+import { toast } from "@/components/molecules/Toast/use-toast";
+
 const REQUIRED_SCOPE = "repo";
 const SESSION_ID = "session-1";
 
@@ -404,19 +412,87 @@ describe("copilot Connect card, upgrade-target selection", () => {
 
   afterEach(resetStores);
 
-  it("picks no upgrade target when two accounts could be the one", async () => {
+  it("asks which account to update when two could be the one", async () => {
     savedCredentials = [
       oauthCredential("cred-a", ["notifications"]),
       oauthCredential("cred-b", ["read:user"]),
     ];
 
     renderChain();
-    await completeConnectFlow();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
 
-    // Choosing between them would be a guess; the backend upgrades in place,
-    // so guessing wrong silently broadens the wrong account.
+    // Choosing between them on the user's behalf would be a guess, and the
+    // backend upgrades in place, so a wrong guess silently broadens the wrong
+    // account. Signing in without a target stored a third credential instead.
+    // So the user names the account.
+    expect(await screen.findByText("Update a GitHub account")).toBeDefined();
+    expect(requestedScopes).toBeNull();
+
+    const accounts = await screen.findAllByRole("radio");
+    await user.click(accounts[1]);
+    await user.click(
+      screen.getByRole("button", { name: "Update this account" }),
+    );
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-b"));
+  });
+
+  it("adds a new account beside two existing ones when asked to", async () => {
+    savedCredentials = [
+      oauthCredential("cred-a", ["notifications"]),
+      oauthCredential("cred-b", ["read:user"]),
+    ];
+
+    renderChain();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await user.click(await screen.findByRole("button", { name: "Add new" }));
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
     await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
     expect(upgradedCredentialID).toBeNull();
+  });
+
+  it("surfaces the backend's refusal when the sign-in is a different user", async () => {
+    savedCredentials = [
+      oauthCredential("cred-a", ["notifications"]),
+      oauthCredential("cred-b", ["read:user"]),
+    ];
+    server.use(
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json(
+          { detail: "Username mismatch: authenticated as a different user" },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    renderChain();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    const accounts = await screen.findAllByRole("radio");
+    await user.click(accounts[1]);
+    await user.click(
+      screen.getByRole("button", { name: "Update this account" }),
+    );
+    await user.click(await screen.findByText("OAuth"));
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    // The sign-in was aimed at cred-b, and a different user behind it is
+    // refused rather than stored as yet another account.
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-b"));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Username mismatch: authenticated as a different user",
+          variant: "destructive",
+        }),
+      ),
+    );
   });
 
   it("does not offer a managed account, which the backend refuses to upgrade", async () => {

@@ -698,6 +698,7 @@ class CoPilotProcessor:
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+                message_metadata=entry.message_metadata,
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,

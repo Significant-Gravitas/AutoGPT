@@ -20,6 +20,7 @@ from backend.api.features.store.exceptions import VirusDetectedError, VirusScanE
 from backend.api.features.workspace.preview import build_preview_response
 from backend.copilot.db import get_chat_session_expert_ids
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
+from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
     count_workspace_files,
@@ -132,7 +133,7 @@ async def create_file_download_response(
             raise
 
 
-class UploadFileResponse(BaseModel):
+class WorkspaceFileUploadResponse(BaseModel):
     file_id: str
     name: str
     path: str
@@ -282,7 +283,7 @@ async def delete_workspace_file(
     operation_id="renameWorkspaceFile",
     responses={
         404: {"description": "File not found"},
-        409: {"description": "A file with this name already exists here"},
+        409: {"description": "File name conflict or skill capacity reached"},
     },
 )
 async def rename_workspace_file_route(
@@ -300,6 +301,8 @@ async def rename_workspace_file_route(
         raise fastapi.HTTPException(
             status_code=409, detail="A file with this name already exists here"
         )
+    except SkillLimitError as exc:
+        raise fastapi.HTTPException(status_code=409, detail=str(exc))
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
@@ -316,7 +319,7 @@ async def upload_file(
     file: UploadFile,
     session_id: str | None = Query(default=None),
     overwrite: bool = Query(default=False),
-) -> UploadFileResponse:
+) -> WorkspaceFileUploadResponse:
     """
     Upload a file to the user's workspace.
 
@@ -391,7 +394,7 @@ async def upload_file(
             ),
         )
 
-    return UploadFileResponse(
+    return WorkspaceFileUploadResponse(
         file_id=workspace_file.id,
         name=workspace_file.name,
         path=workspace_file.path,

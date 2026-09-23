@@ -16,6 +16,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
+    _MAX_ROOTS_PER_FOLDER,
     DEFAULT_SKILLS,
     MAX_BODY_CHARS,
     MAX_DESCRIPTION_CHARS,
@@ -23,9 +24,12 @@ from backend.copilot.tools.skills import (
     MAX_PACKAGE_BYTES,
     MAX_PACKAGE_FILE_BYTES,
     MAX_PACKAGE_FILES,
+    MAX_SKILLS_PER_EXPERT,
     MAX_TRIGGER_CHARS,
     MAX_TRIGGERS,
-    MAX_USER_SKILLS,
+    SKILL_ORIGIN_MARKETPLACE,
+    SKILL_ORIGIN_PLATFORM,
+    SKILL_ORIGIN_USER,
     BuiltInSkillError,
     DeleteSkillResponse,
     DeleteSkillTool,
@@ -35,20 +39,26 @@ from backend.copilot.tools.skills import (
     ReadSkillResponse,
     ReadSkillTool,
     SkillFile,
+    SkillLimitError,
     SkillNotFoundError,
+    SkillOwnedError,
     SkillPackage,
     SkillPackageError,
     StoreSkillResponse,
     StoreSkillTool,
     _is_safe_relative,
     _list_user_skills_from_workspace,
+    _read_skills_cache,
     _validate_name,
+    _write_skills_cache,
+    budget_origin,
     build_skills_context,
     build_skills_update_notice,
     copy_skill_to_expert,
     delete_user_skill,
     find_user_skill_slugs,
     get_default_skills,
+    get_default_skills_for_index,
     list_all_skills,
     list_user_skill_files,
     parse_skill_markdown,
@@ -59,6 +69,16 @@ from backend.copilot.tools.skills import (
     validate_package,
 )
 from backend.util.exceptions import ConflictError
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+
+def test_max_skills_per_expert_cap_constant():
+    """The cap #14692 asked for: room for a 50-skill bundle and the owner's own."""
+    assert MAX_SKILLS_PER_EXPERT == 150
+
 
 # ---------------------------------------------------------------------------
 # Round-trip
@@ -168,7 +188,6 @@ def test_default_skills_load_from_disk():
     defaults = get_default_skills()
     names = {s.name for s in defaults}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # Bodies must be non-trivial — a zero-byte file silently kills the
     # whole feature for end users.
     for skill in defaults:
@@ -283,6 +302,7 @@ class _FakeWorkspaceManager:
         info = MagicMock()
         info.path = path
         info.id = f"id-{path}"
+        info.metadata = self.metadata.get(path, {})
         return info
 
     async def delete_file(self, file_id):
@@ -563,13 +583,13 @@ async def test_store_skill_strips_server_injected_tags_from_body():
 
 
 @pytest.mark.asyncio
-async def test_store_skill_enforces_max_user_skills_cap():
-    """Hitting the per-user cap returns ErrorResponse instead of
-    silently appending the (MAX_USER_SKILLS+1)-th skill."""
+async def test_store_skill_enforces_max_skills_per_expert_cap():
+    """Hitting the per-expert cap returns ErrorResponse instead of
+    silently appending the (MAX_SKILLS_PER_EXPERT+1)-th skill."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    # Pre-fill the workspace with MAX_USER_SKILLS distinct slugs.
-    for i in range(MAX_USER_SKILLS):
+    # Pre-fill the workspace with MAX_SKILLS_PER_EXPERT distinct slugs.
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="desc", body="body")
@@ -586,16 +606,260 @@ async def test_store_skill_enforces_max_user_skills_cap():
     assert "limit" in result.message.lower()
 
 
+def _seed_skill(
+    fake: _FakeWorkspaceManager, slug: str, *, origin: str, folder: str = "/skills"
+) -> None:
+    """A skill stored the way ``store_user_skill`` stores one: file plus the
+    row metadata the index fast path reads, origin included."""
+    path = f"{folder}/{slug}/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(name=slug, description="desc", body="body")
+    ).encode()
+    fake.metadata[path] = {
+        "kind": "copilot_skill",
+        "description": "desc",
+        "triggers": [],
+        "skill_origin": origin,
+    }
+
+
 @pytest.mark.asyncio
-async def test_store_skill_at_cap_refuses_when_lock_not_held():
-    """When ``AsyncClusterLock.try_acquire`` returns a DIFFERENT owner
-    (i.e. contention or Redis hiccup) the fallback path is unlocked.
-    In that branch the cap check must be treated strictly — refuse the
-    write at-or-above MAX_USER_SKILLS even on an upsert, otherwise two
-    concurrent writers could both see N==cap and both commit."""
+async def test_installed_skills_do_not_take_the_owners_saved_slots():
+    """A hire's bundle and marketplace installs have a budget of their own:
+    an expert shipping MAX_SKILLS_PER_EXPERT skills still leaves the owner every
+    slot for the skills they save to it."""
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        _seed_skill(fake, f"bundled_{i}", origin=SKILL_ORIGIN_MARKETPLACE)
+    with _patch_skills_path(fake):
+        stored = await store_user_skill(
+            "user-1", name="mine", description="ok", body="ok"
+        )
+    assert stored.name == "mine" and stored.origin == SKILL_ORIGIN_USER
+    assert fake.metadata["/skills/mine/SKILL.md"]["skill_origin"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_saved_skills_do_not_take_the_installed_slots():
+    """The mirror: an owner at their own cap can still be given a bundled
+    skill, and a skill stored before origins were recorded is the owner's."""
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        slug = f"skill_{i}"
+        fake.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=slug, description="desc", body="body")
+        ).encode()
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillLimitError, match="saved"):
+            await store_user_skill("user-1", name="mine", description="ok", body="ok")
+        stored = await store_user_skill(
+            "user-1",
+            name="bundled",
+            description="ok",
+            body="ok",
+            origin=SKILL_ORIGIN_MARKETPLACE,
+        )
+    assert stored.origin == SKILL_ORIGIN_MARKETPLACE
+    assert fake.metadata["/skills/bundled/SKILL.md"]["skill_origin"] == "marketplace"
+
+
+@pytest.mark.asyncio
+async def test_installed_skills_have_a_cap_of_their_own():
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        _seed_skill(fake, f"bundled_{i}", origin=SKILL_ORIGIN_MARKETPLACE)
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillLimitError, match="installed"):
+            await store_user_skill(
+                "user-1",
+                name="one_more",
+                description="ok",
+                body="ok",
+                origin=SKILL_ORIGIN_MARKETPLACE,
+            )
+        # A re-install of a bundled skill takes no slot.
+        stored = await store_user_skill(
+            "user-1",
+            name="bundled_0",
+            description="newer",
+            body="newer",
+            origin=SKILL_ORIGIN_MARKETPLACE,
+        )
+    assert stored.description == "newer"
+
+
+@pytest.mark.asyncio
+async def test_an_install_never_replaces_the_owners_own_skill():
+    """The owner may take over a bundled name; the platform may not take
+    over the owner's.  Refused as a conflict, and the owner's row is left."""
+    fake = _FakeWorkspaceManager()
+    _seed_skill(fake, "triage", origin=SKILL_ORIGIN_USER)
+    _seed_skill(fake, "bundled_x", origin=SKILL_ORIGIN_MARKETPLACE)
+    with _patch_skills_path(fake):
+        with pytest.raises(SkillOwnedError, match="triage"):
+            await store_user_skill(
+                "user-1",
+                name="triage",
+                description="theirs",
+                body="theirs",
+                origin=SKILL_ORIGIN_MARKETPLACE,
+            )
+        taken_over = await store_user_skill(
+            "user-1", name="bundled_x", description="mine", body="mine"
+        )
+    assert fake.metadata["/skills/triage/SKILL.md"]["skill_origin"] == "user"
+    assert taken_over.origin == SKILL_ORIGIN_USER
+    assert fake.metadata["/skills/bundled_x/SKILL.md"]["skill_origin"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_an_install_may_claim_a_skill_stored_before_origins_were_recorded():
+    """A row with no recorded origin counts against the owner's budget but is
+    nobody's to defend: a re-install of a skill installed before origins were
+    recorded must succeed and stamp the row, or it could never migrate."""
+    fake = _FakeWorkspaceManager()
+    path = "/skills/legacy/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(name="legacy", description="old", body="old")
+    ).encode()
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+        assert skills[0].origin is None and budget_origin(skills[0]) == "user"
+        stored = await store_user_skill(
+            "user-1",
+            name="legacy",
+            description="new",
+            body="new",
+            origin=SKILL_ORIGIN_MARKETPLACE,
+        )
+    assert stored.origin == SKILL_ORIGIN_MARKETPLACE
+    assert fake.metadata[path]["skill_origin"] == "marketplace"
+
+
+@pytest.mark.asyncio
+async def test_a_row_read_back_from_its_file_keeps_the_rows_origin():
+    """A row without a usable description in its metadata is rebuilt from the
+    file; the origin still comes from the row, never defaults to the owner's."""
+    fake = _FakeWorkspaceManager()
+    path = "/skills/bundled/SKILL.md"
+    fake.files[path] = render_skill_markdown(
+        ParsedSkill(name="bundled", description="desc", body="body")
+    ).encode()
+    fake.metadata[path] = {"kind": "copilot_skill", "skill_origin": "marketplace"}
+    with _patch_skills_path(fake):
+        skills = await _list_user_skills_from_workspace("user-1")
+    assert [(s.name, s.origin) for s in skills] == [("bundled", "marketplace")]
+
+
+def test_default_skills_are_platform_origin_not_the_owners():
+    assert {s.origin for s in get_default_skills_for_index()} == {SKILL_ORIGIN_PLATFORM}
+
+
+@pytest.mark.asyncio
+async def test_store_user_skill_rejects_an_unknown_origin():
+    with (
+        _patch_skills_path(_FakeWorkspaceManager()),
+        pytest.raises(ValueError, match="origin"),
+    ):
+        await store_user_skill(
+            "user-1", name="x", description="ok", body="ok", origin="platform"
+        )
+
+
+@pytest.mark.asyncio
+async def test_copy_to_expert_keeps_the_installed_origin():
+    """A bundled skill healed into an expert's folder stays a bundled one
+    there, so the heal never spends the owner's saved slots either."""
+    fake = _FakeWorkspaceManager()
+    _seed_skill(fake, "bundled", origin=SKILL_ORIGIN_MARKETPLACE)
+    # Storing into an expert's folder records the name on the expert's row.
+    experts = MagicMock()
+    experts.add_expert_skill_name = AsyncMock()
+    with (
+        _patch_skills_path(fake),
+        patch("backend.copilot.tools.skills.experts_db", return_value=experts),
+    ):
+        slug = await copy_skill_to_expert("user-1", "expert-1", "bundled")
+    assert slug == "bundled"
+    experts.add_expert_skill_name.assert_awaited_once_with(
+        "user-1", "expert-1", "bundled"
+    )
+    copied = fake.metadata["/experts/expert-1/skills/bundled/SKILL.md"]
+    assert copied["skill_origin"] == "marketplace"
+
+
+class _FakeRedis:
+    def __init__(self):
+        self.store: dict[str, str] = {}
+
+    async def get(self, key):
+        return self.store.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.store.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_origin_survives_the_index_cache():
+    """The cap counts from the cached index on a warm turn, so a cache that
+    dropped the origin would count every bundled skill as the owner's."""
+    with patch(
+        "backend.copilot.tools.skills.get_redis_async",
+        new=AsyncMock(return_value=_FakeRedis()),
+    ):
+        await _write_skills_cache(
+            "user-1",
+            [
+                ParsedSkill(
+                    name="bundled",
+                    description="d",
+                    body="",
+                    origin=SKILL_ORIGIN_MARKETPLACE,
+                ),
+                ParsedSkill(
+                    name="mine", description="d", body="", origin=SKILL_ORIGIN_USER
+                ),
+                ParsedSkill(name="legacy", description="d", body=""),
+            ],
+        )
+        cached = await _read_skills_cache("user-1")
+    assert cached is not None
+    assert {s.name: s.origin for s in cached} == {
+        "bundled": SKILL_ORIGIN_MARKETPLACE,
+        "mine": SKILL_ORIGIN_USER,
+        "legacy": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_stale_empty_skill_index_cannot_bypass_capacity_preflight():
+    fake = _FakeWorkspaceManager()
+    for i in range(MAX_SKILLS_PER_EXPERT):
+        fake.files[f"/skills/skill_{i}/SKILL.md"] = render_skill_markdown(
+            ParsedSkill(name=f"skill_{i}", description="desc", body="body")
+        ).encode()
+    with (
+        _patch_skills_path(fake),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            AsyncMock(return_value=[]),
+        ),
+    ):
+        with pytest.raises(SkillLimitError):
+            await store_user_skill("user-1", name="extra", description="d", body="b")
+    assert len(fake.files) == MAX_SKILLS_PER_EXPERT
+
+
+@pytest.mark.asyncio
+async def test_store_skill_at_cap_allows_upsert_without_redis_lock():
+    """Root publication owns capacity even when Redis cannot coordinate writes."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    for i in range(MAX_USER_SKILLS):
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="old", body="old")
@@ -628,8 +892,7 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
             description="ok",
             body="ok",
         )
-        # Upsert at-cap → also rejected in unlocked branch (cannot prove
-        # atomicity, so refuse defensively).
+        # Updating an existing root does not consume capacity.
         upsert_result = await tool._execute(
             user_id="user-1",
             session=_make_session(),
@@ -639,17 +902,16 @@ async def test_store_skill_at_cap_refuses_when_lock_not_held():
         )
     assert isinstance(new_result, ErrorResponse)
     assert "limit" in new_result.message.lower()
-    assert isinstance(upsert_result, ErrorResponse)
-    assert "limit" in upsert_result.message.lower()
+    assert isinstance(upsert_result, StoreSkillResponse)
 
 
 @pytest.mark.asyncio
 async def test_store_skill_upsert_does_not_trip_cap():
     """Overwriting an existing skill must NOT count toward the cap —
-    re-storing the same name when already at MAX_USER_SKILLS is fine."""
+    re-storing the same name when already at MAX_SKILLS_PER_EXPERT is fine."""
     tool = StoreSkillTool()
     fake_manager = _FakeWorkspaceManager()
-    for i in range(MAX_USER_SKILLS):
+    for i in range(MAX_SKILLS_PER_EXPERT):
         slug = f"skill_{i}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description="old", body="old")
@@ -824,7 +1086,6 @@ async def test_list_skills_anon_returns_defaults_only():
     assert isinstance(result, ListSkillsResponse)
     names = {s["name"] for s in result.skills}
     assert "agent_building_guide" in names
-    assert "mcp_tool_guide" in names
     # All anon results must be flagged as default.
     assert all(s["is_default"] for s in result.skills)
 
@@ -1152,10 +1413,11 @@ async def test_skills_update_notice_names_removed_skill():
 async def test_skills_update_notice_truncates_long_added_lists():
     """Beyond _MAX_UPDATE_NAMES the notice falls back to a remainder count
     instead of inlining the whole registry — it is a nudge, not the index."""
-    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES
+    from backend.copilot.tools.skills import _MAX_UPDATE_NAMES, get_default_skills
 
+    extra = 3
     fake_manager = _FakeWorkspaceManager()
-    for i in range(_MAX_UPDATE_NAMES + 3):
+    for i in range(_MAX_UPDATE_NAMES + extra):
         slug = f"skill-{i:02d}"
         fake_manager.files[f"/skills/{slug}/SKILL.md"] = render_skill_markdown(
             ParsedSkill(name=slug, description=f"skill {i}", body="x")
@@ -1167,8 +1429,13 @@ async def test_skills_update_notice_truncates_long_added_lists():
                 _history_with_index("- name: agent_building_guide — guide")
             ],
         )
+    # Derived, not spelled out: the defaults are part of the added set, so a
+    # default skill added or retired elsewhere should not fail this test.
+    unseen_defaults = sum(
+        1 for s in get_default_skills() if s.name != "agent_building_guide"
+    )
     assert "<skills_update>" in notice
-    assert "and 4 more" in notice
+    assert f"and {extra + unseen_defaults} more" in notice
     assert "list_skills" in notice
 
 
@@ -1814,7 +2081,7 @@ def test_upstream_frontmatter_survives_a_round_trip(slug):
     assert render_skill_markdown(reparsed) == rendered
 
 
-def test_every_spec_frontmatter_field_is_carried():
+def test_carried_frontmatter_fields_survive_a_round_trip():
     raw = (
         "---\n"
         "name: kitchen-sink\n"
@@ -1826,6 +2093,8 @@ def test_every_spec_frontmatter_field_is_carried():
         "  - Read\n"
         "metadata:\n"
         "  author: someone\n"
+        "source: owner/repo\n"
+        "source_url: https://github.com/owner/repo/tree/abc/skills/kitchen-sink\n"
         "---\n"
         "body\n"
     )
@@ -1836,6 +2105,8 @@ def test_every_spec_frontmatter_field_is_carried():
         "compatibility": "claude-code >=2.0",
         "allowed-tools": ["Bash", "Read"],
         "metadata": {"author": "someone"},
+        "source": "owner/repo",
+        "source_url": "https://github.com/owner/repo/tree/abc/skills/kitchen-sink",
     }
     assert parse_skill_markdown(render_skill_markdown(parsed)).extra == parsed.extra
 
@@ -2003,6 +2274,23 @@ async def test_a_failed_file_write_leaves_no_skill_and_no_tree():
                 ],
             )
         assert await _list_user_skills_from_workspace("user-1") == []
+    assert fake.files == {}
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_root_publication_removes_new_package_files():
+    fake = _FailingWorkspaceManager(fail_on=3)
+    with _patch_skills_path(fake):
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            await store_user_skill(
+                "user-1",
+                name="pkg",
+                description="d",
+                body="b",
+                files=[
+                    SkillFile(relative_path=f"r{i}.md", content=b"x") for i in range(2)
+                ],
+            )
     assert fake.files == {}
 
 
@@ -2362,7 +2650,7 @@ async def test_nested_skill_md_files_cannot_hide_a_root_skill():
     """A package shipping its own example SKILL.md files fills the capped,
     newest-first page; the listing must page past them to the real roots."""
     fake = _package_manager(slug="aaa-oldest")
-    for i in range(MAX_USER_SKILLS * 4 + 10):
+    for i in range(_MAX_ROOTS_PER_FOLDER * 4 + 10):
         fake.files[f"/skills/aaa-oldest/references/e{i:04d}/SKILL.md"] = b"example"
     with _patch_skills_path(fake):
         skills = await _list_user_skills_from_workspace("user-1")

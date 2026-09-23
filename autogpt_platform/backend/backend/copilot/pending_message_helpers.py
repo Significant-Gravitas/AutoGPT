@@ -8,7 +8,7 @@ routes.py stays free of Redis/Lua details.
 """
 
 import logging
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -141,6 +141,7 @@ async def queue_user_message(
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
     require_turn_in_flight: bool = False,
+    metadata: dict[str, Any] | None = None,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
@@ -148,11 +149,16 @@ async def queue_user_message(
     called from the HTTP pending-message path and the autopilot block.
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
+
+    ``metadata`` lands on the user row the message is persisted as. It is
+    for internal senders only (a session messaging another session); the
+    HTTP path never passes it.
     """
     pending = PendingMessage(
         content=message,
         file_ids=file_ids or [],
         context=context,
+        metadata=metadata or None,
     )
     if require_turn_in_flight:
         new_len = await push_pending_message_if_session_running(
@@ -461,7 +467,9 @@ async def persist_pending_as_user_rows(
 
     for pm in pending:
         content = content_of(pm)
-        session.messages.append(ChatMessage(role="user", content=content))
+        session.messages.append(
+            ChatMessage(role="user", content=content, metadata=pm.metadata or None)
+        )
         if transcript_builder is not None:
             transcript_builder.append_user(content=content)
 

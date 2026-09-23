@@ -37,7 +37,7 @@ it.each(["past_due", "unpaid", "incomplete_expired", "trialing", "canceled"])(
   },
 );
 
-it("keeps the regular plan card hidden during an active trial", async () => {
+it("shows the trial as the current plan during an active trial", async () => {
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
     http.get("*/api/credits/subscription", () =>
@@ -51,6 +51,6 @@ it("keeps the regular plan card hidden during an active trial", async () => {
   );
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
-  expect(screen.queryByText("Your plan")).toBeNull();
+  expect(screen.getByText("Your plan")).toBeDefined();
   expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
 });

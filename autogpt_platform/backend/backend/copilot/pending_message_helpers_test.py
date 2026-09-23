@@ -511,9 +511,12 @@ def _make_chat_message_class(
     """Return a simple ChatMessage stand-in that tracks sequence."""
 
     class _Msg:
-        def __init__(self, role: str, content: str) -> None:
+        def __init__(
+            self, role: str, content: str, metadata: dict[str, Any] | None = None
+        ) -> None:
             self.role = role
             self.content = content
+            self.metadata = metadata
             self.sequence: int | None = None
 
     monkeypatch.setattr(helpers_module, "ChatMessage", _Msg)
@@ -568,6 +571,77 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
     assert [m.content for m in session.messages] == ["a", "b"]
     assert tb.entries == ["a", "b"]
     push_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_copies_metadata_onto_the_user_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session-to-session message keeps its sender on the persisted row;
+    a human follow-up gets no metadata at all."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+
+    async def _fake_upsert(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+    pending = [PM(content="from a teammate", metadata=provenance), PM(content="me")]
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.metadata for m in session.messages] == [provenance, None]
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_stamps_metadata_on_the_pending_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    push_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=False)
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    await queue_user_message(session_id="sess", message="hi", metadata=provenance)
+    assert push_mock.await_args.args[1].metadata == provenance
+
+    await queue_user_message(session_id="sess", message="typed")
+    assert push_mock.await_args.args[1].metadata is None
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_in_flight_gate_keeps_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    gated_push = AsyncMock(return_value=2)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", gated_push
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    state = await queue_user_message(
+        session_id="sess",
+        message="hi",
+        require_turn_in_flight=True,
+        metadata=provenance,
+    )
+    assert state.turn_in_flight is True
+    assert gated_push.await_args.args[1].metadata == provenance
 
 
 @pytest.mark.asyncio

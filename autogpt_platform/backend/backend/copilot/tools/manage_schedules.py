@@ -140,7 +140,7 @@ class ListSchedulesTool(BaseTool):
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
-            "follow-ups). Use before delete_schedule. Pending follow-ups "
+            "follow-ups). Use before tool:delete_schedule. Pending follow-ups "
             "for this session are already summarised in <session_context>."
         )
 
@@ -240,7 +240,7 @@ class DeleteScheduleTool(BaseTool):
         return (
             "Delete a scheduled job (agent run or copilot follow-up) by "
             "schedule_id. For 'cancel that' on a follow-up listed in "
-            "<session_context>, look up its schedule_id via list_schedules."
+            "<session_context>, look up its schedule_id via tool:list_schedules."
         )
 
     @property
@@ -441,7 +441,7 @@ class PauseScheduleTool(_ToggleScheduleTool):
 
     @property
     def description(self) -> str:
-        return "Pause a schedule without deleting it. Resume with resume_schedule."
+        return "Pause a schedule without deleting it. Resume with tool:resume_schedule."
 
 
 class ResumeScheduleTool(_ToggleScheduleTool):
