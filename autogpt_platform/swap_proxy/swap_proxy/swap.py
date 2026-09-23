@@ -361,10 +361,10 @@ class RequestSwap:
             body = request.content.decode("utf-8")
         except UnicodeDecodeError:
             return
-        content_type = request.headers.get("content-type", "")
-        if "application/json" in content_type:
+        media = media_type(request.headers.get("content-type", ""))
+        if media == "application/json" or media.endswith("+json"):
             new_body = self.json_text(body)
-        elif "application/x-www-form-urlencoded" in content_type:
+        elif media == "application/x-www-form-urlencoded":
             new_body = self.form_body(body)
         else:
             new_body = self.text(body)
@@ -372,8 +372,13 @@ class RequestSwap:
             request.content = new_body.encode("utf-8")
 
 
+def media_type(content_type: Optional[str]) -> str:
+    """``Application/JSON; charset=utf-8`` -> ``application/json``."""
+    return (content_type or "").split(";")[0].strip().lower()
+
+
 def is_scrubbable(content_type: Optional[str]) -> bool:
-    c = (content_type or "").split(";")[0].strip().lower()
+    c = media_type(content_type)
     if not c:
         return True  # unknown: try decoding, skip on failure
     return c.startswith(_SCRUBBABLE_TYPES) or c.endswith(("+json", "+xml"))

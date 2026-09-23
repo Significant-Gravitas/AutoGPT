@@ -121,6 +121,37 @@ class TestBinding:
 
 
 class TestBodies:
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            "application/vnd.api+json",
+            "application/merge-patch+json; charset=utf-8",
+            "Application/JSON",
+            " application/json ;charset=UTF-8",
+        ],
+    )
+    def test_every_json_media_type_is_escaped_as_json(self, content_type):
+        """TOKEN holds ``"`` and ``\\``: substituted plainly they would break
+        the document."""
+        body = json.dumps({"data": {"password": "hsurr:github"}}).encode()
+        r = make_request(
+            content=body, method="POST", headers={"Content-Type": content_type}
+        )
+        swap(r, GITHUB)
+        assert json.loads(r.content or b"") == {"data": {"password": TOKEN}}
+
+    @pytest.mark.parametrize(
+        "content_type", ["application/x-www-form-urlencoded-not", "text/plain"]
+    )
+    def test_only_the_form_media_type_is_parsed_as_a_form(self, content_type):
+        r = make_request(
+            content=b"token=hsurr:github",
+            method="POST",
+            headers={"Content-Type": content_type},
+        )
+        swap(r, GITHUB)
+        assert r.content == f"token={TOKEN}".encode()  # plain substitution
+
     def test_json_values_are_escaped(self):
         body = json.dumps({"token": "hsurr:github"}).encode()
         r = make_request(
