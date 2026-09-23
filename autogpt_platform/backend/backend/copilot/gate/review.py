@@ -36,7 +36,7 @@ _MAX_ARG_CHARS = 4_000
 
 # An approval the model never came back for must not run the same call days
 # later; the normal retry follows the click within seconds.
-_APPROVAL_TTL = timedelta(hours=1)
+APPROVAL_TTL = timedelta(hours=1)
 
 
 def session_exec_id(session_id: str) -> str:
@@ -122,7 +122,7 @@ async def find_review(
     approved_at = review.reviewed_at or review.updated_at or review.created_at
     if (
         review.status == ReviewStatus.APPROVED
-        and datetime.now(UTC) - approved_at > _APPROVAL_TTL
+        and datetime.now(UTC) - approved_at > APPROVAL_TTL
     ):
         await consume(review_id, user_id)
         return None
@@ -141,30 +141,6 @@ async def consume(review_id: str, user_id: str) -> bool:
     except Exception:
         logger.warning(f"Gate could not consume review {review_id}", exc_info=True)
         return False
-
-
-async def has_open_review(user_id: str, session_id: str) -> bool:
-    """Whether this session is already waiting on the user.
-
-    The gate parks at most one action at a time. ``PendingReviewsList`` has a
-    single Approve button that submits every row in the list, and collapses any
-    group of more than one by default — so a queue of five would be approved by
-    one click on a card that displayed one of them. Capping the queue also
-    keeps one turn from firing five "Needs You" alerts.
-    """
-    try:
-        pending = await review_db().get_pending_reviews_for_execution(
-            session_exec_id(session_id), user_id
-        )
-    except Exception:
-        logger.warning(
-            f"Gate could not list pending reviews for session {session_id}",
-            exc_info=True,
-        )
-        return False
-    return any(
-        r.node_exec_id.startswith(f"{COPILOT_NODE_PREFIX}gate-") for r in pending
-    )
 
 
 async def open_review(

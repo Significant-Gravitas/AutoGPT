@@ -48,6 +48,7 @@ import { useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 import { RESTORE_STALL_TIMEOUT_MS } from "./restoreConstants";
 import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
+import { useFollowBackendTurn } from "./useFollowBackendTurn";
 import { useWakeResync } from "./useWakeResync";
 
 /**
@@ -667,6 +668,12 @@ export function useCopilotStream({
   });
 
   // Wake detection: refetch + optional resume when the page becomes visible
+  const { followBackendTurn } = useFollowBackendTurn({
+    status,
+    refetchSession,
+    resumeStreamRef,
+  });
+
   // after being hidden for >30 s. See `useWakeResync` for details.
   const { isSyncing } = useWakeResync({
     sessionIdRef,
@@ -856,6 +863,7 @@ export function useCopilotStream({
     !hasConnectedThisMountRef.current;
 
   return {
+    followBackendTurn,
     messages,
     setMessages,
     sendMessage,

@@ -15,7 +15,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-from . import check_action
+from . import check_action, refusal_message
 from .content import Image
 from .reads import release_held_read, screen_read
 from .review import session_exec_id
@@ -113,11 +113,7 @@ def _error(
         "type": "approval_required",
         "tool_name": tool_name,
         "reason": reason,
-        "message": (
-            f"Nothing ran. {reason} Tell the user exactly what you wanted to "
-            "do and why, then stop. Do not retry, do not work around it, and "
-            "do not use another tool for the same effect."
-        ),
+        "message": refusal_message(reason, review_id),
         "session_id": session.session_id,
     }
     if review_id:

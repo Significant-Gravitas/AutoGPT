@@ -509,7 +509,9 @@ class BaseTool:
         from backend.copilot.gate import check_action
 
         try:
-            decision = await check_action(self.name, kwargs, user_id, session)
+            decision = await check_action(
+                self.name, kwargs, user_id, session, tool_call_id
+            )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)
             return self._refusal(
@@ -582,6 +584,7 @@ class BaseTool:
             success=result.success,
             text=text,
             images=images,
+            tool_call_id=tool_call_id,
         )
         if stub is None:
             return result
@@ -598,18 +601,14 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """``graph_exec_id`` is what mounts the chat's approval card: the
         frontend scans tool outputs for that key (``extractGraphExecId``)."""
+        from backend.copilot.gate import refusal_message
         from backend.copilot.gate.review import session_exec_id
 
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
             output=ApprovalRequiredResponse(
-                message=(
-                    f"Nothing ran. {reason} Tell the user exactly what you "
-                    "wanted to do and why, then stop. Do not retry, do not "
-                    "work around it, and do not use another tool for the "
-                    "same effect."
-                ),
+                message=refusal_message(reason, review_id),
                 session_id=session.session_id,
                 tool_name=self.name,
                 reason=reason,

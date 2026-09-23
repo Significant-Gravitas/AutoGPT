@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.gate import held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
@@ -46,6 +47,7 @@ class _Rows:
 
     def __init__(self):
         self.rows: dict[str, SimpleNamespace] = {}
+        self.held: list[held.HeldCall] = []
 
     async def find_review(self, review_id, user_id, session_id):
         return self.rows.get(review_id)
@@ -53,11 +55,16 @@ class _Rows:
     async def consume(self, review_id, user_id):
         return self.rows.pop(review_id, None) is not None
 
-    async def has_open_review(self, user_id, session_id):
-        return any(r.status == ReviewStatus.WAITING for r in self.rows.values())
+    async def remember(self, session_id, call):
+        self.held.append(call)
+        return True
+
+    async def get_reviews_by_node_exec_ids(self, ids, user_id):
+        return {i: self.rows[i] for i in ids if i in self.rows}
 
     async def open_review_row(self, review_id, user_id, session, payload, instructions):
         self.rows[review_id] = SimpleNamespace(
+            node_exec_id=review_id,
             status=ReviewStatus.WAITING,
             payload=sanitize_json(payload),
             instructions=instructions,
@@ -122,7 +129,8 @@ def rows():
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
-        patch.object(review_store, "has_open_review", fake.has_open_review),
+        patch.object(held, "remember", fake.remember),
+        patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),
     ):
         yield fake
@@ -335,3 +343,44 @@ def test_an_action_approval_cannot_be_spent_on_a_read():
     assert read_review_id("s", "u", "bash_exec", args) != review_store.review_id_for(
         "s", "u", "bash_exec", args
     )
+
+
+async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(rows):
+    tool = _Fetch(_MARKER)
+    session = _session()
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", session, "call-7", url="u")
+    (call,) = rows.held
+    assert call.tool_call_id == "call-7"
+    rows.answer(ReviewStatus.APPROVED)
+
+    late = await held._outcome("user-1", session, call, tool)
+
+    assert late == _plain_output(_MARKER)
+    assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
+    assert rows.rows == {}
+
+
+async def test_a_rejected_held_read_never_arrives_and_sets_no_chat_rule(rows):
+    tool = _Fetch(_MARKER)
+    session = _session()
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", session, "call-7", url="u")
+    (call,) = rows.held
+    rows.answer(ReviewStatus.REJECTED)
+
+    set_ask = AsyncMock()
+    with patch.object(held.chat_rules, "set_ask", set_ask):
+        late = await held._outcome("user-1", session, call, tool)
+
+    assert _MARKER not in late and "declined" in late
+    set_ask.assert_not_awaited()
+    assert tool.runs == 1
+
+
+async def test_several_reads_hold_at_once(rows):
+    """Cards queue per chat: a second held read does not wait on the first."""
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await _call(_Fetch(_MARKER), _session(), {"url": "a"})
+        await _call(_Fetch(_MARKER), _session(), {"url": "b"})
+    assert len(rows.rows) == 2 and len(rows.held) == 2

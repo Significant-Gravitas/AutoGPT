@@ -7,7 +7,7 @@ import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 
-from backend.copilot.gate import reads, resolve_mode
+from backend.copilot.gate import held, reads, resolve_mode
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
@@ -85,18 +85,22 @@ async def test_a_held_read_comes_back_from_its_row_byte_identical(
     setup_test_user, test_user_id, output
 ):
     """The JSON column strips raw control characters; the seams hand it
-    escaped ones, so nothing is lost."""
+    escaped ones, so the late result is the bytes the model would have got."""
     session = await upsert_chat_session(
         ChatSession.new(user_id=test_user_id, dry_run=False)
     )
     args = {"path": "/tmp/page"}
-    await reads._hold(
-        "read_file", args, test_user_id, session, "src", "passage", output, True
+    call = held.HeldCall(
+        review_id=reads.read_review_id(
+            session.session_id, test_user_id, "read_file", args
+        ),
+        tool_name="read_file",
+        tool_call_id="call-1",
+        args=args,
     )
-    review = await review_store.find_review(
-        reads.read_review_id(session.session_id, test_user_id, "read_file", args),
-        test_user_id,
-        session.session_id,
+    await reads._hold(call, test_user_id, session, "src", "passage", output, True)
+    await PendingHumanReview.prisma().update(
+        where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
     )
-    assert review is not None
-    assert reads.held_bytes(review).output == output
+
+    assert await held._outcome(test_user_id, session, call, None) == output

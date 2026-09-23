@@ -973,6 +973,13 @@ async def mark_session_completed(
                 exc,
             )
 
+    # A card answered while this turn ran has nobody to start its turn but us.
+    if user_id and not error_message:
+        # Deferred: the gate reaches back here through pending_messages.
+        from backend.copilot.gate.held import wake as wake_for_held_calls
+
+        await wake_for_held_calls(user_id, session_id)
+
     if error_message and not skip_error_publish:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))

@@ -7,9 +7,11 @@ from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import (
+    COPILOT_SESSION_PREFIX,
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
+from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -321,6 +323,12 @@ async def process_review_action(
         for review in updated_reviews.values()
         if review.status == ReviewStatus.REJECTED
     )
+
+    # A held call finishes on its own: the answer starts the chat's next turn.
+    if graph_exec_id.startswith(COPILOT_SESSION_PREFIX) and updated_reviews:
+        await wake_for_held_calls(
+            user_id, graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+        )
 
     # Resume graph execution only for real graph executions (not CoPilot)
     # CoPilot sessions are resumed by the LLM retrying run_block with review_id
