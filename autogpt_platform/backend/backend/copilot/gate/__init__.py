@@ -139,13 +139,17 @@ async def check_action(
     )
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
-    spend = None
+    spend = spend_shown = None
     if effect is Effect.READ and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling()
     if rule == "ask":
         reason = "You declined this action earlier in this chat."
     elif spend is not None:
-        reason = _money_reason(estimate, *spend)
+        spend_shown = _spend_shown(estimate, *spend)
+        reason = (
+            f"costs about {spend_shown['estimate']}, and this task has spent "
+            f"{spend_shown['spent']} of its {spend_shown['ceiling']} ceiling"
+        )
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
@@ -167,7 +171,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
     )
-    return await _park(call, user_id, session, reason, subject, spend is not None)
+    return await _park(call, user_id, session, reason, subject, spend_shown)
 
 
 async def _park(
@@ -176,7 +180,7 @@ async def _park(
     session: ChatSession,
     reason: str,
     subject: Subject | None,
-    over_ceiling: bool = False,
+    spend: dict[str, str] | None = None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
@@ -189,7 +193,7 @@ async def _park(
         call.args,
         reason,
         subject,
-        over_ceiling=over_ceiling,
+        spend=spend,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(allowed=False, reason=reason, review_id=call.review_id)
@@ -210,11 +214,12 @@ def refusal_message(reason: str, review_id: str | None) -> str:
     )
 
 
-def _money_reason(estimate: int, spent: int, ceiling: int) -> str:
-    return (
-        f"costs about {_dollars(estimate)}, and this task has spent "
-        f"{_dollars(spent)} of its {_dollars(ceiling)} ceiling"
-    )
+def _spend_shown(estimate: int, spent: int, ceiling: int) -> dict[str, str]:
+    return {
+        "estimate": _dollars(estimate),
+        "spent": _dollars(spent),
+        "ceiling": _dollars(ceiling),
+    }
 
 
 def _dollars(microdollars: int) -> str:

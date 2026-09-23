@@ -113,7 +113,11 @@ async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
         "costs about $0.05, and this task has spent $0.00 of its $0.00 ceiling"
     )
     _, kwargs = gate.open_review.await_args
-    assert kwargs["over_ceiling"] is True
+    assert kwargs["spend"] == {
+        "estimate": "$0.05",
+        "spent": "$0.00",
+        "ceiling": "$0.00",
+    }
     assert (await _check(_FREE, mode)).allowed
 
 
@@ -139,14 +143,14 @@ async def test_an_over_cap_external_shows_the_write_reason(gate, ledger):
     assert not decision.allowed
     assert decision.reason == "reaches outside the platform"
     _, kwargs = gate.open_review.await_args
-    assert kwargs["over_ceiling"] is False
+    assert kwargs["spend"] is None
 
 
 async def test_one_approval_raises_the_ceiling_by_one_unit(gate, ledger):
     """Kills: raising by zero (the next paid read asks again)."""
     await _open(ledger, ceiling=0)
     gate.find_review.return_value = SimpleNamespace(
-        status=ReviewStatus.APPROVED, payload={"over_ceiling": True}
+        status=ReviewStatus.APPROVED, payload={"spend": {}}
     )
     assert (await _check(_PAID)).allowed
     assert (await ledger.snapshot("turn-1"))["ceiling"] == CEILING_UNIT_MICRODOLLARS
