@@ -21,6 +21,8 @@ import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
+import { Text } from "@/components/atoms/Text/Text";
+import { getHeldCallRowKind } from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -554,6 +556,20 @@ export function ChatMessagesContainer({
                     <WorkCard metadata={runMetadata} preview={preview} />
                   </MessageContent>
                 </Message>
+              );
+            }
+
+            const heldCallRow = getHeldCallRowKind(message.metadata);
+            if (heldCallRow === "result") return null;
+            if (heldCallRow === "answered") {
+              return (
+                <Text
+                  key={message.id}
+                  variant="small"
+                  className="py-1 text-center text-zinc-500"
+                >
+                  Approval answered
+                </Text>
               );
             }
 
