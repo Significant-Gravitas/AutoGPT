@@ -1,5 +1,10 @@
 """The PostHog evaluator itself — client lifecycle and the raw read."""
 
+import asyncio
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 import backend.util.feature_flag.posthog as ph
@@ -213,3 +218,47 @@ class TestRawRead:
             True,
             False,
         )
+
+    def test_blocked_reads_leave_the_default_executor_free(self, mocker):
+        """Remote reads that hang must not starve other ``to_thread`` work."""
+        release = threading.Event()
+        entered = 0
+        lock = threading.Lock()
+
+        def blocking_read(*args, **kwargs):
+            nonlocal entered
+            with lock:
+                entered += 1
+            release.wait(10)
+            return snapshot(mocker, value=True)
+
+        client = mocker.Mock()
+        client.evaluate_flags.side_effect = blocking_read
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+
+        async def scenario():
+            loop = asyncio.get_running_loop()
+            loop.set_default_executor(
+                ThreadPoolExecutor(max_workers=ph.FLAG_READ_WORKERS)
+            )
+            reads = [
+                asyncio.create_task(ph.evaluate_flag("hire-experts", f"u-{i}"))
+                for i in range(ph.FLAG_READ_WORKERS + 1)
+            ]
+            try:
+                deadline = time.monotonic() + 5
+                while entered < ph.FLAG_READ_WORKERS:
+                    assert time.monotonic() < deadline
+                    await asyncio.sleep(0.01)
+                return await asyncio.wait_for(asyncio.to_thread(lambda: "probe"), 2)
+            finally:
+                release.set()
+                await asyncio.gather(*reads)
+                await loop.shutdown_default_executor()
+
+        # A private loop, so swapping its default executor touches no other test.
+        loop = asyncio.new_event_loop()
+        try:
+            assert loop.run_until_complete(scenario()) == "probe"
+        finally:
+            loop.close()
