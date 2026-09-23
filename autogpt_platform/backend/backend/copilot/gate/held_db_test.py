@@ -19,7 +19,9 @@ from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     AutopilotMode,
+    ChatMessage,
     ChatSession,
+    append_and_save_message,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
@@ -125,6 +127,30 @@ async def test_a_retry_of_a_waiting_call_keeps_the_first_call(
     assert not retry.allowed and retry.review_id == review_id
     [call] = await held.answered(test_user_id, session.session_id)
     assert call.tool_call_id == "call-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_wake_is_not_repeated_for_the_same_cards(
+    setup_test_user, test_user_id, gate_on
+):
+    """Even after an error reply, which lets an identical user row through."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "wake once")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    dispatch = AsyncMock(side_effect=RuntimeError("queue down"))
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id)
+        await append_and_save_message(
+            session.session_id, ChatMessage(role="assistant", content="error")
+        )
+        await held.wake(test_user_id, session.session_id)
+
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    wakes = [m for m in reloaded.messages if m.content == held.WAKE_MESSAGE]
+    assert len(wakes) == 1
+    assert dispatch.await_count == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")

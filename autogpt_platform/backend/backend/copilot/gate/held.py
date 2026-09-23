@@ -142,8 +142,17 @@ async def wake(user_id: str, session_id: str) -> None:
     from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
     try:
-        if not await answered(user_id, session_id):
+        calls = await answered(user_id, session_id)
+        if not calls:
             return
+        # One wake per set of answered cards: a turn that died before its fold
+        # must not be woken again for the same cards, turn after failed turn.
+        wake_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{session_id}:" + ",".join(sorted(c.review_id for c in calls)),
+            )
+        )
         info = await chat_db().get_chat_session_metadata(session_id)
         if info is None or info.user_id != user_id:
             return
@@ -158,7 +167,10 @@ async def wake(user_id: str, session_id: str) -> None:
                     await append_and_save_message(
                         session_id,
                         ChatMessage(
-                            role="user", content=WAKE_MESSAGE, metadata=metadata
+                            id=wake_id,
+                            role="user",
+                            content=WAKE_MESSAGE,
+                            metadata=metadata,
                         ),
                     )
                     is None
@@ -183,6 +195,7 @@ async def wake(user_id: str, session_id: str) -> None:
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=session_id,
                 message=WAKE_MESSAGE,
+                message_id=wake_id,
                 message_metadata=metadata,
                 llm_auth_provider=info.metadata.llm_auth_provider,
                 llm_credential_id=info.metadata.llm_credential_id,
