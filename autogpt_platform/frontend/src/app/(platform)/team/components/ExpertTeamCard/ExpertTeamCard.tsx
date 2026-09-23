@@ -98,7 +98,7 @@ export function ExpertTeamCard({
               avatarUrl={expert.avatar_url}
               color={expert.color}
               size={88}
-              className="ring-4 ring-background"
+              className="rounded-full ring-4 ring-background"
             />
           </span>
 

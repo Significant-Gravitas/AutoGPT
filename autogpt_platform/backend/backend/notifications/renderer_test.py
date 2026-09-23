@@ -35,6 +35,7 @@ from backend.notifications.preferences import SERVICE_MESSAGES, wants_notificati
 from backend.notifications.renderer import EmailUrls, render
 
 URLS = EmailUrls(
+    chat="https://p.example/copilot",
     dashboard="https://p.example/library",
     settings="https://p.example/settings/account",
     unsubscribe="https://p.example/api/email/unsubscribe?token=x",
@@ -277,3 +278,28 @@ def test_service_mail_offers_preferences_not_an_unsubscribe(notification_type):
 def test_every_service_message_has_a_payload_here():
     """Keeps the check above honest if a seventh service type is added."""
     assert set(SERVICE_PAYLOADS) == set(SERVICE_MESSAGES)
+
+
+def test_otto_link_does_not_change_workflow_or_billing_destinations(monkeypatch):
+    from backend.notifications import renderer
+
+    monkeypatch.setattr(
+        renderer.settings.config, "frontend_base_url", "https://platform.example"
+    )
+    urls = renderer.build_urls("https://platform.example/unsubscribe?token=keep")
+    assert urls.chat == "https://platform.example/copilot"
+    assert urls.dashboard == "https://platform.example/library"
+    assert urls.billing == "https://platform.example/settings/billing"
+    assert urls.unsubscribe.endswith("?token=keep")
+
+
+@pytest.mark.parametrize("part, cta", [(1, "Open Otto"), (2, "Try a workflow")])
+def test_onboarding_template_names_otto_and_links_to_chat(part, cta):
+    from backend.notifications import renderer
+
+    html = renderer._html_env.get_template("onboarding.html.j2").render(
+        part=part, user_name="Sam", urls=URLS
+    )
+    assert "AutoPilot" not in html
+    assert cta in html
+    assert 'href="https://p.example/copilot"' in html

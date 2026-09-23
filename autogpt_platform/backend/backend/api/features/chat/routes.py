@@ -157,6 +157,7 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -290,6 +291,12 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    folder_ids: list[str] | None = Field(
+        default=None,
+        max_length=5,
+        description="Workspace folder IDs attached to this message. Named in "
+        "the message for the model to open, never expanded into their files.",
+    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -326,6 +333,7 @@ class QueuePendingMessageRequest(BaseModel):
     message: str = Field(max_length=64_000)
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
+    folder_ids: list[str] | None = Field(default=None, max_length=5)
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -1007,7 +1015,8 @@ class CredentialSelectionRequest(BaseModel):
     """The credential the user picked for each provider on a connect card."""
 
     selections: dict[str, str] = Field(
-        description="Provider slug to credential id.", max_length=20
+        description="Provider slug to credential id.",  # gitleaks:allow (schema text)
+        max_length=20,
     )
 
 
@@ -1827,6 +1836,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
@@ -1900,15 +1910,18 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
-    if request.file_ids:
+    if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
-            request.file_ids,
+            request.file_ids or [],
             session_id=session_id,
             expert_id=session.expert_id,
         )
+        folders = await resolve_attachable_workspace_folders(
+            user_id, request.folder_ids or [], expert_id=session.expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
-        message += build_files_block(files)
+        message += build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -2188,6 +2201,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        folder_ids=request.folder_ids,
         expert_id=session.expert_id,
     )
 

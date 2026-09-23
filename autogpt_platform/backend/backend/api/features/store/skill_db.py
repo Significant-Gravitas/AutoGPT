@@ -13,7 +13,12 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
+from backend.copilot.tools.skills import (
+    SKILL_ORIGIN_MARKETPLACE,
+    SkillFile,
+    list_user_skills,
+    store_user_skill,
+)
 from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -201,6 +206,7 @@ async def install_marketplace_skill(
         # keep a sibling only the previously installed version had.
         files=await _read_version_files(active.id),
         expert_id=expert_id,
+        origin=SKILL_ORIGIN_MARKETPLACE,
     )
     if is_new:
         await prisma.models.SkillListing.prisma().update(

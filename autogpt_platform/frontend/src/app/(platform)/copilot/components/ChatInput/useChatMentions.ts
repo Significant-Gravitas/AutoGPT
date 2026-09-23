@@ -1,5 +1,11 @@
-import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import {
+  listWorkspaceFiles,
+  useListWorkspaceFolders,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
+import { okData } from "@/app/api/helpers";
+import { subfolderCountOf } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKeyboardNav";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +16,7 @@ import { isKey } from "@/lib/keyboard";
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
 const MENTION_RESULT_LIMIT = 8;
+const MENTION_FOLDER_LIMIT = 3;
 
 interface ActiveMention {
   query: string;
@@ -22,6 +29,7 @@ interface Args {
   value: string;
   setValue: (value: string) => void;
   addWorkspaceFile: (item: WorkspaceFileItem) => void;
+  addWorkspaceFolder: (folder: WorkspaceFolder, subfolderCount: number) => void;
   /** Expert the chat is scoped to; suggests only files that expert can attach. */
   expertId?: string | null;
 }
@@ -37,6 +45,7 @@ export function useChatMentions({
   value,
   setValue,
   addWorkspaceFile,
+  addWorkspaceFolder,
   expertId,
 }: Args) {
   const [active, setActive] = useState<ActiveMention | null>(null);
@@ -59,6 +68,9 @@ export function useChatMentions({
         limit: MENTION_RESULT_LIMIT,
         q: debouncedQuery || undefined,
         expert_id: expertId ?? undefined,
+        // A typed name is a deliberate search, so it always spans everything
+        // the chat may attach — the picker's narrower default is for browsing.
+        include_user_files: expertId ? true : undefined,
       }),
     enabled: isOpen,
     // Keep results while the same expert's query refines; drop them when the
@@ -72,12 +84,27 @@ export function useChatMentions({
   const files =
     search.data?.status === 200 ? (search.data.data.files ?? []) : [];
 
+  const foldersQuery = useListWorkspaceFolders({
+    query: { select: okData, enabled: isOpen },
+  });
+  const allFolders = foldersQuery.data?.folders ?? [];
+  const folders = matchFolders(allFolders, debouncedQuery);
+  // Folders come first, so the keyboard cursor spans both groups as one list.
+  const options: MentionOption[] = [
+    ...folders.map((folder) => ({
+      kind: "folder" as const,
+      folder,
+      subfolderCount: subfolderCountOf(allFolders, folder.id),
+    })),
+    ...files.map((file) => ({ kind: "file" as const, file })),
+  ];
+
   const {
     highlightedIndex,
     highlightedRef,
     moveHighlight,
     setHighlightedIndex,
-  } = useKeyboardNav(files.length, debouncedQuery);
+  } = useKeyboardNav(options.length, debouncedQuery);
 
   function detect(textarea: HTMLTextAreaElement) {
     if (!enabled) return;
@@ -95,13 +122,15 @@ export function useChatMentions({
     setActive(null);
   }
 
-  function accept(item: WorkspaceFileItem | undefined) {
+  function accept(option: MentionOption | undefined) {
     // The highlighted index is clamped in an effect, so a shrinking result
     // list can momentarily leave it pointing past the end — guard against the
-    // out-of-bounds `undefined` before touching the item.
-    if (!active || !item) return;
+    // out-of-bounds `undefined` before touching the option.
+    if (!active || !option) return;
     setValue(value.slice(0, active.start) + value.slice(active.end));
-    addWorkspaceFile(item);
+    if (option.kind === "folder")
+      addWorkspaceFolder(option.folder, option.subfolderCount);
+    else addWorkspaceFile(option.file);
     setActive(null);
   }
 
@@ -112,7 +141,7 @@ export function useChatMentions({
       close();
       return true;
     }
-    if (files.length === 0) return false;
+    if (options.length === 0) return false;
     if (isKey(e, "ArrowDown")) {
       e.preventDefault();
       moveHighlight(1);
@@ -125,7 +154,7 @@ export function useChatMentions({
     }
     if (isKey(e, "Enter", "Tab")) {
       e.preventDefault();
-      accept(files[highlightedIndex]);
+      accept(options[highlightedIndex]);
       return true;
     }
     return false;
@@ -133,7 +162,7 @@ export function useChatMentions({
 
   return {
     isOpen,
-    files,
+    options,
     isLoading: search.isLoading,
     isError: search.isError,
     highlightedIndex,
@@ -144,4 +173,19 @@ export function useChatMentions({
     accept,
     onKeyDown,
   };
+}
+
+export type MentionOption =
+  | { kind: "file"; file: WorkspaceFileItem }
+  | { kind: "folder"; folder: WorkspaceFolder; subfolderCount: number };
+
+function matchFolders(
+  folders: WorkspaceFolder[],
+  query: string,
+): WorkspaceFolder[] {
+  const needle = query.trim().toLowerCase();
+  return folders
+    .filter((folder) => folder.name.toLowerCase().includes(needle))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MENTION_FOLDER_LIMIT);
 }

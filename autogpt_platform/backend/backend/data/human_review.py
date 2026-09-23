@@ -272,7 +272,7 @@ async def get_or_create_human_review(
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional["PendingHumanReviewModel"]:
+) -> Optional[PendingHumanReviewModel]:
     """
     Get a pending review by its node execution ID.
 
@@ -390,7 +390,7 @@ async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
 
 async def get_pending_reviews_for_user(
     user_id: str, page: int = 1, page_size: int = 25
-) -> list["PendingHumanReviewModel"]:
+) -> list[PendingHumanReviewModel]:
     """
     Get all pending reviews for a user with pagination.
 

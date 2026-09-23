@@ -103,6 +103,7 @@ async def _persist_and_summarize(
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
+            metadata={"purpose": "tool-output"},
             overwrite=True,
         )
     except Exception:

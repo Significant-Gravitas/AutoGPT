@@ -448,6 +448,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    e2b_egress_proxy_address: str = Field(
+        default="",
+        description="host:port of the SOCKS5 credential swap proxy every E2B box "
+        "egresses through (see backend.util.e2b_network). Empty leaves egress "
+        "direct. Do not set it before the proxy exists: E2B fails closed, so a "
+        "box pointed at nothing has no egress at all.",
+    )
+
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
@@ -678,6 +686,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Hours between periodic Stripe subscription-tier reconciliation "
             "sweeps (1-168 hours)"
+        ),
+    )
+
+    scheduler_startup_embedding_backfill: bool = Field(
+        default=True,
+        description=(
+            "Run the first search embedding coverage backfill in the background "
+            "when the scheduler starts instead of waiting six hours"
         ),
     )
 

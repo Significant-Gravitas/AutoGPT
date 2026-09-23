@@ -5,6 +5,7 @@ import {
   getExpertAccessProviders,
   getExpertFirstName,
 } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { Text } from "@/components/atoms/Text/Text";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -129,6 +130,10 @@ export function ExpertPage() {
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
       <ExpertPageHeader expert={expert} actions={actions} />
+      <Text variant="body" tone="secondary" className="mt-4">
+        Hire an AI Expert for supported tasks you might otherwise contract out.
+        Review outputs before using them.
+      </Text>
       <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
         <ExpertDayOne
           name={firstName}

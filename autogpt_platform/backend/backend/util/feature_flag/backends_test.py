@@ -9,6 +9,9 @@ import uuid
 import pytest
 from fastapi import HTTPException
 from ldclient import Context, LDClient
+from ldclient.config import Config as LDConfig
+from ldclient.integrations.test_data import TestData
+from posthog import Posthog
 
 import backend.util.feature_flag as ff
 import backend.util.feature_flag.posthog as ph
@@ -686,6 +689,96 @@ class TestForcedFlagsInEveryBackend:
         with pytest.raises(HTTPException) as off:
             await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
         assert off.value.status_code == 404
+
+
+class TestTheCountryRuleInEveryBackend:
+    """The trial's country targeting, through each vendor's real evaluator."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
+    @pytest.mark.parametrize(
+        "country,offered", [("US", True), ("BR", True), ("IN", False), (None, False)]
+    )
+    async def test_the_country_decides_the_offer(
+        self, mocker, backend, country, offered
+    ):
+        use_backend(mocker, backend)
+        mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.builder("u-1").kind("user").build(), True),
+        )
+        ld = _launchdarkly_serving_all_but_india()
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        posthog_client = _posthog_serving_all_but_india()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            value = await ff.get_feature_flag_value(
+                _TRIAL_FLAG,
+                "u-1",
+                None,
+                attributes={"country": country} if country else None,
+            )
+            await drain_shadow_evaluations()
+        finally:
+            ld.close()
+            posthog_client.shutdown()
+        assert (value == {"version": "v1"}) is offered
+
+
+_TRIAL_FLAG = "card-required-trial-offer"
+
+
+def _launchdarkly_serving_all_but_india() -> LDClient:
+    td = TestData.data_source()
+    td.update(
+        td.flag(_TRIAL_FLAG)
+        .variations({"enabled": False}, {"version": "v1"})
+        .fallthrough_variation(0)
+        .if_not_match("country", "IN")
+        .then_return(1)
+    )
+    return LDClient(LDConfig("sdk-test", update_processor_class=td, send_events=False))
+
+
+def _posthog_serving_all_but_india() -> Posthog:
+    """What the sync script ports that LaunchDarkly rule to, evaluated locally."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": _TRIAL_FLAG,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "country",
+                                "type": "person",
+                                "operator": "is_set",
+                                "value": "is_set",
+                            },
+                            {
+                                "key": "country",
+                                "type": "person",
+                                "operator": "is_not",
+                                "value": ["IN"],
+                            },
+                        ],
+                        "rollout_percentage": 100,
+                    }
+                ],
+                "payloads": {"true": json.dumps({"version": "v1"})},
+            },
+        }
+    ]
+    # A person without a country is inconclusive locally; keep the fallback offline.
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
+def _no_remote_flags(*args, **kwargs):
+    raise ConnectionError("remote /flags is unavailable in tests")
 
 
 def _gated_route():
