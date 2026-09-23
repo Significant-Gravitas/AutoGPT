@@ -2,6 +2,7 @@
 
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -11,7 +12,8 @@ import { useHireFlow } from "@/services/experts/useHireFlow";
 import { AddTeamIcon } from "@hugeicons/core-free-icons";
 
 // The atom sizes a lone action; on a card it is a label with a glyph.
-const TEXT_BUTTON = "min-w-0 px-2";
+const TEXT_BUTTON = "min-w-0 gap-1.5 px-2 text-base";
+const HIRE_ICON = <Icon icon={AddTeamIcon} size={20} aria-hidden />;
 
 interface Props {
   expert: ExpertTemplate;
@@ -41,7 +43,7 @@ export function ExpertHireButton({ expert }: Props) {
         href={`/signup?next=${next}`}
         variant="ghost"
         size="small"
-        leadingIcon={AddTeamIcon}
+        leftIcon={HIRE_ICON}
         className={TEXT_BUTTON}
       >
         Hire
@@ -63,7 +65,7 @@ export function ExpertHireButton({ expert }: Props) {
         variant="ghost"
         size="small"
         loading={isHiring}
-        leadingIcon={AddTeamIcon}
+        leftIcon={HIRE_ICON}
         onClick={handleHire}
         className={TEXT_BUTTON}
       >
