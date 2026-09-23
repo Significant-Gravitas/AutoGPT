@@ -49,7 +49,6 @@ import {
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn, isEmpty } from "@/lib/utils";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
 import { analytics } from "@/services/analytics";
@@ -57,6 +56,12 @@ import {
   AgentStatus,
   AgentStatusChip,
 } from "@/app/(platform)/build/components/legacy-builder/agent-status-chip";
+import {
+  Clock01Icon,
+  Copy01Icon,
+  InformationCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AgentRunDraftView({
   graph,
@@ -664,7 +669,7 @@ export function AgentRunDraftView({
                         }
                         title="Copy webhook URL"
                       >
-                        <CopyIcon className="size-4" />
+                        <Icon icon={Copy01Icon} className="size-4" />
                       </Button>
                     </div>
                   </div>
@@ -689,7 +694,7 @@ export function AgentRunDraftView({
             {/* Schedule recommendation tip */}
             {recommendedScheduleCron && !graph.has_external_trigger && (
               <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
-                <ClockIcon className="h-4 w-4 text-violet-600" />
+                <Icon icon={Clock01Icon} className="h-4 w-4 text-violet-600" />
                 <p className="text-sm text-violet-800">
                   <strong>Tip:</strong> For best results, run this agent{" "}
                   {humanizeCronExpression(
@@ -702,7 +707,10 @@ export function AgentRunDraftView({
             {/* Setup Instructions */}
             {graph.instructions && (
               <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
-                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
+                <Icon
+                  icon={InformationCircleIcon}
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600"
+                />
                 <div className="text-sm text-violet-800">
                   <strong>Setup Instructions:</strong>{" "}
                   <span className="whitespace-pre-wrap">

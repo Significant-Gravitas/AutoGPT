@@ -58,29 +58,6 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 
     const canvasElRef = useRef<HTMLCanvasElement | null>(null);
     const instanceRef = useRef<ConfettiInstance | null>(null);
-    const hasAutoStartedRef = useRef(false);
-
-    // Create the confetti instance once after mount via useEffect,
-    // so React never re-fires a callback ref on re-renders.
-    useEffect(() => {
-      const node = canvasElRef.current;
-      if (!node || instanceRef.current) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      node.width = node.offsetWidth * dpr;
-      node.height = node.offsetHeight * dpr;
-
-      instanceRef.current = confetti.create(node, {
-        resize: true,
-        useWorker: false,
-        ...globalOptions,
-      });
-
-      return () => {
-        instanceRef.current?.reset();
-        instanceRef.current = null;
-      };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fire = useMemo(
       () =>
@@ -102,11 +79,49 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 
     useImperativeHandle(ref, () => api, [api]);
 
+    // Mirror the latest props into refs so the mount-only effect below can read
+    // current values without listing them as dependencies. `fire`'s identity
+    // changes whenever `options` changes (a new object literal every render at
+    // most call sites), so depending on it would tear down and re-fire the
+    // instance on every re-render.
+    const manualstartRef = useRef(manualstart);
+    manualstartRef.current = manualstart;
+    const globalOptionsRef = useRef(globalOptions);
+    globalOptionsRef.current = globalOptions;
+    const fireRef = useRef(fire);
+    fireRef.current = fire;
+
+    // Create the confetti instance once after mount via useEffect,
+    // so React never re-fires a callback ref on re-renders. Auto-fire is
+    // tied to instance creation so StrictMode's remount (which resets the
+    // instance) still produces a visible burst.
     useEffect(() => {
-      if (manualstart || hasAutoStartedRef.current) return;
-      hasAutoStartedRef.current = true;
-      void fire();
-    }, [manualstart, fire]);
+      const node = canvasElRef.current;
+      if (!node || instanceRef.current) return;
+
+      // Cap DPR: full-resolution canvases on 2-3x displays multiply the
+      // pixels the main thread has to paint each frame for little visual gain.
+      // `resize: false` keeps this capped sizing — canvas-confetti's own resize
+      // handling ignores devicePixelRatio and would drop the cap on any resize.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      node.width = node.offsetWidth * dpr;
+      node.height = node.offsetHeight * dpr;
+
+      instanceRef.current = confetti.create(node, {
+        resize: false,
+        useWorker: false,
+        ...globalOptionsRef.current,
+      });
+
+      if (!manualstartRef.current) {
+        void fireRef.current();
+      }
+
+      return () => {
+        instanceRef.current?.reset();
+        instanceRef.current = null;
+      };
+    }, []);
 
     return (
       <ConfettiContext.Provider value={api}>

@@ -84,9 +84,11 @@ def fake_redis(mocker):
     class FakeRedis:
         def __init__(self):
             self.hits: dict[str, int] = {}
+            self.get_calls: list[str] = []
             self.expire_calls: list[tuple[str, int]] = []
 
         async def get(self, key: str):
+            self.get_calls.append(key)
             # Keys are ``mem:hits:{user_id}:{edge_uuid}`` — split off the uuid.
             edge_uuid = key.rsplit(":", 1)[-1]
             value = self.hits.get(edge_uuid, 0)
@@ -173,6 +175,33 @@ async def test_tentative_edge_without_hits_past_grace_is_superseded_as_unratifie
 
 
 @pytest.mark.asyncio
+async def test_supersede_failure_is_reported_not_silently_dropped(mocker, fake_redis):
+    """An edge the group-scoped supersede can't match (legacy write without a
+    group_id property, or a query error) must land in per_edge_errors —
+    otherwise it is silently re-examined by every future sweep forever."""
+    edge = {
+        "uuid": "edge-legacy",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    mocker.patch.object(
+        ratification_mod, "AutoGPTFalkorDriver", MagicMock(return_value=driver)
+    )
+    mocker.patch.object(
+        ratification_mod,
+        "mark_edges_superseded",
+        AsyncMock(side_effect=lambda driver, uuids, **kw: ([], list(uuids))),
+    )
+
+    result = await run_ratification_pass("u-legacy")
+
+    assert result.superseded_count == 0
+    assert len(result.per_edge_errors) == 1
+    assert "edge-legacy" in result.per_edge_errors[0]
+    assert "supersede_failed" in result.per_edge_errors[0]
+
+
+@pytest.mark.asyncio
 async def test_tentative_edge_within_grace_without_hits_is_untouched(
     mocker, fake_redis, stub_mark_superseded
 ):
@@ -196,6 +225,29 @@ async def test_tentative_edge_within_grace_without_hits_is_untouched(
         if "ratified_at" in call.args[0]
     ]
     assert promote_calls == []
+
+
+@pytest.mark.asyncio
+async def test_expert_ratification_uses_expert_graph_and_scoped_hit_key(
+    mocker, fake_redis, stub_mark_superseded
+):
+    edge = {
+        "uuid": "edge-expert",
+        "created_at": _days_ago(RATIFICATION_GRACE_PERIOD.days + 2),
+    }
+    driver = _make_driver(records_for_list=[edge])
+    driver_factory = MagicMock(return_value=driver)
+    mocker.patch.object(ratification_mod, "AutoGPTFalkorDriver", driver_factory)
+
+    result = await run_ratification_pass("user-1", expert_id="expert-1")
+
+    assert result.superseded_count == 1
+    group_id = driver_factory.call_args.kwargs["database"]
+    assert group_id.startswith("expert_")
+    assert stub_mark_superseded.call_args.kwargs["group_id"] == group_id
+    assert hit_key("user-1", "edge-expert", "expert-1") == (
+        f"mem:hits:{group_id}:edge-expert"
+    )
 
 
 def test_grace_period_is_thirty_days_per_spec():
@@ -268,8 +320,9 @@ async def test_empty_user_with_no_tentative_edges_returns_zero_counts_no_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expert_id", [None, "expert-poison"])
 async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
-    mocker, fake_redis, stub_mark_superseded
+    mocker, fake_redis, stub_mark_superseded, expert_id
 ):
     """A poison-pill edge raises mid-pass; the others still get processed,
     and the failure is captured in ``per_edge_errors`` rather than raised."""
@@ -290,16 +343,18 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     # per-edge try/except can catch it without breaking the others.
     original_get_hit_count = ratification_mod._get_hit_count
 
-    async def hit_count_with_poison(user_id: str, edge_uuid: str) -> int:
+    async def hit_count_with_poison(
+        user_id: str, edge_uuid: str, expert_id: str | None = None
+    ) -> int:
         if edge_uuid == "edge-poison":
             raise RuntimeError("simulated redis explosion")
-        return await original_get_hit_count(user_id, edge_uuid)
+        return await original_get_hit_count(user_id, edge_uuid, expert_id)
 
     mocker.patch.object(
         ratification_mod, "_get_hit_count", side_effect=hit_count_with_poison
     )
 
-    result = await run_ratification_pass("u-mixed")
+    result = await run_ratification_pass("u-mixed", expert_id=expert_id)
 
     assert result.examined_count == 3
     # The hot edge got ratified, the stale edge got superseded, the
@@ -308,6 +363,10 @@ async def test_per_edge_failure_does_not_kill_the_rest_of_the_pass(
     assert result.superseded_count == 1
     assert len(result.per_edge_errors) == 1
     assert "edge-poison" in result.per_edge_errors[0]
+    assert fake_redis.get_calls == [
+        hit_key("u-mixed", "edge-good-hot", expert_id),
+        hit_key("u-mixed", "edge-good-stale", expert_id),
+    ]
 
 
 # ---------------------------------------------------------------------------

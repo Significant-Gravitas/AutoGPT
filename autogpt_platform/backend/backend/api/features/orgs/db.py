@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma, transaction
-from backend.data.org_migration import _sanitize_slug, create_personal_org
+from backend.data.org_migration import (
+    _sanitize_slug,
+    _soft_delete_blocking_orphan,
+    create_personal_org,
+)
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -21,12 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 async def _find_personal_org_member(user_id: str):
+    # Ordered oldest-first so this agrees with get_request_context (auth) and
+    # _find_owned_personal_org (org_migration) on the canonical personal org
+    # when a user briefly has more than one.
     return await prisma.orgmember.find_first(
         where={
             "userId": user_id,
             "isOwner": True,
             "Org": {"isPersonal": True, "deletedAt": None},
         },
+        order={"createdAt": "asc"},
     )
 
 
@@ -96,6 +104,31 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
                     "using existing org"
                 )
                 return member.orgId
+            # No membership: a legacy orphan may be squatting on the user's
+            # one-personal-per-user index slot — clear it and retry once so
+            # a first-touch request self-heals instead of degrading.
+            if await _soft_delete_blocking_orphan(user_id):
+                try:
+                    org = await _create_personal_org_for_user(
+                        user_id, slug_base, display_name
+                    )
+                    logger.info(
+                        f"Bootstrapped personal org {org.id} for user {user_id} "
+                        "after clearing a blocking orphan"
+                    )
+                    return org.id
+                except UniqueViolationError:
+                    # A concurrent creator can win between the orphan clear
+                    # and this retry — reconcile before reporting failure.
+                    member = await _find_personal_org_member(user_id)
+                    if member is not None:
+                        return member.orgId
+                    logger.error(
+                        f"Personal-org bootstrap for {user_id} still failing "
+                        "after orphan cleanup",
+                        exc_info=True,
+                    )
+                    return None
             logger.error(
                 f"Personal-org bootstrap for {user_id} hit a unique violation "
                 "but no membership exists",
@@ -138,6 +171,26 @@ async def get_user_default_team(
     workspace = await prisma.team.find_first(where={"orgId": org_id, "isDefault": True})
     ws_id = workspace.id if workspace else None
     return org_id, ws_id
+
+
+async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]:
+    """Best-effort default org/team for tenanting newly created rows.
+
+    Wraps ``get_user_default_team`` so tenancy resolution can never abort the
+    operation that needs it (an execution, a library add, a notification): a
+    raised lookup — or an unresolvable org — yields ``(None, None)`` and the
+    row is created untenanted. Callers stamp the returned pair only when
+    non-null.
+    """
+    try:
+        return await get_user_default_team(user_id)
+    except Exception:
+        logger.warning(
+            f"Default org/team lookup failed for user {user_id}; "
+            "creating the row untenanted",
+            exc_info=True,
+        )
+        return None, None
 
 
 async def _create_personal_org_for_user(
@@ -424,6 +477,13 @@ async def add_org_member(
     invited_by: str | None = None,
 ) -> OrgMemberResponse:
     """Add a member to an organization and its default workspace."""
+    # A personal org bills the owner's own wallet, so a second member would
+    # spend it with no billing permission of their own.
+    if await prisma.organization.find_first(where={"id": org_id, "isPersonal": True}):
+        raise ValueError(
+            "Cannot add a member to a personal organization. Convert it first."
+        )
+
     member = await prisma.orgmember.create(
         data={
             "orgId": org_id,

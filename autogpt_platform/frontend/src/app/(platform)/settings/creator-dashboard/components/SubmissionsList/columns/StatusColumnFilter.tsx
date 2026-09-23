@@ -1,7 +1,4 @@
 "use client";
-
-import { CheckIcon } from "@phosphor-icons/react";
-
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -9,6 +6,8 @@ import { cn } from "@/lib/utils";
 
 import { STATUS_OPTIONS, STATUS_VISUAL } from "../../../helpers";
 import { ColumnFilter } from "../../ColumnFilter/ColumnFilter";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: SubmissionStatus[];
@@ -61,7 +60,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                         : "scale-95 border-zinc-300 bg-white text-transparent",
                     )}
                   >
-                    <CheckIcon size={10} weight="bold" />
+                    <Icon icon={Tick02Icon} size={10} />
                   </span>
                 </button>
               </li>

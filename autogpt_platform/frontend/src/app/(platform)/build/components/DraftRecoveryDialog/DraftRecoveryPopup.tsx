@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockCounterClockwiseIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {
@@ -13,6 +12,8 @@ import { useDraftRecoveryPopup } from "./useDraftRecoveryPopup";
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion } from "framer-motion";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
+import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -101,7 +102,7 @@ export function DraftRecoveryPopup({
             )}
           >
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-              <ClockCounterClockwiseIcon className="h-5 w-5" weight="fill" />
+              <Icon icon={HistoryIcon} className="h-5 w-5" />
             </div>
 
             <div className="flex flex-col">
@@ -130,7 +131,7 @@ export function DraftRecoveryPopup({
                     onClick={onLoad}
                     className="aspect-square min-w-0 p-1.5"
                   >
-                    <ClockCounterClockwiseIcon size={20} weight="fill" />
+                    <Icon icon={HistoryIcon} size={20} />
                     <span className="sr-only">Restore changes</span>
                   </Button>
                 </TooltipTrigger>
@@ -145,7 +146,7 @@ export function DraftRecoveryPopup({
                     aria-label="Discard changes"
                     className="aspect-square min-w-0 p-1.5"
                   >
-                    <XIcon size={20} />
+                    <Icon icon={Cancel01Icon} size={20} />
                     <span className="sr-only">Discard changes</span>
                   </Button>
                 </TooltipTrigger>

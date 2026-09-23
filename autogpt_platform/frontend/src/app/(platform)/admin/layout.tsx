@@ -1,90 +1,20 @@
-import { Sidebar } from "@/components/__legacy__/Sidebar";
-import {
-  Users,
-  CurrencyDollar,
-  MagnifyingGlass,
-  Gauge,
-  Receipt,
-  FileText,
-  Heartbeat,
-  CalculatorIcon,
-  Brain,
-  RobotIcon,
-} from "@phosphor-icons/react/dist/ssr";
+"use client";
 
-import { IconSliders } from "@/components/__legacy__/ui/icons";
+import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
+import { ReactNode } from "react";
 
-const sidebarLinkGroups = [
-  {
-    links: [
-      {
-        text: "Marketplace Management",
-        href: "/admin/marketplace",
-        icon: <Users className="h-6 w-6" />,
-      },
-      {
-        text: "User Spending",
-        href: "/admin/spending",
-        icon: <CurrencyDollar className="h-6 w-6" />,
-      },
-      {
-        text: "System Diagnostics",
-        href: "/admin/diagnostics",
-        icon: <Heartbeat className="h-6 w-6" />,
-      },
-      {
-        text: "User Impersonation",
-        href: "/admin/impersonation",
-        icon: <MagnifyingGlass className="h-6 w-6" />,
-      },
-      {
-        text: "Rate Limits",
-        href: "/admin/rate-limits",
-        icon: <Gauge className="h-6 w-6" />,
-      },
-      {
-        text: "Platform Costs",
-        href: "/admin/platform-costs",
-        icon: <Receipt className="h-6 w-6" />,
-      },
-      {
-        text: "Execution Analytics",
-        href: "/admin/execution-analytics",
-        icon: <FileText className="h-6 w-6" />,
-      },
-      {
-        text: "Bot Analytics",
-        href: "/admin/bots",
-        icon: <RobotIcon className="h-6 w-6" />,
-      },
-      {
-        text: "Block Cost Estimates",
-        href: "/admin/block-cost-estimates",
-        icon: <CalculatorIcon className="h-6 w-6" />,
-      },
-      {
-        text: "Memory Inspector",
-        href: "/admin/memory",
-        icon: <Brain className="h-6 w-6" />,
-      },
-      {
-        text: "Admin User Management",
-        href: "/admin/settings",
-        icon: <IconSliders className="h-6 w-6" />,
-      },
-    ],
-  },
-];
+import { AdminClassicShell } from "./components/AdminClassicShell";
+import { AdminNewShell } from "./components/AdminNewShell";
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-screen w-full flex-col lg:flex-row">
-      <Sidebar linkGroups={sidebarLinkGroups} />
-      <div className="flex-1 pl-4">{children}</div>
-    </div>
-  );
+// Switcher between the classic admin shell (legacy sidebar under the top
+// Navbar) and the new-layout shell (settings-style sidebar, no Navbar). The
+// classic shell can be deleted wholesale once the new layout ships.
+export default function AdminLayout({ children }: { children: ReactNode }) {
+  const { isNewLayoutActive } = usePlatformChrome();
+
+  if (isNewLayoutActive) {
+    return <AdminNewShell>{children}</AdminNewShell>;
+  }
+
+  return <AdminClassicShell>{children}</AdminClassicShell>;
 }

@@ -1,0 +1,704 @@
+"""Tests for the Telegram adapter."""
+
+import html
+import re
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.bot.adapters.base import (
+    EditOutcome,
+    FileAttachment,
+    StreamDraftOutcome,
+)
+from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
+from backend.copilot.bot.choices import ResolvedChoice
+from backend.copilot.bot.turn_stream import _clarification_message
+
+from .adapter import (
+    TelegramAdapter,
+    _collect_mentionable_users,
+    _decode_target,
+    _encode_target,
+    _verify_secret,
+)
+
+_ADAPTER = "backend.copilot.bot.adapters.telegram.adapter"
+
+
+def _adapter() -> TelegramAdapter:
+    with patch(f"{_ADAPTER}.config.get_bot_token", return_value="123:abc"):
+        a = TelegramAdapter(MagicMock())
+    a._bot_id = "999"
+    a._bot_username = "OurBot"
+    a._client = MagicMock()
+    a._client.call = AsyncMock(return_value={"message_id": 77})
+    return a
+
+
+def _dm(text: str, **extra) -> dict:
+    return {
+        "message": {
+            "message_id": 10,
+            "text": text,
+            "chat": {"id": 42, "type": "private"},
+            "from": {"id": 42, "username": "bently"},
+            **extra,
+        }
+    }
+
+
+def _group(text: str, **extra) -> dict:
+    return {
+        "message": {
+            "message_id": 11,
+            "text": text,
+            "chat": {"id": -100555, "type": "supergroup", "title": "Builders"},
+            "from": {"id": 42, "username": "bently"},
+            **extra,
+        }
+    }
+
+
+class TestVerifySecret:
+    def test_matching_header_passes(self):
+        request = MagicMock()
+        request.headers = {"X-Telegram-Bot-Api-Secret-Token": "s3cret"}
+        with patch(f"{_ADAPTER}.config.get_webhook_secret", return_value="s3cret"):
+            assert _verify_secret(request, b"") is True
+
+    def test_wrong_or_missing_header_fails(self):
+        request = MagicMock()
+        request.headers = {"X-Telegram-Bot-Api-Secret-Token": "nope"}
+        with patch(f"{_ADAPTER}.config.get_webhook_secret", return_value="s3cret"):
+            assert _verify_secret(request, b"") is False
+        request.headers = {}
+        with patch(f"{_ADAPTER}.config.get_webhook_secret", return_value="s3cret"):
+            assert _verify_secret(request, b"") is False
+
+    def test_unconfigured_secret_rejects_everything(self):
+        request = MagicMock()
+        request.headers = {"X-Telegram-Bot-Api-Secret-Token": ""}
+        with patch(f"{_ADAPTER}.config.get_webhook_secret", return_value=""):
+            assert _verify_secret(request, b"") is False
+
+
+class TestDispatch:
+    @pytest.mark.asyncio
+    async def test_dm_dispatches_as_dm_context(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_dm("hello there"))
+        assert len(seen) == 1
+        ctx = seen[0]
+        assert ctx.channel_type == "dm"
+        assert ctx.server_id is None
+        assert ctx.channel_id == "42"
+        assert ctx.text == "hello there"
+
+    @pytest.mark.asyncio
+    async def test_group_message_without_mention_is_ignored(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_group("just chatting"))
+        assert seen == []
+
+    @pytest.mark.asyncio
+    async def test_group_mention_dispatches_and_strips_the_mention(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_group("@OurBot summarise this"))
+        assert len(seen) == 1
+        ctx = seen[0]
+        assert ctx.channel_type == "channel"
+        assert ctx.server_id == "-100555"
+        assert ctx.text == "summarise this"
+        assert ctx.bot_mentioned is True
+
+    @pytest.mark.asyncio
+    async def test_reply_to_bot_message_counts_as_engagement(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(
+            _group("and now?", reply_to_message={"from": {"id": 999, "is_bot": True}})
+        )
+        assert len(seen) == 1
+
+    @pytest.mark.asyncio
+    async def test_bot_messages_are_skipped(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        update = _dm("@OurBot hi")
+        update["message"]["from"]["is_bot"] = True
+        await a._dispatch_update(update)
+        assert seen == []
+
+    @pytest.mark.asyncio
+    async def test_forum_topic_id_rides_in_the_target(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_group("@OurBot hi", message_thread_id=7))
+        assert seen[0].channel_id == "-100555|7"
+
+    @pytest.mark.asyncio
+    async def test_command_routes_to_command_handler_not_chat(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        update = _group("/setup")
+        update["message"]["entities"] = [
+            {"type": "bot_command", "offset": 0, "length": 6}
+        ]
+        with patch(f"{_ADAPTER}.commands.handle", new=AsyncMock()) as handle:
+            await a._dispatch_update(update)
+        handle.assert_awaited_once()
+        assert seen == []
+
+    @pytest.mark.asyncio
+    async def test_command_handler_error_is_contained(self):
+        # _dispatch_update runs as a fire-and-forget task — a raising command
+        # handler must be caught and logged, not left to asyncio's deferred
+        # "exception never retrieved".
+        a = _adapter()
+        update = _group("/setup")
+        update["message"]["entities"] = [
+            {"type": "bot_command", "offset": 0, "length": 6}
+        ]
+        with patch(
+            f"{_ADAPTER}.commands.handle",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            await a._dispatch_update(update)
+
+
+class TestFeatures:
+    @pytest.mark.asyncio
+    async def test_engaging_message_gets_a_reaction_ack(self):
+        a = _adapter()
+        a.on_message(lambda ctx, adapter: _noop())
+        await a._dispatch_update(_dm("hello"))
+        methods = [c.args[0] for c in a._client.call.call_args_list]
+        assert "setMessageReaction" in methods
+
+    @pytest.mark.asyncio
+    async def test_ignored_group_message_gets_no_reaction(self):
+        a = _adapter()
+        a.on_message(lambda ctx, adapter: _noop())
+        await a._dispatch_update(_group("no mention here"))
+        assert a._client.call.call_args_list == []
+
+    @pytest.mark.asyncio
+    async def test_command_menu_registered_on_startup(self):
+        a = _adapter()
+        await a._register_command_menu()
+        assert a._client.call.call_args.args == ("setMyCommands",)
+        menu = a._client.call.call_args.kwargs["commands"]
+        assert {c["command"] for c in menu} >= {"setup", "new", "help", "unlink"}
+
+    @pytest.mark.asyncio
+    async def test_image_files_send_as_photos_documents_otherwise(self):
+        a = _adapter()
+        a._client.send_photo = AsyncMock()
+        a._client.send_document = AsyncMock()
+        await a.send_file(
+            "42",
+            "",
+            FileAttachment(filename="x.png", mime_type="image/png", content=b"i"),
+        )
+        a._client.send_photo.assert_awaited_once()
+        await a.send_file(
+            "42",
+            "",
+            FileAttachment(filename="x.pdf", mime_type="application/pdf", content=b"d"),
+        )
+        a._client.send_document.assert_awaited_once()
+
+
+class TestAnalytics:
+    @pytest.mark.asyncio
+    async def test_group_join_records_guild(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": -100777, "type": "supergroup", "title": "Builders"},
+                    "new_chat_member": {"status": "member"},
+                }
+            }
+        )
+        a._api.track_guild_joined.assert_called_once_with(
+            "telegram", "-100777", "Builders"
+        )
+
+    @pytest.mark.asyncio
+    async def test_group_kick_records_guild_left(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": -100777, "type": "supergroup"},
+                    "new_chat_member": {"status": "kicked"},
+                }
+            }
+        )
+        a._api.track_guild_left.assert_called_once_with("telegram", "-100777")
+
+    @pytest.mark.asyncio
+    async def test_private_membership_changes_are_ignored(self):
+        a = _adapter()
+        await a._dispatch_update(
+            {
+                "my_chat_member": {
+                    "chat": {"id": 42, "type": "private"},
+                    "new_chat_member": {"status": "member"},
+                }
+            }
+        )
+        a._api.track_guild_joined.assert_not_called()
+
+
+class TestOutbound:
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self):
+        """SECRT-2604: an ask_question payload must reach Telegram as a
+        plain text message with the numbered options intact, unmangled by
+        the adapter's real send path (sendMessage + HTML conversion)."""
+        a = _adapter()
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await a.send_message("-100555|7", text)
+        sent = a._client.call.call_args.kwargs["text"]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
+    @pytest.mark.asyncio
+    async def test_send_message_renders_html_and_threads(self):
+        a = _adapter()
+        await a.send_message("-100555|7", "**bold** & plain")
+        kwargs = a._client.call.call_args.kwargs
+        assert a._client.call.call_args.args == ("sendMessage",)
+        assert kwargs["chat_id"] == "-100555"
+        assert kwargs["message_thread_id"] == 7
+        assert kwargs["parse_mode"] == "HTML"
+        assert kwargs["text"] == "<b>bold</b> &amp; plain"
+
+    @pytest.mark.asyncio
+    async def test_text_that_looks_like_a_marker_is_left_alone(self):
+        """The stash markers are private-use characters, never text a model
+        writes, so ordinary words and hex like E000 pass through untouched."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "code E000 and E001 for @Bently", (("Bently", "7"),)
+        )
+        assert a._client.call.call_args.kwargs["text"] == (
+            'code E000 and E001 for <a href="tg://user?id=7">@Bently</a>'
+        )
+
+    @pytest.mark.asyncio
+    async def test_mentions_by_name_and_id_ping_and_everything_else_is_escaped(
+        self,
+    ):
+        """The mention is resolved before HTML escaping, so "<@7>" the model
+        wrote is still recognisable, while an unknown "<@9>" and a
+        "<b>" it made up come out escaped."""
+        a = _adapter()
+        await a.send_message(
+            "-100555", "hi @Bently & <@7>, not <@9> <b>x</b>", (("Bently", "7"),)
+        )
+        anchor = '<a href="tg://user?id=7">@Bently</a>'
+        assert a._client.call.call_args.kwargs["text"] == (
+            f"hi {anchor} &amp; {anchor}, not &lt;@9&gt; &lt;b&gt;x&lt;/b&gt;"
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_sends_inline_keyboard(self):
+        a = _adapter()
+        sent = await a.send_choice_buttons(
+            "-100555|7", "Which region?", ["US", "EU"], "abcdef012345"
+        )
+        assert sent is True
+        assert a.supports_choice_buttons is True
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "-100555"
+        rows = kwargs["reply_markup"]["inline_keyboard"]
+        assert rows[0][0]["callback_data"] == "qans:abcdef012345:0"
+
+    @pytest.mark.asyncio
+    async def test_send_link_prefers_login_url_for_https(self):
+        # Telegram attaches a signed identity when the user taps a login_url
+        # button — the /link page verifies it for seamless linking.
+        a = _adapter()
+        await a.send_link("42", "Link it", "Open AutoGPT", "https://x/l")
+        button = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][
+            0
+        ]
+        assert button == {"text": "Open AutoGPT", "login_url": {"url": "https://x/l"}}
+
+    @pytest.mark.asyncio
+    async def test_send_link_falls_back_to_plain_url_when_login_rejected(self):
+        # Unregistered domain (no BotFather /setdomain) → login_url send fails;
+        # the link must still arrive as a plain URL button.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[RuntimeError("BUTTON_TYPE_INVALID"), {}]
+        )
+        await a.send_link("42", "Link it", "Open AutoGPT", "https://x/l")
+        retry = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][0]
+        assert retry == {"text": "Open AutoGPT", "url": "https://x/l"}
+
+    @pytest.mark.asyncio
+    async def test_send_link_degrades_to_text_when_button_rejected(self):
+        # Telegram refuses localhost button URLs (local dev) — the link must
+        # still arrive, appended as plain text.
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=[RuntimeError("Wrong HTTP URL"), {}])
+        await a.send_link("42", "Link it", "Open", "http://localhost:3000/l?a=1&b=2")
+        final = a._client.call.call_args.kwargs
+        assert "reply_markup" not in final
+        # parse_mode stays HTML, so the appended link must be entity-escaped.
+        assert "Open: http://localhost:3000/l?a=1&amp;b=2" in final["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_link_plain_url_for_non_https(self):
+        a = _adapter()
+        await a.send_link("42", "Link it", "Open", "http://localhost:3000/l")
+        button = a._client.call.call_args.kwargs["reply_markup"]["inline_keyboard"][0][
+            0
+        ]
+        assert button == {"text": "Open", "url": "http://localhost:3000/l"}
+
+    @pytest.mark.asyncio
+    async def test_create_thread_declines_so_replies_stay_in_chat(self):
+        a = _adapter()
+        assert await a.create_thread("-100555", "11", "AutoGPT: hi") is None
+
+
+def test_short_chat_ids_count_as_channel_refs():
+    a = _adapter()
+    assert a.looks_like_channel_id("12345") is True
+    assert a.looks_like_channel_id("-100987654321") is True
+    assert a.looks_like_channel_id("general") is False
+
+
+@pytest.mark.asyncio
+async def test_attachments_without_declared_size_are_skipped():
+    # The size cap is checked against the declared size pre-fetch; an
+    # undeclared size can't be admitted.
+    a = _adapter()
+    attachments, _skipped = await a._extract_attachments(
+        {"document": {"file_id": "f1", "file_name": "x.pdf"}}
+    )
+    assert attachments == ()
+
+
+def test_target_codec_roundtrip():
+    assert _decode_target(_encode_target("42")) == ("42", None)
+    assert _decode_target(_encode_target("-100555", 7)) == ("-100555", 7)
+
+
+def test_collect_mentionable_users_only_text_mentions_with_ids():
+    message = {
+        "entities": [
+            {"type": "mention"},  # @username form — no numeric id, unusable
+            {"type": "text_mention", "user": {"id": 5, "first_name": "Sam"}},
+            {"type": "text_mention", "user": {"id": 9, "is_bot": True}},
+        ]
+    }
+    assert _collect_mentionable_users(message) == (("Sam", "5"),)
+
+
+def test_the_author_is_mentionable_by_username_and_first_name():
+    message = {
+        "from": {"id": 7, "first_name": "Bently", "username": "bentlybro"},
+        "entities": [
+            {"type": "text_mention", "user": {"id": 5, "first_name": "Sam"}},
+        ],
+    }
+    assert _collect_mentionable_users(message) == (
+        ("bentlybro", "7"),
+        ("Bently", "7"),
+        ("Sam", "5"),
+    )
+
+
+def test_a_bot_author_is_never_mentionable():
+    message = {"from": {"id": 9, "first_name": "Other", "is_bot": True}}
+    assert _collect_mentionable_users(message) == ()
+
+
+async def _noop() -> None:
+    return None
+
+
+class TestStreamDrafts:
+    def test_supports_stream_drafts(self):
+        assert _adapter().supports_stream_drafts is True
+
+    @pytest.mark.asyncio
+    async def test_draft_sends_rendered_html_to_private_chat(self):
+        a = _adapter()
+        outcome = await a.send_stream_draft("42", 7, "**bold** & partial")
+        assert outcome is StreamDraftOutcome.SHOWN
+        assert a._client.call.call_args.args == ("sendMessageDraft",)
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == 42
+        assert kwargs["draft_id"] == 7
+        assert kwargs["parse_mode"] == "HTML"
+        assert kwargs["text"] == "<b>bold</b> &amp; partial"
+
+    @pytest.mark.asyncio
+    async def test_draft_stopped_for_group_chats(self):
+        # sendMessageDraft is private-chat only; groups (negative ids) must
+        # opt out without an API call so the streamer stops drafting.
+        a = _adapter()
+        assert (
+            await a.send_stream_draft("-100555|7", 7, "hi")
+            is StreamDraftOutcome.STOPPED
+        )
+        a._client.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_draft_api_error_stops_drafting(self):
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=RuntimeError("boom"))
+        assert await a.send_stream_draft("42", 7, "hi") is StreamDraftOutcome.STOPPED
+
+    @pytest.mark.asyncio
+    async def test_oversized_draft_is_skipped_not_stopped(self):
+        # HTML escaping can push a near-flush buffer past the 4096 cap — skip
+        # that update (no API call) but keep drafting for the turn.
+        a = _adapter()
+        assert (
+            await a.send_stream_draft("42", 7, "x" * 5000) is StreamDraftOutcome.SKIPPED
+        )
+        a._client.call.assert_not_awaited()
+
+
+class TestProactiveChunking:
+    @pytest.mark.asyncio
+    async def test_post_channel_message_chunks_canonical_before_html(self):
+        # Chunking must happen on the canonical markdown (where the splitter
+        # balances ``` fences), THEN localize per chunk — the old order cut
+        # inside <pre> blocks and Telegram 400s on unbalanced tags.
+        a = _adapter()
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        await a.post_channel_message("123", f"```python\n{code}\n```")
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2  # long enough to actually split
+        for c in calls:
+            sent = c.kwargs["text"]
+            assert sent.count("<pre>") == sent.count("</pre>") == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_chunked_post_keeps_what_landed(self):
+        # A 400/429 past the first chunk would otherwise report the whole post
+        # failed, and the model reposts — duplicating the delivered chunks.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[{"message_id": 77}, TelegramAPIError("sendMessage failed")]
+        )
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        ref = await a.post_channel_message("123", f"```python\n{code}\n```")
+        assert ref is not None
+        assert ref.id == "77"
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_failure_still_raises(self):
+        # Nothing landed, so the caller must hear about it and retry.
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=TelegramAPIError("sendMessage failed"))
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        with pytest.raises(TelegramAPIError):
+            await a.post_channel_message("123", f"```python\n{code}\n```")
+
+    @pytest.mark.asyncio
+    async def test_entity_dense_chunks_respect_the_parsed_length_cap(self):
+        # Telegram's 4096 cap counts characters AFTER entity parsing (Bot API,
+        # sendMessage.text), so the raw HTML may legitimately run over it;
+        # what must hold is the parsed length of every chunk.
+        a = _adapter()
+        line = '<div class="row">Tom & Jerry\'s "quote"</div>'
+        await a.post_channel_message("123", "\n".join([line] * 200))
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2
+        raw_over_cap = 0
+        for c in calls:
+            sent = c.kwargs["text"]
+            parsed = html.unescape(re.sub(r"<[^>]+>", "", sent))
+            assert len(parsed) <= 4096
+            raw_over_cap += len(sent) > 4096
+        assert raw_over_cap > 0  # the raw length is not the limit
+        joined = "".join(
+            html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
+        )
+        assert joined.count("Tom") == 200  # nothing dropped across the chunks
+
+
+class TestEditChannelMessage:
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_calls_edit_message_text(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.OK
+        assert a._client.call.call_args.args == ("editMessageText",)
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "123"
+        assert kwargs["message_id"] == 77
+        assert kwargs["text"] == "updated text"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_escapes_like_the_send_path(self):
+        a = _adapter()
+        a._client.call = AsyncMock(return_value={})
+
+        await a.edit_channel_message("123", "77", "<b>raw</b> & **bold**")
+
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["text"] == a.localize_markup("<b>raw</b> & **bold**")
+        assert kwargs["parse_mode"] == "HTML"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_modified_is_ok(self):
+        # Telegram answers this when the text is byte-identical. The message
+        # is already in the requested state, so reporting failure only makes
+        # the model retry forever.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message is not modified"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "same")
+
+        assert outcome == EditOutcome.OK
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_too_old_is_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message can't be edited"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError(
+                "editMessageText failed: message to edit not found"
+            )
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_on_other_error(self):
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=TelegramAPIError("editMessageText failed: message is too old")
+        )
+
+        outcome = await a.edit_channel_message("123", "77", "updated text")
+
+        assert outcome == EditOutcome.FAILED
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_bad_ref_id(self):
+        a = _adapter()
+
+        outcome = await a.edit_channel_message("123", "not-a-number", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+        a._client.call.assert_not_awaited()
+
+
+class TestChoiceCallbackQuery:
+    @pytest.mark.asyncio
+    async def test_click_resolves_updates_message_and_dispatches(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:1",
+            "from": {"id": 42, "username": "bently"},
+            "message": {
+                "message_id": 9,
+                "chat": {"id": 42, "type": "private"},
+            },
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        calls = {c.args[0]: c.kwargs for c in a._client.call.call_args_list}
+        assert calls["answerCallbackQuery"]["callback_query_id"] == "cbq1"
+        assert calls["editMessageText"]["text"] == "✅ You answered: EU"
+        a._on_message_callback.assert_awaited_once()
+        ctx, dispatched_adapter = a._on_message_callback.await_args.args
+        assert dispatched_adapter is a
+        assert ctx.text == "EU"
+        assert ctx.platform == "telegram"
+        assert ctx.channel_type == "dm"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_shows_alert_and_does_not_dispatch(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:0",
+            "from": {"id": 42},
+            "message": {"message_id": 9, "chat": {"id": 42, "type": "private"}},
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        answer_calls = [
+            c
+            for c in a._client.call.call_args_list
+            if c.args == ("answerCallbackQuery",)
+        ]
+        assert len(answer_calls) == 1
+        assert answer_calls[0].kwargs["show_alert"] is True
+        edit_calls = [
+            c for c in a._client.call.call_args_list if c.args == ("editMessageText",)
+        ]
+        assert edit_calls == []
+        a._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_callback_data_acks_without_dispatching(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {"id": "cbq1", "data": "not-a-choice-callback"}
+
+        await a._dispatch_callback_query(callback_query)
+
+        assert a._client.call.call_args.args == ("answerCallbackQuery",)
+        a._on_message_callback.assert_not_awaited()

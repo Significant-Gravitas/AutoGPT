@@ -5,18 +5,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import {
-  ChalkboardIcon,
-  CircleNotchIcon,
-  FrameCornersIcon,
-  MinusIcon,
-  PlusIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { startTutorial, setTutorialLoadingCallback } from "../../tutorial";
+import {
+  FullScreenIcon,
+  Loading03Icon,
+  MinusSignIcon,
+  PlusSignIcon,
+  Presentation01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const CustomControls = memo(
   ({
@@ -55,14 +56,14 @@ export const CustomControls = memo(
     const controls = [
       {
         id: "zoom-in-button",
-        icon: <PlusIcon className="size-3.5 text-zinc-600" />,
+        icon: <Icon icon={PlusSignIcon} className="size-3.5 text-zinc-600" />,
         label: "Zoom In",
         onClick: () => zoomIn(),
         className: "h-10 w-10 border-none",
       },
       {
         id: "zoom-out-button",
-        icon: <MinusIcon className="size-3.5 text-zinc-600" />,
+        icon: <Icon icon={MinusSignIcon} className="size-3.5 text-zinc-600" />,
         label: "Zoom Out",
         onClick: () => zoomOut(),
         className: "h-10 w-10 border-none",
@@ -70,9 +71,12 @@ export const CustomControls = memo(
       {
         id: "tutorial-button",
         icon: isTutorialLoading ? (
-          <CircleNotchIcon className="size-3.5 animate-spin text-zinc-600" />
+          <Icon
+            icon={Loading03Icon}
+            className="size-3.5 animate-spin text-zinc-600"
+          />
         ) : (
-          <ChalkboardIcon className="size-3.5 text-zinc-600" />
+          <Icon icon={Presentation01Icon} className="size-3.5 text-zinc-600" />
         ),
         label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: handleTutorialClick,
@@ -81,7 +85,7 @@ export const CustomControls = memo(
       },
       {
         id: "fit-view-button",
-        icon: <FrameCornersIcon className="size-3.5 text-zinc-600" />,
+        icon: <Icon icon={FullScreenIcon} className="size-3.5 text-zinc-600" />,
         label: "Fit View",
         onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
         className: "h-10 w-10 border-none",

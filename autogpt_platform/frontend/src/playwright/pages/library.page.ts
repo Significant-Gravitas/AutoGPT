@@ -490,7 +490,7 @@ export async function clickRunButton(page: Page): Promise<void> {
   const setupTaskButton = page.getByRole("button", {
     name: /Setup your task/i,
   });
-  const newTaskButton = page.getByRole("button", { name: /^New task$/i });
+  const newTaskButton = page.getByRole("button", { name: /^New agent task$/i });
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
   const runNowButton = page.getByRole("button", { name: /Run now/i });
   const actionButtons = [
@@ -810,7 +810,10 @@ async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
       "setup-task",
       page.getByRole("button", { name: /^Setup your task$/i }).first(),
     ],
-    ["new-task", page.getByRole("button", { name: /^New task$/i }).first()],
+    [
+      "new-task",
+      page.getByRole("button", { name: /^New agent task$/i }).first(),
+    ],
     ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
 
@@ -1077,26 +1080,48 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    await expect
-      .poll(
-        async () => {
-          if (/\/build/.test(page.url())) {
-            return "build";
-          }
-          if (!(await uploadingButton.isVisible().catch(() => false))) {
-            return "gone";
-          }
-          return (await uploadingButton.isDisabled().catch(() => false))
-            ? "disabled"
-            : "enabled";
-        },
-        {
-          timeout: 5000,
-          message:
-            'upload button should either stay disabled while "Uploading..." is visible or disappear because navigation already started',
-        },
-      )
-      .not.toBe("enabled");
+    const uploadingState = await uploadingButton
+      .evaluateAll((buttons) => {
+        const visibleButton = buttons.find((button) => {
+          const { width, height } = button.getBoundingClientRect();
+          return (
+            width > 0 &&
+            height > 0 &&
+            window.getComputedStyle(button).visibility !== "hidden"
+          );
+        });
+        if (!visibleButton) {
+          return "gone" as const;
+        }
+        return visibleButton.matches(":disabled") ||
+          visibleButton.getAttribute("aria-disabled") === "true"
+          ? ("disabled" as const)
+          : ("enabled" as const);
+      })
+      .catch(async (error: unknown) => {
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes("Execution context was destroyed")
+        ) {
+          throw error;
+        }
+        if (!/\/build/.test(page.url())) {
+          await page
+            .waitForURL(/\/build/, {
+              timeout: 500,
+              waitUntil: "commit",
+            })
+            .catch(() => {
+              throw error;
+            });
+        }
+        return "build" as const;
+      });
+
+    expect(
+      uploadingState,
+      'upload button should be disabled while "Uploading..." is visible',
+    ).not.toBe("enabled");
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...

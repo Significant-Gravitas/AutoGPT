@@ -3,7 +3,6 @@
 import logging
 from uuid import uuid4
 
-from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig
@@ -23,7 +22,9 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.data.db_accessors import platform_linking_db, workspace_db
+from backend.copilot.transports import resolve_default_chat_route
+from backend.copilot.tree import root_envelope
+from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -60,7 +61,7 @@ def _unavailable_denial() -> TurnDenial:
     mirrors the web route's 503-on-lookup-failure behaviour."""
     return TurnDenial(
         reason="unavailable",
-        message="AutoPilot is temporarily unavailable — please try again in a moment.",
+        message="Chat is temporarily unavailable — please try again in a moment.",
     )
 
 
@@ -83,8 +84,8 @@ async def _check_paywall(user_id: str) -> TurnDenial | None:
     return TurnDenial(
         reason="paywalled",
         message=(
-            "AutoPilot needs an active subscription. "
-            "Upgrade your plan to start chatting with it."
+            "Chatting with experts requires an active subscription. "
+            "Upgrade your plan to start chatting."
         ),
         button_label="Subscribe" if billing else None,
         button_url=billing,
@@ -176,7 +177,7 @@ async def upload_workspace_file(
     """Store a user-attached file in the conversation owner's workspace.
 
     Runs the same machinery as the web upload endpoint
-    (``WorkspaceManager.write_file`` → ClamAV scan → storage), so AutoPilot can
+    (``WorkspaceManager.write_file`` → ClamAV scan → storage), so Otto can
     read the file during the turn. Failures map to a stable ``error`` code
     rather than raising, so one bad file doesn't sink the whole message.
     """
@@ -185,6 +186,15 @@ async def upload_workspace_file(
         request.platform_server_id,
         request.platform_user_id,
     )
+    if request.session_id:
+        # Same guard as ensure_chat_session / start_chat_turn: the session
+        # must exist and belong to the owner, and a shared-server upload must
+        # never land inside an expert-scoped session's folder.
+        session = await get_chat_session(request.session_id, owner_user_id)
+        if session is None or (
+            request.platform_server_id is not None and session.expert_id is not None
+        ):
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     # Reduce the filename to its basename so a (possibly hostile) client can't
     # traverse the workspace path or leak ".."/separators into the storage
     # backend. Workspace paths are POSIX, so split on "/" (after normalising
@@ -195,7 +205,7 @@ async def upload_workspace_file(
     try:
         workspace = await workspace_db().get_or_create_workspace(owner_user_id)
         # Session-scoped, exactly like the web upload endpoint: the file lands
-        # at /sessions/<session_id>/<name> so AutoPilot reads it during the
+        # at /sessions/<session_id>/<name> so Otto reads it during the
         # turn. The caller resolves the session before uploading (see
         # ensure_chat_session).
         manager = WorkspaceManager(owner_user_id, workspace.id, request.session_id)
@@ -230,7 +240,11 @@ async def upload_workspace_file(
 
 
 async def _resolve_or_create_session(
-    owner_user_id: str, session_id: str | None, source_platform: str
+    owner_user_id: str,
+    session_id: str | None,
+    source_platform: str,
+    *,
+    allow_expert_session: bool = True,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
@@ -241,14 +255,25 @@ async def _resolve_or_create_session(
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
+        if (
+            session is not None
+            and not allow_expert_session
+            and session.expert_id is not None
+        ):
+            session = None
     if session is None:
-        org_id, team_id = await get_user_default_team(owner_user_id)
+        org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
+        llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+            owner_user_id
+        )
         session = await create_chat_session(
             owner_user_id,
             dry_run=False,
             organization_id=org_id,
             team_id=team_id,
             source_platform=source_platform,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
         )
     return session
 
@@ -263,7 +288,7 @@ async def ensure_chat_session(
 
     Called before uploading attachments so they can be written into the
     session folder — mirroring the web UI, which uploads into an already-open
-    session so files land at /sessions/<id>/ where AutoPilot reads them.
+    session so files land at /sessions/<id>/ where Otto reads them.
 
     Evaluates the turn gate first: a capped/paywalled user gets the denial
     back *before* any file is scanned or stored (the caller renders it and
@@ -283,7 +308,10 @@ async def ensure_chat_session(
         )
         return EnsureSessionResult(denial=denial)
     session = await _resolve_or_create_session(
-        owner_user_id, session_id, platform.value.lower()
+        owner_user_id,
+        session_id,
+        platform.value.lower(),
+        allow_expert_session=platform_server_id is None,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -316,9 +344,14 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
+        if request.platform_server_id is not None and session.expert_id is not None:
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
-            owner_user_id, request.session_id, request.platform.value.lower()
+            owner_user_id,
+            request.session_id,
+            request.platform.value.lower(),
+            allow_expert_session=request.platform_server_id is None,
         )
     session_id = session.session_id
 
@@ -351,7 +384,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         turn_id=turn_id,
     )
 
-    org_id, team_id = await get_user_default_team(owner_user_id)
+    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
     await enqueue_copilot_turn(
         session_id=session_id,
         user_id=owner_user_id,
@@ -361,6 +394,12 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         organization_id=org_id,
         team_id=team_id,
         file_ids=request.file_ids or None,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
+        # Roots its own tree, and born tainted: the message was written on a
+        # chat platform by someone who need not be the account owner, so
+        # anything this turn spawns inherits the bit.
+        envelope=root_envelope(turn_id, tainted=True),
     )
 
     logger.info(

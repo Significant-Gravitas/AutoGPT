@@ -1,11 +1,10 @@
 "use client";
-
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
-
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   pagination: PaginationModel;
@@ -49,7 +48,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
         <Button
           variant="secondary"
           size="small"
-          leftIcon={<CaretLeftIcon size={14} />}
+          leftIcon={<Icon icon={ArrowLeft01Icon} size={14} />}
           disabled={disabled || current_page <= 1}
           onClick={() => onPageChange(current_page - 1)}
           aria-label="Previous page"
@@ -82,7 +81,7 @@ export function Pagination({ pagination, onPageChange, disabled }: Props) {
         <Button
           variant="secondary"
           size="small"
-          rightIcon={<CaretRightIcon size={14} />}
+          rightIcon={<Icon icon={ArrowRight01Icon} size={14} />}
           disabled={disabled || current_page >= total_pages}
           onClick={() => onPageChange(current_page + 1)}
           aria-label="Next page"

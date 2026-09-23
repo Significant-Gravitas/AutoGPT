@@ -120,3 +120,19 @@ EDGE_TYPES: dict[str, type[BaseModel]] = {"MemoryFact": MemoryFact}
 EDGE_TYPE_MAP: dict[tuple[str, str], list[str]] = {
     (src, tgt): ["MemoryFact"] for src in ENTITY_TYPES for tgt in ENTITY_TYPES
 }
+
+# The ('Entity', 'Entity') wildcard is load-bearing, not redundant.
+# graphiti-core resolves an edge's allowed types from the cross-product of
+# (source.labels + ['Entity']) x (target.labels + ['Entity']) — see the
+# ``label_tuples`` build then ``edge_type_map.get(label_tuple, [])`` in
+# graphiti_core/utils/maintenance/edge_operations.py. Because 'Entity' is
+# ALWAYS appended to both sides, the ('Entity','Entity') key matches 100%
+# of edges, including every edge touching a node that carries only the
+# base ``Entity`` label (no custom entity type). Without this key those
+# edges resolve to NO custom type, so MemoryFact's attributes
+# (status/confidence/scope/source_kind/provenance) are never attached and
+# the edge persists with only the stock graphiti schema — the #13389 bug.
+# graphiti-core's own default is ``{('Entity','Entity'): list(edge_types)}``;
+# our custom map above accidentally overrode that default without re-adding
+# the wildcard.
+EDGE_TYPE_MAP[("Entity", "Entity")] = ["MemoryFact"]

@@ -19,6 +19,7 @@ import asyncio
 
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
+    StreamCompactionProgress,
     StreamFinishStep,
     StreamStartStep,
     StreamToolInputAvailable,
@@ -280,10 +281,12 @@ class TestCompactionE2E:
 
         # --- Step 8: Next SDK message arrives → emit_start ---
         start_events = tracker.emit_start_if_ready()
-        assert len(start_events) == 3
+        assert len(start_events) == 4
         assert isinstance(start_events[0], StreamStartStep)
         assert isinstance(start_events[1], StreamToolInputStart)
         assert isinstance(start_events[2], StreamToolInputAvailable)
+        assert isinstance(start_events[3], StreamCompactionProgress)
+        assert start_events[3].phase == "summarizing"
 
         # Verify tool_call_id is set
         tool_call_id = start_events[1].toolCallId
@@ -293,9 +296,11 @@ class TestCompactionE2E:
         result = _run(tracker.emit_end_if_ready(session))
         assert result.just_ended is True
         assert result.transcript_path == str(session_file)
-        assert len(result.events) == 2
+        assert len(result.events) == 3
         assert isinstance(result.events[0], StreamToolOutputAvailable)
         assert isinstance(result.events[1], StreamFinishStep)
+        assert isinstance(result.events[2], StreamCompactionProgress)
+        assert result.events[2].phase == "rebuilding"
         # Verify same tool_call_id
         assert result.events[0].toolCallId == tool_call_id
 

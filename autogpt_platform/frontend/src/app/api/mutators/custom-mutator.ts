@@ -9,18 +9,15 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
+import { logClientRequestFailure } from "./request-failure-log";
 
-const FRONTEND_BASE_URL =
-  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
-const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
-
-const getBaseUrl = (): string => {
+function getBaseURL(): string {
   if (!environment.isServerSide()) {
-    return API_PROXY_BASE_URL;
+    return "/api/proxy";
   } else {
     return environment.getAGPTServerBaseUrl();
   }
-};
+}
 
 const getBody = async <T>(c: Response | Request): Promise<T> => {
   // 204 No Content responses (and 200s with Content-Length: 0) have no body.
@@ -40,7 +37,13 @@ const getBody = async <T>(c: Response | Request): Promise<T> => {
     return c.json();
   }
 
-  if (contentType && contentType.includes("application/pdf")) {
+  if (
+    contentType &&
+    (contentType.includes("application/pdf") ||
+      contentType.includes("application/zip") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/"))
+  ) {
     return c.blob() as Promise<T>;
   }
 
@@ -90,7 +93,7 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBaseURL();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   // here url also contains encoded query params
@@ -135,30 +138,54 @@ export const customMutator = async <
       responseData = { error: "Failed to parse response" };
     }
 
+    const rawDetail = responseData?.detail;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail
+          .map((e: unknown) =>
+            e && typeof e === "object" && "msg" in e
+              ? String((e as { msg: unknown }).msg)
+              : JSON.stringify(e),
+          )
+          .join("; ")
+      : typeof rawDetail === "string"
+        ? rawDetail
+        : rawDetail != null
+          ? JSON.stringify(rawDetail)
+          : undefined;
+
     const errorMessage =
-      responseData?.detail ||
+      detail ||
       responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;
 
-    console.error(
-      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      {
-        status: response.status,
-        method,
-        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
-        errorMessage,
+    const failure = {
+      status: response.status,
+      method,
+      url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+      errorMessage,
+      responseData,
+    };
+
+    if (environment.isServerSide()) {
+      // Server-side module state is shared across every user's request, so
+      // collapsing there would hide one user's failure behind another's.
+      console.error("Request failed on server", {
+        ...failure,
         responseData: responseData || "No response data",
-      },
-    );
+      });
+    } else {
+      logClientRequestFailure(failure);
+    }
 
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<T["data"]>(response);
+  const responseData = await getBody<unknown>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(responseData);
+  const transformedData =
+    responseData instanceof Blob ? responseData : transformDates(responseData);
 
   return {
     status: response.status,

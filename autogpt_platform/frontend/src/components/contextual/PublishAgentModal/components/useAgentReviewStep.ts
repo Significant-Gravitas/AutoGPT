@@ -2,20 +2,19 @@
 
 import { usePathname } from "next/navigation";
 import { useReducedMotion } from "framer-motion";
-import {
-  CheckIcon,
-  NotePencilIcon,
-  XIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
-
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { getSubmissionMeta } from "../helpers";
+import {
+  Cancel01Icon,
+  NoteEditIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 interface HeroContent {
   title: string;
   description: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
   pulse: string;
   gradient: string;
 }
@@ -30,7 +29,7 @@ function getHeroContent(
         title: "Agent approved",
         description:
           "Your agent has been approved and is now live on the AutoGPT marketplace.",
-        Icon: CheckIcon,
+        Icon: Tick02Icon,
         pulse: "bg-emerald-400/40",
         gradient: "from-emerald-400 to-emerald-600",
       };
@@ -39,7 +38,7 @@ function getHeroContent(
         title: "Agent needs changes",
         description:
           "Your submission was not approved. Review the feedback and resubmit.",
-        Icon: XIcon,
+        Icon: Cancel01Icon,
         pulse: "bg-rose-400/40",
         gradient: "from-rose-400 to-rose-600",
       };
@@ -48,7 +47,7 @@ function getHeroContent(
         title: "Draft saved",
         description:
           "This agent isn't submitted yet. Finish the details and submit it for review.",
-        Icon: NotePencilIcon,
+        Icon: NoteEditIcon,
         pulse: "bg-zinc-400/40",
         gradient: "from-zinc-400 to-zinc-600",
       };
@@ -58,7 +57,7 @@ function getHeroContent(
         description: isDashboardPage
           ? "We'll notify you once review is complete. Approved agents go live on the marketplace."
           : "We'll notify you once review is complete. Track progress from the Creator Dashboard.",
-        Icon: CheckIcon,
+        Icon: Tick02Icon,
         pulse: "bg-purple-400/40",
         gradient: "from-purple-400 to-purple-600",
       };

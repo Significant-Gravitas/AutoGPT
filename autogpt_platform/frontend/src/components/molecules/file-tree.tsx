@@ -9,15 +9,15 @@ import React, {
   useState,
 } from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import {
-  File as PhFileIcon,
-  Folder as PhFolderIcon,
-  FolderOpen as PhFolderOpenIcon,
-} from "@phosphor-icons/react";
-
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  FileEmpty02Icon,
+  Folder01Icon,
+  FolderOpenIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type TreeViewElement = {
   id: string;
@@ -257,8 +257,8 @@ const Folder = forwardRef<
           onClick={() => handleExpand(value)}
         >
           {expandedItems?.includes(value)
-            ? (openIcon ?? <PhFolderOpenIcon className="size-4" />)
-            : (closeIcon ?? <PhFolderIcon className="size-4" />)}
+            ? (openIcon ?? <Icon icon={FolderOpenIcon} className="size-4" />)
+            : (closeIcon ?? <Icon icon={Folder01Icon} className="size-4" />)}
           <span>{element}</span>
         </AccordionPrimitive.Trigger>
         <AccordionPrimitive.Content className="relative h-full overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
@@ -325,7 +325,7 @@ const File = forwardRef<
         onClick={() => selectItem(value)}
         {...props}
       >
-        {fileIcon ?? <PhFileIcon className="size-4" />}
+        {fileIcon ?? <Icon icon={FileEmpty02Icon} className="size-4" />}
         {children}
       </button>
     );

@@ -1,22 +1,30 @@
 """
 Comprehensive tests for JWT token parsing and validation.
 Ensures 100% line and branch coverage for JWT security functions.
+
+Verification is JWKS-only: the platform auth service issues asymmetric
+(ES256) tokens, and symmetric (HS*) tokens are rejected outright.
 """
 
+import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from jwt.algorithms import ECAlgorithm
 from pytest_mock import MockerFixture
 
 from autogpt_libs.auth import config, jwt_utils
 from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.models import User
 
-MOCK_JWT_SECRET = "test-secret-key-with-at-least-32-characters"
+MOCK_JWKS_URL = "http://localhost:3000/api/auth/jwks"
+_SIGNING_KID = "test-key-1"
 TEST_USER_PAYLOAD = {
     "sub": "test-user-id",
     "role": "user",
@@ -30,19 +38,41 @@ TEST_ADMIN_PAYLOAD = {
     "email": "admin@example.com",
 }
 
+# The active JWKS signing key, installed by the autouse fixture so the
+# module-level create_token() helper can sign tokens the mocked JWK set trusts.
+_signing_key: ec.EllipticCurvePrivateKey | None = None
+
+
+def make_es256_keypair(kid: str = _SIGNING_KID):
+    """Generate an EC P-256 keypair and the matching JWK set document."""
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    jwk = ECAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+    jwk.update({"kid": kid, "alg": "ES256", "use": "sig"})
+    return private_key, {"keys": [jwk]}
+
 
 @pytest.fixture(autouse=True)
 def mock_config(mocker: MockerFixture):
-    mocker.patch.dict(os.environ, {"JWT_VERIFY_KEY": MOCK_JWT_SECRET}, clear=True)
+    """Configure a JWKS endpoint and serve a single ES256 signing key."""
+    global _signing_key
+    private_key, jwk_set = make_es256_keypair()
+    _signing_key = private_key
+
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": MOCK_JWKS_URL}, clear=True)
     mocker.patch.object(config, "_settings", Settings())
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+    mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value=jwk_set)
     yield
+    _signing_key = None
 
 
-def create_token(payload, secret=None, algorithm="HS256"):
-    """Helper to create JWT tokens."""
-    if secret is None:
-        secret = MOCK_JWT_SECRET
-    return jwt.encode(payload, secret, algorithm=algorithm)
+def create_token(payload, private_key=None, kid: str = _SIGNING_KID) -> str:
+    """Helper to create ES256 JWT tokens signed by the active JWKS key."""
+    if private_key is None:
+        private_key = _signing_key
+    assert private_key is not None
+    return jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": kid})
 
 
 def test_parse_jwt_token_valid():
@@ -69,9 +99,9 @@ def test_parse_jwt_token_expired():
 
 
 def test_parse_jwt_token_invalid_signature():
-    """Test parsing a token with invalid signature."""
-    # Create token with different secret
-    token = create_token(TEST_USER_PAYLOAD, secret="wrong-secret")
+    """A token signed by a key that is not in the JWK set is rejected."""
+    other_key, _ = make_es256_keypair(kid=_SIGNING_KID)
+    token = create_token(TEST_USER_PAYLOAD, private_key=other_key)
 
     with pytest.raises(ValueError) as exc_info:
         jwt_utils.parse_jwt_token(token)
@@ -207,11 +237,13 @@ def test_verify_user_none_sub():
 
 
 def test_verify_user_missing_role_admin_check():
-    """Test verifying admin when role field is missing."""
+    """A missing 'role' claim under admin_only must fail closed (403), not
+    KeyError -> 500."""
     no_role_payload = {"sub": "user-id"}
-    with pytest.raises(KeyError):
-        # This will raise KeyError when checking payload["role"]
+    with pytest.raises(HTTPException) as exc_info:
         jwt_utils.verify_user(no_role_payload, admin_only=True)
+    assert exc_info.value.status_code == 403
+    assert "Admin access required" in exc_info.value.detail
 
 
 # ======================== EDGE CASES ======================== #
@@ -286,23 +318,113 @@ def test_jwt_with_future_iat():
         jwt_utils.parse_jwt_token(token)
 
 
-def test_jwt_with_different_algorithms():
-    """Test that only HS256 algorithm is accepted."""
-    payload = {
-        "sub": "user-id",
-        "role": "user",
-        "aud": "authenticated",
-    }
+# =============== SYMMETRIC (HS*) TOKENS ARE REJECTED =============== #
 
-    # Try different algorithms
-    algorithms = ["HS384", "HS512", "none"]
-    for algo in algorithms:
-        if algo == "none":
-            # Special case for 'none' algorithm (security vulnerability if accepted)
-            token = create_token(payload, "", algorithm="none")
-        else:
-            token = create_token(payload, algorithm=algo)
 
-        with pytest.raises(ValueError) as exc_info:
-            jwt_utils.parse_jwt_token(token)
-        assert "Invalid token" in str(exc_info.value)
+@pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512"])
+def test_parse_jwt_token_symmetric_rejected(algorithm: str):
+    """Symmetric tokens are refused outright.
+
+    The platform auth service only issues asymmetric (ES256) tokens, so the
+    HS* path is never verified, regardless of configuration.
+    """
+    payload = {"sub": "user-id", "role": "admin", "aud": "authenticated"}
+    secret = "shared-secret-at-least-64-bytes-long-for-hs512-hmac-key-padding!!"
+    token = jwt.encode(payload, secret, algorithm=algorithm)
+
+    with pytest.raises(ValueError, match="symmetric tokens are not accepted"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_parse_jwt_token_none_algorithm_rejected():
+    """The unsigned 'none' algorithm must never verify."""
+    payload = {"sub": "user-id", "role": "admin", "aud": "authenticated"}
+    token = jwt.encode(payload, "", algorithm="none")
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def _token_with_header(header: dict) -> str:
+    """Build a syntactically valid JWT with an arbitrary (unsigned) header.
+
+    jwt.encode() always writes a string `alg`, so malformed headers have to be
+    assembled by hand. The signature is garbage: these tokens must be rejected
+    before verification is ever attempted.
+    """
+    segments = [
+        json.dumps(header).encode(),
+        json.dumps(TEST_USER_PAYLOAD).encode(),
+        b"not-a-signature",
+    ]
+    return ".".join(base64.urlsafe_b64encode(s).rstrip(b"=").decode() for s in segments)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        pytest.param({"alg": None, "kid": _SIGNING_KID}, id="null-alg"),
+        pytest.param({"alg": 256, "kid": _SIGNING_KID}, id="numeric-alg"),
+        pytest.param({"kid": _SIGNING_KID}, id="missing-alg"),
+        pytest.param({"alg": "none", "kid": _SIGNING_KID}, id="none-alg"),
+        pytest.param({"alg": "ES384", "kid": _SIGNING_KID}, id="unlisted-alg"),
+    ],
+)
+def test_parse_jwt_token_bad_algorithm_rejected_before_jwks(
+    mocker: MockerFixture, header: dict
+):
+    """A non-string, missing or unlisted `alg` fails as an auth error (401 at
+    the HTTP layer), not an AttributeError → 500, and never reaches the JWK
+    set — so junk headers can't trigger a JWKS fetch."""
+    jwks_client = mocker.patch.object(jwt_utils, "_get_jwks_client")
+    token = _token_with_header(header)
+
+    with pytest.raises(ValueError, match="signing algorithm is not accepted"):
+        jwt_utils.parse_jwt_token(token)
+    jwks_client.assert_not_called()
+
+
+# ==================== JWKS (ASYMMETRIC) VERIFICATION ==================== #
+
+
+def test_parse_jwt_token_unknown_kid_rejected():
+    """A token whose kid is absent from the JWK set is rejected."""
+    other_key, _ = make_es256_keypair(kid="unknown-key")
+    token = create_token(TEST_USER_PAYLOAD, private_key=other_key, kid="unknown-key")
+
+    with pytest.raises(ValueError, match="Invalid token"):
+        jwt_utils.parse_jwt_token(token)
+
+
+def test_jwks_client_rekeys_when_url_changes(mocker: MockerFixture):
+    """A changed JWT_JWKS_URL must produce a new client, not reuse the old
+    one pointed at the previous endpoint."""
+    mocker.patch.object(jwt_utils, "_jwks_client", None)
+    mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": "http://first/jwks"}, clear=True)
+    mocker.patch.object(config, "_settings", Settings())
+    first = jwt_utils._get_jwks_client()
+    assert jwt_utils._get_jwks_client() is first  # same URL -> cached
+
+    mocker.patch.dict(os.environ, {"JWT_JWKS_URL": "http://second/jwks"}, clear=True)
+    mocker.patch.object(config, "_settings", Settings())
+    second = jwt_utils._get_jwks_client()
+
+    assert second is not first
+    assert second.uri == "http://second/jwks"
+
+
+def test_verify_user_missing_role_is_not_a_server_error():
+    """A token with no `role` claim must resolve as a plain user, not KeyError.
+
+    verify_user already fails closed for admin_only; this covers the ordinary
+    path, where indexing payload["role"] would surface as a 500 instead of a
+    normal authenticated request.
+    """
+    no_role_payload = {"sub": "user-id", "email": "user@example.com"}
+
+    user = jwt_utils.verify_user(no_role_payload, admin_only=False)
+
+    assert user.user_id == "user-id"
+    assert user.role == "user"

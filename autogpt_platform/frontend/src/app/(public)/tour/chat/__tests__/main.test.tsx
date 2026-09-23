@@ -13,6 +13,7 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import TourChatPage from "../page";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
@@ -57,8 +58,14 @@ describe("Tour chat scripted demo", () => {
     // The scenario store is module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
+      runId: 0,
       isDemoComplete: false,
+      watchedScenarioIds: [],
+      isNudgeVisible: false,
     });
+    // The artifact panel lives in the shared copilot UI store (also
+    // module-level) — a completed demo leaves it open across tests.
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
   });
 
   afterEach(() => {
@@ -148,14 +155,36 @@ describe("Tour chat scripted demo", () => {
       screen.getByText(/will appear in a moment on the right side/i),
     ).toBeDefined();
 
-    // The sidebar upsell card stays visible; no bottom banner takes over.
-    expect(screen.getByText(/Ready to build your own/i)).toBeDefined();
-    expect(screen.getByText(/Start with Pro for \$42\.50\/mo/i)).toBeDefined();
-    expect(screen.getByText(/Self-host free/i)).toBeDefined();
+    // The end card carries the upsell now — the sidebar card hides.
+    expect(screen.queryByText(/Ready to build your own/i)).toBeNull();
+    expect(screen.queryByText(/Start with Pro for \$42\.50\/mo/i)).toBeNull();
+    expect(screen.queryByText("Self-host free")).toBeNull();
     expect(screen.queryByText(/Replay demo/i)).toBeNull();
 
-    // Completion flips the store flag that turns on the card's animations.
+    // Completion flips the store flag that hides the sidebar card.
     expect(useTourStore.getState().isDemoComplete).toBe(true);
+  });
+
+  test("switching scenario after a completed demo closes the artifact panel", async () => {
+    render(<TourChatPage />);
+
+    // Play the default demo through both turns so it completes and opens
+    // the payoff artifact panel. (The chat column no longer dims behind it —
+    // the end card has to stay legible.)
+    await advanceThroughTurn();
+    await pressEnterToSend();
+
+    expect(useTourStore.getState().isDemoComplete).toBe(true);
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    // Picking another chat example from the sidebar must close the panel —
+    // it belongs to the finished demo, not the new one.
+    fireEvent.click(screen.getByRole("button", { name: "Daily brief" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   test("scenario chips switch the demo path", async () => {

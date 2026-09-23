@@ -1,6 +1,6 @@
 """Platform-agnostic bot config."""
 
-# Cache TTL for AutoPilot session IDs (per channel/thread).
+# Cache TTL for Otto session IDs (per channel/thread).
 #
 # Must be >= the thread auto-reply subscription TTL (``threads.
 # THREAD_SUBSCRIPTION_TTL``, 7 days). If it's shorter, the bot keeps
@@ -10,3 +10,8 @@
 # dangerous. Each turn refreshes this TTL, so an active conversation never loses
 # context within the subscription window.
 SESSION_TTL = 7 * 86400  # 7 days — matches the thread subscription window
+
+# Cap on how many attachments the bot pulls off a single message into the
+# workspace, so a message with dozens of files can't fan out into that many
+# uploads/scans. Bot policy (not a platform limit) — shared by every adapter.
+MAX_INBOUND_ATTACHMENTS = 10

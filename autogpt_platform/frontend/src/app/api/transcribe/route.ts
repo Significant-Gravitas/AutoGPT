@@ -1,8 +1,45 @@
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
 
-const WHISPER_API_URL = "https://api.openai.com/v1/audio/transcriptions";
+const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_TRANSCRIPTION_MODEL = "whisper-1";
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Whisper's limit
+// The composer sends its current draft as `context`; it rides upstream as
+// the transcription `prompt` so names already on screen are spelled the
+// same way in the transcript. Whisper only reads the last ~224 tokens of a
+// prompt, so a long draft is trimmed from the front rather than sent whole.
+const MAX_CONTEXT_CHARS = 800;
+
+function getTranscriptionApiBaseUrl(): string {
+  return (
+    process.env.TRANSCRIPTION_API_BASE_URL ||
+    process.env.OPENAI_API_BASE_URL ||
+    DEFAULT_TRANSCRIPTION_API_BASE_URL
+  ).replace(/\/+$/, "");
+}
+
+function getTranscriptionApiUrl(): string {
+  return `${getTranscriptionApiBaseUrl()}/audio/transcriptions`;
+}
+
+function getTranscriptionModel(): string {
+  return process.env.TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL;
+}
+
+function getTranscriptionApiKey(): string | undefined {
+  if (process.env.TRANSCRIPTION_API_KEY) {
+    return process.env.TRANSCRIPTION_API_KEY;
+  }
+
+  return usesDefaultOpenAIEndpoint() ? process.env.OPENAI_API_KEY : undefined;
+}
+
+function usesDefaultOpenAIEndpoint(): boolean {
+  return (
+    getTranscriptionApiBaseUrl().toLowerCase() ===
+    DEFAULT_TRANSCRIPTION_API_BASE_URL
+  );
+}
 
 function getExtensionFromMimeType(mimeType: string): string {
   const subtype = mimeType.split("/")[1]?.split(";")[0];
@@ -16,9 +53,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getTranscriptionApiKey();
 
-  if (!apiKey) {
+  if (!apiKey && usesDefaultOpenAIEndpoint()) {
     return NextResponse.json(
       { error: "OpenAI API key not configured" },
       { status: 401 },
@@ -46,19 +83,31 @@ export async function POST(request: NextRequest) {
     const ext = getExtensionFromMimeType(audioFile.type);
     const whisperFormData = new FormData();
     whisperFormData.append("file", audioFile, `recording.${ext}`);
-    whisperFormData.append("model", "whisper-1");
+    whisperFormData.append("model", getTranscriptionModel());
 
-    const response = await fetch(WHISPER_API_URL, {
+    const context = formData.get("context");
+    const prompt =
+      typeof context === "string"
+        ? context.trim().slice(-MAX_CONTEXT_CHARS)
+        : "";
+    if (prompt) {
+      whisperFormData.append("prompt", prompt);
+    }
+
+    const headers = new Headers();
+    if (apiKey) {
+      headers.set("Authorization", `Bearer ${apiKey}`);
+    }
+
+    const response = await fetch(getTranscriptionApiUrl(), {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: whisperFormData,
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Whisper API error:", errorData);
+      console.error("Transcription API error:", errorData);
       return NextResponse.json(
         { error: errorData.error?.message || "Transcription failed" },
         { status: response.status },

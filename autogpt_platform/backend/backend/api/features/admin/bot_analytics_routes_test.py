@@ -74,7 +74,9 @@ def test_timeseries_returns_list(mocker):
 
 
 def test_command_usage_and_guilds(mocker):
-    mock_commands = AsyncMock(return_value=[BotCommandUsage(command="setup", uses=3)])
+    mock_commands = AsyncMock(
+        return_value=[BotCommandUsage(platform="DISCORD", command="setup", uses=3)]
+    )
     mock_guilds = AsyncMock(
         return_value=[
             BotGuildInfo(

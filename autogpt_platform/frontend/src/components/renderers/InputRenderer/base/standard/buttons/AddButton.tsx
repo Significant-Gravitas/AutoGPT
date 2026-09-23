@@ -1,11 +1,14 @@
+import { getFieldDomId } from "../../../field-accessibility";
 import { IconButtonProps, TranslatableString } from "@rjsf/utils";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function AddButton({
   registry,
   className,
+  id,
   uiSchema: _uiSchema,
   ...props
 }: IconButtonProps) {
@@ -14,12 +17,13 @@ export default function AddButton({
     <div className="m-0 w-full p-0">
       <Button
         {...props}
+        id={id ? getFieldDomId(id, registry.formContext) : undefined}
         size="small"
         className={cn("w-full gap-4", className)}
         variant="secondary"
         type="button"
       >
-        <PlusIcon size={16} weight="bold" />
+        <Icon icon={PlusSignIcon} size={16} />
         {translateString(TranslatableString.AddItemButton)}
       </Button>
     </div>

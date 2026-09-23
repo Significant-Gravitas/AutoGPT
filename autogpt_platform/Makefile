@@ -1,6 +1,6 @@
 .PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
 
-# Run just Supabase + Redis + RabbitMQ
+# Run just Postgres + Redis + RabbitMQ
 start-core:
 	docker compose up -d deps
 
@@ -10,7 +10,7 @@ stop-core:
 
 reset-db:
 	docker compose stop db
-	rm -rf db/docker/volumes/db/data
+	rm -rf data/db/data
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
 	cd backend && poetry run gen-prisma-stub
@@ -25,10 +25,17 @@ format:
 	cd frontend && pnpm format
 	cd frontend && pnpm lint
 
+# Create any missing .env from its .env.default, then fill the secrets that
+# .env.default deliberately leaves blank (see single-container/runtime_config.py
+# SECRET_GENERATORS). Safe to re-run: existing files and existing values are
+# never overwritten.
 init-env:
 	cp -n .env.default .env || true
 	cd backend && cp -n .env.default .env || true
 	cd frontend && cp -n .env.default .env || true
+	python3 single-container/runtime_config.py fill-env --missing-ok --path .env
+	python3 single-container/runtime_config.py fill-env --missing-ok --path backend/.env
+	python3 single-container/runtime_config.py fill-env --missing-ok --path frontend/.env
 
 
 # Run migrations for backend
@@ -52,7 +59,7 @@ load-store-agents:
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
-	@echo "  start-core - Start just the core services (Supabase, Redis, RabbitMQ) in background"
+	@echo "  start-core - Start just the core services (Postgres, Redis, RabbitMQ) in background"
 	@echo "  stop-core - Stop the core services"
 	@echo "  reset-db - Reset the database by deleting the volume"
 	@echo "  logs-core - Tail the logs for core services"

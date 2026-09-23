@@ -22,13 +22,8 @@ from .adapters.base import (
     ReferencedConversation,
 )
 from .bot_backend import ChatTurnDeniedError, LinkTokenResult, ResolveResult
-from .handler import (
-    MAX_TURN_FILE_IDS,
-    MessageHandler,
-    TargetState,
-    build_thread_name,
-    clamp_thread_name,
-)
+from .handler import MAX_TURN_FILE_IDS, MessageHandler, TargetState
+from .prompt import build_thread_name, clamp_thread_name
 
 
 def _ctx(
@@ -75,6 +70,10 @@ def _adapter() -> MagicMock:
     adapter.send_file = AsyncMock()
     adapter.start_typing = AsyncMock()
     adapter.stop_typing = AsyncMock()
+    adapter.supports_stream_drafts = False
+    adapter.send_stream_draft = AsyncMock(return_value=False)
+    adapter.supports_choice_buttons = False
+    adapter.send_choice_buttons = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter
@@ -121,7 +120,7 @@ def _capture_handler_tasks():
         return task
 
     with patch(
-        "backend.copilot.bot.handler.asyncio.create_task",
+        "backend.copilot.bot.turn_stream.asyncio.create_task",
         side_effect=_capturing,
     ):
         yield tasks
@@ -135,6 +134,88 @@ class TestEmptyMessage:
         await handler.handle(_ctx(text="   "), adapter)
         adapter.send_reply.assert_awaited_once()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_attachments_only_dm_gets_problem_report(self):
+        # A DM whose only content was a too-large file must not be silently
+        # dropped — the user gets the problem note instead.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        target, note = adapter.send_message.await_args.args
+        assert target == "dm-1" and "huge.zip" in note
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_channel_mention_replies_in_place(self):
+        # The note replaces the misleading "didn't say anything" nudge and is
+        # sent as an in-channel reply: opening a thread (real and visible on
+        # Discord) just to hold it would leave an orphan behind.
+        api = _api()
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                text="",
+                bot_mentioned=True,
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.create_thread.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+        _channel, note, reply_to = adapter.send_reply.await_args.args
+        assert "huge.zip" in note and reply_to == "msg-1"
+        # These messages still count as received in analytics.
+        assert api.track_event.called
+        assert api.track_event.call_args.kwargs["event_type"] == "message_received"
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_dm_from_unlinked_user_still_gets_the_link_prompt(self):
+        # The note sits behind the link gate like every other message: an
+        # unlinked user gets the Link Account button, not a file complaint.
+        handler = MessageHandler(_api(user_linked=False))
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        adapter.send_link.assert_awaited_once()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_reply_in_unowned_thread_still_needs_a_mention(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-9",
+                    text="",
+                    skipped_attachments=(("huge.zip", "is too large"),),
+                ),
+                adapter,
+            )
+        adapter.send_message.assert_not_awaited()
+        adapter.send_reply.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_empty_dm_is_silently_dropped(self):
@@ -255,7 +336,7 @@ class TestResolveTarget:
             result = await handler._resolve_target(_ctx(), adapter)
         assert result == "thread-created"
         subscribe.assert_awaited_once_with("discord", "thread-created")
-        assert adapter.create_thread.await_args.args[2] == "AutoPilot: hello bot"
+        assert adapter.create_thread.await_args.args[2] == "AutoGPT: hello bot"
 
     @pytest.mark.asyncio
     async def test_channel_falls_back_to_parent_when_thread_creation_fails(self):
@@ -273,7 +354,7 @@ class TestThreadAdoption:
         # turn so the user gets an answer, but DON'T subscribe — future
         # messages here need another @ to wake it back up. This keeps the
         # bot from hijacking ongoing team conversations. The reply should
-        # carry the thread history so AutoPilot has context.
+        # carry the thread history so AutoGPT has context.
         handler = MessageHandler(_api())
         adapter = _adapter()
         enqueue = AsyncMock()
@@ -471,7 +552,7 @@ class TestBatching:
         adapter = _adapter()
 
         with patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
@@ -505,10 +586,12 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
             ),
-            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+            patch(
+                "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+            ),
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
@@ -551,10 +634,12 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
             ),
-            patch("backend.copilot.bot.handler.Settings", return_value=fake_settings),
+            patch(
+                "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+            ),
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
@@ -562,6 +647,142 @@ class TestBatching:
 
         adapter.send_link.assert_awaited_once()
         adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_sends_question_with_options(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": ["US", "EU"],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            yield "Once you pick, I'll continue."
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        # The question is sent as a normal text message (every adapter
+        # already implements send_message, unlike the setup-required flow's
+        # link button) — so both the question and the trailing text arrive
+        # via send_message.
+        assert adapter.send_message.await_count == 2
+        question_text = adapter.send_message.await_args_list[0].args[1]
+        assert "Which region?" in question_text
+        assert "1. US" in question_text
+        assert "2. EU" in question_text
+        assert "Reply with a number" in question_text
+        assert (
+            "Once you pick, I'll continue."
+            in adapter.send_message.await_args_list[1].args[1]
+        )
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_fires_once_per_turn(self):
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            payload = {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [{"question": "Which region?", "keyword": "region"}],
+            }
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            await kwargs["on_clarification_needed"](
+                "session-1", payload, "ask_question"
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        adapter.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_clarification_needed_splits_oversized_message(self):
+        """Regression: ask_question allows up to 10 questions of 25 options
+        each, which can render past a platform's message cap (Discord 2000
+        chars) — the clarification send must chunk like any other long
+        message rather than risk send_message raising on an oversized post.
+        """
+        api = _api()
+
+        async def clarification_stream(*args, **kwargs):
+            await kwargs["on_clarification_needed"](
+                "session-1",
+                {
+                    "type": "agent_builder_clarification_needed",
+                    "message": "Which region?",
+                    "questions": [
+                        {
+                            "question": "Which region?",
+                            "keyword": "region",
+                            "options": [f"Option {i}" for i in range(25)],
+                        }
+                    ],
+                },
+                "ask_question",
+            )
+            if False:
+                yield ""
+
+        api.stream_chat = clarification_stream
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        adapter.chunk_flush_at = 50
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
+            ),
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
+            )
+
+        msgs = [c.args[1] for c in adapter.send_message.await_args_list]
+        assert len(msgs) > 1
+        assert all(len(m) <= 50 for m in msgs)
+        assert "Option 0" in "".join(msgs)
+        assert "Option 24" in "".join(msgs)
+        assert "Reply with a number" in "".join(msgs)
 
     @pytest.mark.asyncio
     async def test_channel_thread_renames_from_generated_chat_title(self):
@@ -579,7 +800,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -619,7 +840,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -659,7 +880,7 @@ class TestBatching:
 
         with (
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
@@ -682,14 +903,14 @@ class TestBatching:
 
 class TestStreamFallback:
     """Covers the empty-response fallback, including the boundary-flush bug
-    where prior code posted 'AutoPilot didn't produce a response' even though
+    where prior code posted 'AutoGPT didn't produce a response' even though
     content had already been flushed mid-stream.
     """
 
     @staticmethod
     def _redis_patch():
         return patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         )
 
@@ -767,13 +988,13 @@ class TestThreadNames:
     def test_build_thread_name_from_prompt(self):
         assert (
             build_thread_name("  tell me\nabout space  ", "Bently", 100)
-            == "AutoPilot: tell me about space"
+            == "AutoGPT: tell me about space"
         )
 
     def test_build_thread_name_truncates_to_platform_limit(self):
         name = build_thread_name("x" * 200, "Bently", 100)
         assert len(name) <= 100
-        assert name.startswith("AutoPilot: ")
+        assert name.startswith("AutoGPT: ")
         assert name.endswith("...")
 
     def test_build_thread_name_respects_a_larger_limit(self):
@@ -787,7 +1008,7 @@ class TestThreadNames:
         )
 
     def test_clamp_thread_name_falls_back_when_blank(self):
-        assert clamp_thread_name("   ", 100) == "AutoPilot Chat"
+        assert clamp_thread_name("   ", 100) == "AutoGPT Chat"
 
     def test_clamp_thread_name_never_overruns_a_tiny_cap(self):
         # A tiny adapter cap must not make the slice index go negative.
@@ -813,7 +1034,7 @@ class TestDeliverArtifact:
         )
         text = "Here is your result: [chart.png](workspace://abc#image/png)"
 
-        await handler._send_text_and_artifacts(
+        await handler._streamer._send_text_and_artifacts(
             adapter, "target-1", text, _ctx(), "sess-1"
         )
 
@@ -841,8 +1062,10 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
-            await handler._send_text_and_artifacts(
+        with patch(
+            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        ):
+            await handler._streamer._send_text_and_artifacts(
                 adapter,
                 "target-1",
                 "[big.zip](workspace://big)",
@@ -876,8 +1099,10 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch("backend.copilot.bot.handler.Settings", return_value=fake_settings):
-            await handler._send_text_and_artifacts(
+        with patch(
+            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        ):
+            await handler._streamer._send_text_and_artifacts(
                 adapter, "target-1", "[x.png](workspace://x)", _ctx(), "sess-1"
             )
 
@@ -896,7 +1121,7 @@ class TestDeliverArtifact:
         handler = MessageHandler(_api())
         adapter = _adapter()
 
-        await handler._send_text_and_artifacts(
+        await handler._streamer._send_text_and_artifacts(
             adapter, "target-1", "[x.png](workspace://x)", _ctx(), None
         )
 
@@ -975,7 +1200,7 @@ class TestAttachments:
             ),
             patch("backend.copilot.bot.handler.sessions.set_session", new=AsyncMock()),
             patch(
-                "backend.copilot.bot.handler.get_redis_async",
+                "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
         ):
@@ -1053,7 +1278,7 @@ class TestAttachments:
 
         await handler.handle(self._dm_ctx("look", [("a.png", "image/png")]), adapter)
 
-        # Files are NOT uploaded sessionless (where AutoPilot couldn't read
+        # Files are NOT uploaded sessionless (where AutoGPT couldn't read
         # them); the user is told they couldn't be attached and no file_ids
         # reach the turn.
         api.upload_workspace_files.assert_not_awaited()
@@ -1326,7 +1551,7 @@ class TestTurnDenied:
             raise ChatTurnDeniedError(
                 TurnDenial(
                     reason="paywalled",
-                    message="AutoPilot needs an active subscription.",
+                    message="AutoGPT needs an active subscription.",
                     button_label="Subscribe",
                     button_url="https://app.example/settings/billing",
                 )
@@ -1338,7 +1563,7 @@ class TestTurnDenied:
         adapter = _adapter()
 
         with patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(
@@ -1365,7 +1590,7 @@ class TestTurnDenied:
         adapter = _adapter()
 
         with patch(
-            "backend.copilot.bot.handler.get_redis_async",
+            "backend.copilot.bot.turn_stream.get_redis_async",
             new=AsyncMock(return_value=AsyncMock(get=AsyncMock(return_value=None))),
         ):
             await handler._stream_batch(

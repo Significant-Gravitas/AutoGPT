@@ -405,6 +405,23 @@ def _select_final_answer_parts(
     return current
 
 
+def sdk_disallowed_tools() -> list[str]:
+    """Disable ALL known SDK built-in tools — only graph MCP tools available.
+
+    This blocklist is the ONLY thing that removes a built-in: per the SDK,
+    ``allowed_tools`` merely auto-approves without prompting, and the base set
+    is controlled by ``tools`` (unset here, so every Claude Code default stays
+    in the model's context).  A built-in missing from this list is therefore
+    callable, not blocked — which is why it is derived from the copilot's own
+    inventory rather than kept in sync by hand.
+    """
+    # Local import: tool_adapter pulls in the whole copilot tool registry,
+    # which every block load should not have to pay for.
+    from backend.copilot.sdk.tool_adapter import get_sdk_builtin_tools
+
+    return [*get_sdk_builtin_tools(), "NotebookEdit"]
+
+
 class OrchestratorBlock(Block):
     """A block that uses a language model to orchestrate tool calls.
 
@@ -433,7 +450,7 @@ class OrchestratorBlock(Block):
             description="The prompt to send to the language model.",
             placeholder="Enter your prompt here...",
         )
-        model: llm.LlmModel = SchemaField(
+        model: llm.LLMModel = SchemaField(
             title="LLM Model",
             default=llm.DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
@@ -878,10 +895,11 @@ class OrchestratorBlock(Block):
 
     async def _attempt_llm_call_with_validation(
         self,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: Input,
         current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
+        execution_context: "ExecutionContext | None" = None,
     ) -> Any:
         """
         Attempt a single LLM call with tool validation.
@@ -891,6 +909,7 @@ class OrchestratorBlock(Block):
         resp = await llm.llm_call(
             compress_prompt_to_fit=input_data.conversation_compaction,
             credentials=credentials,
+            execution_context=execution_context,
             llm_model=input_data.model,
             prompt=current_prompt,
             max_tokens=input_data.max_tokens,
@@ -1150,7 +1169,7 @@ class OrchestratorBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
-        # Apply node input overrides (credential masks from Library/AutoPilot).
+        # Apply node input overrides (credential masks from Library/Otto).
         # Mirrors the normal queue-based path in _on_graph_execution, which
         # merges nodes_input_masks[node_id] into queued_node_exec.inputs
         # before execution so credential fields are present for the block run.
@@ -1303,7 +1322,7 @@ class OrchestratorBlock(Block):
         messages: list[dict[str, Any]],
         tools: Sequence[Any],
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         input_data: "OrchestratorBlock.Input",
     ) -> LLMLoopResponse:
         """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
@@ -1443,7 +1462,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_agent_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         graph_exec_id: str,
@@ -1638,7 +1657,7 @@ class OrchestratorBlock(Block):
     async def _execute_tools_sdk_mode(
         self,
         input_data: "OrchestratorBlock.Input",
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
         execution_params: ExecutionParams,
@@ -1672,35 +1691,13 @@ class OrchestratorBlock(Block):
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
 
-        # Disable ALL known SDK built-in tools — only graph MCP tools available.
-        # `allowed_tools` (above) is the primary restriction: the SDK only
-        # enables tools explicitly listed there.  This blocklist is a
-        # defense-in-depth measure in case the SDK's allowlist logic changes.
-        # IMPORTANT: Keep this list in sync with the Claude Agent SDK.
-        # If a new built-in tool is added in a future SDK version, it will
-        # still be blocked by `allowed_tools` (only MCP-prefixed names are
-        # allowed), but adding it here provides an extra safety layer.
-        disallowed_tools = [
-            "Bash",
-            "WebFetch",
-            "AskUserQuestion",
-            "Read",
-            "Write",
-            "Edit",
-            "Glob",
-            "Grep",
-            "Task",
-            "WebSearch",
-            "TodoWrite",
-            "NotebookEdit",
-        ]
+        disallowed_tools = sdk_disallowed_tools()
 
         # Build SDK env — provider-aware credential routing.
         # Extended thinking does not support subscription-mode (platform-managed credits).
         # Use *credential* provider for routing (not model metadata provider),
         # because a user may select an Anthropic model but route through OpenRouter.
-        provider = credentials.provider
-        if not credentials.api_key:
+        if credentials is None or not credentials.api_key:
             yield (
                 "error",
                 (
@@ -1709,6 +1706,7 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
+        provider = credentials.provider
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
             # Route through OpenRouter proxy: point ``ANTHROPIC_BASE_URL`` at
@@ -1981,7 +1979,7 @@ class OrchestratorBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: llm.APIKeyCredentials,
+        credentials: llm.APIKeyCredentials | None = None,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,
@@ -2159,7 +2157,11 @@ class OrchestratorBlock(Block):
         for _ in range(max_attempts):
             try:
                 response = await self._attempt_llm_call_with_validation(
-                    credentials, input_data, current_prompt, tool_functions
+                    credentials,
+                    input_data,
+                    current_prompt,
+                    tool_functions,
+                    execution_context,
                 )
                 break
 

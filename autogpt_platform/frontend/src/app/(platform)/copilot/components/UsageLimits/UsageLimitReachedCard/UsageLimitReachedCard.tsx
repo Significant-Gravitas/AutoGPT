@@ -3,7 +3,6 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { WarningIcon } from "@phosphor-icons/react";
 import {
   formatTierLabel,
   isUsageExhausted,
@@ -12,6 +11,8 @@ import {
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
+import { Alert01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function UsageLimitReachedCard() {
   const { usage, isSuccess, isBillingEnabled } = useUsageLimitReachedCard();
@@ -27,7 +28,7 @@ export function UsageLimitReachedCard() {
       className="mx-auto flex w-full max-w-[30rem] flex-col gap-4 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
     >
       <div className="flex items-center gap-2">
-        <WarningIcon className="size-5 text-orange-500" weight="fill" />
+        <Icon icon={Alert01Icon} className="size-5 text-orange-500" />
         <Text variant="body-medium" className="text-neutral-900">
           Usage limit reached
         </Text>

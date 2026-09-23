@@ -21,14 +21,26 @@ export enum Key {
   COPILOT_CONTEXT_PANEL_WIDTH = "copilot-context-panel-width",
   COPILOT_CONTEXT_PANEL_OPEN = "copilot-context-panel-open",
   COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
+  TEAM_WORKFLOWS_VIEW = "team-workflows-view",
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   PUSH_SUBSCRIPTION_REGISTERED = "push-subscription-registered",
   COPILOT_DRY_RUN = "copilot-dry-run",
+  COPILOT_VOICE_SILENCE_TIMEOUT = "copilot-voice-silence-timeout",
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
+}
+
+/** Returns true when localStorage is accessible — false when it is null or when
+ *  accessing it throws (e.g. cookies/storage blocked by the browser). */
+function hasStorage(): boolean {
+  try {
+    return window.localStorage !== null;
+  } catch {
+    return false;
+  }
 }
 
 function get(key: Key) {
@@ -49,7 +61,16 @@ function set(key: Key, value: string) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
-  return window.localStorage.setItem(key, value);
+  try {
+    return window.localStorage.setItem(key, value);
+  } catch (e) {
+    // localStorage is null/blocked on some WebViews — silently ignore that case.
+    // Any other error (e.g. QuotaExceededError) is unexpected and should be tracked.
+    if (hasStorage()) {
+      Sentry.captureException(e);
+    }
+    return;
+  }
 }
 
 function clean(key: Key) {
@@ -57,7 +78,16 @@ function clean(key: Key) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
-  return window.localStorage.removeItem(key);
+  try {
+    return window.localStorage.removeItem(key);
+  } catch (e) {
+    // localStorage is null/blocked on some WebViews — silently ignore that case.
+    // Any other error is unexpected and should be tracked.
+    if (hasStorage()) {
+      Sentry.captureException(e);
+    }
+    return;
+  }
 }
 
 export const storage = {

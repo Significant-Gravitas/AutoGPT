@@ -63,8 +63,12 @@ class TestBuildAndValidatePermissions:
             _make_input(tools=["not_a_real_tool"])
 
     async def test_disabled_legacy_tool_is_accepted_and_removed(self):
-        inp = _make_input(tools=["ask_question", "run_block"])
-        result = await _build_and_validate_permissions(inp)
+        with patch(
+            "backend.blocks.autopilot.DISABLED_LEGACY_TOOL_NAMES",
+            frozenset({"retired_tool"}),
+        ):
+            inp = _make_input(tools=["retired_tool", "run_block"])
+            result = await _build_and_validate_permissions(inp)
 
         assert inp.tools == ["run_block"]
         assert isinstance(result, CopilotPermissions)

@@ -8,10 +8,18 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  activeItemParamFor,
+  deriveSelectedTriggerKind,
+  parseActiveItemParam,
+  retryUnlessClientError,
+  SelectedTriggerKind,
+} from "./helpers";
+import { useAgentPresetsQuery } from "./hooks/useAgentPresetsQuery";
 
 function parseTab(
   value: string | null,
@@ -42,10 +50,21 @@ export function useNewAgentLibraryView() {
     error,
   } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
-  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
-  const { data: triggerAgents } = useGetV2ListTriggerAgents(agentId, {
-    query: { enabled: triggerAgentsEnabled && !!agentId, select: okData },
+  const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
+    useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
+  // This list is unpaginated on the backend, so membership is authoritative.
+  const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
+    query: {
+      enabled: triggerAgentsEnabled && !!agentId,
+      select: okData,
+      retry: retryUnlessClientError,
+    },
   });
+  const triggerAgents = triggerAgentsQuery.data;
+
+  const presetsQuery = useAgentPresetsQuery(agent?.graph_id);
+  const presets = presetsQuery.presets;
+  const presetsComplete = presetsQuery.presetsComplete;
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
     useQueryStates({
@@ -54,24 +73,25 @@ export function useNewAgentLibraryView() {
     });
 
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+  const { activeItemId, triggerKindHint } = parseActiveItemParam(activeItem);
 
-  const {
-    data: _template,
-    isSuccess: isTemplateLoaded,
-    isLoading: isTemplateLoading,
-    error: templateError,
-  } = useGetV2GetASpecificPreset(activeItem ?? "", {
+  const onTemplatesTab = Boolean(activeTab === "templates" && activeItemId);
+  const templateQuery = useGetV2GetASpecificPreset(activeItemId ?? "", {
     query: {
-      enabled: Boolean(activeTab === "templates" && activeItem),
+      enabled: onTemplatesTab,
       select: okData,
+      retry: retryUnlessClientError,
     },
   });
+  // This query shares its cache key with SelectedTriggerView's preset detail
+  // fetch, so its state must stay scoped to the Templates tab — a preset 404
+  // on the Triggers tab is handled inline there, not as a page-level error.
   const activeTemplate =
-    isTemplateLoaded &&
-    activeTab === "templates" &&
-    _template?.id === activeItem
-      ? _template
+    onTemplatesTab && templateQuery.data?.id === activeItemId
+      ? templateQuery.data
       : null;
+  const isTemplateLoading = templateQuery.isLoading;
+  const templateError = onTemplatesTab ? templateQuery.error : null;
 
   useEffect(() => {
     if (!activeTabRaw && !activeItem) {
@@ -89,6 +109,7 @@ export function useNewAgentLibraryView() {
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarHasError, setSidebarHasError] = useState(false);
 
   const hasAnyItems = useMemo(
     () =>
@@ -109,9 +130,13 @@ export function useNewAgentLibraryView() {
     }
   }, [agent]);
 
+  // Leave the Triggers tab when it becomes empty — but never while an item
+  // is still selected: a stale selection must keep its detail pane (showing
+  // the not-found state) instead of being re-routed to Runs as a bogus run ID.
   useEffect(() => {
     if (
       activeTab === "triggers" &&
+      !activeItemId &&
       sidebarCounts.triggersCount === 0 &&
       !sidebarLoading
     ) {
@@ -119,7 +144,13 @@ export function useNewAgentLibraryView() {
         activeTab: "runs",
       });
     }
-  }, [activeTab, sidebarCounts.triggersCount, sidebarLoading, setQueryStates]);
+  }, [
+    activeTab,
+    activeItemId,
+    sidebarCounts.triggersCount,
+    sidebarLoading,
+    setQueryStates,
+  ]);
 
   function handleSelectRun(
     id: string,
@@ -190,6 +221,7 @@ export function useNewAgentLibraryView() {
       templatesCount: number;
       triggersCount: number;
       loading?: boolean;
+      hasError?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
@@ -199,6 +231,9 @@ export function useNewAgentLibraryView() {
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);
+      }
+      if (counts.hasError !== undefined) {
+        setSidebarHasError(counts.hasError);
       }
     },
     [],
@@ -210,16 +245,12 @@ export function useNewAgentLibraryView() {
       | { type: "triggers"; item: LibraryAgentPreset }
       | { type: "scheduled"; item: GraphExecutionJobInfo },
   ) {
-    if (!hasAnyItems) {
-      // Manually increment item count to flip hasAnyItems and showSidebarLayout
-      const counts = {
-        runsCount: createEvent.type === "runs" ? 1 : 0,
-        triggersCount: createEvent.type === "triggers" ? 1 : 0,
-        schedulesCount: createEvent.type === "scheduled" ? 1 : 0,
-        templatesCount: 0,
-      };
-      handleCountsChange(counts);
-    }
+    handleSelectRun(
+      createEvent.type === "triggers"
+        ? activeItemParamFor("webhook-trigger", createEvent.item.id)
+        : createEvent.item.id,
+      createEvent.type,
+    );
   }
 
   function onRunInitiated(newRun: GraphExecutionMeta) {
@@ -237,11 +268,26 @@ export function useNewAgentLibraryView() {
     onItemCreated({ item: newSchedule, type: "scheduled" });
   }
 
-  const isActiveItemTriggerAgent =
-    triggerAgentsEnabled &&
-    activeTab === "triggers" &&
-    !!activeItem &&
-    !!triggerAgents?.some((t) => t.id === activeItem);
+  const triggerAgentsUnresolved =
+    !triggerAgentsFlagReady ||
+    (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
+  const selectedTriggerKind: SelectedTriggerKind | null =
+    activeTab === "triggers"
+      ? deriveSelectedTriggerKind({
+          activeItemId,
+          triggerKindHint,
+          triggerAgents,
+          presets,
+          presetsComplete,
+          listsResolved:
+            presetsQuery.presetsSettled && !triggerAgentsUnresolved,
+          anyListFailed: presetsQuery.isError || triggerAgentsQuery.isError,
+        })
+      : null;
+  function retryTriggerLists() {
+    if (presetsQuery.isError) presetsQuery.refetch();
+    if (triggerAgentsQuery.isError) triggerAgentsQuery.refetch();
+  }
 
   return {
     agentId: id,
@@ -252,10 +298,12 @@ export function useNewAgentLibraryView() {
     error: error || templateError,
     hasAnyItems,
     showSidebarLayout,
-    activeItem,
-    isActiveItemTriggerAgent,
+    activeItemId,
+    selectedTriggerKind,
+    retryTriggerLists,
     sidebarLoading,
     activeTab,
+    sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
     handleScheduleDeleted,

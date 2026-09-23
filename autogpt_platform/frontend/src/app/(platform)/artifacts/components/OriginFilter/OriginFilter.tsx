@@ -1,12 +1,7 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import {
-  ListBulletsIcon,
-  SparkleIcon,
-  UploadSimpleIcon,
-  type Icon,
-} from "@phosphor-icons/react";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
 
@@ -18,13 +13,12 @@ interface Props {
 interface Option {
   value: OriginFilterValue;
   label: string;
-  Icon: Icon;
 }
 
 const OPTIONS: Option[] = [
-  { value: "all", label: "All", Icon: ListBulletsIcon },
-  { value: "uploaded", label: "Uploaded", Icon: UploadSimpleIcon },
-  { value: "generated", label: "Generated", Icon: SparkleIcon },
+  { value: "all", label: "All" },
+  { value: "uploaded", label: "Uploaded" },
+  { value: "generated", label: "Generated" },
 ];
 
 const snappySpring: Transition = {
@@ -37,20 +31,25 @@ const snappySpring: Transition = {
 export function OriginFilter({ value, onChange }: Props) {
   return (
     <LayoutGroup id="artifacts-origin-filter">
-      <div
-        role="tablist"
-        aria-label="Filter by source"
-        className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 p-1"
-        data-testid="artifacts-origin-filter"
-      >
-        {OPTIONS.map((opt) => (
-          <OriginTab
-            key={opt.value}
-            option={opt}
-            active={value === opt.value}
-            onClick={() => onChange(opt.value)}
-          />
-        ))}
+      <div className="flex flex-col gap-1">
+        <Text variant="small" as="span" className="pl-4 text-zinc-500">
+          Type
+        </Text>
+        <div
+          role="tablist"
+          aria-label="Filter by type"
+          className="flex items-center gap-1"
+          data-testid="artifacts-origin-filter"
+        >
+          {OPTIONS.map((opt) => (
+            <OriginTab
+              key={opt.value}
+              option={opt}
+              active={value === opt.value}
+              onClick={() => onChange(opt.value)}
+            />
+          ))}
+        </div>
       </div>
     </LayoutGroup>
   );
@@ -63,7 +62,6 @@ interface OriginTabProps {
 }
 
 function OriginTab({ option, active, onClick }: OriginTabProps) {
-  const { label, Icon } = option;
   return (
     <button
       type="button"
@@ -71,28 +69,19 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium outline-none transition-colors",
-        active ? "text-white" : "text-zinc-500 hover:text-zinc-800",
+        "relative rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
       data-testid={`artifacts-origin-filter-${option.value}`}
     >
       {active ? (
         <motion.span
           layoutId="artifacts-origin-active"
-          className="absolute inset-0 rounded-full bg-zinc-900 shadow-sm"
+          className="absolute inset-0 rounded-full bg-zinc-100"
           transition={snappySpring}
         />
       ) : null}
-      <span className="relative z-10 flex items-center gap-1.5">
-        <Icon
-          size={14}
-          className={cn(
-            "transition-transform duration-300",
-            active && "scale-110",
-          )}
-        />
-        {label}
-      </span>
+      <span className="relative z-10">{option.label}</span>
     </button>
   );
 }

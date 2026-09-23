@@ -1,0 +1,81 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "<AZURE_BOT_APP_ID>",
+  "developer": {
+    "name": "AutoGPT",
+    "websiteUrl": "https://agpt.co",
+    "privacyUrl": "https://agpt.co/legal/platform-privacy-policy",
+    "termsOfUseUrl": "https://agpt.co/legal/platform-terms-of-use"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "AutoGPT",
+    "full": "AutoGPT"
+  },
+  "description": {
+    "short": "Your AutoGPT agent in Microsoft Teams",
+    "full": "AutoGPT brings your AutoGPT account into Microsoft Teams. @mention AutoGPT in a channel or chat with it directly to give it work. Mention it with /setup in a channel to link the team to your AutoGPT account, or chat with it directly to link your own personal account. Usage is billed to the linked AutoGPT account, and you can unlink at any time from Settings -> Bots."
+  },
+  "accentColor": "#1A1A1A",
+  "bots": [
+    {
+      "botId": "<AZURE_BOT_APP_ID>",
+      "scopes": [
+        "personal",
+        "team"
+      ],
+      "isNotificationOnly": false,
+      "supportsFiles": true,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal"
+          ],
+          "commands": [
+            {
+              "title": "/setup",
+              "description": "How to link your AutoGPT account"
+            },
+            {
+              "title": "/help",
+              "description": "How to use AutoGPT in Teams"
+            },
+            {
+              "title": "/unlink",
+              "description": "Manage your linked AutoGPT account"
+            }
+          ]
+        },
+        {
+          "scopes": [
+            "team"
+          ],
+          "commands": [
+            {
+              "title": "/setup",
+              "description": "Link this team to an AutoGPT account"
+            },
+            {
+              "title": "/help",
+              "description": "How to use AutoGPT in Teams"
+            },
+            {
+              "title": "/unlink",
+              "description": "Manage linked teams from your settings"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": []
+}

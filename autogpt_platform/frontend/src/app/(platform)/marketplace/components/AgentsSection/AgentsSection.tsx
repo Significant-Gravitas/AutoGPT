@@ -7,7 +7,8 @@ import {
   CarouselItem,
 } from "@/components/__legacy__/ui/carousel";
 import { Text } from "@/components/atoms/Text/Text";
-import { DotsNineIcon } from "@phosphor-icons/react";
+import { ReactNode } from "react";
+import { SectionHeader } from "../SectionHeader";
 import { StoreCard } from "../StoreCard/StoreCard";
 import { useAgentsSection } from "./useAgentsSection";
 
@@ -25,14 +26,24 @@ export interface Agent {
 
 interface Props {
   sectionTitle?: string;
+  eyebrow?: string;
+  eyebrowIcon?: ReactNode;
+  titleIcon?: ReactNode;
+  subtitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
+  children?: ReactNode;
 }
 
 export function AgentsSection({
   sectionTitle,
+  eyebrow,
+  eyebrowIcon,
+  titleIcon,
+  subtitle,
   agents: allAgents,
   hideAvatars = false,
+  children,
 }: Props) {
   const displayedAgents = allAgents;
   const { handleCardClick } = useAgentsSection();
@@ -40,15 +51,23 @@ export function AgentsSection({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        {sectionTitle ? (
-          <div className="mb-8 flex flex-row items-center gap-2">
-            <DotsNineIcon size={24} />
-            <Text variant="h4">{sectionTitle}</Text>
-          </div>
+        {sectionTitle && (eyebrow || titleIcon || subtitle) ? (
+          <SectionHeader
+            eyebrow={eyebrow}
+            eyebrowIcon={eyebrowIcon}
+            title={sectionTitle}
+            titleIcon={titleIcon}
+            subtitle={subtitle}
+          />
+        ) : sectionTitle ? (
+          <h2 className="mb-7 text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+            {sectionTitle}
+          </h2>
         ) : null}
+        {children}
         {!displayedAgents || displayedAgents.length === 0 ? (
           <Text variant="body" className="ml-4 mt-8 text-gray-500">
-            No agents found
+            No workflows found
           </Text>
         ) : (
           <>

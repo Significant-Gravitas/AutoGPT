@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const updateSessionMock = vi.fn();
+const authMiddlewareMock = vi.fn();
 
-vi.mock("@/lib/supabase/middleware", () => ({
-  updateSession: (...args: unknown[]) => updateSessionMock(...args),
+vi.mock("@/lib/auth/middleware", () => ({
+  authMiddleware: (...args: unknown[]) => authMiddlewareMock(...args),
 }));
 
 import { middleware } from "../middleware";
@@ -20,7 +20,7 @@ describe("middleware www→non-www redirect", () => {
     expect(response.headers.get("location")).toBe(
       "https://example.com/dashboard",
     );
-    expect(updateSessionMock).not.toHaveBeenCalled();
+    expect(authMiddlewareMock).not.toHaveBeenCalled();
   });
 
   it("treats uppercase WWW host as case-insensitive (URL API normalizes)", async () => {
@@ -34,14 +34,14 @@ describe("middleware www→non-www redirect", () => {
     );
   });
 
-  it("falls through to updateSession when host is non-www", async () => {
+  it("falls through to authMiddleware when host is non-www", async () => {
     const passthrough = new Response("ok");
-    updateSessionMock.mockResolvedValueOnce(passthrough);
+    authMiddlewareMock.mockResolvedValueOnce(passthrough);
 
     const request = new NextRequest("https://example.com/dashboard");
     const response = await middleware(request);
 
-    expect(updateSessionMock).toHaveBeenCalledTimes(1);
+    expect(authMiddlewareMock).toHaveBeenCalledTimes(1);
     expect(response).toBe(passthrough);
   });
 });

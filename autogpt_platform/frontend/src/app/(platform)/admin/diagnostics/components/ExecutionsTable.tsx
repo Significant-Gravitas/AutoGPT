@@ -12,14 +12,6 @@ import {
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import {
-  StopCircleIcon,
-  ArrowClockwise,
-  Stop,
-  CaretLeft,
-  CaretRight,
-  Copy,
-} from "@phosphor-icons/react";
 import React, { useState } from "react";
 import {
   Table,
@@ -58,6 +50,15 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Copy01Icon,
+  Refresh01Icon,
+  StopCircleIcon,
+  StopIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface RunningExecutionDetail {
   execution_id: string;
@@ -542,7 +543,7 @@ export function ExecutionsTable({
                       disabled={isStopping}
                       className="border-orange-500 text-orange-700 hover:bg-orange-50"
                     >
-                      <StopCircleIcon className="mr-2 h-4 w-4" />
+                      <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Cleanup All ({total})
                     </Button>
                     <Button
@@ -552,7 +553,7 @@ export function ExecutionsTable({
                       disabled={isStopping}
                       className="border-blue-500 text-blue-700 hover:bg-blue-50"
                     >
-                      <ArrowClockwise className="mr-2 h-4 w-4" />
+                      <Icon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
                       Requeue All ({total})
                     </Button>
                   </>
@@ -566,7 +567,7 @@ export function ExecutionsTable({
                       onClick={() => confirmStop("selected", "stop")}
                       disabled={isStopping}
                     >
-                      <StopCircleIcon className="mr-2 h-4 w-4" />
+                      <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
                         <span className="ml-1 text-xs text-orange-200">
@@ -583,7 +584,7 @@ export function ExecutionsTable({
                     onClick={() => confirmStop("all", "stop")}
                     disabled={isStopping}
                   >
-                    <StopCircleIcon className="mr-2 h-4 w-4" />
+                    <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                     Stop All Long-Running ({total})
                   </Button>
                 )}
@@ -606,7 +607,8 @@ export function ExecutionsTable({
                   }}
                   disabled={isLoading}
                 >
-                  <ArrowClockwise
+                  <Icon
+                    icon={Refresh01Icon}
                     className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
                   />
                 </Button>
@@ -654,7 +656,10 @@ export function ExecutionsTable({
                 />
               ) : isLoading && executions.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
-                  <ArrowClockwise className="h-6 w-6 animate-spin text-gray-400" />
+                  <Icon
+                    icon={Refresh01Icon}
+                    className="h-6 w-6 animate-spin text-gray-400"
+                  />
                 </div>
               ) : executions.length === 0 ? (
                 <div className="py-8 text-center text-gray-500">
@@ -734,7 +739,10 @@ export function ExecutionsTable({
                                 title="Click to copy full execution ID"
                               >
                                 {execution.execution_id.substring(0, 8)}...
-                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                                <Icon
+                                  icon={Copy01Icon}
+                                  className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
+                                />
                               </div>
                             </TableCell>
                             <TableCell>{execution.graph_name}</TableCell>
@@ -759,7 +767,10 @@ export function ExecutionsTable({
                                 title="Click to copy full user ID"
                               >
                                 {execution.user_id.substring(0, 8)}...
-                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                                <Icon
+                                  icon={Copy01Icon}
+                                  className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
+                                />
                               </div>
                             </TableCell>
                             <TableCell>
@@ -845,7 +856,10 @@ export function ExecutionsTable({
                                       className="text-orange-600 hover:bg-orange-50"
                                       title="Cleanup (mark as FAILED)"
                                     >
-                                      <StopCircleIcon className="h-4 w-4" />
+                                      <Icon
+                                        icon={StopCircleIcon}
+                                        className="h-4 w-4"
+                                      />
                                     </Button>
                                     <Button
                                       variant="ghost"
@@ -861,7 +875,10 @@ export function ExecutionsTable({
                                       className="text-blue-600 hover:bg-blue-50"
                                       title="Requeue (send to RabbitMQ)"
                                     >
-                                      <ArrowClockwise className="h-4 w-4" />
+                                      <Icon
+                                        icon={Refresh01Icon}
+                                        className="h-4 w-4"
+                                      />
                                     </Button>
                                   </>
                                 ) : (
@@ -885,7 +902,7 @@ export function ExecutionsTable({
                                         : ""
                                     }
                                   >
-                                    <Stop className="h-4 w-4" />
+                                    <Icon icon={StopIcon} className="h-4 w-4" />
                                   </Button>
                                 )}
                               </div>
@@ -910,7 +927,7 @@ export function ExecutionsTable({
                           onClick={() => setCurrentPage(currentPage - 1)}
                           disabled={currentPage === 1}
                         >
-                          <CaretLeft className="h-4 w-4" />
+                          <Icon icon={ArrowLeft01Icon} className="h-4 w-4" />
                           Previous
                         </Button>
                         <div className="flex items-center px-3">
@@ -923,7 +940,7 @@ export function ExecutionsTable({
                           disabled={currentPage === totalPages}
                         >
                           Next
-                          <CaretRight className="h-4 w-4" />
+                          <Icon icon={ArrowRight01Icon} className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>

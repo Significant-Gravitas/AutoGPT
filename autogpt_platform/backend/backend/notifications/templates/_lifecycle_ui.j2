@@ -1,0 +1,242 @@
+{# ============================================================
+   _lifecycle_ui.j2 — shared components for AutoGPT lifecycle
+   (billing & account) emails. Same design system as _ui.j2:
+   #eceaf6 paper, 560px sheet, #070629 masthead with the logo,
+   560x184 hero art with bgcolor fallback, #5635b2 actions,
+   AA-corrected fine-print grays (#575072 / #575072) and
+   step numerals at #5635b2.
+   Pass `assets` in the render context as the base URL for
+   logo-light.png and the hero art. Import **with context**.
+   ============================================================ #}
+
+{%- macro head_block(title_text) -%}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{ title_text }}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
+  html, body { margin:0 !important; padding:0 !important; width:100% !important; }
+  table { border-collapse:collapse; }
+  a { text-decoration:none; }
+  @media only screen and (max-width: 600px) {
+    .sheet { width:100% !important; }
+    .gutter { padding-left:22px !important; padding-right:22px !important; }
+    .headline { font-size:23px !important; line-height:31px !important; }
+    .mobile-hide { display:none !important; }
+    .kvl { display:block !important; width:100% !important; padding:10px 0 2px !important; border-top:1px solid #e7e4f4 !important; }
+    .kvv { display:block !important; width:100% !important; text-align:left !important; padding:0 0 10px !important; border-top:0 !important; font-size:11px !important; }
+    .kvfirst { border-top:0 !important; padding-top:0 !important; }
+  }
+</style>
+{%- endmacro -%}
+
+{%- macro preheader(text) -%}
+<div style="display:none; font-size:1px; color:#eceaf6; line-height:1px; max-height:0; overflow:hidden;">
+  {{ text }}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+</div>
+{%- endmacro -%}
+
+{%- macro page_open() -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eceaf6">
+<tr><td align="center" style="padding:32px 12px 44px;">
+  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" class="sheet" style="width:560px; max-width:560px;">
+{%- endmacro -%}
+
+{%- macro page_close() -%}
+  </table>
+{%- endmacro -%}
+
+{%- macro masthead() -%}
+    <tr><td bgcolor="#070629" align="center" style="border-radius:16px 16px 0 0; padding:8px 0 6px; line-height:0;">
+      <img src="{{ assets | default('../assets', true) }}/logo-light.png" width="100" height="45" alt="AutoGPT" style="display:block; border:0;">
+    </td></tr>
+{%- endmacro -%}
+
+{%- macro hero_img(name, bgc, alt) -%}
+    <tr><td bgcolor="{{ bgc }}" align="center" style="padding:0; line-height:0; font-size:0;">
+      <img src="{{ assets | default('../assets', true) }}/{{ name }}.jpg" width="560" height="184" alt="{{ alt }}"
+           style="display:block; width:100%; max-width:560px; height:auto; border:0; outline:none; text-decoration:none;">
+    </td></tr>
+{%- endmacro -%}
+
+{# Per-email hero art. Each name maps to kit/assets/<name>.jpg and the
+   bgcolor is that image's own flat background, so blocked-image clients
+   show the same field of colour. #}
+{%- set HEROES = {
+  'welcome':          ('hero-welcome',          '#fef8f5', 'Otto beside a switch reading plan on, with three agent cards waking up'),
+  'payment_hiccup':   ('hero-payment-hiccup',   '#f7f4fc', 'Otto holding a bank card with a small spark, beside a retry clock'),
+  'final_notice':     ('hero-final-notice',     '#f7f4fa', 'Otto offering a bank card beside an almost-empty hourglass and a pausing agent'),
+  'cancel_safe':      ('hero-cancel-safe',      '#f6f3f9', 'Otto filing agent cards into a storage box beside a calendar with one day circled'),
+  'welcome_back':     ('hero-welcome-back',     '#fef9f6', 'Otto hugging an agent card inside a sweeping U-turn arrow'),
+  'plan_asleep':      ('hero-plan-asleep',      '#f3eae6', 'Otto tucking agent cards under a blanket at dusk, a key glowing on the wall'),
+  'trial_headsup':    ('hero-trial-headsup',    '#eae1f9', 'Otto tapping the third of three calendar cards beneath a clock'),
+  'tour_firstwin':    ('hero-tour-firstwin',    '#e6ddf9', 'Otto fist-bumping a freshly completed agent card'),
+  'tour_fiveways':    ('hero-tour-fiveways',    '#e7e1fa', 'Otto juggling five task cards, each with a different glyph'),
+  'tour_workspace':   ('hero-tour-workspace',   '#eae2f7', 'Otto with a flag leading a tour past three framed workspace panels'),
+  'tour_listening':   ('hero-tour-listening',   '#f6f4f2', 'Otto holding out an empty speech bubble, listening'),
+  'tour_shipping':    ('hero-tour-shipping',    '#fef9f6', 'Otto at a conveyor ramp as feature crates ship out'),
+  'tour_directline':  ('hero-tour-directline',  '#e6dffc', 'Otto waving, with dotted lines to a chat bubble, a form and a calendar'),
+  'changelog':        ('hero-changelog',        '#fef9f6', 'Otto peering over an open box as new feature chips float out'),
+} -%}
+
+{%- macro hero(state) -%}
+{%- set h = HEROES[state] -%}
+{{ hero_img(h[0], h[1], h[2]) }}
+{%- endmacro -%}
+
+{%- macro strip_amber(text) -%}
+        <tr><td bgcolor="#fff6e8" class="gutter" style="padding:12px 48px; border-bottom:1px solid #f2dcb0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:#b45309;">&#9650;&nbsp; {{ text }}</div>
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro eyebrow(color='#575072', top=26) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:{{ color }};">{{ caller() }}</div>
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro headline(top=8) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <div class="headline" style="font-size:26px; line-height:34px; font-weight:800; color:#070629; overflow-wrap:anywhere;">{{ caller() }}</div>
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro para(top=16, color='#2d2a3e', size=15, lh=24) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <div style="font-size:{{ size }}px; line-height:{{ lh }}px; color:{{ color }};">{{ caller() }}</div>
+        </td></tr>
+{%- endmacro -%}
+
+{# rows: list of (label, value, mono) #}
+{%- macro kvpanel(rows, top=18) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;">
+            <tr><td style="padding:14px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {%- for label, value, mono in rows %}
+                <tr>
+                  <td width="150" valign="top" class="kvl{{ ' kvfirst' if loop.first }}" style="padding:{{ '0' if loop.first else '9px' }} 12px 9px 0; font-size:13px; color:#575072; border-top:{{ '0' if loop.first else '1px solid #e7e4f4' }};">{{ label }}</td>
+                  <td valign="top" align="right" class="kvv" style="padding:{{ '0' if loop.first else '9px' }} 0 9px; {% if mono %}font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;{% else %}font-size:13px;{% endif %} color:#070629; border-top:{{ '0' if loop.first else '1px solid #e7e4f4' }}; overflow-wrap:anywhere;">{{ value }}</td>
+                </tr>
+                {%- endfor %}
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
+{# tone: 'amber' | 'neutral' #}
+{%- macro note_card(label, tone='neutral', top=20) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ '#fff6e8' if tone == 'amber' else '#f5f3fb' }}" style="border:1px solid {{ '#f2dcb0' if tone == 'amber' else '#e7e4f4' }}; border-left:4px solid {{ '#e8940a' if tone == 'amber' else '#7c5cd6' }}; border-radius:10px;">
+            <tr><td style="padding:16px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:{{ '#8a5800' if tone == 'amber' else '#575072' }}; padding-bottom:7px;">{{ label | upper }}</div>
+              <div style="font-size:15px; line-height:24px; color:#2d2a3e; overflow-wrap:anywhere;">{{ caller() }}</div>
+            </td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
+{# items: list of (strong, text, link_label, url) #}
+{%- macro also_panel(label, items, top=28) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;">
+            <tr><td style="padding:15px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#575072; padding-bottom:5px;">{{ label | upper }}</div>
+              {%- for strong, text, link_label, url in items %}
+              <div style="font-size:14px; line-height:21px; color:#2d2a3e;{{ ' padding-top:8px;' if not loop.first }}">
+                <strong style="color:#070629;">{{ strong }}</strong> {{ text }}
+                <a href="{{ url }}" style="color:#5635b2; font-weight:700; text-decoration:underline;">{{ link_label }}</a>
+              </div>
+              {%- endfor %}
+            </td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
+{# items: list of (lead, rest) — lead is bolded #}
+{%- macro steps(items, top=18) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            {%- for lead, rest in items %}
+            <tr>
+              <td width="26" valign="top" style="font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:22px; font-weight:bold; color:#5635b2; padding-bottom:{{ '0' if loop.last else '12px' }};">{{ loop.index }}</td>
+              <td valign="top" style="font-size:14px; line-height:22px; color:#2d2a3e; padding-bottom:{{ '0' if loop.last else '12px' }};"><strong style="color:#070629;">{{ lead }}</strong> {{ rest }}</td>
+            </tr>
+            {%- endfor %}
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro cta(label, url, micro=none, top=24) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr><td bgcolor="#5635b2" style="border-radius:8px;">
+              <a href="{{ url }}" style="display:inline-block; padding:13px 28px; font-size:15px; font-weight:700; color:#ffffff;">{{ label }}</a>
+            </td></tr>
+          </table>
+          {%- if micro %}
+          <div style="padding-top:10px; font-size:12px; color:#575072;">{{ micro }}</div>
+          {%- endif %}
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro close_row(text, link_label, url) -%}
+        <tr><td align="center" class="gutter" style="padding:22px 48px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td height="1" bgcolor="#eeecf5" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+            <tr><td align="center" style="padding-top:12px; font-size:12px; line-height:19px; color:#575072;">
+              {{ text }}<div style="padding-top:4px;"><a href="{{ url }}" style="color:#5635b2; text-decoration:underline;">{{ link_label }}</a></div>
+            </td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
+{%- macro legal_footer(first_line, link_label, link_url, discord=false) -%}
+  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" class="sheet" style="width:560px; max-width:560px;">
+    <tr><td align="center" style="padding:18px 24px 0; font-size:11px; line-height:18px; color:#575072;">
+      {{ first_line }}<br>
+      Legally, we have to tell you where we live: <a href="https://agpt.co" style="color:#5635b2; text-decoration:underline;">AutoGPT</a>, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK &nbsp;&middot;&nbsp;
+      <a href="{{ link_url }}" style="color:#575072; text-decoration:underline;">{{ link_label }}</a>{% if discord %} &nbsp;&middot;&nbsp;
+      <a href="https://discord.gg/autogpt" style="color:#575072; text-decoration:underline;">Discord</a>{% endif %}
+    </td></tr>
+  </table>
+{%- endmacro -%}
+
+{%- macro signature(name, title, email=none, top=26) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <div style="font-size:14px; font-weight:700; color:#070629;">{{ name }}</div>
+          <div style="font-size:13px; line-height:20px; color:#575072;">{{ title }}</div>
+          {%- if email %}
+          <div style="font-size:13px; line-height:20px;"><a href="mailto:{{ email }}" style="color:#5635b2; text-decoration:underline;">{{ email }}</a></div>
+          {%- endif %}
+        </td></tr>
+{%- endmacro -%}
+
+{# small card list with emoji lead — one panel per item #}
+{%- macro emoji_cards(items, top=20) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          {%- for emoji, title, body in items %}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;{{ ' margin-top:10px;' if not loop.first }}">
+            <tr><td style="padding:13px 16px;">
+              <div style="font-size:14px; font-weight:700; color:#070629;">{{ emoji }}&nbsp; {{ title }}</div>
+              <div style="font-size:13.5px; line-height:21px; color:#2d2a3e; padding-top:3px;">{{ body }}</div>
+            </td></tr>
+          </table>
+          {%- endfor %}
+        </td></tr>
+{%- endmacro -%}
+
+{# video / media link row #}
+{%- macro media_link(label, sub, url, top=20) -%}
+        <tr><td class="gutter" style="padding:{{ top }}px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f3fb" style="border-radius:10px;">
+            <tr><td style="padding:13px 16px;">
+              <div style="font-size:14px; font-weight:700;"><a href="{{ url }}" style="color:#5635b2; text-decoration:underline;">&#9654;&nbsp; {{ label }}</a></div>
+              <div style="font-size:13px; line-height:20px; color:#575072; padding-top:2px;">{{ sub }}</div>
+            </td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}

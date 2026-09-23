@@ -26,6 +26,7 @@ from .tool_adapter import (
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
+from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ def _validate_user_isolation(
         # The "path" param is a cloud storage key (e.g. "/ASEAN/report.md")
         # where a leading "/" is normal.  Only check for ".." traversal.
         # Filesystem paths (source_path, save_to_path) are validated inside
-        # the tool itself via _validate_ephemeral_path.
+        # the tool itself via workdir.validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
             logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")
@@ -181,11 +182,19 @@ def _validate_user_isolation(
     return {}
 
 
+# Tools whose display name (block, agent, MCP tool) streams to the UI before
+# the call finishes; the bridge tags their input with a call token.
+_DISPLAY_BRIDGED_TOOLS: frozenset[str] = frozenset(
+    {"run_agent", "run_capability", "resume_capability"}
+)
+
+
 def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -276,6 +285,20 @@ def create_security_hooks(
                 subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
+            if (
+                is_copilot_tool
+                and clean_name in _DISPLAY_BRIDGED_TOOLS
+                and tool_use_id is not None
+                and tool_display_bridge is not None
+            ):
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "updatedInput": tool_display_bridge.prepare_call(
+                            clean_name, tool_input, tool_use_id
+                        ),
+                    }
+                }
             return cast(SyncHookJSONOutput, {})
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:

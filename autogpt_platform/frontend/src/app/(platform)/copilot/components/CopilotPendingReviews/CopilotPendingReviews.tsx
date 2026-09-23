@@ -13,7 +13,7 @@ interface Props {
 /**
  * Renders a single consolidated PendingReviewsList for all pending copilot
  * reviews in a session — mirrors the non-copilot review page behavior.
- * Works for both run_block (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
+ * Works for both run_capability (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
  */
 export function CopilotPendingReviews({ graphExecId }: Props) {
   const { onSend } = useCopilotChatActions();
@@ -22,7 +22,7 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
     { enabled: !!graphExecId, refetchInterval: 2000 },
   );
 
-  // Graph executions auto-resume after approval; block reviews need continue_run_block.
+  // Graph executions auto-resume after approval; capability reviews need resume_capability.
   const isGraphExecution = !graphExecId.startsWith("copilot-session-");
 
   const handleReviewComplete = useCallback(async () => {
@@ -42,7 +42,7 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
     } else {
       onSend(
         `All pending reviews have been processed. ` +
-          `For any approved reviews, call continue_run_block with the corresponding review_id to execute them. ` +
+          `For any approved reviews, call resume_capability with the corresponding review_id to execute them. ` +
           `For rejected reviews, no further action is needed.`,
       );
     }

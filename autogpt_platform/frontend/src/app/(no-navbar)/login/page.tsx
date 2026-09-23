@@ -34,7 +34,6 @@ export default function LoginPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable,
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
@@ -42,16 +41,6 @@ export default function LoginPage() {
 
   if (isUserLoading || user) {
     return <LoadingLogin />;
-  }
-
-  if (!isSupabaseAvailable) {
-    return (
-      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
-        <Text variant="body-medium" className="text-center !text-slate-500">
-          User accounts are disabled because Supabase client is unavailable
-        </Text>
-      </AuthSplitLayout>
-    );
   }
 
   return (

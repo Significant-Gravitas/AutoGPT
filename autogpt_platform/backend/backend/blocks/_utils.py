@@ -78,12 +78,21 @@ def is_block_auth_configured(
                 )
                 return False
 
-            # Check the provider's supported auth types
-            if field_info.supported_types != provider.supported_auth_types:
+            # Check the provider's supported auth types.
+            # A block may accept more types than the provider advertises --
+            # a device-code grant is acquired as `device_code` but stored as
+            # an ordinary `oauth2` credential, so such blocks list both. What
+            # is always a bug is the provider offering a method the block will
+            # not accept: the user connects successfully and the credential
+            # then fails to match the input.
+            if unaccepted := set(provider.supported_auth_types) - set(
+                field_info.supported_types
+            ):
                 logger.warning(
                     f"Block {block_cls.__name__} credential input '{field_name}' "
-                    f"has mismatched supported auth types (field <> Provider): "
-                    f"{field_info.supported_types} != {provider.supported_auth_types}"
+                    f"rejects auth types the provider offers: {sorted(unaccepted)} "
+                    f"(field={sorted(field_info.supported_types)}, "
+                    f"provider={sorted(provider.supported_auth_types)})"
                 )
 
             if not (supported_auth_types := provider.supported_auth_types):

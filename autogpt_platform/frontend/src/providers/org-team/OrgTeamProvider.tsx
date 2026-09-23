@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
@@ -20,7 +20,7 @@ interface Props {
  * On org/team switch: clears React Query cache to force refetch.
  */
 export default function OrgTeamProvider({ children }: Props) {
-  const { isLoggedIn, user, isUserLoading } = useSupabase();
+  const { isLoggedIn, user, isUserLoading } = useAuth();
   const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
     useOrgTeamStore();
 

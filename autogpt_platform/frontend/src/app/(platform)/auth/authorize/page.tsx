@@ -7,12 +7,13 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ImageIcon, SealCheckIcon } from "@phosphor-icons/react";
 import {
   postOauthAuthorize,
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
@@ -227,7 +228,7 @@ export default function AuthorizePage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <ImageIcon className="h-8 w-8 text-slate-400" />
+                <Icon icon={Image01Icon} className="h-8 w-8 text-slate-400" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
@@ -248,7 +249,10 @@ export default function AuthorizePage() {
             <ul className="space-y-2">
               {requestedScopes.map((scopeKey) => (
                 <li key={scopeKey} className="flex items-start gap-3">
-                  <SealCheckIcon className="mt-0.5 text-green-600" />
+                  <Icon
+                    icon={CheckmarkBadge01Icon}
+                    className="mt-0.5 text-green-600"
+                  />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
                       scopeKey}

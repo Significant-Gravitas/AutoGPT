@@ -69,7 +69,10 @@ describe("Tour chat app shell", () => {
     // Both stores are module-level state — reset between tests.
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
+      runId: 0,
       isDemoComplete: false,
+      watchedScenarioIds: [],
+      isNudgeVisible: false,
     });
     useCopilotUIStore.getState().clearArtifactPreview();
   });

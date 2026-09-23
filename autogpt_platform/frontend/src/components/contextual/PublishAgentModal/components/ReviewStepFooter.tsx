@@ -1,13 +1,12 @@
 "use client";
-
-import {
-  ArrowRightIcon,
-  NotePencilIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { StepFooter } from "./StepFooter";
+import {
+  ArrowRight02Icon,
+  NoteEditIcon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onDone: () => void;
@@ -43,7 +42,7 @@ export function ReviewStepFooter({
                 size="small"
                 onClick={onEdit}
                 className="w-full sm:w-auto"
-                leftIcon={<NotePencilIcon size={14} weight="bold" />}
+                leftIcon={<Icon icon={NoteEditIcon} size={14} />}
                 data-testid="edit-submission-button"
               >
                 Edit details
@@ -66,7 +65,7 @@ export function ReviewStepFooter({
               href={marketplaceUrl}
               size="small"
               className="w-full sm:w-auto"
-              rightIcon={<StorefrontIcon size={14} weight="bold" />}
+              rightIcon={<Icon icon={Store01Icon} size={14} />}
               data-testid="view-marketplace-button"
             >
               View on marketplace
@@ -76,7 +75,7 @@ export function ReviewStepFooter({
               size="small"
               onClick={onViewProgress}
               className="w-full sm:w-auto"
-              rightIcon={<ArrowRightIcon size={14} weight="bold" />}
+              rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}
               data-testid="view-progress-button"
             >
               Go to Creator Dashboard

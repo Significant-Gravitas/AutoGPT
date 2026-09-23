@@ -10,6 +10,7 @@ import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { retryUnlessClientError } from "../../../helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -26,6 +27,7 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
     query: {
       enabled: !!triggerId,
       select: okData,
+      retry: retryUnlessClientError,
     },
   });
 

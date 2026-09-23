@@ -1,18 +1,16 @@
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { describe, expect, it } from "vitest";
 import { buildLDContext } from "../helpers";
 
 function userFixture(overrides: Partial<User> = {}): User {
   return {
     id: "00000000-0000-0000-0000-000000000001",
-    aud: "authenticated",
-    app_metadata: {},
     user_metadata: {},
     created_at: "2026-05-08T12:00:00Z",
     email: "user@example.com",
     role: "authenticated",
     ...overrides,
-  } as User;
+  };
 }
 
 describe("buildLDContext", () => {
@@ -21,6 +19,33 @@ describe("buildLDContext", () => {
       kind: "user",
       key: "anonymous",
       anonymous: true,
+    });
+  });
+
+  it("keys the anonymous context by the shared anonymous id when available", () => {
+    expect(buildLDContext(null, "anon-123")).toEqual({
+      kind: "user",
+      key: "anon-123",
+      anonymous: true,
+    });
+  });
+
+  it("adds a device context carrying the anonymous id for a signed-in user", () => {
+    const ctx = buildLDContext(userFixture(), "anon-123");
+
+    expect(ctx).toEqual({
+      kind: "multi",
+      user: {
+        kind: "user",
+        key: "00000000-0000-0000-0000-000000000001",
+        anonymous: false,
+        email: "user@example.com",
+        email_domain: "example.com",
+        role: "authenticated",
+        created_at: "2026-05-08T12:00:00Z",
+        custom: { role: "authenticated" },
+      },
+      device: { kind: "device", key: "anon-123", anonymous: true },
     });
   });
 
@@ -39,7 +64,7 @@ describe("buildLDContext", () => {
     });
   });
 
-  it("preserves the exact created_at string from Supabase (no normalization)", () => {
+  it("preserves the exact created_at string from the session (no normalization)", () => {
     const ctx = buildLDContext(
       userFixture({ created_at: "2025-01-15T08:30:45.123456Z" }),
     );
@@ -50,9 +75,7 @@ describe("buildLDContext", () => {
   });
 
   it("omits created_at when missing — falsy spread skips the key", () => {
-    const ctx = buildLDContext(
-      userFixture({ created_at: undefined as unknown as string }),
-    );
+    const ctx = buildLDContext(userFixture({ created_at: undefined }));
 
     expect(ctx).not.toHaveProperty("created_at");
     expect("email" in ctx && ctx.email).toBe("user@example.com");

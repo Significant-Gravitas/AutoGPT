@@ -27,6 +27,7 @@ from backend.copilot.context import (
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
+from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
@@ -34,6 +35,7 @@ from backend.copilot.integration_creds import (
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
+from .connect_integration import requested_scopes
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
@@ -74,7 +76,11 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after `timeout` seconds."
+            "Killed after `timeout` seconds. Anything that should persist belongs "
+            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "desktop (start_desktop) is this same machine, all paths included. "
+            "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
+            "is the user's workspace."
         )
 
     @property
@@ -143,7 +149,12 @@ class BashExecTool(BaseTool):
         sandbox = get_current_sandbox()
         if sandbox is not None:
             return await self._execute_on_e2b(
-                sandbox, command, timeout, session_id, user_id
+                sandbox,
+                command,
+                timeout,
+                session_id,
+                user_id,
+                required_scopes=requested_scopes(session),
             )
 
         # Bubblewrap fallback: local isolated execution.
@@ -182,6 +193,7 @@ class BashExecTool(BaseTool):
         timeout: int,
         session_id: str | None,
         user_id: str | None = None,
+        required_scopes: dict[str, frozenset[str]] | None = None,
     ) -> ToolResponseBase:
         """Execute *command* on the E2B sandbox via commands.run().
 
@@ -195,13 +207,18 @@ class BashExecTool(BaseTool):
         # Collect injected secret values so we can scrub them from output.
         secret_values: list[str] = []
         if user_id is not None:
-            integration_env = await get_integration_env_vars(user_id)
+            selected = await selected_credentials(session_id)
+            integration_env = await get_integration_env_vars(
+                user_id, required_scopes, selected
+            )
             secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
             # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(user_id)
+            git_identity = await get_github_user_git_identity(
+                user_id, selected.get("github")
+            )
             if git_identity:
                 envs.update(git_identity)
 

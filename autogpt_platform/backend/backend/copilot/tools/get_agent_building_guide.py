@@ -50,10 +50,9 @@ class GetAgentBuildingGuideTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Agent JSON building guide (nodes, links, AgentExecutorBlock, "
-            "MCPToolBlock, iterative create->dry-run->fix flow). REQUIRED "
-            "before create_agent / edit_agent / validate_agent_graph / "
-            "fix_agent_graph — they refuse until called once per session."
+            "Returns the agent JSON building guide (incl. dry-run loop) "
+            "inline. Fallback — prefer enter_agent_building_mode "
+            "(compaction-proof)."
         )
 
     @property
@@ -75,17 +74,22 @@ class GetAgentBuildingGuideTool(BaseTool):
         **kwargs,  # no tool-specific params; accepts kwargs for forward-compat
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
-        try:
-            content = _load_guide()
-            triggers_enabled = (
-                await is_feature_enabled(
-                    Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False
-                )
-                if user_id
-                else False
+        if session is not None and session.guide_in_system_prompt:
+            # The guide already rides in this turn's (cached) system prompt —
+            # returning it again would duplicate ~9K tokens in the
+            # compactable conversation tail.
+            return AgentBuildingGuideResponse(
+                message="Agent building guide already loaded.",
+                content=(
+                    "The complete agent-building guide is already included in "
+                    "your system prompt (see <building_guide>). Refer to it "
+                    "directly — it stays available for the rest of this "
+                    "session, including after context compaction."
+                ),
+                session_id=session_id,
             )
-            if not triggers_enabled:
-                content = _strip_h3_section(content, _TRIGGER_AGENTS_HEADING)
+        try:
+            content = await load_guide_for_user(user_id)
             return AgentBuildingGuideResponse(
                 message="Agent building guide loaded.",
                 content=content,
@@ -121,3 +125,21 @@ def _strip_h3_section(guide: str, heading: str) -> str:
         if not skipping:
             out.append(line)
     return "\n".join(out)
+
+
+async def load_guide_for_user(user_id: str | None) -> str:
+    """Load the guide with per-user feature gating applied.
+
+    Shared by get_agent_building_guide and enter_agent_building_mode (its
+    SDK-less inline fallback) so the trigger-section gating and heading
+    sentinel cannot drift between the two.
+    """
+    content = _load_guide()
+    triggers_enabled = (
+        await is_feature_enabled(Flag.GENERIC_TRIGGER_AGENTS, user_id, default=False)
+        if user_id
+        else False
+    )
+    if not triggers_enabled:
+        content = _strip_h3_section(content, _TRIGGER_AGENTS_HEADING)
+    return content

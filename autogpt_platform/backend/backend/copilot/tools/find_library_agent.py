@@ -4,13 +4,16 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
+from .agent_generator import get_agent_as_json
+from .agent_json_input import write_agent_json_to_workspace
 from .agent_search import (
     lookup_library_agent_by_id,
     search_agents,
     search_library_for_creation,
 )
 from .base import BaseTool
-from .models import ToolResponseBase
+from .expert_scope import require_installed_workflow, session_workflow_scope
+from .models import AgentInfo, AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
 class FindLibraryAgentTool(BaseTool):
@@ -54,6 +57,17 @@ class FindLibraryAgentTool(BaseTool):
                     ),
                     "default": False,
                 },
+                "write_graph_to": {
+                    "type": "string",
+                    "description": (
+                        "Workspace filename (no directories) to write the "
+                        "agent's full graph JSON to (pretty-printed, "
+                        "overwrites) instead of returning it inline. Requires "
+                        "agent_id. The response includes an @@agptfile ref to "
+                        "pass to tool:edit_agent — avoids pulling a large graph "
+                        "through context when editing an existing agent."
+                    ),
+                },
                 "for_creation": {
                     "type": "boolean",
                     "description": "Pre-create similarity check.",
@@ -80,9 +94,86 @@ class FindLibraryAgentTool(BaseTool):
         query: str = "",
         agent_id: str = "",
         include_graph: bool = False,
+        write_graph_to: str = "",
         for_creation: bool = False,
         goal_summary: str = "",
         **kwargs,
+    ) -> ToolResponseBase:
+        if user_id and (direct_id := agent_id.strip()):
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=direct_id,
+                library_agent_id=direct_id,
+                name=direct_id,
+            )
+            if scope_error is not None:
+                return scope_error
+        result = await self._search(
+            user_id,
+            session,
+            query=query,
+            agent_id=agent_id,
+            include_graph=include_graph,
+            write_graph_to=write_graph_to,
+            for_creation=for_creation,
+            goal_summary=goal_summary,
+        )
+        if not user_id or not isinstance(result, AgentsFoundResponse):
+            return result
+        scope = await session_workflow_scope(user_id, session)
+        if scope is None:
+            return result
+        if for_creation:
+            # The pre-create similarity check exists to avoid duplicates, so it
+            # must see the whole library; an expert installs a match instead
+            # of building it again.
+            return result.model_copy(
+                update={
+                    "message": (
+                        f"{result.message} You are an expert: to reuse a match, "
+                        "install it with tool:install_expert_workflow rather than "
+                        "building a new agent."
+                    )
+                }
+            )
+        installed: list[AgentInfo] = []
+        uninstalled: list[AgentInfo] = []
+        for agent in result.agents:
+            allowed = scope.allows_agent(
+                library_agent_id=agent.id, graph_id=agent.graph_id
+            )
+            (installed if allowed else uninstalled).append(agent)
+        message = (
+            f"Found {len(installed)} installed workflows. Only installed "
+            "workflows can be run, edited or scheduled."
+        )
+        if uninstalled:
+            message += (
+                " Also in the owner's library, not installed on you: "
+                f"{_install_candidates(uninstalled)} — install one with "
+                "tool:install_expert_workflow to use it."
+            )
+        return result.model_copy(
+            update={
+                "agents": installed,
+                "count": len(installed),
+                "title": f"Found {len(installed)} installed workflows",
+                "message": message,
+            }
+        )
+
+    async def _search(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        *,
+        query: str,
+        agent_id: str,
+        include_graph: bool,
+        write_graph_to: str,
+        for_creation: bool,
+        goal_summary: str,
     ) -> ToolResponseBase:
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty
@@ -92,13 +183,29 @@ class FindLibraryAgentTool(BaseTool):
                 session_id=session.session_id,
                 user_id=user_id,
             )
+        write_graph_to = write_graph_to.strip()
+        if write_graph_to and not agent_id.strip():
+            return ErrorResponse(
+                message=(
+                    "write_graph_to requires agent_id — pass the library agent "
+                    "or graph id whose graph should be written to the file."
+                ),
+                error="missing_agent_id",
+                session_id=session.session_id,
+            )
         if agent_id := agent_id.strip():
-            return await lookup_library_agent_by_id(
+            result = await lookup_library_agent_by_id(
                 agent_id=agent_id,
                 session_id=session.session_id,
                 user_id=user_id,
-                include_graph=include_graph,
+                include_graph=include_graph and not write_graph_to,
             )
+            if write_graph_to and isinstance(result, AgentsFoundResponse):
+                note = await _write_graph_note(
+                    agent_id, write_graph_to, user_id, session.session_id
+                )
+                result.message = f"{result.message}\n\n{note.strip()}"
+            return result
         return await search_agents(
             query=query.strip(),
             source="library",
@@ -106,3 +213,49 @@ class FindLibraryAgentTool(BaseTool):
             user_id=user_id,
             include_graph=include_graph,
         )
+
+
+_INSTALL_CANDIDATE_LIMIT = 10
+
+
+def _install_candidates(agents: list[AgentInfo]) -> str:
+    """Name library agents an expert may install, with the id install takes.
+
+    They stay out of ``agents``, which consumers read as the runnable set.
+    """
+    shown = agents[:_INSTALL_CANDIDATE_LIMIT]
+    listed = ", ".join(f'"{a.name}" ({a.id})' for a in shown)
+    if len(agents) > len(shown):
+        listed += f", and {len(agents) - len(shown)} more"
+    return listed
+
+
+async def _write_graph_note(
+    agent_id: str, write_to: str, user_id: str | None, session_id: str | None
+) -> str:
+    """Write the agent's graph to a workspace file; return the message note.
+
+    The note either carries the @@agptfile ref to pass to edit_agent, or
+    explains why the write failed and what to do instead. Never raises —
+    the agent lookup already succeeded, so a graph-write hiccup must degrade
+    to a note on that result, not replace it with a generic tool error.
+    """
+    try:
+        agent_json = await get_agent_as_json(agent_id, user_id)
+    except Exception:
+        agent_json = None
+    if agent_json is None:
+        return (
+            "NOTE: could not load the agent's graph to write it to a file; "
+            "retry with include_graph=true to inspect it inline."
+        )
+    _ref, note = await write_agent_json_to_workspace(
+        agent_json,
+        write_to,
+        user_id,
+        session_id,
+        label="Agent graph",
+        pass_to="tool:edit_agent / tool:validate_agent_graph",
+        fallback_note="retry with include_graph=true to inspect the graph inline.",
+    )
+    return note

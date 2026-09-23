@@ -1,16 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { type Icon as PhosphorIcon } from "@phosphor-icons/react";
-
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Confetti } from "@/components/molecules/Confetti/Confetti";
 import { cn } from "@/lib/utils";
+import type { IconSvgElement } from "@hugeicons/react";
 
 interface Hero {
   title: string;
   description: string;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
   pulse: string;
   gradient: string;
 }
@@ -28,16 +28,15 @@ export function ReviewHero({
   showConfetti,
   shouldReduceMotion,
 }: Props) {
-  const HeroIcon = hero.Icon;
-
   return (
     <>
       {showConfetti && !shouldReduceMotion ? (
         <Confetti
           options={{
-            particleCount: 80,
+            particleCount: 50,
             spread: 70,
             startVelocity: 35,
+            ticks: 120,
             origin: { y: 0.3 },
           }}
         />
@@ -53,7 +52,7 @@ export function ReviewHero({
               transition={{
                 duration: 1.6,
                 ease: "easeOut",
-                repeat: Infinity,
+                repeat: 3,
                 repeatDelay: 0.4,
               }}
               className={cn(
@@ -68,7 +67,7 @@ export function ReviewHero({
               transition={{
                 duration: 1.6,
                 ease: "easeOut",
-                repeat: Infinity,
+                repeat: 3,
                 repeatDelay: 0.4,
                 delay: 0.5,
               }}
@@ -115,7 +114,7 @@ export function ReviewHero({
             }
             className="text-white"
           >
-            <HeroIcon size={36} weight="bold" />
+            <Icon icon={hero.Icon} size={36} />
           </motion.span>
         </motion.div>
       </div>

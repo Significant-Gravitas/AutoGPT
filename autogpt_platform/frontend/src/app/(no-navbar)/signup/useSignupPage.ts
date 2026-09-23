@@ -1,7 +1,7 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
 import { sanitizeAuthNext } from "@/lib/auth-redirect";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +14,8 @@ import { signup as signupAction } from "./actions";
 export function useSignupPage() {
   useCaptureMarketingPrompt();
 
-  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
+  const { user, isUserLoading, isLoggedIn } = useAuth();
+  const [hasInitializedAuth, setHasInitializedAuth] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -28,6 +29,12 @@ export function useSignupPage() {
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+
+  useEffect(() => {
+    if (!isUserLoading) {
+      setHasInitializedAuth(true);
+    }
+  }, [isUserLoading]);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
   // on /signup, get me out" is handled by OnboardingProvider so the user lands
@@ -61,7 +68,7 @@ export function useSignupPage() {
         : `/auth/callback`;
       const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
 
-      const response = await fetch("/api/auth/provider", {
+      const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
@@ -160,12 +167,12 @@ export function useSignupPage() {
     form,
     feedback,
     isLoggedIn: !!user,
+    hasInitializedAuth,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleSignup),
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,

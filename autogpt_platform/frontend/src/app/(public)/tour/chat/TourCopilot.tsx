@@ -5,14 +5,15 @@ import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { CSSProperties } from "react";
 import { TourChatHost } from "./TourChatHost";
+import { TourChatHeader } from "./components/TourChatHeader/TourChatHeader";
 import { TourSidebar } from "./components/TourSidebar/TourSidebar";
 import { buildTourArtifactRef } from "./helpers";
 import { getTourScenario } from "./script/tourScenarios";
 import { useTourStore } from "./tourStore";
+import { trackTourScenarioComplete, trackTourStart } from "./tracking";
 
 const ArtifactPanel = dynamic(
   () =>
@@ -42,26 +43,26 @@ export function TourCopilot() {
   const isMobile = useIsMobile();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
-  const isArtifactOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
   // The tour shares the copilot UI store but must never leak panel state
   // into the real /copilot: opens skip the localStorage write
   // (persist: false) and unmount closes the panel in memory the same way.
   useMountEffect(() => {
+    trackTourStart();
     return () => closeArtifactPanel({ persist: false });
   });
 
   const chatColumn = (
-    // The chat fades back once the artifact panel opens so the visitor's
-    // attention lands on the payoff.
-    <div
-      className={cn(
-        "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-opacity duration-700",
-        isArtifactOpen && "opacity-50",
-      )}
-    >
+    // The chat used to fade back when the artifact panel opened, but the end
+    // card (the demo's follow-up CTA) now appears at that exact moment — it
+    // must stay fully legible, so the column keeps full opacity.
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <TourBackdrop />
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <TourChatHeader
+          scenarioLabel={scenario.label}
+          scenarioIcon={scenario.icon}
+        />
         <div className="h-4 shrink-0" />
         <TourChatHost
           key={`${scenario.id}-${runId}`}
@@ -69,6 +70,7 @@ export function TourCopilot() {
           script={scenario.script}
           completionNotice={`Your **"${scenario.completionArtifact.filename}"** will appear in a moment on the right side.`}
           onComplete={() => {
+            trackTourScenarioComplete(scenario.id);
             setDemoComplete();
             openArtifact(buildTourArtifactRef(scenario), { persist: false });
           }}

@@ -7,11 +7,12 @@ import {
   AccordionTrigger,
 } from "@/components/molecules/Accordion/Accordion";
 import { beautifyString, cn } from "@/lib/utils";
-import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
 import { ViewMoreData } from "./components/ViewMoreData";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   const {
@@ -66,9 +67,13 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     )}
                   >
                     {copiedKey === "input" ? (
-                      <CheckIcon size={12} className="text-green-600" />
+                      <Icon
+                        icon={Tick02Icon}
+                        size={12}
+                        className="text-green-600"
+                      />
                     ) : (
-                      <CopyIcon size={12} />
+                      <Icon icon={Copy01Icon} size={12} />
                     )}
                   </Button>
                 </div>
@@ -124,12 +129,13 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                               )}
                             >
                               {copiedKey === key ? (
-                                <CheckIcon
+                                <Icon
+                                  icon={Tick02Icon}
                                   size={12}
                                   className="text-green-600"
                                 />
                               ) : (
-                                <CopyIcon size={12} />
+                                <Icon icon={Copy01Icon} size={12} />
                               )}
                             </Button>
                           </div>

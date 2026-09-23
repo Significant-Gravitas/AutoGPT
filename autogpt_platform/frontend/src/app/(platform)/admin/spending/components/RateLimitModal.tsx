@@ -15,8 +15,9 @@ import {
   getV2GetUserRateLimit,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
-import { Gauge } from "@phosphor-icons/react";
 import { RateLimitDisplay } from "../../rate-limits/components/RateLimitDisplay";
+import { GaugeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function RateLimitModal({
   userId,
@@ -99,7 +100,7 @@ export function RateLimitModal({
           setOpen(true);
         }}
       >
-        <Gauge size={16} className="mr-1" />
+        <Icon icon={GaugeIcon} size={16} className="mr-1" />
         Rate Limits
       </Button>
 

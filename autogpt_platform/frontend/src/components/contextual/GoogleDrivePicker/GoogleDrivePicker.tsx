@@ -2,11 +2,12 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
-import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
 import {
   Props as BaseProps,
   useGoogleDrivePicker,
 } from "./useGoogleDrivePicker";
+import { FolderOpenIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type Props = BaseProps;
 
@@ -22,7 +23,7 @@ export function GoogleDrivePicker(props: Props) {
   } = useGoogleDrivePicker(props);
 
   if (!credentials || credentials.isLoading) {
-    return <CircleNotchIcon className="size-6 animate-spin" />;
+    return <Icon icon={Loading03Icon} className="size-6 animate-spin" />;
   }
 
   if (!hasGoogleOAuth) {
@@ -53,7 +54,7 @@ export function GoogleDrivePicker(props: Props) {
         onClick={handleOpenPicker}
         disabled={props.disabled || isLoading || isAuthInProgress}
       >
-        <FolderOpenIcon className="size-4" />
+        <Icon icon={FolderOpenIcon} className="size-4" />
         {props.buttonText || "Choose file(s) from Google Drive"}
       </Button>
     </div>

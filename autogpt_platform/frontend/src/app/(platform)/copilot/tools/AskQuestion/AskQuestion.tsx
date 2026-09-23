@@ -1,6 +1,4 @@
 "use client";
-
-import { ChatTeardropDotsIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ClarificationQuestionsCard } from "../../components/ClarificationQuestionsCard/ClarificationQuestionsCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
@@ -12,6 +10,8 @@ import {
   isClarificationOutput,
   isErrorOutput,
 } from "./helpers";
+import { AlertCircleIcon, Chatting01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: ToolUIPart;
@@ -53,11 +53,11 @@ export function AskQuestionTool({ part }: Props) {
   return (
     <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
       {isError || (output && isErrorOutput(output)) ? (
-        <WarningCircleIcon size={16} className="text-red-500" />
+        <Icon icon={AlertCircleIcon} size={16} className="text-red-500" />
       ) : isStreaming ? (
-        <ChatTeardropDotsIcon size={16} className="animate-pulse" />
+        <Icon icon={Chatting01Icon} size={16} className="animate-pulse" />
       ) : (
-        <ChatTeardropDotsIcon size={16} />
+        <Icon icon={Chatting01Icon} size={16} />
       )}
       <MorphingTextAnimation
         text={text}

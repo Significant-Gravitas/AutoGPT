@@ -5,6 +5,7 @@ import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 import type { SettingsNavItem as SettingsNavItemType } from "./helpers";
 
 type Props = {
@@ -25,9 +26,9 @@ function NavItemContent({
 
   return (
     <>
-      <Icon
+      <UIIcon
+        icon={Icon}
         size={16}
-        weight={isActive ? "regular" : "light"}
         className={isActive ? "text-black" : "text-[#1F1F20]"}
       />
       <Text
@@ -68,12 +69,12 @@ export function SettingsNavItem({ item, isActive }: Props) {
       };
 
   return (
-    <motion.div variants={variants} className="w-[217px]">
+    <motion.div variants={variants} className="w-full">
       <Link
         href={item.href}
         aria-current={isActive ? "page" : undefined}
         className={cn(
-          "flex h-[38px] w-[217px] items-center gap-2 rounded-[8px] px-3 text-[#505057] transition-colors",
+          "flex h-[38px] w-full items-center gap-2 rounded-[8px] px-3 text-[#505057] transition-colors",
           isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
         )}
       >

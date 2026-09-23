@@ -12,7 +12,6 @@ import {
   FormMessage,
 } from "@/components/molecules/Form/Form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderSimpleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -24,6 +23,8 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { FOLDER_COLORS } from "../folder-constants";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const LazyEmojiPicker = dynamic(
   () =>
@@ -108,7 +109,7 @@ export default function LibraryFolderCreationDialog() {
           className="h-fit w-fit"
           size="small"
         >
-          <FolderSimpleIcon width={18} height={18} />
+          <Icon icon={Folder01Icon} width={18} height={18} />
           <span className="create-folder">Create folder</span>
         </Button>
       </Dialog.Trigger>

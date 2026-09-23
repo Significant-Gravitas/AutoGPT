@@ -3,9 +3,10 @@
 import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { useMemo } from "react";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
-import { isUploadedFile } from "./helpers";
+import { isInternalToolOutput, isUploadedFile } from "./helpers";
 
 export interface SessionFile {
   item: WorkspaceFileItem;
@@ -27,26 +28,39 @@ export function useSessionFiles(sessionId: string | null) {
     },
   );
 
-  const fileIdToMessageId = new Map<string, string>();
-  for (const message of messages ?? []) {
-    for (const artifact of getMessageArtifacts(message)) {
-      if (!fileIdToMessageId.has(artifact.id)) {
-        fileIdToMessageId.set(artifact.id, message.id);
+  // The chip and the artifacts button both read this on every render, and
+  // `messageSnapshots` is rewritten with a fresh array per streamed token —
+  // so without memoising, scanning every message part (and compiling a
+  // RegExp per matched workspace URI) would run at token cadence.
+  const { uploaded, generated, deliverables, files } = useMemo(() => {
+    const fileIdToMessageId = new Map<string, string>();
+    for (const message of messages ?? []) {
+      for (const artifact of getMessageArtifacts(message)) {
+        if (!fileIdToMessageId.has(artifact.id)) {
+          fileIdToMessageId.set(artifact.id, message.id);
+        }
       }
     }
-  }
 
-  const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
-    item,
-    messageID: fileIdToMessageId.get(item.id) ?? null,
-  }));
+    const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
+      item,
+      messageID: fileIdToMessageId.get(item.id) ?? null,
+    }));
 
-  const uploaded = files.filter((f) => isUploadedFile(f.item));
-  const generated = files.filter((f) => !isUploadedFile(f.item));
+    return {
+      files,
+      uploaded: files.filter((f) => isUploadedFile(f.item)),
+      generated: files.filter((f) => !isUploadedFile(f.item)),
+      deliverables: files.filter(
+        (f) => !isUploadedFile(f.item) && !isInternalToolOutput(f.item),
+      ),
+    };
+  }, [messages, query.data]);
 
   return {
     uploaded,
     generated,
+    deliverables,
     isLoading: query.isLoading && !!sessionId,
     isError: query.isError,
     error: query.error,

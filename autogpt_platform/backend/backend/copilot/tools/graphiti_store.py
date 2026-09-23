@@ -4,7 +4,11 @@ import logging
 from typing import Any
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
+from backend.copilot.graphiti.ingest import (
+    MAX_EPISODE_BODY_BYTES,
+    enqueue_episode,
+    resolve_user_name,
+)
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryStoreTool(BaseTool):
-    """Store a memory/fact in the user's temporal knowledge graph."""
+    """Store a fact in the current assistant's temporal knowledge graph."""
 
     @property
     def name(self) -> str:
@@ -32,7 +36,8 @@ class MemoryStoreTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Store a memory or fact about the user for future recall. "
+            "Store a memory or fact about the user for this assistant to recall "
+            "in future sessions. "
             "Use when the user shares preferences, business context, decisions, "
             "relationships, or other important information worth remembering "
             "across sessions. Supports optional metadata for scoping and classification."
@@ -227,6 +232,7 @@ class MemoryStoreTool(BaseTool):
             provenance = f"session:{session.session_id}"
 
         envelope = MemoryEnvelope(
+            user=await resolve_user_name(user_id),
             content=content,
             source_kind=resolved_source,
             scope=scope,
@@ -261,6 +267,7 @@ class MemoryStoreTool(BaseTool):
             episode_body=episode_body,
             source_description=source_description,
             is_json=True,
+            expert_id=session.expert_id,
         )
 
         if not queued:

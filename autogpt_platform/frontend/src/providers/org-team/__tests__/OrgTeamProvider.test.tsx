@@ -2,12 +2,12 @@ import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { useSupabaseMock } = vi.hoisted(() => ({
-  useSupabaseMock: vi.fn(),
+const { useAuthMock } = vi.hoisted(() => ({
+  useAuthMock: vi.fn(),
 }));
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: useSupabaseMock,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: useAuthMock,
 }));
 
 import OrgTeamProvider from "../OrgTeamProvider";
@@ -31,7 +31,7 @@ const COMPANY_ORG = {
 };
 
 function mockLoggedIn() {
-  useSupabaseMock.mockReturnValue({
+  useAuthMock.mockReturnValue({
     isLoggedIn: true,
     user: { id: "user-1" },
     isUserLoading: false,
@@ -39,7 +39,7 @@ function mockLoggedIn() {
 }
 
 function mockLoggedOut() {
-  useSupabaseMock.mockReturnValue({
+  useAuthMock.mockReturnValue({
     isLoggedIn: false,
     user: null,
     isUserLoading: false,
@@ -47,7 +47,7 @@ function mockLoggedOut() {
 }
 
 function mockSessionHydrating() {
-  useSupabaseMock.mockReturnValue({
+  useAuthMock.mockReturnValue({
     isLoggedIn: false,
     user: null,
     isUserLoading: true,

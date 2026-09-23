@@ -37,4 +37,22 @@ describe("AppSidebarHeader", () => {
       await screen.findByRole("button", { name: "Expand sidebar" }),
     ).toBeDefined();
   });
+
+  it("keeps the collapsed logo and toggle in the same size-8 slot", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+    const homeLink = await screen.findByRole("link", { name: "AutoGPT" });
+    const expandButton = await screen.findByRole("button", {
+      name: "Expand sidebar",
+      hidden: true,
+    });
+
+    expect(homeLink.className).toContain("size-8");
+    expect(expandButton.className).toContain("size-8");
+    expect(homeLink.parentElement).toBe(expandButton.parentElement);
+    expect(homeLink.parentElement?.className).toContain("size-8");
+  });
 });

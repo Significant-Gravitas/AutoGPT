@@ -1,0 +1,136 @@
+name: repo-pr-reapprove-command
+
+# ChatOps: a team member comments `/reapprove` on a PR whose approval was
+# dismissed by a stale-review dismissal (e.g. after merging dev or pushing a
+# small fix), and the github-actions bot re-approves on their behalf.
+# Deterministic — no AI.
+#
+# Prerequisites:
+#   - Repo (and org) setting "Allow GitHub Actions to create and approve pull
+#     requests" must be enabled (Settings → Actions → General), otherwise the
+#     review-creation call is rejected.
+#   - Like all issue_comment workflows, this only triggers once the file is on
+#     the default branch (master).
+#
+# Notes:
+#   - Only PRs that already received an APPROVED review from a user with write
+#     access are eligible. Dismissed approvals are recovered via the timeline
+#     API (review_dismissed events carry the review's original state), so a
+#     dismissed CHANGES_REQUESTED review does not count, and neither does an
+#     approval from a drive-by user without write access (on a public repo
+#     anyone can submit an APPROVE review). `/reapprove` can restore a
+#     dismissed approval but never substitute for the first one.
+#   - Residual risk (accepted by design): the prior approval is not tied to the
+#     current head SHA, so commits pushed after it get re-approved without a
+#     fresh human review. That is the point of the command — restoring an
+#     approval dismissed by a dev-merge or trivial fix — and relies on team
+#     trust. Merging still goes through the merge queue; the bot approval only
+#     makes the PR eligible for it again.
+#   - The bot is its own identity, so `/reapprove` works even on your own PR.
+#     The permission gates check real repo permission, not `author_association`
+#     (unreliable in orgs).
+#   - The bot's approval is itself dismissed by the next push, as intended.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  # The timeline API used to find dismissed approvals reads the PR as an issue.
+  issues: read
+
+jobs:
+  reapprove:
+    # PR comments only, and only when the comment starts with `/reapprove`
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/reapprove')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify commenter and a prior approver have write access
+        uses: actions/github-script@v8
+        with:
+          script: |
+            async function hasWriteAccess(username) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username,
+                });
+                return ['admin', 'write'].includes(data.permission);
+              } catch {
+                return false;
+              }
+            }
+
+            const commenter = context.payload.comment.user.login;
+            if (!(await hasWriteAccess(commenter))) {
+              core.setFailed(`@${commenter} does not have write access — ignoring /reapprove`);
+              return;
+            }
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const reviewByID = new Map(reviews.map((r) => [r.id, r]));
+
+            // A review dismissed while APPROVED only shows state DISMISSED in the
+            // reviews API; its original state lives in the review_dismissed
+            // timeline event, so a dismissed CHANGES_REQUESTED review never
+            // counts as a prior approval.
+            const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const approvers = new Set(
+              [
+                ...reviews.filter((r) => r.state === 'APPROVED'),
+                ...timeline
+                  .filter((e) => e.event === 'review_dismissed' && e.dismissed_review?.state === 'approved')
+                  .map((e) => reviewByID.get(e.dismissed_review.review_id))
+                  .filter(Boolean),
+              ]
+                .filter((r) => r.user && r.user.type !== 'Bot')
+                .map((r) => r.user.login),
+            );
+
+            // On a public repo anyone can submit an APPROVE review, so the prior
+            // approval only counts when the approver has write access.
+            for (const approver of approvers) {
+              if (await hasWriteAccess(approver)) return;
+            }
+            core.setFailed(
+              'No prior approval from a user with write access found — /reapprove ' +
+              'only restores dismissed approvals, it cannot grant the first one.',
+            );
+            return;
+
+      - name: Approve PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: 'APPROVE',
+              body:
+                `Re-approved at the request of @${context.payload.comment.user.login} ` +
+                `(${context.payload.comment.html_url})`,
+            });
+
+      - name: React to command comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1',
+            });

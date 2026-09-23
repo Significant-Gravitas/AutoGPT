@@ -1,8 +1,9 @@
 "use client";
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { HeartIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import { FavouriteIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FlyingHeartProps {
   startPosition: { x: number; y: number } | null;
@@ -59,9 +60,9 @@ export function FlyingHeart({
             onAnimationComplete();
           }}
         >
-          <HeartIcon
+          <Icon
+            icon={FavouriteIcon}
             size={24}
-            weight="fill"
             className="text-red-500 drop-shadow-md"
           />
         </motion.div>

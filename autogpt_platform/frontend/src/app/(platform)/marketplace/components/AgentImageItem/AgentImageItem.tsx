@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Play } from "@phosphor-icons/react";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import { useEffect, useState } from "react";
 import {
   getYouTubeVideoId,
@@ -9,6 +9,8 @@ import {
   isValidVideoUrl,
 } from "./helpers";
 import { useAgentImageItem } from "./useAgentImageItem";
+import { PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentImageItemProps {
   image: string;
@@ -72,6 +74,7 @@ export function AgentImageItem({
             )}
             <Image
               src={image}
+              unoptimized={isLocalStoreMediaUrl(image)}
               alt="Image"
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -93,9 +96,9 @@ export function AgentImageItem({
               }
             }}
             rightIcon={
-              <Play
+              <Icon
+                icon={PlayIcon}
                 size={20}
-                weight="fill"
                 className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }

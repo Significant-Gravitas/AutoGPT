@@ -1,6 +1,7 @@
-import { TrashIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { Delete02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   selectedCount: number;
@@ -35,7 +36,7 @@ export function APIKeySelectionBar({
       <Button
         variant="destructive"
         size="small"
-        leftIcon={<TrashIcon size={16} />}
+        leftIcon={<Icon icon={Delete02Icon} size={16} />}
         onClick={onDeleteSelected}
       >
         Delete selected

@@ -1,0 +1,103 @@
+import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { getExpertAccent } from "../helpers";
+import {
+  ArrowRight02Icon,
+  CheckmarkCircle02Icon,
+  FlashIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+interface Props {
+  expert: ExpertTemplate;
+  isHired: boolean;
+}
+
+/** Each card is a plain link to the expert's own page, so a profile can be
+ *  shared and opened directly. */
+export function ExpertCard({ expert, isHired }: Props) {
+  const accent = getExpertAccent(expert.role);
+  const skills = expert.bundled_skills ?? [];
+
+  return (
+    <Link
+      href={`/marketplace/experts/${expert.id}`}
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
+    >
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-0 h-28 opacity-60 transition-opacity duration-200 group-hover:opacity-100",
+          accent.wash,
+        )}
+      />
+      <div className="relative flex flex-1 flex-col gap-4 p-6">
+        <ExpertAvatar
+          name={expert.name}
+          avatarUrl={expert.avatar_url}
+          size={88}
+        />
+
+        <div>
+          <ExpertIdentityDetails
+            name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
+          />
+          <ExpertTagline tagline={expert.tagline} compact />
+        </div>
+
+        {skills.length > 0 ? (
+          <div>
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">
+              Skills
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {skills.slice(0, 3).map((skill) => (
+                <span
+                  key={skill.id}
+                  className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
+                >
+                  {skill.title}
+                </span>
+              ))}
+              {skills.length > 3 ? (
+                <span className="px-1 py-1 text-xs font-medium text-zinc-400">
+                  +{skills.length - 3}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-auto flex items-center justify-between pt-2">
+          {expert.workflows.length > 0 ? (
+            <span className="flex items-center gap-2 text-base text-zinc-500">
+              <Icon icon={FlashIcon} size={18} className={accent.icon} />
+              {expert.workflows.length}{" "}
+              {expert.workflows.length === 1 ? "workflow" : "workflows"}
+            </span>
+          ) : null}
+          {isHired ? (
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-emerald-600">
+              <Icon icon={CheckmarkCircle02Icon} size={18} />
+              On your team
+            </span>
+          ) : (
+            <span className="ml-auto flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+              View
+              <Icon
+                icon={ArrowRight02Icon}
+                size={16}
+                className="transition-transform duration-200 group-hover:translate-x-0.5"
+              />
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}

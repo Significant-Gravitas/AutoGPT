@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "@phosphor-icons/react";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
 import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImage";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function AdminPreviewPage() {
   const params = useParams<{ id: string }>();
@@ -88,7 +89,7 @@ export default function AdminPreviewPage() {
           onClick={() => router.back()}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft size={16} />
+          <Icon icon={ArrowLeft02Icon} size={16} />
           Back to Admin Marketplace
         </button>
 

@@ -2,8 +2,9 @@
 
 import { MessageAction } from "@/components/ai-elements/message";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Check, CopySimple } from "@phosphor-icons/react";
 import { useState } from "react";
+import { Copy02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   text: string;
@@ -36,7 +37,11 @@ export function CopyButton({ text }: Props) {
       variant="ghost"
       size="icon-sm"
     >
-      {copied ? <Check size={16} /> : <CopySimple size={16} weight="regular" />}
+      {copied ? (
+        <Icon icon={Tick02Icon} size={16} />
+      ) : (
+        <Icon icon={Copy02Icon} size={16} />
+      )}
     </MessageAction>
   );
 }

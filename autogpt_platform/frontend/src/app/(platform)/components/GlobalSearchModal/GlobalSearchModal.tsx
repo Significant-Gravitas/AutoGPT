@@ -1,7 +1,7 @@
 import type { SearchResultItem } from "@/app/api/__generated__/models/searchResultItem";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { SearchCommandModal } from "@/components/organisms/SearchCommandModal/SearchCommandModal";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ACTIONS_BUCKET_KEY, COPY_USER_ID_ACTION } from "./actions";
@@ -18,7 +18,7 @@ export function GlobalSearchModal({ isOpen, onClose, onSelectItem }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const { query, setQuery, buckets, itemsById, isFetching, isError } =
     useGlobalSearch(isOpen);
   // Id of the row whose select is in-flight. The modal stays open with a

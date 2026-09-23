@@ -1,6 +1,4 @@
 "use client";
-
-import { InfoIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Select } from "@/components/atoms/Select/Select";
@@ -12,6 +10,8 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 import { EASE_OUT, TIMEZONES, findTimezoneLabel } from "../../helpers";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: string;
@@ -54,7 +54,7 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
                   aria-label="Time zone info"
                   className="flex items-center text-zinc-400 transition-colors hover:text-zinc-600 focus-visible:text-zinc-600 focus-visible:outline-none"
                 >
-                  <InfoIcon size={16} weight="duotone" />
+                  <Icon icon={InformationCircleIcon} size={16} />
                 </button>
               </TooltipTrigger>
               <TooltipContent>

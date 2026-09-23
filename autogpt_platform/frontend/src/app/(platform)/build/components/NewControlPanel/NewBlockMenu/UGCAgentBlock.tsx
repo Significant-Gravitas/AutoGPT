@@ -2,11 +2,12 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { CircleNotchIcon } from "@phosphor-icons/react";
-import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
+import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -44,6 +45,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
           <Image
             src={image_url}
+            unoptimized={isLocalStoreMediaUrl(image_url)}
             alt="integration-icon"
             fill
             sizes="5.625rem"
@@ -97,9 +99,16 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         )}
       >
         {isLoading ? (
-          <CircleNotchIcon className="h-5 w-5 animate-spin text-zinc-50" />
+          <Icon
+            icon={Loading03Icon}
+            className="h-5 w-5 animate-spin text-zinc-50"
+          />
         ) : (
-          <PlusIcon className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+          <Icon
+            icon={PlusSignIcon}
+            className="h-5 w-5 text-zinc-50"
+            strokeWidth={2}
+          />
         )}
       </div>
     </Button>

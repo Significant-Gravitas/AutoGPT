@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { FolderIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { FILE_DRAG_MIME } from "./drag";
+import { FILE_DRAG_MIME, readFileDragIds } from "./drag";
 import { FOLDER_STYLE } from "./folder-constants";
+import {
+  Delete02Icon,
+  Folder01Icon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   id: string;
@@ -14,7 +20,7 @@ interface Props {
   onEdit: () => void;
   onDelete: () => void;
   onClick: () => void;
-  onFileDrop: (fileId: string, folderId: string) => void;
+  onFileDrop: (fileIds: string[], folderId: string) => void;
 }
 
 export function WorkspaceFolder({
@@ -47,8 +53,8 @@ export function WorkspaceFolder({
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragOver(false);
-    const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-    if (fileId) onFileDrop(fileId, id);
+    const fileIds = readFileDragIds(e.dataTransfer);
+    if (fileIds.length > 0) onFileDrop(fileIds, id);
   }
 
   return (
@@ -59,7 +65,7 @@ export function WorkspaceFolder({
       data-folder-id={id}
       onClick={onClick}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (isKey(e, "Enter", " ")) {
           e.preventDefault();
           onClick();
         }
@@ -74,7 +80,7 @@ export function WorkspaceFolder({
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface}`}
       >
-        <FolderIcon size={22} weight="fill" className={style.icon} />
+        <Icon icon={Folder01Icon} size={22} className={style.icon} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
@@ -100,7 +106,7 @@ export function WorkspaceFolder({
           }}
           className="h-9 w-9 !p-2 text-zinc-500 hover:text-zinc-800"
         >
-          <PencilSimpleIcon size={16} />
+          <Icon icon={PencilIcon} size={16} />
         </Button>
         <Button
           variant="icon"
@@ -112,7 +118,7 @@ export function WorkspaceFolder({
           }}
           className="h-9 w-9 !p-2 text-zinc-500 hover:text-red-600"
         >
-          <TrashIcon size={16} />
+          <Icon icon={Delete02Icon} size={16} />
         </Button>
       </div>
     </div>

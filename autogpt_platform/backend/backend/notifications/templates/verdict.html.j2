@@ -1,0 +1,153 @@
+{#- ============================================================
+    verdict.html.j2 — Store submission review outcome
+    Covers AGENT_APPROVED and AGENT_REJECTED via `outcome`.
+    The reviewer's comment is the payload of this email, so on a
+    changes-needed verdict it is the most prominent block, above
+    the fold, never truncated.
+    ============================================================ -#}
+{%- import "_ui.j2" as ui with context -%}
+{%- set approved = (outcome == 'approved') -%}
+{%- set has_note = comments and comments | trim | length > 0 -%}
+{%- set resubmission = (version | default(1)) > 1 -%}
+{%- if approved -%}
+  {%- set headline = ui.trunc(agent_name, 44) ~ ' is live in the Store' -%}
+{%- else -%}
+  {%- set headline = ui.trunc(agent_name, 40) ~ ' needs one more pass' -%}
+{%- endif -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject | default(headline)) }}
+</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; -webkit-text-size-adjust:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader | default(headline)) }}
+{{ ui.page_open() }}
+{{ ui.header() }}
+{{ ui.hero_verdict('approved' if approved else 'changes') }}
+
+    <!-- Body card -->
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+        <tr><td class="gutter" style="padding:30px 48px 0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:{{ '#1c7a52' if approved else '#b45309' }};">
+            STORE REVIEW &middot; VERSION {{ version | default(1) }}{% if not approved %} &middot; CHANGES NEEDED{% endif %}
+          </div>
+          <div class="headline" style="padding-top:10px; font-size:26px; line-height:34px; font-weight:800; color:#17123b; overflow-wrap:anywhere;">
+            {{ headline }}
+          </div>
+        </td></tr>
+
+        <tr><td class="gutter" style="padding:16px 48px 0;">
+          <div style="font-size:15px; line-height:24px; color:#494566;">
+            {%- if approved %}
+            {{ reviewer_name }} approved version {{ version | default(1) }} on {{ reviewed_at_label }}.
+            Anyone browsing the Store can now find it, install it, and run it.
+            {%- else %}
+            {{ reviewer_name }} reviewed version {{ version | default(1) }} on {{ reviewed_at_label }} and found something to fix
+            before it can go live.
+            {{ 'Your submission is saved — you are picking up where you left off, not starting over.' if resubmission else 'Nothing is lost: your submission is saved and you can resubmit as soon as it is fixed.' }}
+            {%- endif %}
+          </div>
+        </td></tr>
+
+        {#- On a changes verdict the feedback is the reason the email exists, so it
+            comes before the CTA. On an approval it is a nice-to-have and only
+            renders when the reviewer actually wrote something. -#}
+        {%- if not approved %}
+        {%- if changes %}
+        <tr><td class="gutter" style="padding:22px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fff6e8" style="border:1px solid #f2dcb0; border-left:4px solid #e8940a; border-radius:10px;">
+            <tr><td style="padding:16px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#8a5800; padding-bottom:10px;">
+                {{ changes | length }} {{ 'THING' if changes | length == 1 else 'THINGS' }} TO CHANGE
+              </div>
+              {%- for c in changes %}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="{{ '' if loop.first else 'margin-top:10px;' }}">
+                <tr>
+                  <td width="26" valign="top" style="font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:23px; font-weight:bold; color:#b45309;">{{ loop.index }}</td>
+                  <td style="font-size:15px; line-height:23px; color:#3b3757; overflow-wrap:anywhere;">{{ c }}</td>
+                </tr>
+              </table>
+              {%- endfor %}
+              {%- if closing_note %}
+              <div style="padding-top:12px; margin-top:12px; border-top:1px solid #f2dcb0; font-size:14px; line-height:22px; color:#6b5426;">{{ closing_note }}</div>
+              {%- endif %}
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- else %}
+        <tr><td class="gutter" style="padding:22px 48px 0;">
+          {{ ui.note_card('What needs to change', comments if has_note else 'The reviewer did not leave a written note. Reply to this email and it goes straight to them.', 'amber') }}
+        </td></tr>
+        {%- endif %}
+        {%- elif has_note %}
+        <tr><td class="gutter" style="padding:22px 48px 0;">
+          {{ ui.note_card('Note from ' ~ reviewer_name, comments, 'neutral') }}
+        </td></tr>
+        {%- endif %}
+
+        <tr><td class="gutter" style="padding:24px 48px 0;">
+          {%- if approved %}
+          {{ ui.btn('View it in the Store', store_url) }}
+          {%- else %}
+          {{ ui.btn('Update and resubmit', resubmit_url) }}
+          <div style="padding-top:10px; font-size:12px; color:#8a86a3;">Re-reviews usually take under two working days</div>
+          {%- endif %}
+        </td></tr>
+
+        {%- if approved %}
+        {%- if share_url %}
+        <tr><td class="gutter" style="padding:26px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:15px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#6f6b8a; padding-bottom:6px;">WHAT HAPPENS NOW</div>
+              <div style="font-size:14px; line-height:22px; color:#494566;">
+              Ship updates whenever you like &mdash; each new version goes through the same quick review.
+              Want people to find it in the meantime?
+              <a href="{{ share_url }}" style="color:#6d28d9; font-weight:700; text-decoration:underline; white-space:nowrap;">Copy&nbsp;the&nbsp;link</a>
+              </div>
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- endif %}
+        {%- else %}
+        <tr><td class="gutter" style="padding:24px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:15px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#6f6b8a; padding-bottom:6px;">WHAT HAPPENS NEXT</div>
+              <div style="font-size:14px; line-height:22px; color:#494566;">
+              {%- if changes or has_note %}
+              Resubmitting sends it back to {{ reviewer_name }}, who already has your context.
+              {%- endif %}
+              {%- if resubmission %}
+              This is round {{ version | default(1) }} &mdash; most agents that make it do so after a couple of passes, so this is the normal shape of it.
+              {%- else %}
+              Most agents need at least one round of changes.
+              {%- endif %}
+              {% if changes or has_note %} Reply to this email if anything is unclear and it goes straight to the reviewer.{% endif %}
+              </div>
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- endif %}
+
+        <tr><td align="center" class="gutter" style="padding:26px 48px 30px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td height="1" bgcolor="#eeecf5" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+            <tr><td align="center" style="padding-top:14px; font-size:12px; line-height:19px; color:#8a86a3;">
+              You get this because you submitted an agent to the AutoGPT Store.
+              <div style="padding-top:4px;"><a href="{{ urls.settings }}" style="color:#6d28d9; text-decoration:underline;">Notification&nbsp;settings</a></div>
+            </td></tr>
+          </table>
+        </td></tr>
+
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.legal_footer('This review update is for the AutoGPT account ' ~ user_email ~ '.', urls.unsubscribe) }}
+
+</td></tr>
+</table>
+</body>
+</html>

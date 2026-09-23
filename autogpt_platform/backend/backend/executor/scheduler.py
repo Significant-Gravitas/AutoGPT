@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -18,7 +19,6 @@ from apscheduler.events import (
 )
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -27,22 +27,35 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.dream.scheduling import (
+    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
+    NIGHTLY_BATCH_REGISTRATION_PREFIX,
+    clear_registration_marker,
+)
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
-from backend.data.execution import GraphExecutionWithNodes
+from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.transports import resolve_default_chat_route
+from backend.data.db_accessors import experts_db
+from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.data.schedule import normalize_schedule_name
+from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
+from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.monitoring import (
-    NotificationJobArgs,
-    process_existing_batches,
-    process_weekly_summary,
+    flush_matured_alerts,
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
+    send_due_briefings,
 )
+from backend.monitoring.instrumentation import SCHEDULER_JOBS
+from backend.util import product_analytics
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -50,12 +63,17 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+    ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserPaywalledError,
 )
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -65,7 +83,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import Config
+from backend.util.settings import AppEnvironment, Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -101,6 +119,29 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
+
+
+def _init_launchdarkly_for_scheduler() -> None:
+    """Eagerly initialize LaunchDarkly unless running LOCAL.
+
+    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
+    check) fail closed, so evaluating them against a lazily-initialized LD
+    client right after a pod restart would silently skip registrations
+    until the first lazy init completed. Skipped LOCAL, where LD is
+    unconfigured and flags resolve to their mock defaults.
+    """
+    if config.app_env != AppEnvironment.LOCAL:
+        initialize_launchdarkly()
+
+
+def _shutdown_launchdarkly_for_scheduler() -> None:
+    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
+    LD client when it was actually initialized (non-LOCAL)."""
+    if config.app_env != AppEnvironment.LOCAL:
+        shutdown_launchdarkly()
+
+
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -176,8 +217,22 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             organization_id=args.organization_id,
             team_id=args.team_id,
+            expert_id=args.expert_id,
+            trigger=ExecutionTrigger.SCHEDULE,
+            trigger_ref=args.schedule_id,
+            schedule_id=args.schedule_id,
         )
         await db.increment_onboarding_runs(args.user_id)
+        product_analytics.track_schedule_fired(
+            user_id=args.user_id,
+            schedule_id=args.schedule_id,
+            target=product_analytics.schedule_target(
+                expert_id=args.expert_id, is_copilot_turn=False
+            ),
+            expert_id=args.expert_id,
+            graph_id=args.graph_id,
+            graph_exec_id=graph_exec.id,
+        )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -194,6 +249,29 @@ async def _execute_graph(**kwargs):
         await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
         await _handle_graph_validation_error(args)
+    except ExpertRunPausedError as e:
+        # Expected while an expert is paused (budget/archive): skip quietly;
+        # the schedule stays registered for one-click resume.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserPaywalledError as e:
+        # Expected while the owner has no subscription: skip quietly. The
+        # schedule stays registered so it resumes on its own once they
+        # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except ExpertPrivateTenancyNotFoundError:
+        # Graph schedules are recurring, so the next cron tick is the retry.
+        logger.warning(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert workspace unavailable; next schedule tick will retry"
+        )
+    except ExpertNotFoundError:
+        # The schedule can outlive an archived, deleted, or no-longer-private
+        # expert. Keep it registered for recovery without logging an error on
+        # every tick.
+        logger.info(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert unavailable"
+        )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -211,25 +289,213 @@ def execute_copilot_turn(**kwargs):
     run_async(_execute_copilot_turn(**kwargs))
 
 
+async def _expert_scope_status(
+    user_id: str, expert_id: str
+) -> Literal["active", "archived", "paused", "missing", "unavailable"]:
+    """Resolve an expert schedule's owner/lifecycle state without guessing.
+
+    Mirrors ``enforce_expert_run_budget``'s gate: ``archived`` and ``paused``
+    (``schedulesPausedAt`` — set by a manual pause or a budget breach) both
+    block the firing, but reversibly, so the schedule must survive them.
+    ``missing`` means the row is truly gone (deleted, or a wrong-owner
+    probe): the strict lookup misses AND a lenient existence check (which
+    ignores visibility/archive state) misses too — the only state allowed
+    to delete the schedule. An expert that still exists but is hidden from
+    the strict lookup (no longer PRIVATE) maps to ``unavailable`` so the
+    schedule survives for recovery; ``unavailable`` also covers a
+    transient DB/RPC failure for the same reason."""
+    try:
+        expert = await experts_db().get_expert(
+            user_id, expert_id, include_workflows=False, include_archived=True
+        )
+        if expert is None:
+            # The strict lookup hides non-PRIVATE experts. Only true
+            # deletion may delete the schedule, so rule it out with the
+            # visibility-blind existence check before returning "missing".
+            if await experts_db().expert_row_exists(user_id, expert_id):
+                return "unavailable"
+            return "missing"
+    except Exception:
+        logger.warning(
+            "Could not validate expert scope %s for scheduled copilot turn",
+            expert_id[:12],
+            exc_info=True,
+        )
+        return "unavailable"
+    if expert.is_archived:
+        return "archived"
+    if expert.schedules_paused_at is not None:
+        return "paused"
+    return "active"
+
+
+async def _skip_inactive_expert_scope(
+    args: "CopilotTurnJobArgs",
+    status: Literal["archived", "paused", "missing", "unavailable"],
+) -> None:
+    """Shared skip path for a firing whose expert scope is not active.
+
+    Only ``missing`` deletes the schedule: archive, pause, and a visibility
+    change are reversible, and copilot-turn schedules have no persisted
+    cadence to revive from, so they must outlive all three. A transient
+    lookup failure re-schedules a one-shot because APScheduler drops it
+    after the fire regardless."""
+    logger.warning(
+        "Copilot turn schedule %s skipped — expert scope %s is %s",
+        args.schedule_id,
+        (args.expert_id or "?")[:12],
+        status,
+    )
+    if status == "missing":
+        await _self_delete_copilot_turn_schedule(args)
+    elif status == "unavailable" and args.run_at is not None:
+        await _reschedule_one_shot_after_expert_unavailable(args)
+
+
+async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
+    """Load the routine behind this job, if it is one.
+
+    A failed lookup returns ``None``, which is the cautious side of both
+    decisions it feeds: the turn lands in a fresh chat rather than one it
+    cannot confirm belongs to this routine, and it runs muted rather than
+    assuming an owner granted it anything.
+    """
+    if args.routine_id is None:
+        return None
+    try:
+        routine = await experts_db().get_routine(args.routine_id)
+    except Exception:
+        logger.warning(
+            "Could not load routine %s for scheduled turn %s; "
+            "firing into a fresh chat with nothing granted",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
+        return None
+    return routine
+
+
+def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissions:
+    """The capability filter a routine's turn runs under.
+
+    Every routine turn gets one, even a fully granted one: no routine may
+    schedule more of itself, because nobody is watching this turn read the page
+    that might ask it to. Passing ``None`` would mean "whatever the session
+    allows", and the point of this object is that the decision is made here, at
+    the boundary, and is visible in the job.
+
+    A routine loaded as ``None`` — the row is gone, or the lookup failed — is
+    treated as ungranted, which is the right way to be wrong.
+    """
+    granted = routine is not None and routine.grants_credentials
+    return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
+
+
 async def _execute_copilot_turn(**kwargs):
+    expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
+    routine = await _routine_for_turn(args)
+    if routine is not None and not routine.enabled:
+        # Deleting a routine's jobs is best effort — the scheduler can refuse,
+        # and a spent one-shot's row outlives its job either way. So "off" has
+        # to mean something at fire time too, or a job that survived being
+        # switched off keeps running work its owner stopped. This is the
+        # fire-time lookup ``delete_routine_schedules`` defers to.
+        logger.info(
+            "Copilot turn schedule %s skipped — routine %s is switched off; "
+            "removing the schedule that outlived it",
+            args.schedule_id,
+            routine.id[:12],
+        )
+        await _self_delete_copilot_turn_schedule(args)
+        return
+    # A THREAD routine keeps one durable conversation: null until its first
+    # fire mints it, reused by every fire after. Resolving it here means the
+    # second fire takes the existing-session branch below and inherits that
+    # branch's ownership and scope re-validation for free.
+    if routine is not None and routine.session_id is not None:
+        args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
-        # we still verify it exists (the user may have deleted the chat
-        # between scheduling and now) and self-clean the dead schedule
-        # otherwise — orphan turns into a missing session would never
-        # surface in any UI.
+        # we still verify it exists and remains in the scope captured when
+        # the schedule was created. The user may have deleted the chat, and
+        # stale or tampered scope data must not route a turn into another
+        # persona's memory. Self-clean either invalid schedule.
         if args.session_id is None:
+            if not expert_scope_was_persisted:
+                logger.info(
+                    "Copilot turn schedule %s predates persisted memory scope; "
+                    "preserving its legacy Otto behavior",
+                    args.schedule_id,
+                )
+            if args.expert_id is not None:
+                expert_status = await _expert_scope_status(args.user_id, args.expert_id)
+                if expert_status != "active":
+                    await _skip_inactive_expert_scope(args, expert_status)
+                    return
+            llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+                args.user_id
+            )
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
                 organization_id=args.organization_id,
                 team_id=args.team_id,
+                expert_id=args.expert_id,
+                # The message this fires is model-authored — the scheduling
+                # turn wrote it, not the user. Without this the fresh session
+                # defaults to "interactive" and schedule_followup becomes a
+                # way to reach the staffing tools with nobody watching.
+                origin="automation",
+                # Model-authored or not, it still runs on the connection the
+                # user chose — a scheduled turn should not quietly bill to a
+                # different one than the chat it follows up on.
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             )
+            if args.expert_id and new_session.expert_id is None:
+                # The scope check above passed, so the expert was archived or
+                # deleted in the window before creation. `create_chat_session`
+                # drops the attribution rather than failing, which would run an
+                # expert's follow-up in Otto memory scope — fail closed
+                # instead. Skip without deleting: archive is reversible, and
+                # this window can't tell it apart from deletion. The next
+                # firing's scope check routes authoritatively (missing →
+                # delete, archived/paused → keep skipping).
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id} skipped — expert "
+                    f"{args.expert_id[:12]} stopped being active/owned while the "
+                    f"session was being created"
+                )
+                return
             target_session_id = new_session.session_id
+            target_session = new_session
+            if routine is not None and routine.session_mode == "THREAD":
+                # First fire of a THREAD routine: remember the conversation so
+                # every later fire continues it instead of leaving a trail of
+                # one-message chats. Best effort — losing this costs a thread,
+                # not a run, and the next fire mints a fresh one.
+                try:
+                    await experts_db().record_routine_thread(
+                        routine.id, target_session_id
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not record thread %s on routine %s",
+                        target_session_id[:12],
+                        routine.id[:12],
+                        exc_info=True,
+                    )
+            # Nothing can be forged in a chat that has never existed before:
+            # its ``origin="automation"`` refuses the staffing tools outright,
+            # so no proposal can be parked here to approve. Persist the opener
+            # as the user turn so the fresh session still gets a title and the
+            # first-turn user context.
+            persist_as_user_turn = True
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
                 f"session {target_session_id[:12]} (sentinel session_id=None)"
@@ -243,8 +509,36 @@ async def _execute_copilot_turn(**kwargs):
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
+            if expert_scope_was_persisted and session.expert_id != args.expert_id:
+                logger.warning(
+                    f"Copilot turn schedule {args.schedule_id} skipped — session "
+                    f"{args.session_id[:12]} memory scope no longer matches the "
+                    "persisted schedule scope; removing schedule"
+                )
+                await _self_delete_copilot_turn_schedule(args)
+                return
+            if not expert_scope_was_persisted:
+                # Legacy explicit-session jobs predate the scope field. The
+                # owned target session is the only authoritative provenance
+                # available, so recover from it rather than interpreting the
+                # missing field as Otto.
+                args = args.model_copy(update={"expert_id": session.expert_id})
+            if args.expert_id is not None:
+                expert_status = await _expert_scope_status(args.user_id, args.expert_id)
+                if expert_status != "active":
+                    await _skip_inactive_expert_scope(args, expert_status)
+                    return
             target_session_id = args.session_id
+            target_session = session
+            # The target may be the user's own interactive Otto chat,
+            # where ``origin`` says nothing about who wrote *this* turn. A
+            # role="user" row here would raise the confirm watermark
+            # ``expert_proposal`` gates on, letting a scheduled follow-up
+            # approve the expert change the scheduling turn previewed. The
+            # message is model-authored either way, so persist it as one.
+            persist_as_user_turn = False
 
+        assert target_session_id is not None
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
         # point: it acquires a per-user concurrency slot AND registers the
         # session in the stream registry before queue-publishing, so the
@@ -255,16 +549,61 @@ async def _execute_copilot_turn(**kwargs):
             user_id=args.user_id,
             turn_id=str(uuid.uuid4()),
             message=args.message,
+            is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
             organization_id=args.organization_id,
             team_id=args.team_id,
+            llm_auth_provider=target_session.metadata.llm_auth_provider,
+            llm_credential_id=target_session.metadata.llm_credential_id,
+            # Per turn, not per session: a PINNED routine fires into a chat the
+            # user also drives themselves, and muting the conversation would
+            # take capabilities away from the person sitting in it. What is
+            # unattended is this turn.
+            permissions=(
+                _routine_turn_permissions(routine)
+                if args.routine_id is not None
+                else None
+            ),
+        )
+        if routine is not None and routine.run_at is not None:
+            # APScheduler drops a one-shot job once it fires, so without this
+            # the row would go on describing itself as scheduled for a time
+            # that has passed. After dispatch, not before: a turn that never
+            # reached the queue has not run.
+            try:
+                await experts_db().record_routine_fired(routine.id)
+            except Exception:
+                logger.warning(
+                    "Could not mark one-shot routine %s fired",
+                    routine.id[:12],
+                    exc_info=True,
+                )
+        product_analytics.track_schedule_fired(
+            user_id=args.user_id,
+            schedule_id=args.schedule_id,
+            target=product_analytics.schedule_target(
+                expert_id=args.expert_id, is_copilot_turn=True
+            ),
+            expert_id=args.expert_id,
+            session_id=target_session_id,
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Dispatched scheduled copilot turn for session "
             f"{target_session_id[:12]} (took {elapsed:.2f}s)"
         )
+    except (ExpertPrivateTenancyNotFoundError, ExpertNotFoundError):
+        # ExpertNotFoundError covers the race where the expert is archived,
+        # deleted, or loses PRIVATE visibility between the scope pre-check
+        # and create_chat_session's own tenancy resolution — same reversible
+        # skip as the pre-check: never delete the schedule from this window.
+        logger.warning(
+            f"Scheduled copilot turn for session {_session_id_label(args)} "
+            "skipped because the expert workspace is unavailable"
+        )
+        if args.run_at is not None:
+            await _reschedule_one_shot_after_expert_unavailable(args)
     except ConcurrentTurnLimitError as e:
         # User is at their per-user concurrency cap. For cron schedules the
         # next tick retries automatically; for one-shot (run_at) schedules
@@ -296,21 +635,59 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
 # is time-sensitive — a multi-hour delay defeats the purpose.
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
+_MAX_EXPERT_LOOKUP_RETRIES = 1
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
-    """Re-create a one-shot copilot-turn schedule a few minutes in the future.
+    await _reschedule_one_shot(
+        args,
+        reason="concurrency cap",
+        name_suffix="cap-retry",
+        retry_kind="cap",
+    )
+
+
+async def _reschedule_one_shot_after_expert_unavailable(
+    args: "CopilotTurnJobArgs",
+) -> None:
+    await _reschedule_one_shot(
+        args,
+        reason="transient expert lookup failure",
+        name_suffix="expert-lookup-retry",
+        retry_kind="expert_lookup",
+    )
+
+
+async def _reschedule_one_shot(
+    args: "CopilotTurnJobArgs",
+    *,
+    reason: str,
+    name_suffix: str,
+    retry_kind: Literal["cap", "expert_lookup"],
+) -> None:
+    """Re-create a one-shot copilot-turn schedule after a transient failure.
 
     Best-effort: failures are logged. Schedules that have already been
-    retried ``_MAX_CAP_RETRIES`` times are dropped to avoid loops. The
-    retry depth is tracked in ``CopilotTurnJobArgs.cap_retry_count``
-    (which round-trips through APScheduler's persisted kwargs).
+    retried the limit for this failure kind are dropped to avoid loops. Retry
+    depths round-trip independently through APScheduler's persisted kwargs so
+    a transient expert lookup does not consume the concurrency-cap budget.
     """
-    if args.cap_retry_count >= _MAX_CAP_RETRIES:
+    if retry_kind == "cap":
+        retry_count = args.cap_retry_count
+        max_retries = _MAX_CAP_RETRIES
+        next_cap_retry_count = retry_count + 1
+        next_expert_lookup_retry_count = args.expert_lookup_retry_count
+    else:
+        retry_count = args.expert_lookup_retry_count
+        max_retries = _MAX_EXPERT_LOOKUP_RETRIES
+        next_cap_retry_count = args.cap_retry_count
+        next_expert_lookup_retry_count = retry_count + 1
+
+    if retry_count >= max_retries:
         logger.error(
             f"Dropping one-shot copilot turn for session "
-            f"{_session_id_label(args)} — exhausted {_MAX_CAP_RETRIES} "
-            f"concurrency-cap retry/retries"
+            f"{_session_id_label(args)} — exhausted {max_retries} "
+            f"retry/retries after {reason}"
         )
         return
     try:
@@ -322,8 +699,9 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             session_id=args.session_id,
             message=args.message,
             run_at=new_run_at,
-            name=f"{args.schedule_id or 'copilot'}-cap-retry",
-            cap_retry_count=args.cap_retry_count + 1,
+            name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
+            cap_retry_count=next_cap_retry_count,
+            expert_lookup_retry_count=next_expert_lookup_retry_count,
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -331,42 +709,60 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
             # turn to the user's default org after a cap retry.
             organization_id=args.organization_id,
             team_id=args.team_id,
+            # And for expert attribution — dropping it would fire the retried
+            # turn into a plain session, escaping the expert's thread/budget
+            # and its isolated memory scope.
+            expert_id=args.expert_id,
+            # And for the routine behind it. Dropping this was the worst of
+            # the three: the retried turn resolves no routine, so it runs
+            # with the session's own permissions instead of the routine's —
+            # an ungranted routine that merely lost a race to the concurrency
+            # cap would come back with everything the mute exists to withhold.
+            routine_id=args.routine_id,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
-            f"concurrency cap (retry {args.cap_retry_count + 1}/"
-            f"{_MAX_CAP_RETRIES})"
+            f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
     except Exception:
         logger.warning(
-            f"Failed to reschedule capped one-shot copilot turn for "
-            f"session {_session_id_label(args)}",
+            f"Failed to reschedule one-shot copilot turn for session "
+            f"{_session_id_label(args)} after {reason}",
             exc_info=True,
         )
 
 
 async def _best_effort_unschedule(
-    schedule_id: str | None, user_id: str, *, reason: str
+    schedule_id: str | None, graph_id: str | None, user_id: str, *, reason: str
 ) -> None:
     """Self-delete a schedule whose firing condition is no longer satisfiable
     (graph deleted, session deleted, validation failure, etc.).
 
-    Best-effort: failures are logged and swallowed. For recurring schedules
-    the next cron tick will re-attempt the cleanup; for one-shot schedules
-    APScheduler removes the job after fire anyway, so a missed delete
-    here doesn't accumulate orphans indefinitely.
+    ``graph_id`` enables targeted cleanup of legacy jobs that predate
+    ``schedule_id``; copilot-turn schedules have no graph to target and pass
+    ``None``. Best-effort: failures are logged and swallowed. For recurring
+    schedules the next cron tick will re-attempt the cleanup; for one-shot
+    schedules APScheduler removes the job after fire anyway, so a missed
+    delete here doesn't accumulate orphans indefinitely.
     """
-    if not schedule_id:
-        logger.warning(
-            f"Cannot unschedule (reason: {reason}) — no schedule_id "
-            f"available; this is an old job, remove manually"
-        )
-        return
     try:
-        await get_scheduler_client().delete_schedule(
-            schedule_id=schedule_id, user_id=user_id
-        )
+        if schedule_id:
+            await get_scheduler_client().delete_schedule(
+                schedule_id=schedule_id, user_id=user_id
+            )
+        elif graph_id is not None:
+            logger.warning(
+                f"Old scheduled job for graph {graph_id} (user {user_id}) "
+                f"has no schedule_id, attempting targeted cleanup"
+            )
+            await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
+        else:
+            logger.warning(
+                f"Cannot unschedule (reason: {reason}) — no schedule_id "
+                f"available; this is an old job, remove manually"
+            )
+            return
         logger.info(f"Unscheduled job {schedule_id} (reason: {reason})")
     except Exception:
         logger.warning(
@@ -376,10 +772,32 @@ async def _best_effort_unschedule(
 
 
 async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
-    """Convenience wrapper for copilot-turn schedules whose target session is gone."""
+    """Remove a copilot schedule whose target is unavailable or out of scope."""
+    # Copilot-turn schedules aren't graph-bound — no graph target for legacy
+    # cleanup, so a schedule_id-less job can only be removed manually.
     await _best_effort_unschedule(
-        args.schedule_id, args.user_id, reason="session deleted"
+        args.schedule_id,
+        None,
+        args.user_id,
+        reason="session unavailable or scope mismatch",
     )
+    # A job with no schedule_id predates the field and cannot be matched
+    # against the ids a routine row holds, so there is nothing to drop.
+    if args.routine_id is None or args.schedule_id is None:
+        return
+    # The row outlives the job it lost, and a routine still listed as switched
+    # on with nothing scheduled behind it is the one state the owner cannot act
+    # on: the UI offers to switch off something that is already not running.
+    # Most often this is a PINNED routine whose chat the owner deleted.
+    try:
+        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+    except Exception:
+        logger.warning(
+            "Could not switch off routine %s after removing its schedule %s",
+            args.routine_id[:12],
+            args.schedule_id,
+            exc_info=True,
+        )
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
@@ -388,6 +806,7 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
     )
     await _best_effort_unschedule(
         args.schedule_id,
+        args.graph_id,
         args.user_id,
         reason=f"graph {args.graph_id} validation failed",
     )
@@ -430,6 +849,35 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
         except Exception:
             logger.exception(
                 f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
+
+
+async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None:
+    """Remove only schedules that have no schedule_id in their job args.
+
+    Unlike _cleanup_orphaned_schedules_for_graph (which removes ALL schedules
+    for a graph), this only targets legacy jobs created before schedule_id was
+    added to GraphExecutionJobArgs, preserving any valid newer schedules.
+    """
+    scheduler_client = get_scheduler_client()
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        if schedule.schedule_id is not None:
+            continue
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up old schedule {schedule.id} (no schedule_id) "
+                f"for graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete old schedule {schedule.id} for graph {graph_id}"
             )
 
 
@@ -477,6 +925,72 @@ def execute_community_rebuild(user_id: str):
             user_id[:12],
             result.get("elapsed_seconds") or 0.0,
             result.get("communities_built"),
+        )
+
+
+def _morning_briefing_crontab(user_id: str) -> str:
+    """Daily 09:00-local cron, with the minute spread across the hour.
+
+    A fixed ``0 9 * * *`` fires every user in a timezone at the same instant;
+    deriving the minute from the user id spreads that batch over the hour.
+    Hashed with sha256 rather than ``hash()`` because the latter is salted
+    per process, which would move a user's slot on every restart.
+    """
+    minute = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16) % 60
+    return f"{minute} 9 * * *"
+
+
+def _job_timezone_name(job: JobObj) -> str | None:
+    """IANA name of a cron job's trigger timezone, if it has one."""
+    if isinstance(job.trigger, CronTrigger):
+        return str(job.trigger.timezone)
+    return None
+
+
+def execute_morning_briefing(user_id: str) -> None:
+    """Per-user morning briefing cron body.
+
+    Sync wrapper around the async ``generate_and_deliver_briefing`` so it
+    can run on the APScheduler thread pool. Unlike
+    ``execute_community_rebuild``, the coroutine does not guarantee it
+    swallows every failure internally (DB / LLM calls can raise), so this
+    wrapper must catch failures itself — an exception escaping a job body
+    is fatal to that run, and one user's briefing must never affect
+    scheduler health.
+    """
+    from backend.copilot.briefing.generate import generate_and_deliver_briefing
+
+    try:
+        result = run_async(
+            generate_and_deliver_briefing(user_id),
+            timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+        )
+        logger.info("Morning briefing for user %s: %s", user_id[:12], result)
+        if result.get("reason") == "flag_disabled":
+            run_async(
+                _self_delete_morning_briefing_schedule(user_id),
+                timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+            )
+    except Exception as e:
+        logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
+
+
+async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
+    """Drop a briefing cron whose feature flag has since been turned off.
+
+    The registration marker goes with it: left set, it would suppress lazy
+    re-registration for the rest of its TTL if the flag comes back on.
+    Best-effort — the next daily fire retries the cleanup.
+    """
+    from backend.copilot.briefing.scheduling import clear_briefing_registration_marker
+
+    try:
+        await get_scheduler_client().remove_morning_briefing_schedule(user_id=user_id)
+        await clear_briefing_registration_marker(user_id)
+    except Exception:
+        logger.warning(
+            f"Failed to remove morning briefing job for user {user_id[:12]}",
+            exc_info=True,
         )
 
 
@@ -868,6 +1382,27 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
             )
         return
 
+    error = result.get("error")
+    if error:
+        # ``rebuild_communities_for_user`` never raises — failures land
+        # in ``result['error']``. Same contract as the dream/nightly
+        # wrappers above: an errored rebuild must surface as errored,
+        # otherwise the Memory Visualizer toasts success on a rebuild
+        # that deleted every :Community node and then crashed.
+        try:
+            run_async(
+                mark_errored(kind="rebuild", job_id=job_id, error=error),
+                timeout=10,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to mark community rebuild %s errored for user %s",
+                job_id[:12],
+                user_id[:12],
+                exc_info=True,
+            )
+        return
+
     try:
         run_async(
             mark_complete(kind="rebuild", job_id=job_id, result=result),
@@ -877,6 +1412,24 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         logger.warning(
             "Failed to mark community rebuild %s complete for user %s",
             job_id[:12],
+            user_id[:12],
+            exc_info=True,
+        )
+
+
+def _clear_dream_registration_marker(user_id: str, key_prefix: str) -> None:
+    """Bridge ``clear_registration_marker`` onto the scheduler's event loop.
+
+    Best-effort: a failed clear only delays lazy re-registration until
+    the marker's 7-day TTL expires, so it must never break the delete
+    RPC that called it.
+    """
+    try:
+        run_async(clear_registration_marker(user_id, key_prefix), timeout=10)
+    except Exception:
+        logger.warning(
+            "Failed to clear registration marker %s for user %s",
+            key_prefix,
             user_id[:12],
             exc_info=True,
         )
@@ -1039,6 +1592,11 @@ def ensure_embeddings_coverage():
 # Monitoring functions are now imported from monitoring module
 
 
+# Paused and fired-once rows are never deleted, so every scan over them is
+# bounded rather than left to grow with the backlog.
+_PARKED_SCAN_LIMIT = 1000
+
+
 class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
@@ -1059,6 +1617,12 @@ class GraphExecutionJobArgs(BaseModel):
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str = ""
     team_id: str | None = None
+    # Expert attribution: set when the schedule belongs to a hired expert
+    # (install-time schedule, manual schedule of an expert-installed
+    # workflow, or a schedule created from the expert's chat). Stamped onto
+    # every execution this schedule fires. Optional for backward compat
+    # with rows persisted before expert attribution.
+    expert_id: str | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -1068,15 +1632,16 @@ class CopilotTurnJobArgs(BaseModel):
     # ``None`` means "create a fresh chat at fire-time" — the executor calls
     # ``create_chat_session`` and routes the turn into the newly-minted
     # session. A non-null value pins the followup to an existing session
-    # owned by the same user (current chat, sub-session, etc).
+    # owned by the same user and in the persisted persona scope.
     session_id: str | None = None
     message: str
     cron: str | None = None
     run_at: datetime | None = None
-    # Set by ``_reschedule_one_shot_after_cap`` when re-creating a one-shot
-    # schedule after a concurrency-cap miss. Bounds the retry depth so a
-    # persistently-capped user can't loop forever.
+    # Independent persisted retry depths for transient failures. Keeping these
+    # separate prevents an expert-lookup retry from consuming the later
+    # concurrency-cap retry (or vice versa).
     cap_retry_count: int = 0
+    expert_lookup_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -1089,6 +1654,19 @@ class CopilotTurnJobArgs(BaseModel):
     # Optional for backward compat with rows persisted before org tagging.
     organization_id: str | None = None
     team_id: str | None = None
+    # Expert captured at schedule time so a fresh session minted at fire time
+    # is scoped to the same expert as the chat that scheduled the follow-up —
+    # its runs then count toward the expert's budget, surface on her thread,
+    # and read/write her isolated memory scope. None keeps legacy schedules
+    # and Otto follow-ups in the user's account scope. Optional for
+    # backward compat with rows persisted before this field was added.
+    expert_id: str | None = None
+    # Set when this job is one fire time of an ``ExpertRoutine``. The row is
+    # what makes a routine more than a followup: it owns the durable thread a
+    # THREAD routine reuses (minted here on the first fire) and the flag that
+    # decides whether the turn may touch a connected service at all. None keeps
+    # ordinary ``schedule_followup`` jobs on their existing path.
+    routine_id: str | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -1101,6 +1679,53 @@ def _next_run_time_iso(job_obj: JobObj) -> str:
     """Render APScheduler's next_run_time. Returns "" for jobs already fired
     (one-shot DateTrigger jobs have ``next_run_time=None`` post-fire)."""
     return job_obj.next_run_time.isoformat() if job_obj.next_run_time else ""
+
+
+def _record_graph_schedule_created(
+    job_args: GraphExecutionJobArgs, job_obj: JobObj, *, title: str
+) -> None:
+    """Record a new agent/expert schedule. See ``schedule_events``."""
+    if not job_args.schedule_id:
+        return
+    schedule_events.record_schedule_created(
+        schedule_events.ScheduleCreatedRecord(
+            user_id=job_args.user_id,
+            schedule_id=job_args.schedule_id,
+            title=title,
+            target=product_analytics.schedule_target(
+                expert_id=job_args.expert_id, is_copilot_turn=False
+            ),
+            expert_id=job_args.expert_id,
+            organization_id=job_args.organization_id or None,
+            cron=job_args.cron,
+            graph_id=job_args.graph_id,
+            next_run_time=_next_run_time_iso(job_obj) or None,
+        )
+    )
+
+
+def _record_copilot_turn_schedule_created(
+    job_args: CopilotTurnJobArgs, job_obj: JobObj, *, title: str
+) -> None:
+    """Record a new Autopilot/expert follow-up schedule. See ``schedule_events``."""
+    if not job_args.schedule_id:
+        return
+    schedule_events.record_schedule_created(
+        schedule_events.ScheduleCreatedRecord(
+            user_id=job_args.user_id,
+            schedule_id=job_args.schedule_id,
+            title=title,
+            target=product_analytics.schedule_target(
+                expert_id=job_args.expert_id, is_copilot_turn=True
+            ),
+            expert_id=job_args.expert_id,
+            organization_id=job_args.organization_id or None,
+            cron=job_args.cron,
+            run_at=job_args.run_at,
+            session_id=job_args.session_id,
+            next_run_time=_next_run_time_iso(job_obj) or None,
+        )
+    )
 
 
 def _job_info_fields(job_obj: JobObj) -> dict[str, str]:
@@ -1255,25 +1880,9 @@ def _job_to_info(
     return None
 
 
-class NotificationJobInfo(NotificationJobArgs):
-    id: str
-    name: str
-    next_run_time: str
-
-    @staticmethod
-    def from_db(
-        job_args: NotificationJobArgs, job_obj: JobObj
-    ) -> "NotificationJobInfo":
-        return NotificationJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
-            **job_args.model_dump(),
-        )
-
-
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
+    _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -1304,6 +1913,11 @@ class Scheduler(AppService):
     def run_service(self):
         load_dotenv()
 
+        # Eagerly initialize LaunchDarkly before any @expose flag gate can
+        # run (see the helper for why lazy init would skip registrations
+        # after a pod restart).
+        _init_launchdarkly_for_scheduler()
+
         # Initialize the event loop for async jobs
         global _event_loop
         _event_loop = asyncio.new_event_loop()
@@ -1319,6 +1933,36 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
+        self._persistent_jobstores = {
+            Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                # this one is pre-existing so it keeps the
+                # default table name.
+                tablename="apscheduler_jobs",
+            ),
+            Jobstores.BATCHED_NOTIFICATIONS.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                tablename="apscheduler_jobs_batched_notifications",
+            ),
+        }
+        # Named reference so ``_get_active_jobs_cached`` can query the table
+        # directly with a server-side filter — see that method for why the
+        # stock ``get_all_jobs()`` isn't enough. It must stay the same
+        # instance as the dict entry above: the filtered read goes through
+        # ``ResilientSQLAlchemyJobStore._get_jobs``, which parks an
+        # unrestorable row rather than deleting it.
+        self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
+
         self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
@@ -1331,26 +1975,7 @@ class Scheduler(AppService):
                 "misfire_grace_time": None,  # No time limit for missed jobs
             },
             jobstores={
-                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    # this one is pre-existing so it keeps the
-                    # default table name.
-                    tablename="apscheduler_jobs",
-                ),
-                Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    tablename="apscheduler_jobs_batched_notifications",
-                ),
+                **self._persistent_jobstores,
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             },
@@ -1359,25 +1984,34 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
-            # Notification PROCESS WEEKLY SUMMARY
-            # Runs every Monday at 9 AM UTC
+            # ALERTS — empty the ten-minute debounce window. Runs every
+            # minute so a condition raised at :01 goes out at :11, not at the
+            # next quarter hour.
             self.scheduler.add_job(
-                process_weekly_summary,
-                CronTrigger.from_crontab("0 9 * * 1"),
-                id="process_weekly_summary",
-                kwargs={},
+                flush_matured_alerts,
+                id="flush_matured_alerts",
+                trigger="interval",
                 replace_existing=True,
-                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+                seconds=60,
+                # Belt and braces. This only stops APScheduler double-firing
+                # the RPC; the RPC returns as soon as the pass is spawned, so
+                # the real guards are the in-process one in NotificationManager
+                # and the per-user claim the work itself takes.
+                max_instances=1,
+                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
             )
 
-            # Notification PROCESS EXISTING BATCHES
-            # self.scheduler.add_job(
-            #     process_existing_batches,
-            #     id="process_existing_batches",
-            #     CronTrigger.from_crontab("0 12 * * 5"),
-            #     replace_existing=True,
-            #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-            # )
+            # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
+            # is a different UTC hour for each of them.
+            self.scheduler.add_job(
+                send_due_briefings,
+                CronTrigger.from_crontab("30 * * * *"),
+                id="send_due_briefings",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
 
             # Notification LATE EXECUTIONS ALERT
             self.scheduler.add_job(
@@ -1473,8 +2107,16 @@ class Scheduler(AppService):
                 id="ensure_embeddings_coverage",
                 trigger="interval",
                 hours=6,
+                # Due now rather than called inline below: run_service() is what
+                # starts the event loop uvicorn binds the RPC port on.
+                next_run_time=datetime.now(timezone.utc)
+                + timedelta(
+                    hours=0 if config.scheduler_startup_embedding_backfill else 6
+                ),
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                misfire_grace_time=None,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -1495,21 +2137,32 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
-
-        # Run embedding backfill immediately on startup
-        # This ensures blocks/docs are searchable right away, not after 6 hours
-        # Safe to run on multiple pods - uses upserts and checks for existing embeddings
-        if self.register_system_tasks:
-            logger.info("Running embedding backfill on startup...")
-            try:
-                result = ensure_embeddings_coverage()
-                logger.info(f"Startup embedding backfill complete: {result}")
-            except Exception as e:
-                logger.error(f"Startup embedding backfill failed: {e}")
-                # Don't fail startup - the scheduled job will retry later
+        self._report_parked_jobs()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    # Paused and fired-once rows are never deleted, so this scan is bounded
+    # rather than left to grow with the backlog — startup precedes the RPC port.
+    def _report_parked_jobs(self) -> None:
+        """Parking is recoverable but silent — startup has to say it happened."""
+        for alias, store in self._persistent_jobstores.items():
+            try:
+                parked = store.get_parked_job_ids(limit=_PARKED_SCAN_LIMIT)
+            except Exception as e:
+                logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
+                continue
+            if len(parked) == _PARKED_SCAN_LIMIT:
+                logger.error(
+                    f"at least {len(parked)} job(s) in jobstore '{alias}' are PARKED "
+                    "and will not run until repaired; the startup scan stopped at "
+                    f"its cap: {parked}"
+                )
+            elif parked:
+                logger.error(
+                    f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
+                    f"not run until repaired: {parked}"
+                )
 
     def cleanup(self):
         if self.scheduler:
@@ -1525,6 +2178,10 @@ class Scheduler(AppService):
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+
+        # Reverse order of run_service: LD was initialized before the
+        # scheduler started, so close it after all jobs have drained.
+        _shutdown_launchdarkly_for_scheduler()
 
         super().cleanup()
 
@@ -1572,7 +2229,15 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
+        expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        name = normalize_schedule_name(name)
+
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+            )
+
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
         run_async(
@@ -1597,6 +2262,7 @@ class Scheduler(AppService):
             input_credentials=input_credentials,
             organization_id=organization_id or "",
             team_id=team_id,
+            expert_id=expert_id,
         )
         job = self._persist_schedule(
             dispatch_func=execute_graph,
@@ -1607,6 +2273,9 @@ class Scheduler(AppService):
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
             f"{user_timezone}"
+        )
+        _record_graph_schedule_created(
+            job_args, job, title=name or "Scheduled agent run"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
@@ -1621,19 +2290,32 @@ class Scheduler(AppService):
         name: Optional[str] = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
+        expert_lookup_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
+        expert_id: str | None = None,
+        routine_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
         When *session_id* is ``None`` the executor creates a fresh chat
-        at fire time and routes the turn into it.  Otherwise the turn
-        resumes the named (existing) session with its full history.
+        at fire time in the persisted Otto or expert scope and routes
+        the turn into it. Otherwise the turn resumes the named (existing)
+        session with its full history, after re-validating that scope.
 
-        *cap_retry_count* is set internally by
-        ``_reschedule_one_shot_after_cap`` to bound the retry depth on
-        concurrency-cap misses; normal callers should leave it at 0.
+        *cap_retry_count* and *expert_lookup_retry_count* are set internally
+        to bound their respective transient retry paths; normal callers should
+        leave both at 0.
         """
+        # Mirror add_graph_execution_schedule: validate the expert scope at
+        # creation (active, owned, PRIVATE) and pin the schedule to the
+        # owner's personal tenancy, instead of persisting a job that can only
+        # ever skip at fire time.
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+            )
+
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
         job_args = CopilotTurnJobArgs(
@@ -1644,9 +2326,12 @@ class Scheduler(AppService):
             cron=cron,
             run_at=run_at,
             cap_retry_count=cap_retry_count,
+            expert_lookup_retry_count=expert_lookup_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
+            routine_id=routine_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
@@ -1664,6 +2349,9 @@ class Scheduler(AppService):
             f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "
             f"for session {session_label} in timezone {user_timezone}"
         )
+        _record_copilot_turn_schedule_created(
+            job_args, job, title=name or message[:80] or "Follow-up"
+        )
         return CopilotTurnJobInfo.from_db(job_args, job)
 
     @expose
@@ -1676,32 +2364,73 @@ class Scheduler(AppService):
         ``SchedulerClient.delete_schedule`` and accepts both graph and
         copilot-turn schedules.
         """
-        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
-        if not job:
-            raise NotFoundError(f"Job #{schedule_id} not found.")
-
-        info = _job_to_info(job)
-        if info is None:
-            # kwargs parse as neither graph nor copilot-turn — we have no
-            # `user_id` field to authorize against, so refuse the delete.
-            # Removing without an ownership check would let any caller who
-            # can guess a schedule_id wipe corrupted rows. Surface 404 so
-            # the caller can't probe for shape via timing either.
-            logger.warning(
-                f"Refusing delete for job {schedule_id} with unrecognized "
-                f"kwargs shape (no parseable user_id to authorize against)"
-            )
-            raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
-
-        if info.user_id != user_id:
-            raise NotAuthorizedError("User ID does not match the job's user ID")
-
+        job, info = self._authorized_job(schedule_id, user_id, action="delete")
         logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
         # Invalidate the read cache so the deletion shows up immediately
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
         return info
+
+    def _authorized_job(
+        self, schedule_id: str, user_id: str, *, action: str
+    ) -> tuple[JobObj, Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+        """Load a schedule and check *user_id* owns it.
+
+        Shared by delete/pause/resume so all three authorize identically:
+        kwargs that parse as neither kind carry no `user_id` field to
+        authorize against, so acting on them would let any caller who can
+        guess a schedule_id mutate corrupted rows. Surface 404 rather than
+        a distinct error so the shape can't be probed by timing either.
+        """
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        if not job:
+            raise NotFoundError(f"Job #{schedule_id} not found.")
+        info = _job_to_info(job)
+        if info is None:
+            logger.warning(
+                f"Refusing {action} for job {schedule_id} with unrecognized "
+                f"kwargs shape (no parseable user_id to authorize against)"
+            )
+            raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
+        if info.user_id != user_id:
+            raise NotAuthorizedError("User ID does not match the job's user ID")
+        return job, info
+
+    @expose
+    def pause_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+        """Suspend a schedule without discarding it.
+
+        APScheduler persists a pause as ``next_run_time = NULL``, which
+        ``get_execution_schedules`` already skips — so a paused schedule
+        disappears from every read path while keeping its trigger, inputs
+        and credentials intact for ``resume_execution_schedule``. Returns
+        False when it was already paused, so callers don't double-log.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="pause")
+        if job.next_run_time is None:
+            return False
+        logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
+        self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        self._invalidate_jobs_cache()
+        return True
+
+    @expose
+    def resume_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+        """Reverse of ``pause_execution_schedule``.
+
+        APScheduler recomputes ``next_run_time`` from the trigger, so fires
+        missed while paused are NOT backfilled — a re-hired expert picks up
+        at her next cadence instead of replaying the whole archived window.
+        Returns False when the schedule was not paused.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="resume")
+        if job.next_run_time is not None:
+            return False
+        logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
+        self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        self._invalidate_jobs_cache()
+        return True
 
     @expose
     def get_graph_execution_schedules(
@@ -1710,6 +2439,7 @@ class Scheduler(AppService):
         user_id: str | None = None,
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
+        include_paused: bool = False,
     ) -> list[GraphExecutionJobInfo]:
         """Return graph-kind schedules only (typed for legacy callers).
 
@@ -1726,18 +2456,20 @@ class Scheduler(AppService):
                 kind="graph",
                 organization_id=organization_id,
                 team_ids=team_ids,
+                include_paused=include_paused,
             )
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
-    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)``. APScheduler
-    # has no SQL-level user_id / kind filter — it loads every row and
-    # unpickles each ``job.kwargs`` in Python.  The /library page now
-    # fires THREE separate calls into this method on cold load (existing
-    # graph schedules + new copilot followups + briefing-pill counts),
-    # so we memoise the unfiltered list for a few seconds.  Mutations
-    # (`add_*_schedule`, `delete_schedule`) clear the cache so user-visible
-    # latency on writes is unchanged.
+    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)`` — the fully
+    # unfiltered row set, including paused schedules and already-fired
+    # one-shot jobs. APScheduler has no SQL-level user_id / kind filter
+    # either way — it loads every row and unpickles each ``job.kwargs`` in
+    # Python — so this is now only worth paying for on the rare
+    # ``include_paused=True`` lifecycle lookups; see the sibling
+    # ``_get_active_jobs_cached`` below for the path everything else takes.
+    # Mutations (`add_*_schedule`, `delete_schedule`) clear both caches so
+    # user-visible latency on writes is unchanged.
     _JOBS_CACHE_TTL_S = 5.0
     _jobs_cache: list[JobObj] | None = None
     _jobs_cache_expires_at: float = 0.0
@@ -1775,10 +2507,53 @@ class Scheduler(AppService):
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
         return jobs
 
+    # Second cache, keyed off the same lock/version, for the ``next_run_time
+    # IS NOT NULL`` (non-paused) rows only. This is what every caller except
+    # the pause/resume lifecycle lookups (``include_paused=True``) actually
+    # wants, and unlike ``_get_jobs_cached`` it pushes that filter down to
+    # SQL instead of unpickling every paused/already-fired row in Python
+    # only to throw it away — ``apscheduler_jobs`` accumulates those forever
+    # (nothing deletes a paused or fired-once job), so on a table with a
+    # meaningful history the unfiltered scan is what Sentry was flagging as
+    # a slow, unbounded query. ``next_run_time`` already carries a btree
+    # index from APScheduler's own table definition, so this needs no
+    # schema change.
+    _active_jobs_cache: list[JobObj] | None = None
+    _active_jobs_cache_expires_at: float = 0.0
+
+    def _get_active_jobs_cached(self) -> list[JobObj]:
+        with self._jobs_cache_lock:
+            now = time.monotonic()
+            if (
+                self._active_jobs_cache is not None
+                and now < self._active_jobs_cache_expires_at
+            ):
+                return self._active_jobs_cache
+            version_at_start = self._jobs_cache_version
+        jobs = self._execution_jobstore._get_jobs(
+            self._execution_jobstore.jobs_t.c.next_run_time.isnot(None)
+        )
+        with self._jobs_cache_lock:
+            if self._jobs_cache_version == version_at_start:
+                self._active_jobs_cache = jobs
+                self._active_jobs_cache_expires_at = (
+                    time.monotonic() + self._JOBS_CACHE_TTL_S
+                )
+                # The one scheduler metric with an alert on it was never set.
+                # Only an accepted read may publish it: a read that was
+                # invalidated mid-query is stale by definition and must not
+                # overwrite a newer count another reader has already set.
+                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
+                    len(jobs)
+                )
+        return jobs
+
     def _invalidate_jobs_cache(self) -> None:
         with self._jobs_cache_lock:
             self._jobs_cache = None
             self._jobs_cache_expires_at = 0.0
+            self._active_jobs_cache = None
+            self._active_jobs_cache_expires_at = 0.0
             self._jobs_cache_version += 1
 
     @expose
@@ -1790,6 +2565,7 @@ class Scheduler(AppService):
         kind: str | None = None,
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
+        include_paused: bool = False,
     ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
         """Return schedules of both kinds, filtered by the given fields.
 
@@ -1800,17 +2576,37 @@ class Scheduler(AppService):
         With *organization_id* (from a membership-verified RequestContext)
         the org/team visibility rules apply instead of strict ownership:
         own schedules + org-home schedules + schedules of teams in
-        *team_ids* (resolved by the caller, who has async DB access).
+        *team_ids* (resolved by the caller, who has async DB access). Expert
+        schedules remain owner-only for scoped calls. Trusted global callers
+        that provide neither *user_id* nor *organization_id* receive all jobs.
+
+        Paused jobs (``next_run_time is None``) are hidden by default —
+        excluded at the SQL level via ``_get_active_jobs_cached`` rather than
+        filtered out afterwards — which is what keeps a fired expert's
+        suspended schedules out of every user-facing listing. *include_paused*
+        is for the lifecycle callers that have to find them again to resume
+        them; that path reads the unfiltered ``_get_jobs_cached`` instead.
+        Fired one-shot jobs share the same null marker, so they resurface too
+        — filter by kind/id if that matters to the caller.
         """
-        jobs: list[JobObj] = self._get_jobs_cached()
+        jobs: list[JobObj] = (
+            self._get_jobs_cached()
+            if include_paused
+            else self._get_active_jobs_cached()
+        )
         results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
         for job in jobs:
-            info = _job_to_info(job) if job.next_run_time is not None else None
+            info = _job_to_info(job)
             if info is None:
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if organization_id is not None:
+            if info.expert_id is not None:
+                if (
+                    user_id is not None or organization_id is not None
+                ) and info.user_id != user_id:
+                    continue
+            elif organization_id is not None:
                 # GraphExecutionJobArgs defaults organization_id to "" —
                 # normalise so untagged rows never match an org clause.
                 info_org = info.organization_id or None
@@ -1835,12 +2631,39 @@ class Scheduler(AppService):
         return results
 
     @expose
-    def execute_process_existing_batches(self, kwargs: dict):
-        process_existing_batches(**kwargs)
+    def execute_flush_matured_alerts(self):
+        flush_matured_alerts()
 
     @expose
-    def execute_process_weekly_summary(self):
-        process_weekly_summary()
+    def execute_send_due_briefings(self):
+        send_due_briefings()
+
+    @expose
+    def get_parked_jobs(
+        self, limit: int | None = _PARKED_SCAN_LIMIT
+    ) -> dict[str, list[str]]:
+        """Job ids the scheduler could not restore, per jobstore.
+
+        Bounded by default: paused and fired-once rows accumulate forever and
+        each one read here is deserialized. Pass ``limit=None`` for the whole
+        set, accepting a scan proportional to that backlog.
+        """
+        return {
+            alias: store.get_parked_job_ids(limit=limit)
+            for alias, store in self._persistent_jobstores.items()
+        }
+
+    @expose
+    def reconcile_parked_jobs(self) -> dict[str, list[str]]:
+        """Make repaired rows resumable again, per jobstore.
+
+        For a repair made without ``jobstore_backfill``, which already does
+        this for the rows it rewrites.
+        """
+        return {
+            alias: store.reconcile_repaired_jobs()
+            for alias, store in self._persistent_jobstores.items()
+        }
 
     @expose
     def execute_report_late_executions(self):
@@ -1944,6 +2767,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, COMMUNITY_REBUILD_REGISTRATION_PREFIX)
         logger.info("Removed community rebuild job for user %s", user_id[:12])
         return True
 
@@ -1959,6 +2783,91 @@ class Scheduler(AppService):
             rebuild_communities_for_user(user_id, force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
+
+    # --- Morning briefing ---
+    #
+    # Daily per-user cron at user-local 09:00. The job body's flag gate and
+    # idempotency (per local calendar date) live inside
+    # ``generate_and_deliver_briefing`` itself, so — unlike community
+    # rebuild — there's no registration-time flag check here.
+
+    @expose
+    def add_morning_briefing_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register a daily morning briefing for one user.
+
+        Re-registration with an unchanged timezone is a no-op rather than a
+        ``replace_existing`` write: APScheduler recomputes ``next_run_time``
+        on the replace path, so replacing a job whose 09:00 fire is already
+        overdue (e.g. after a scheduler restart) would push it to tomorrow
+        and lose that day's briefing entirely.
+        """
+        if not user_timezone:
+            user_timezone = "UTC"
+
+        job_id = f"morning_briefing_{user_id}"
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if existing is not None and _job_timezone_name(existing) == user_timezone:
+            return {
+                "id": existing.id,
+                "user_id": user_id,
+                "user_timezone": user_timezone,
+                "next_run_time": (
+                    existing.next_run_time.isoformat()
+                    if existing.next_run_time
+                    else None
+                ),
+                "skipped": True,
+                "reason": "already_registered",
+            }
+
+        job = self.scheduler.add_job(
+            execute_morning_briefing,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab(
+                _morning_briefing_crontab(user_id), timezone=user_timezone
+            ),
+            id=job_id,
+            name=f"Morning briefing for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered morning briefing job %s for user %s in tz %s",
+            job.id,
+            user_id[:12],
+            user_timezone,
+        )
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "user_timezone": user_timezone,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
+    @expose
+    def remove_morning_briefing_schedule(self, user_id: str) -> dict:
+        """Delete one user's morning-briefing cron.
+
+        Deliberately not routed through ``delete_graph_execution_schedule``:
+        that path authorizes via ``_job_to_info``, which parses only graph and
+        copilot-turn kwargs and would reject this job's ``{"user_id": ...}``
+        shape as corrupt. The job id embeds the user id, so it is self-scoping.
+        """
+        job_id = f"morning_briefing_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if job is None:
+            return {"id": job_id, "user_id": user_id, "removed": False}
+        job.remove()
+        self._invalidate_jobs_cache()
+        logger.info(f"Removed morning briefing job {job_id} for user {user_id[:12]}")
+        return {"id": job_id, "user_id": user_id, "removed": True}
 
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
@@ -2050,6 +2959,7 @@ class Scheduler(AppService):
         if not job:
             return False
         job.remove()
+        _clear_dream_registration_marker(user_id, NIGHTLY_BATCH_REGISTRATION_PREFIX)
         logger.info("Removed nightly batch job for user %s", user_id[:12])
         return True
 
@@ -2160,12 +3070,17 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
+    resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+
+    get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
+    reconcile_parked_jobs = endpoint_to_async(Scheduler.reconcile_parked_jobs)
 
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule
@@ -2175,6 +3090,13 @@ class SchedulerClient(AppServiceClient):
     )
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
+    )
+
+    add_morning_briefing_schedule = endpoint_to_async(
+        Scheduler.add_morning_briefing_schedule
+    )
+    remove_morning_briefing_schedule = endpoint_to_async(
+        Scheduler.remove_morning_briefing_schedule
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)

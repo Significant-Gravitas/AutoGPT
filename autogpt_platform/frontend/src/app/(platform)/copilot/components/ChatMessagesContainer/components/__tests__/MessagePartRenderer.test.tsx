@@ -45,16 +45,6 @@ vi.mock("@/components/molecules/ErrorCard/ErrorCard", () => ({
   ErrorCard: () => null,
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS: "artifacts" },
-  useGetFlag: () => false,
-}));
-
-vi.mock("@phosphor-icons/react", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return { ...actual, ExclamationMarkIcon: () => null };
-});
-
 vi.mock("../StoppedTaskCard", () => ({
   StoppedTaskCard: () => <div data-testid="stopped-task-card" />,
 }));
@@ -228,20 +218,13 @@ describe("MessagePartRenderer text branch", () => {
     expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 
-  it("renders inline ArtifactCards when artifacts are forced on", () => {
+  it("renders inline ArtifactCards without a feature flag", () => {
     const fileId = "550e8400-e29b-41d4-a716-446655440000";
     const part = {
       type: "text",
       text: `Here is [report](workspace://${fileId}).`,
     } as unknown as Part;
-    render(
-      <MessagePartRenderer
-        part={part}
-        messageID="m1"
-        partIndex={0}
-        forceArtifacts
-      />,
-    );
+    render(<MessagePartRenderer part={part} messageID="m1" partIndex={0} />);
     expect(screen.getByTestId("artifact-card")).toBeDefined();
   });
 

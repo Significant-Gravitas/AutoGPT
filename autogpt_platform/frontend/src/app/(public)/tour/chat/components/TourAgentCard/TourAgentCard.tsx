@@ -1,12 +1,13 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import {
-  ArrowRightIcon,
-  CheckCircleIcon,
-  ClockIcon,
-} from "@phosphor-icons/react";
 import { Fragment } from "react";
 import type { TourAgent } from "../../script/types";
+import {
+  ArrowRight02Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: TourAgent;
@@ -30,7 +31,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         >
           {runCompleted ? (
             <>
-              <CheckCircleIcon className="size-4 shrink-0" weight="fill" />
+              <Icon icon={CheckmarkCircle02Icon} className="size-4 shrink-0" />
               Run completed
             </>
           ) : (
@@ -51,7 +52,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
       </div>
 
       <div className="flex items-center gap-1.5 text-sm text-zinc-600">
-        <ClockIcon className="size-4 shrink-0" />
+        <Icon icon={Clock01Icon} className="size-4 shrink-0" />
         <span>{agent.schedule} · created from your sentence</span>
       </div>
 
@@ -59,7 +60,10 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
         {agent.blocks.map((block, index) => (
           <Fragment key={`${block}-${index}`}>
             {index > 0 && (
-              <ArrowRightIcon className="size-3.5 shrink-0 text-zinc-400" />
+              <Icon
+                icon={ArrowRight02Icon}
+                className="size-3.5 shrink-0 text-zinc-400"
+              />
             )}
             <span className="rounded-md bg-zinc-100 px-2.5 py-1 font-mono text-xs text-zinc-700">
               {block}

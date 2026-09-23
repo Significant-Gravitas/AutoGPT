@@ -7,24 +7,17 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
-  CredentialsType,
 } from "@/lib/autogpt-server-api";
-import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-
-// All credential types - we accept any type of credential
-const ALL_CREDENTIAL_TYPES: CredentialsType[] = [
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-];
+import { CircleIcon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /**
  * Provider configuration for the setup wizard.
@@ -56,7 +49,8 @@ function createSchemaFromProviderConfig(
     type: "object",
     properties: {},
     credentials_provider: [config.provider],
-    credentials_types: ALL_CREDENTIAL_TYPES,
+    // Accept any credential type; the shared list is build-time total.
+    credentials_types: [...CREDENTIALS_TYPES],
     credentials_scopes: config.scopes,
     discriminator: undefined,
     discriminator_mapping: undefined,
@@ -257,16 +251,16 @@ export default function IntegrationSetupWizardPage() {
                     </Text>
                     <div className="grow"></div>
                     {isSelected ? (
-                      <CheckIcon
+                      <Icon
+                        icon={Tick02Icon}
                         size={20}
                         className="text-green-500"
-                        weight="bold"
                       />
                     ) : (
-                      <CircleIcon
+                      <Icon
+                        icon={CircleIcon}
                         size={20}
                         className="text-slate-300"
-                        weight="bold"
                       />
                     )}
                     {isSelected && (

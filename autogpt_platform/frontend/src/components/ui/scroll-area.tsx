@@ -3,9 +3,9 @@
 import * as React from "react";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowUpIcon } from "@phosphor-icons/react";
-
 import { cn } from "@/lib/utils";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface ScrollAreaProps
   extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
@@ -144,7 +144,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           }
           transition={{ duration: 0.15, ease: [0, 0, 0.2, 1] }}
         >
-          <ArrowUpIcon size={20} weight="bold" />
+          <Icon icon={ArrowUp02Icon} size={20} />
         </motion.button>
       )}
     </AnimatePresence>

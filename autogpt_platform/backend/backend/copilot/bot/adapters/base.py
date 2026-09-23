@@ -10,13 +10,29 @@ Telegram, Teams, WhatsApp).
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Awaitable, Callable, Literal, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 # Callback signature: (ctx, adapter) -> awaitable None
 MessageCallback = Callable[["MessageContext", "PlatformAdapter"], Awaitable[None]]
+
+
+class StreamDraftOutcome(Enum):
+    """Result of a live-preview draft update — see ``send_stream_draft``.
+
+    Three outcomes, not a bool: the streamer must tell a rendered preview
+    (advance the throttle) apart from a transient no-op it should retry next
+    chunk without burning the throttle, apart from a permanent stop.
+    """
+
+    SHOWN = "shown"
+    SKIPPED = "skipped"
+    STOPPED = "stopped"
+
 
 # Where the message came from:
 # - "dm"      — 1:1 conversation, reply in-place
@@ -69,7 +85,7 @@ class InboundAttachment(BaseModel):
 
     The adapter downloads the bytes from the platform up-front (bounded by the
     adapter's ``max_attachment_bytes``); the handler then uploads them to the
-    user's workspace so AutoPilot can read them during the turn.
+    user's workspace so Otto can read them during the turn.
     """
 
     filename: str
@@ -91,16 +107,50 @@ class ChannelInfo(BaseModel):
     server_name: Optional[str] = None
 
 
+class EditOutcome(Enum):
+    """Result of a proactive edit — see ``PlatformAdapter.edit_channel_message``.
+
+    Distinct from a bool so the caller can surface *why* an edit didn't land:
+    the platform never supports edits at all (``UNSUPPORTED``), the target
+    message is gone or too old to touch (``NOT_FOUND``), or the platform
+    rejected the call for another reason — wrong author, no permission, body
+    too long (``FAILED``).
+    """
+
+    OK = "ok"
+    UNSUPPORTED = "unsupported"
+    NOT_FOUND = "not_found"
+    FAILED = "failed"
+
+
 class PostedRef(BaseModel):
     """Pointer to something the bot just created on the platform.
 
     ``url`` is a best-effort permalink (Discord ``jump_url``) so callers can
     surface a clickable link in their confirmation; platforms without
     permalinks leave it ``None``.
+
+    ``id`` is always a *message* reference — the thing ``edit_channel_message``
+    takes. ``channel_id`` is where that message lives when it differs from the
+    channel the caller posted to: creating a thread posts the body inside the
+    new thread, so an edit has to target the thread, not its parent. Follow-up
+    posts use it too, so a thread stays one conversation. ``None`` means "the
+    channel you posted to".
+
+    ``chunk_count`` and ``editable`` describe what ``id`` can still be done
+    to. A post split across the platform's message cap has ``id`` pointing at
+    the *first* chunk only, so editing it would rewrite the opening and leave
+    the rest stale. ``editable=False`` marks a ref with no message behind it
+    at all — a thread that was created but whose body failed to post — which
+    is surfaced so the caller doesn't retry into a duplicate thread, but
+    cannot be edited. Both are refused rather than half-applied.
     """
 
     id: str
     url: Optional[str] = None
+    channel_id: Optional[str] = None
+    chunk_count: int = 1
+    editable: bool = True
 
 
 @dataclass
@@ -117,10 +167,13 @@ class MessageContext:
     text: str  # with bot mentions stripped
     bot_mentioned: bool = False
     thread_history: tuple[MessageHistoryEntry, ...] = ()
-    # Users the bot is allowed to @-mention back in this turn — populated
-    # from the inbound platform message's mentions (excluding the bot itself).
-    # `(display_name, platform_user_id)` pairs. Anyone not in this list won't
-    # get pinged even if the LLM produces `@theirname` in its output.
+    # Users the bot may @-mention back in this turn: the author and anyone
+    # mentioned in the inbound message (excluding the bot itself), as
+    # `(display_name, platform_user_id)` pairs. An adapter may widen this at
+    # send time to members and roles of the server it is posting in (Discord
+    # does, by looking up the names the model used); it must never widen it to
+    # everyone/here-style broadcasts. Names that resolve to nothing stay plain
+    # text.
     mentionable_users: tuple[tuple[str, str], ...] = ()
     # Other threads/channels the message linked or @-referenced, fetched by the
     # bot up-front so the model has their content without web-fetching Discord.
@@ -182,6 +235,61 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    @property
+    def max_choice_label_length(self) -> int:
+        """Longest option label this platform's native widget shows in full.
+
+        Past it the widget silently clips, so two options sharing a prefix
+        render identically while still dispatching their own full text — the
+        user cannot tell which button they are pressing. A question with any
+        option over this goes as numbered text instead, which shows all of
+        it. Discord buttons 80, Slack 75, Telegram 64, Teams 60.
+        """
+        return 80
+
+    @property
+    def max_choice_options(self) -> int:
+        """How many options this platform's native widget renders legibly.
+
+        `base` documents that an adapter decides whether `options` fits its
+        native widget, so the number belongs here rather than as one
+        platform-blind constant in the caller: Teams' Adaptive Cards render
+        roughly six actions and silently drop the tail, while Discord rows,
+        Slack action blocks and Telegram keyboards take the full ten.
+        """
+        return 10
+
+    @property
+    def supports_choice_buttons(self) -> bool:
+        """Whether `send_choice_buttons` can render native option buttons.
+
+        Default False — only platforms overriding `send_choice_buttons`
+        below flip this. Checked before spending a `bot.choices` token on a
+        question, so unsupported adapters never pay that cost.
+        """
+        return False
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        """Send `text` with native clickable option buttons/select where the
+        platform supports it, returning True once sent.
+
+        A click carries `token` and the clicked option's index (not the
+        option text -- Telegram's callback_data caps at 64 bytes); the
+        adapter resolves it via `bot.choices.resolve_choice` and feeds the
+        resolved text through its own `on_message` callback, exactly as if
+        the user had typed it. Returns False when the platform doesn't
+        implement this (or `options` doesn't fit its native widget), telling
+        the caller to fall back to plain numbered text. Default: unsupported.
+        """
+        return False
+
     @abstractmethod
     async def send_reply(
         self,
@@ -196,11 +304,37 @@ class PlatformAdapter(ABC):
         self, channel_id: str, user_id: str, text: str
     ) -> None: ...
 
-    @abstractmethod
-    async def start_typing(self, channel_id: str) -> None: ...
+    async def start_typing(self, channel_id: str) -> None:
+        """Show the platform's typing indicator. Default no-op — several
+        platforms (Slack bot apps, most webhook platforms) don't expose one."""
 
-    @abstractmethod
-    async def stop_typing(self, channel_id: str) -> None: ...
+    async def stop_typing(self, channel_id: str) -> None:
+        """Clear the typing indicator. Default no-op (see ``start_typing``)."""
+
+    @property
+    def supports_stream_drafts(self) -> bool:
+        """Whether ``send_stream_draft`` can show a live in-progress preview.
+
+        Default False — only platforms with a native draft-streaming API
+        (Telegram ``sendMessageDraft``) override this. When False the shared
+        streamer never calls ``send_stream_draft``.
+        """
+        return False
+
+    async def send_stream_draft(
+        self, channel_id: str, draft_id: int, text: str
+    ) -> StreamDraftOutcome:
+        """Show/update an ephemeral preview of the reply being generated.
+
+        Repeated calls with the same nonzero ``draft_id`` update the preview
+        in place. The finished reply is still delivered through the normal
+        send path, which supersedes the preview — a failed or skipped draft
+        never loses content. Returns ``SHOWN`` when the preview rendered,
+        ``SKIPPED`` for a transient no-op the caller should retry on the next
+        chunk, or ``STOPPED`` (unsupported chat, API error) to stop drafting
+        for the turn. Default: unsupported.
+        """
+        return StreamDraftOutcome.STOPPED
 
     @abstractmethod
     async def create_thread(
@@ -211,10 +345,10 @@ class PlatformAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     async def rename_thread(self, thread_id: str, name: str) -> bool:
-        """Rename a platform thread/conversation when supported."""
-        ...
+        """Rename a platform thread/conversation. Default: unsupported —
+        platforms with unnamed/implicit threads (Slack) simply inherit this."""
+        return False
 
     @property
     @abstractmethod
@@ -320,6 +454,16 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        """Open (or fetch) the bot's 1:1 DM channel with ``platform_user_id``.
+
+        Returns a channel ID usable with ``post_channel_message``, or ``None``
+        when the platform/configuration can't DM this user. Default:
+        unsupported — the proactive DM path then reports the platform can't
+        deliver DMs rather than attempting a send.
+        """
+        return None
+
     @abstractmethod
     async def post_channel_message(
         self, channel_id: str, text: str
@@ -343,6 +487,20 @@ class PlatformAdapter(ABC):
         the platform/channel doesn't support it.
         """
         ...
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        """Edit a message this bot previously posted via ``post_channel_message``.
+
+        ``channel_id``/``ref_id`` are exactly what that call (or
+        ``create_channel_thread``) returned — adapters that encode extra state
+        into those ids (Slack) must decode the same way as their send path.
+        Default: unsupported — platforms without a wired edit call (or not yet
+        implemented) simply inherit this rather than every caller special-casing
+        ``NotImplementedError``.
+        """
+        return EditOutcome.UNSUPPORTED
 
 
 class SocketAdapter(PlatformAdapter):
@@ -373,3 +531,24 @@ class WebhookAdapter(PlatformAdapter):
         within the platform's timeout, scheduling the real work off-request.
         """
         ...
+
+
+async def read_verified_webhook_body(
+    request: Request, verify: Callable[[Request, bytes], bool]
+) -> bytes | None:
+    """Read an inbound webhook body and verify its platform signature.
+
+    Returns the raw body when the signature checks out, ``None`` otherwise —
+    the route should then return :func:`unauthorized_webhook_response`. Shared
+    so every webhook adapter verifies BEFORE parsing, against the same raw
+    bytes the platform signed.
+    """
+    raw = await request.body()
+    if not verify(request, raw):
+        return None
+    return raw
+
+
+def unauthorized_webhook_response() -> PlainTextResponse:
+    """The uniform 401 for a webhook that failed signature verification."""
+    return PlainTextResponse("invalid signature", status_code=401)

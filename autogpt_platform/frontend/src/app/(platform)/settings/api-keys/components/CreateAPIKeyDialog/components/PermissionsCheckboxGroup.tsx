@@ -1,11 +1,10 @@
 "use client";
-
-import { CheckSquareIcon, SquareIcon } from "@phosphor-icons/react";
-
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { PERMISSION_OPTIONS } from "../schema";
+import { CheckmarkSquare02Icon, SquareIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: APIKeyPermission[];
@@ -48,9 +47,9 @@ export function PermissionsCheckboxGroup({ value, onChange }: Props) {
               className="flex items-center gap-2 rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
             >
               {checked ? (
-                <CheckSquareIcon size={18} weight="fill" />
+                <Icon icon={CheckmarkSquare02Icon} size={18} />
               ) : (
-                <SquareIcon size={18} />
+                <Icon icon={SquareIcon} size={18} />
               )}
               <Text variant="body" as="span" className="text-zinc-700">
                 {option.label}

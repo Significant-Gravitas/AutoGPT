@@ -9,32 +9,25 @@ interface BecomeACreatorProps {
 }
 
 export function BecomeACreator({
-  description = "Join a community where your AI creations can inspire, engage, and be downloaded by users around the world.",
-  buttonText = "Upload your agent",
+  description = "Join a community where your workflows can inspire, engage, and be installed by users around the world.",
+  buttonText = "Publish your workflow",
 }: BecomeACreatorProps) {
   return (
-    <div className="relative mx-auto mt-16 h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
-      {/* Content Container */}
-      <div className="mx-auto w-full max-w-[900px] px-4 text-center md:px-6 lg:px-0">
-        <h2 className="mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">
-          Build AI agents and share
-          <br />
-          <span className="text-violet-600 dark:text-violet-400">
-            your
-          </span>{" "}
-          vision
+    <div className="relative mx-auto w-full max-w-[1360px] py-24">
+      <div className="mx-auto w-full max-w-2xl px-4 text-center">
+        <h2 className="mb-4 text-3xl font-semibold tracking-[-0.02em] text-zinc-900 md:text-4xl">
+          Build AI workflows and share{" "}
+          <span className="text-violet-600">your</span> vision
         </h2>
 
-        <p className="mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
+        <p className="mx-auto mb-8 max-w-xl text-[15px] leading-relaxed text-zinc-500 md:text-lg">
           {description}
         </p>
 
         <PublishAgentModal
           trigger={
-            <button className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5">
-              <span className="whitespace-nowrap font-poppins text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
-                {buttonText}
-              </span>
+            <button className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-zinc-900 px-8 text-[15px] font-medium text-white shadow-[0_1px_2px_rgba(16,24,40,0.1)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:shadow-[0_10px_24px_-10px_rgba(16,24,40,0.4)]">
+              {buttonText}
             </button>
           }
         />

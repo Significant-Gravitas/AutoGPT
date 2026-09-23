@@ -1,9 +1,6 @@
-import {
-  BrainIcon,
-  GaugeIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import { AuthMarketingPanel } from "@/components/auth/AuthSplitLayout/AuthMarketingPanel";
+import { BrainIcon, GaugeIcon, Store01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function LoginMarketingPanel() {
   return (
@@ -13,17 +10,17 @@ export function LoginMarketingPanel() {
       itemsTitle="What's new"
       items={[
         {
-          icon: <BrainIcon size={20} weight="duotone" />,
+          icon: <Icon icon={BrainIcon} size={20} />,
           title: "New memory upgrades",
           description: "Smarter agents with longer context windows.",
         },
         {
-          icon: <StorefrontIcon size={20} weight="duotone" />,
+          icon: <Icon icon={Store01Icon} size={20} />,
           title: "Marketplace update",
           description: "Discover agents shared by the community.",
         },
         {
-          icon: <GaugeIcon size={20} weight="duotone" />,
+          icon: <Icon icon={GaugeIcon} size={20} />,
           title: "Performance boost",
           description: "Faster runs and reduced latency.",
         },

@@ -1,6 +1,4 @@
 "use client";
-
-import { FunnelIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -9,6 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import { FunnelIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   active: boolean;
@@ -38,7 +38,7 @@ export function ColumnFilter({
               : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700",
           )}
         >
-          <FunnelIcon size={12} weight={active ? "fill" : "bold"} />
+          <Icon icon={FunnelIcon} size={12} />
         </button>
       </PopoverTrigger>
       <PopoverContent

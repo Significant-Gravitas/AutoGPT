@@ -44,7 +44,7 @@ export function useShareRunButton({
       const response = await enableSharing({
         graphId,
         graphExecId: executionId,
-        data: {}, // Empty ShareRequest
+        data: {}, // Empty ExecutionShareRequest
       });
 
       if (response.status === 200) {

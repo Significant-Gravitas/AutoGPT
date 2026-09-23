@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function FolderFormDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleSubmit();
+              if (isKey(e, "Enter")) handleSubmit();
             }}
             className="w-full"
             wrapperClassName="!mb-0"
