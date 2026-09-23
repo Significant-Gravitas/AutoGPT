@@ -90,7 +90,10 @@ function reportFailure(error: unknown, name: string) {
   }
   toast({
     title: `Couldn't create ${name || "your expert"}`,
-    description: "Something went wrong. Please try again.",
+    description:
+      error instanceof ApiError && [400, 422, 503].includes(error.status)
+        ? error.message
+        : "Something went wrong. Please try again.",
     variant: "destructive",
   });
 }

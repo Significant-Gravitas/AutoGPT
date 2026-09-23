@@ -608,3 +608,35 @@ test("a refresh resumes the draft from session storage", async () => {
     await screen.findByRole("button", { name: /Bring Nova to life/ }),
   ).toBeDefined();
 });
+
+test.each([400, 422, 503])(
+  "keeps the draft and displays the recovery message when creation fails (%s)",
+  async (status) => {
+    server.use(
+      http.post("*/api/experts/raise", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Upload this image again through the appearance picker so it can be reviewed.",
+          },
+          { status },
+        ),
+      ),
+    );
+    seedAtSkills();
+    const draft = loadDraft();
+    renderRaise();
+    const finish = await screen.findByRole("button", {
+      name: /Bring Otto to life/,
+    });
+    await userEvent.click(finish);
+    expect(
+      await screen.findByText(
+        "Upload this image again through the appearance picker so it can be reviewed.",
+      ),
+    ).toBeDefined();
+    expect(loadDraft()).toEqual(draft);
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(finish.hasAttribute("disabled")).toBe(false);
+  },
+);

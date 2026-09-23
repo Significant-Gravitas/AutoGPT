@@ -30,7 +30,6 @@ from backend.api.features.experts.models import (
     encode_voice_preferences,
 )
 from backend.api.features.experts.presentation import presentation_changes
-from backend.api.features.experts.presentation_defaults import MANAGED_PRESENTATION
 from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
@@ -1186,11 +1185,6 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
-    for field, (previous, replacement) in MANAGED_PRESENTATION.get(
-        entry["name"], {}
-    ).items():
-        if fields[field] == previous:
-            fields[field] = replacement
     template = await prisma.models.Expert.prisma().find_first(
         where={"isTemplate": True, "name": entry["name"]},
         order=[{"createdAt": "asc"}, {"id": "asc"}],
@@ -1207,46 +1201,70 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     return updated
 
 
+_PRESENTATION_BACKFILL_BATCH_SIZE = 100
+
+
 async def _backfill_hired_copies(
     template: prisma.models.Expert,
     previous: prisma.models.Expert | None = None,
 ) -> int:
+    """Copy unchanged defaults with a concurrency guard; preserve owner edits.
+
+    Without a previous template there is no safe baseline. Rescopes also need
+    the matching legacy persona so presentation and behavior move together.
+    Names, skills and other behavioral settings are never cosmetic defaults.
+    """
     if previous is None:
         return 0
-    hires = await prisma.models.Expert.prisma().find_many(
-        where={"sourceTemplateId": template.id, "isTemplate": False}
-    )
     changed = 0
     rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
-    for hire in hires:
-        if rescope and (hire.role, hire.identity) not in (
-            (rescope["old_role"], rescope["old_identity"]),
-            (previous.role, previous.identity),
-            (template.role, template.identity),
-        ):
-            continue
-        if (
-            rescope
-            and (hire.role, hire.identity)
-            == (rescope["old_role"], rescope["old_identity"])
-            and (previous.role, previous.identity) != (hire.role, hire.identity)
-        ):
-            continue
-        data = presentation_changes(hire, previous, template)
-        if rescope and (hire.role, hire.identity) != (template.role, template.identity):
-            data.update(role=template.role, identity=template.identity)
-        if not data:
-            continue
-        changed += await prisma.models.Expert.prisma().update_many(
-            where={
-                "id": hire.id,
-                "sourceTemplateId": template.id,
-                "isTemplate": False,
-                "updatedAt": hire.updatedAt,
-            },
-            data=cast(prisma.types.ExpertUpdateManyMutationInput, data),
+    last_id: str | None = None
+    while True:
+        where: prisma.types.ExpertWhereInput = {
+            "sourceTemplateId": template.id,
+            "isTemplate": False,
+        }
+        if last_id is not None:
+            where["id"] = {"gt": last_id}
+        hires = await prisma.models.Expert.prisma().find_many(
+            where=where,
+            order={"id": "asc"},
+            take=_PRESENTATION_BACKFILL_BATCH_SIZE,
         )
-    return changed
+        for hire in hires:
+            if rescope and (hire.role, hire.identity) not in (
+                (rescope["old_role"], rescope["old_identity"]),
+                (previous.role, previous.identity),
+                (template.role, template.identity),
+            ):
+                continue
+            if (
+                rescope
+                and (hire.role, hire.identity)
+                == (rescope["old_role"], rescope["old_identity"])
+                and (previous.role, previous.identity) != (hire.role, hire.identity)
+            ):
+                continue
+            data = presentation_changes(hire, previous, template)
+            if rescope and (hire.role, hire.identity) != (
+                template.role,
+                template.identity,
+            ):
+                data.update(role=template.role, identity=template.identity)
+            if not data:
+                continue
+            changed += await prisma.models.Expert.prisma().update_many(
+                where={
+                    "id": hire.id,
+                    "sourceTemplateId": template.id,
+                    "isTemplate": False,
+                    "updatedAt": hire.updatedAt,
+                },
+                data=cast(prisma.types.ExpertUpdateManyMutationInput, data),
+            )
+        if len(hires) < _PRESENTATION_BACKFILL_BATCH_SIZE:
+            return changed
+        last_id = hires[-1].id
 
 
 async def _sync_preloads(

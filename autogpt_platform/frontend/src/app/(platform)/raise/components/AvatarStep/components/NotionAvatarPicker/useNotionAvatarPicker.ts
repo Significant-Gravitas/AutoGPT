@@ -1,4 +1,5 @@
 import { usePostV2UploadSubmissionMedia } from "@/app/api/__generated__/endpoints/store/store";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   clampPart,
@@ -65,7 +66,7 @@ export function useNotionAvatarPicker({ name, color, onPick }: Args) {
     if (!ACCEPTED_AVATAR_TYPE_LIST.includes(file.type)) {
       toast({
         title: "That file isn't an image",
-        description: "Pick a PNG, JPEG, WEBP, or GIF.",
+        description: "Pick a PNG, JPEG, or WebP image.",
         variant: "destructive",
       });
       return;
@@ -81,12 +82,18 @@ export function useNotionAvatarPicker({ name, color, onPick }: Args) {
 
     setIsUploading(true);
     try {
-      const response = await uploadMedia({ data: { file } });
+      const response = await uploadMedia({
+        data: { file },
+        params: { purpose: "expert-avatar" },
+      });
       onPick(response.data as string, colorIdRef.current);
-    } catch {
+    } catch (error) {
       toast({
         title: "Couldn't save that picture",
-        description: "Try another image, or keep the drawn face.",
+        description:
+          error instanceof ApiError
+            ? error.message
+            : "Try another image, or keep the drawn face.",
         variant: "destructive",
       });
     } finally {

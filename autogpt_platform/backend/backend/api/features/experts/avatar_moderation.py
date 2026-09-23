@@ -70,7 +70,8 @@ async def require_approved_avatar(user_id: str, url: str | None) -> None:
     if await redis.get(_receipt_key(user_id, url)):
         return
     raise HTTPException(
-        400, "Upload this image through Change appearance so it can be reviewed first."
+        400,
+        "Upload this image again through the appearance picker so it can be reviewed.",
     )
 
 

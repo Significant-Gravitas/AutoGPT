@@ -160,3 +160,42 @@ async def test_rescope_retry_defers_until_legacy_baseline_is_available():
         "tagline": "SEO tasks",
         "bio": "SEO bio",
     }
+
+
+async def test_backfill_reads_bounded_batches_without_offset_skips():
+    from unittest.mock import AsyncMock, patch
+
+    from backend.api.features.experts import seed
+
+    previous = SimpleNamespace(
+        id="template",
+        name="Test",
+        avatarUrl=None,
+        jobTitle="Writer",
+        tagline="Old",
+        bio=None,
+        categories=[],
+        role="Writing",
+        identity="Instructions",
+    )
+    replacement = SimpleNamespace(**{**vars(previous), "tagline": "New"})
+    hires = [
+        SimpleNamespace(**{**vars(previous), "id": str(i), "updatedAt": str(i)})
+        for i in range(3)
+    ]
+    db = AsyncMock()
+    db.find_many.side_effect = [hires[:2], hires[2:]]
+    db.update_many.return_value = 1
+    with (
+        patch.object(seed, "_PRESENTATION_BACKFILL_BATCH_SIZE", 2),
+        patch.object(seed.prisma.models.Expert, "prisma", return_value=db),
+    ):
+        assert await seed._backfill_hired_copies(replacement, previous) == 3
+    assert db.find_many.await_count == 2
+    for call in db.find_many.await_args_list:
+        assert call.kwargs["take"] == 2
+        assert call.kwargs["order"] == {"id": "asc"}
+    assert db.find_many.await_args_list[1].kwargs["where"]["id"] == {"gt": "1"}
+    assert [
+        call.kwargs["where"]["updatedAt"] for call in db.update_many.await_args_list
+    ] == ["0", "1", "2"]

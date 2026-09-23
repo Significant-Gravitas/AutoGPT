@@ -2056,3 +2056,22 @@ def test_existing_custom_avatar_can_be_kept_without_review(mocker):
     )
     assert response.status_code == 200
     review.assert_not_awaited()
+
+
+def test_create_expert_rejects_unreviewed_avatar_before_writing(mocker, test_user_id):
+    review = mocker.patch(
+        "backend.api.features.experts.routes.require_approved_avatar",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(400, "Upload this image for review."),
+    )
+    create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "avatar_url": "https://example.com/unreviewed.png"},
+    )
+    assert response.status_code == 400
+    review.assert_awaited_once_with(test_user_id, "https://example.com/unreviewed.png")
+    create.assert_not_awaited()
