@@ -183,6 +183,19 @@ describe("DataFast loaded under the tour exemption", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it("reloads when the script is still downloading as the visitor leaves", () => {
+    delete window.datafast;
+    const pending = document.createElement("script");
+    pending.src = DATAFAST_SRC;
+    document.head.appendChild(pending);
+    installCookiebot();
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    expect(reload).toHaveBeenCalledOnce();
+    pending.remove();
+  });
+
   it("keeps the script when the visitor has consented", () => {
     installCookiebot({ statistics: true });
 

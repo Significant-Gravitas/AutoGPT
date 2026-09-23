@@ -5,7 +5,7 @@ import { useConsent } from "@/services/consent/useConsent";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { environment } from "../environment";
-import { resolveAnalyticsLoading } from "./loading-policy";
+import { DATAFAST_SCRIPT_SRC, resolveAnalyticsLoading } from "./loading-policy";
 
 export function useSetupAnalytics(host: string) {
   const consent = useConsent();
@@ -22,7 +22,8 @@ export function useSetupAnalytics(host: string) {
     // DataFast's script tracks client-side navigation on its own and can't be
     // unloaded, so once the tour's exemption no longer covers it (the visitor
     // navigated into the app without consenting) the page reloads to shed it.
-    if (dataFast || !window.datafast) return;
+    // The element counts too: a script still downloading runs after unmount.
+    if (dataFast || !isDataFastPresent()) return;
     window.location.reload();
   }, [dataFast]);
 
@@ -41,4 +42,11 @@ export function useSetupAnalytics(host: string) {
     googleTagEnabled: googleTag,
     dataFastEnabled: dataFast,
   };
+}
+
+function isDataFastPresent() {
+  return Boolean(
+    window.datafast ||
+      document.querySelector(`script[src="${DATAFAST_SCRIPT_SRC}"]`),
+  );
 }

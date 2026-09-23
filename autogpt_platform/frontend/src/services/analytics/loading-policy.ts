@@ -1,5 +1,7 @@
 import type { ConsentState } from "@/services/consent/consent";
 
+export const DATAFAST_SCRIPT_SRC = "https://datafa.st/js/script.js";
+
 interface LoadingArgs {
   host: string;
   pathname: string | null;

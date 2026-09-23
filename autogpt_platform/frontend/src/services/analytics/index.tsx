@@ -14,7 +14,7 @@ import Script from "next/script";
 import { environment } from "../environment";
 import { GoogleConsentModeSync } from "./GoogleConsentModeSync";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
-import { isDataFastConsentExempt } from "./loading-policy";
+import { DATAFAST_SCRIPT_SRC, isDataFastConsentExempt } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
@@ -69,7 +69,7 @@ export function SetupAnalytics(props: SetupProps) {
           strategy="afterInteractive"
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
           data-domain="agpt.co"
-          src="https://datafa.st/js/script.js"
+          src={DATAFAST_SCRIPT_SRC}
           onLoad={flushDatafastQueue}
         />
       ) : null}
