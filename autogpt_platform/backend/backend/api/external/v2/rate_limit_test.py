@@ -131,7 +131,7 @@ def redis(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
         new=mock.AsyncMock(return_value=client),
     )
     mocker.patch(
-        "backend.api.external.v2.global_rate_limit.resolve_auth_info",
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
         new=mock.AsyncMock(return_value=None),
     )
     return client

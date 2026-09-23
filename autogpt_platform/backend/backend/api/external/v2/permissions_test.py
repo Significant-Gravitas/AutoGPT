@@ -100,6 +100,31 @@ def test_chat_sessions_are_not_a_searchable_content_type() -> None:
     assert "CHAT_SESSION" not in {t.value for t in SearchContentType}
 
 
+@pytest.mark.parametrize("content_type", list(SearchContentType))
+async def test_search_results_carry_their_content_type(
+    mocker: pytest_mock.MockFixture, content_type: SearchContentType
+) -> None:
+    hybrid = _mock_hybrid_search(mocker)
+    hybrid.return_value = ([_search_row(content_type.value)], 1)
+
+    page = await search_with(mocker, [content_type], scopes=list(APIKeyPermission))
+
+    assert [r.content_type for r in page.items] == [content_type]
+    assert page.items[0].content_id == "id-1"
+
+
+async def test_a_result_outside_the_v2_types_fails_rather_than_leaking(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The engine is only asked for v2 types; a chat session it returns anyway
+    is a server fault, never a row handed to the caller."""
+    hybrid = _mock_hybrid_search(mocker)
+    hybrid.return_value = ([_search_row("CHAT_SESSION")], 1)
+
+    with pytest.raises(ValueError):
+        await search_with(mocker, None, scopes=list(APIKeyPermission))
+
+
 # ============================================================================
 # Sharing: both directions cost the same scopes
 # ============================================================================
@@ -194,8 +219,9 @@ def test_credential_listing_says_which_credentials_are_the_platform_s() -> None:
 # ============================================================================
 
 
-async def test_the_route_reuses_the_credential_the_middleware_verified() -> None:
-    """An API key costs a Scrypt hash to verify; it was paid twice per request."""
+async def test_a_request_verifies_its_credential_once() -> None:
+    """The limiter and the route both resolve the caller; an API key costs a
+    Scrypt hash to verify, and it was paid twice per request."""
     calls = _resolve_calls()
 
     with mock.patch("backend.api.external.middleware.validate_api_key", new=calls):
@@ -242,6 +268,17 @@ def _mock_hybrid_search(mocker: pytest_mock.MockFixture):
         new_callable=mock.AsyncMock,
         return_value=([], 0),
     )
+
+
+def _search_row(content_type: str) -> dict:
+    return {
+        "content_type": content_type,
+        "content_id": "id-1",
+        "searchable_text": "text",
+        "metadata": {},
+        "updated_at": datetime.now(tz=timezone.utc),
+        "combined_score": 0.5,
+    }
 
 
 async def search_with(
