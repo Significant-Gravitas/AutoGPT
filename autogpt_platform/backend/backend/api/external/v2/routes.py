@@ -12,6 +12,7 @@ from .credits import credits_router
 from .errors import ErrorResponse
 from .files import file_workspace_router
 from .graphs import graphs_router
+from .identity import identity_router
 from .integrations import integrations_router
 from .library import library_router
 from .marketplace import marketplace_router
@@ -42,6 +43,7 @@ v2_router.include_router(credits_router, prefix="/credits")
 v2_router.include_router(file_workspace_router, prefix="/files")
 v2_router.include_router(graph_schedules_router, prefix="/graphs")
 v2_router.include_router(graphs_router, prefix="/graphs")
+v2_router.include_router(identity_router)
 v2_router.include_router(integrations_router, prefix="/integrations")
 v2_router.include_router(library_router, prefix="/library")
 v2_router.include_router(marketplace_router, prefix="/marketplace")

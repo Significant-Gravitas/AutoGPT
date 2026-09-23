@@ -49,6 +49,7 @@ class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
     permissions: list[APIKeyPermission]
     description: Optional[str] = None
+    team_id: Optional[str] = None
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):

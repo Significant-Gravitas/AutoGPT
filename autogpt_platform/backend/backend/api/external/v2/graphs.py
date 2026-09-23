@@ -13,11 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.api.features.store.model import StoreAgentDetails
 from backend.data import graph as graph_db
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
     on_graph_deactivate,
@@ -36,6 +34,7 @@ from .models import (
     MarketplaceAgentDetails,
 )
 from .pagination import Page, PageRequest, page_request
+from .tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +48,7 @@ graphs_router = APIRouter(tags=["graphs"])
 )
 async def list_graphs(
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> Page[GraphMeta]:
     """List all graphs owned by the authenticated user."""
     graphs, pagination_info = await graph_db.list_graphs_paginated(
@@ -59,6 +56,7 @@ async def list_graphs(
         page=page.page,
         page_size=page.limit,
         filter_by="active",
+        organization_id=auth.organization_id,
     )
     return page.paged(
         [GraphMeta.from_internal(g) for g in graphs],
@@ -77,9 +75,7 @@ async def get_graph(
         default=None,
         description="Specific version to retrieve (default: active version)",
     ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> Graph:
     """
     Get detailed information about a specific graph.
@@ -92,6 +88,7 @@ async def get_graph(
         version,
         user_id=auth.user_id,
         include_subgraphs=True,
+        organization_id=auth.organization_id,
     )
     if not graph:
         raise HTTPException(
@@ -109,9 +106,7 @@ async def get_graph(
 )
 async def create_graph(
     create_graph: GraphCreateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
 ) -> Graph:
     """Create a new agent graph."""
     from backend.api.features.library import db as library_db
@@ -122,8 +117,18 @@ async def create_graph(
     graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph, user_id=auth.user_id)
-    await library_db.create_library_agent(graph, user_id=auth.user_id)
+    await graph_db.create_graph(
+        graph,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
+    )
+    await library_db.create_library_agent(
+        graph,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
+    )
     activated_graph = await before_graph_activate(graph, user_id=auth.user_id)
 
     return Graph.from_internal(activated_graph)
@@ -137,9 +142,7 @@ async def create_graph(
 async def update_graph(
     graph_id: str,
     update_graph: GraphCreateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
 ) -> Graph:
     """
     Update a graph by creating a new version.
@@ -150,7 +153,9 @@ async def update_graph(
     from backend.api.features.library import db as library_db
 
     existing_versions = await graph_db.get_graph_all_versions(
-        graph_id, user_id=auth.user_id
+        graph_id,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
     )
     if not existing_versions:
         raise HTTPException(
@@ -168,7 +173,12 @@ async def update_graph(
     graph.reassign_ids(user_id=auth.user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
-    new_graph_version = await graph_db.create_graph(graph, user_id=auth.user_id)
+    new_graph_version = await graph_db.create_graph(
+        graph,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
+    )
 
     if new_graph_version.is_active:
         await library_db.update_agent_version_in_library(
@@ -188,6 +198,7 @@ async def update_graph(
         new_graph_version.version,
         user_id=auth.user_id,
         include_subgraphs=True,
+        organization_id=auth.organization_id,
     )
     assert new_graph_version_with_subgraphs
     return Graph.from_internal(new_graph_version_with_subgraphs)
@@ -201,7 +212,7 @@ async def update_graph(
 # )
 # async def delete_graph(
 #     graph_id: str,
-#     auth: APIAuthorizationInfo = Security(
+#     auth: TenantContext = Security(
 #         require_permission(APIKeyPermission.WRITE_GRAPH)
 #     ),
 # ) -> None:
@@ -232,12 +243,14 @@ async def update_graph(
 async def list_graph_versions(
     graph_id: str,
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> Page[Graph]:
     """Get all versions of a specific graph."""
-    graphs = await graph_db.get_graph_all_versions(graph_id, user_id=auth.user_id)
+    graphs = await graph_db.get_graph_all_versions(
+        graph_id,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+    )
     if not graphs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -255,9 +268,7 @@ async def list_graph_versions(
 async def set_active_version(
     graph_id: str,
     request_body: GraphSetActiveVersionRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
 ) -> None:
     """
     Set which version of a graph is the active version.
@@ -269,7 +280,10 @@ async def set_active_version(
 
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
-        graph_id, new_active_version, user_id=auth.user_id
+        graph_id,
+        new_active_version,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
     )
     if not new_active_graph:
         raise HTTPException(
@@ -281,6 +295,7 @@ async def set_active_version(
         graph_id=graph_id,
         version=None,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
     )
 
     await before_graph_activate(new_active_graph, user_id=auth.user_id)
@@ -306,20 +321,18 @@ async def set_active_version(
 async def update_graph_settings(
     graph_id: str,
     settings: GraphSettings,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
 ) -> GraphSettings:
     """Update settings for a graph."""
     from backend.api.features.library import db as library_db
 
-    library_agent = await library_db.get_library_agent_by_graph_id(
-        graph_id=graph_id, user_id=auth.user_id
+    library_agent = in_tenant(
+        await library_db.get_library_agent_by_graph_id(
+            graph_id=graph_id, user_id=auth.user_id
+        ),
+        auth,
+        f"Graph #{graph_id}",
     )
-    if not library_agent:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, f"Graph #{graph_id} not found in user's library"
-        )
 
     updated_agent = await library_db.update_library_agent(
         user_id=auth.user_id,
@@ -339,20 +352,17 @@ async def update_graph_settings(
 )
 async def get_library_agent_by_graph(
     graph_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryAgent:
     """Get the library agent associated with a specific graph."""
-    agent = await library_db.get_library_agent_by_graph_id(
-        graph_id=graph_id,
-        user_id=auth.user_id,
+    agent = in_tenant(
+        await library_db.get_library_agent_by_graph_id(
+            graph_id=graph_id,
+            user_id=auth.user_id,
+        ),
+        auth,
+        f"Library agent for graph #{graph_id}",
     )
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No library agent found for graph #{graph_id}",
-        )
     return LibraryAgent.from_internal(agent)
 
 
@@ -364,9 +374,7 @@ async def get_library_agent_by_graph(
 async def list_graph_blocks(
     graph_id: str,
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> Page[BlockInfo]:
     """List the unique blocks used by a graph."""
     from backend.blocks import get_block
@@ -376,6 +384,7 @@ async def list_graph_blocks(
         version=None,
         user_id=auth.user_id,
         include_subgraphs=True,
+        organization_id=auth.organization_id,
     )
     if not graph:
         raise HTTPException(
@@ -406,7 +415,7 @@ async def list_graph_blocks(
 async def list_graph_credential_requirements(
     graph_id: str,
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> Page[CredentialRequirement]:
@@ -416,6 +425,7 @@ async def list_graph_credential_requirements(
         version=None,
         user_id=auth.user_id,
         include_subgraphs=True,
+        organization_id=auth.organization_id,
     )
     if not graph:
         raise HTTPException(
@@ -435,9 +445,7 @@ async def list_graph_credential_requirements(
 )
 async def get_marketplace_listing_for_graph(
     graph_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_STORE)),
 ) -> MarketplaceAgentDetails:
     """Get the marketplace listing for a given graph, if one exists."""
     agent = await prisma.models.StoreAgent.prisma().find_first(

@@ -21,7 +21,6 @@ from fastapi import (
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_auth, require_permission
 from backend.api.features.library import db as library_db
 from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
@@ -31,7 +30,6 @@ from backend.api.features.store.db import (
     StoreCreatorsSortOptions,
 )
 from backend.api.features.store.model import ProfileUpdateRequest
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.virus_scanner import scan_content_safe
 
 from .models import (
@@ -48,6 +46,7 @@ from .models import (
 )
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import media_upload_limiter
+from .tenancy import TenantContext, require_auth, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ async def list_agents(
     ),
     page: PageRequest = Depends(page_request),
     # This data is public, but we still require auth for access tracking and rate limits
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> Page[MarketplaceAgent]:
     """List agents available in the marketplace, with optional filtering and sorting."""
     result = await store_cache._get_cached_store_agents(
@@ -108,7 +107,7 @@ async def list_agents(
 async def get_agent_by_version(
     version_id: str,
     # This data is public, but we still require auth for access tracking and rate limits
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """Get details of a marketplace agent by its store listing version ID."""
     agent = await store_db.get_store_agent_by_version_id(version_id)
@@ -124,7 +123,7 @@ async def get_agent_details(
     username: str,
     agent_name: str,
     # This data is public, but we still require auth for access tracking and rate limits
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> MarketplaceAgentDetails:
     """Get details of a specific marketplace agent."""
     username = urllib.parse.unquote(username).lower()
@@ -146,9 +145,7 @@ async def get_agent_details(
 async def add_agent_to_library(
     username: str,
     agent_name: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryAgent:
     """Add a marketplace agent to the authenticated user's library."""
     username = urllib.parse.unquote(username).lower()
@@ -188,7 +185,7 @@ async def list_creators(
     ),
     page: PageRequest = Depends(page_request),
     # This data is public, but we still require auth for access tracking and rate limits
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> Page[MarketplaceCreatorDetails]:
     """List or search marketplace creators."""
     result = await store_cache._get_cached_store_creators(
@@ -213,7 +210,7 @@ async def list_creators(
 async def get_creator_details(
     username: str,
     # This data is public, but we still require auth for access tracking and rate limits
-    auth: APIAuthorizationInfo = Security(require_auth),
+    auth: TenantContext = Security(require_auth),
 ) -> MarketplaceCreatorDetails:
     """Get a marketplace creator's profile w/ stats."""
     username = urllib.parse.unquote(username).lower()
@@ -232,9 +229,7 @@ async def get_creator_details(
     operation_id="getMarketplaceMyProfile",
 )
 async def get_profile(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_STORE)),
 ) -> MarketplaceCreatorDetails:
     """Get the authenticated user's marketplace profile w/ creator stats."""
     profile = await store_db.get_user_profile(auth.user_id)
@@ -255,9 +250,7 @@ async def get_profile(
 )
 async def update_profile(
     request: MarketplaceUserProfileUpdateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceUserProfile:
     """Update the authenticated user's marketplace profile.
 
@@ -286,15 +279,14 @@ async def update_profile(
 )
 async def list_submissions(
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_STORE)),
 ) -> Page[MarketplaceAgentSubmission]:
     """List the authenticated user's marketplace listing submissions."""
     result = await store_db.get_store_submissions(
         user_id=auth.user_id,
         page=page.page,
         page_size=page.limit,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -311,9 +303,7 @@ async def list_submissions(
 )
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceAgentSubmission:
     """Submit a new marketplace listing for review."""
     submission = await store_db.create_store_submission(
@@ -331,6 +321,7 @@ async def create_submission(
         agent_output_demo_url=request.agent_output_demo_url,
         changes_summary=request.changes_summary or "Initial Submission",
         recommended_schedule_cron=request.recommended_schedule_cron,
+        organization_id=auth.organization_id,
     )
 
     return MarketplaceAgentSubmission.from_internal(submission)
@@ -344,9 +335,7 @@ async def create_submission(
 async def edit_submission(
     request: MarketplaceAgentSubmissionEditRequest,
     version_id: str = Path(description="Store listing version ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceAgentSubmission:
     """Update a pending marketplace listing submission."""
     try:
@@ -363,6 +352,7 @@ async def edit_submission(
             changes_summary=request.changes_summary,
             recommended_schedule_cron=request.recommended_schedule_cron,
             instructions=request.instructions,
+            organization_id=auth.organization_id,
         )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -378,14 +368,13 @@ async def edit_submission(
 )
 async def delete_submission(
     version_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> None:
     """Delete a marketplace listing submission. Approved listings can not be deleted."""
     success = await store_db.delete_store_submission(
         user_id=auth.user_id,
         store_listing_version_id=version_id,
+        organization_id=auth.organization_id,
     )
 
     if not success:
@@ -408,9 +397,7 @@ async def delete_submission(
 )
 async def upload_submission_media(
     file: UploadFile = File(...),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_STORE)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
 ) -> MarketplaceMediaUploadResponse:
     """
     Upload an image or video for a marketplace submission. Max size: 10MB.

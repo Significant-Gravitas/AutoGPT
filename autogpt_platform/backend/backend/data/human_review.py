@@ -379,6 +379,7 @@ async def get_reviews(
     status: Optional[ReviewStatus] = None,
     page: int = 1,
     page_size: int = 25,
+    organization_id: Optional[str] = None,
 ) -> tuple[list[PendingHumanReviewModel], Pagination]:
     """
     Get reviews for a user with pagination, optionally filtered by execution and status.
@@ -389,6 +390,7 @@ async def get_reviews(
         status: Optional review status filter
         page: Page number (1-indexed)
         page_size: Number of reviews per page
+        organization_id: Optional org to scope to; also matches untagged rows
 
     Returns:
         List of reviews and pagination info
@@ -398,6 +400,11 @@ async def get_reviews(
         where["graphExecId"] = graph_exec_id
     if status:
         where["status"] = status
+    if organization_id is not None:
+        # Own rows in this org, plus rows created before org tagging.
+        where["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
 
     offset = (page - 1) * page_size
 

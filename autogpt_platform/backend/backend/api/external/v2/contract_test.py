@@ -26,7 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission, ReviewStatus
 from starlette.routing import Match
 
-from backend.api.external.middleware import require_auth, resolve_auth_info
+from backend.api.external.middleware import resolve_auth_info
 from backend.api.external.v2.errors import add_v2_exception_handlers
 from backend.api.external.v2.pagination import (
     MAX_PAGE,
@@ -36,6 +36,7 @@ from backend.api.external.v2.pagination import (
     encode_token_cursor,
     single_page_request,
 )
+from backend.api.external.v2.tenancy import TenantContext, require_auth
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -47,6 +48,13 @@ _api_key_auth = APIAuthorizationInfo(
     scopes=list(APIKeyPermission),
     type="api_key",
     created_at=datetime.now(tz=timezone.utc),
+)
+
+_tenant = TenantContext(
+    user_id=TEST_USER_ID,
+    scopes=list(APIKeyPermission),
+    type="api_key",
+    organization_id="test-org-id",
 )
 
 
@@ -94,7 +102,7 @@ async def test_reviews_are_reachable_over_http():
 
     app = fastapi.FastAPI()
     app.include_router(runs_router, prefix="/runs")
-    app.dependency_overrides[require_auth] = lambda: _api_key_auth
+    app.dependency_overrides[require_auth] = lambda: _tenant
     add_v2_exception_handlers(app)
 
     async def no_reviews(**kwargs) -> tuple[list, Pagination]:
@@ -602,7 +610,7 @@ async def _submit(*decisions: dict):
     return await submit_reviews(
         request=AgentRunReviewsSubmitRequest.model_validate({"reviews": decisions}),
         run_id="run-1",
-        auth=_api_key_auth,
+        auth=_tenant,
     )
 
 
@@ -626,8 +634,17 @@ def _mock_review_db(
     processed: dict[str, PendingHumanReviewModel],
     still_pending: bool,
 ) -> None:
+    from backend.data import execution as execution_db
     from backend.data import human_review
 
+    # The run carries the tenancy the reviews are checked against.
+    mocker.patch.object(
+        execution_db,
+        "get_graph_execution",
+        new=mock.AsyncMock(
+            return_value=mock.Mock(organization_id=_tenant.organization_id)
+        ),
+    )
     mocker.patch.object(
         human_review,
         "get_pending_reviews_for_execution",

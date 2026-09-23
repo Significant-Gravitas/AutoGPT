@@ -2924,12 +2924,21 @@ async def create_api_key(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
+    if request.team_id and request.team_id not in await get_user_team_ids(
+        user_id, ctx.org_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="You are not an active member of that team",
+        )
+
     api_key_info, plain_text_key = await api_key_db.create_api_key(
         name=request.name,
         user_id=user_id,
         permissions=request.permissions,
         description=request.description,
         organization_id=ctx.org_id,
+        team_id_restriction=request.team_id,
     )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 
