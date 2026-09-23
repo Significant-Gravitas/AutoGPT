@@ -108,6 +108,10 @@ async def test_a_caller_passing_the_old_synthetic_id_writes_a_chat_review(user_i
         where={"nodeExecId": review.node_exec_id}
     )
     assert row and row.sessionId == session_id and row.graphId is None
+    # ...and the same caller finds it again by the id it passed.
+    old_id = f"copilot-session-{session_id}"
+    found = await get_pending_reviews_for_execution(old_id, user_id)
+    assert [r.node_exec_id for r in found] == [review.node_exec_id]
 
 
 async def test_a_row_in_the_old_shape_still_resolves_to_its_chat(user_id):
@@ -128,6 +132,9 @@ async def test_a_row_in_the_old_shape_still_resolves_to_its_chat(user_id):
     [review] = await get_pending_reviews_for_session(session_id, user_id)
     assert review.session_id == session_id
     assert review.graph_exec_id is None and review.graph_id is None
+    assert [
+        r.node_exec_id for r in await get_pending_reviews_for_execution(old_id, user_id)
+    ] == [review.node_exec_id]
 
 
 async def test_auto_approval_holds_for_its_chat_only(user_id):

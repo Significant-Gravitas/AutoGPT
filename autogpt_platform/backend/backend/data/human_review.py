@@ -592,6 +592,8 @@ async def get_pending_reviews_for_execution(
     Returns:
         List of pending review models with node_id included
     """
+    if session_id := legacy_chat_session_id(graph_exec_id):
+        return await get_pending_reviews_for_session(session_id, user_id)
     reviews = await PendingHumanReview.prisma().find_many(
         where={
             "userId": user_id,
