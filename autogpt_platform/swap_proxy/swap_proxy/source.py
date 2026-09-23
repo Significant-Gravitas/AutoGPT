@@ -26,6 +26,10 @@ from swap_proxy.swap import Credential, host_in_list
 logger = logging.getLogger(__name__)
 
 _BINDINGS_TTL = 300.0
+# After a failed refresh the previous table is kept this long before the
+# backend is asked again: each attempt can take the whole timeout, and asking
+# on every lookup would add it to every request for as long as the outage lasts.
+_BINDINGS_RETRY = 30.0
 _CREDENTIAL_TTL = 15.0
 _CACHE_MAX = 10_000
 _TIMEOUT = httpx.Timeout(10.0, connect=3.0)
@@ -64,6 +68,7 @@ class BackendCredentialSource:
                 # Bindings are a static table; a stale copy beats treating
                 # every host as unbound while the backend restarts.
                 logger.warning("Bindings refresh failed; keeping the previous table")
+                self._bindings = (now + _BINDINGS_RETRY, self._bindings[1])
                 return self._bindings[1]
             raise SourceUnavailable("bindings") from None
         self._bindings = (now + _BINDINGS_TTL, fresh)

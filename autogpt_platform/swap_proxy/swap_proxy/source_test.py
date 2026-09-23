@@ -107,6 +107,34 @@ async def test_a_failed_bindings_refresh_keeps_the_previous_table(monkeypatch):
     assert await source.bound_names("github.com") == {"github"}
 
 
+async def test_after_a_failed_refresh_the_backend_is_not_asked_on_every_lookup(
+    monkeypatch,
+):
+    """Each attempt can take the whole timeout; during an outage that would
+    be added to every request."""
+    healthy = [True]
+
+    def handler(path, body):
+        return _ok(path, body) if healthy[0] else httpx.Response(503)
+
+    source, calls = _backend(handler)
+    now = [1000.0]
+    monkeypatch.setattr(source_module.time, "monotonic", lambda: now[0])
+    await source.bound_names("github.com")
+    healthy[0] = False
+    now[0] += source_module._BINDINGS_TTL + 1
+    for _ in range(5):
+        assert await source.bound_names("github.com") == {"github"}
+    assert len(calls) == 2  # the first table, one failed refresh
+    # Asked again once the retry interval has passed, and back on a good answer.
+    healthy[0] = True
+    now[0] += source_module._BINDINGS_RETRY + 1
+    assert await source.bound_names("github.com") == {"github"}
+    assert len(calls) == 3
+    await source.bound_names("github.com")
+    assert len(calls) == 3
+
+
 async def test_no_table_at_all_is_unavailable():
     source, _ = _backend(lambda path, body: httpx.Response(503))
     with pytest.raises(SourceUnavailable):
