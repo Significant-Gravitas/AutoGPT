@@ -464,6 +464,24 @@ def test_ling_3_0_flash_vl_bills_at_authored_rates():
     assert ling_entry.supports_reasoning is True
 
 
+def test_gemma_4_31b_it_bills_at_authored_rates():
+    """Google Gemma 4 31B (OpenRouter, list price $0.14/$0.40 per 1M) —
+    flat tier and per-1M projections must match the authored catalog
+    entry."""
+    gemma = LLMModel("google/gemma-4-31b-it")
+    assert MODEL_COST[gemma] == 1
+    assert TOKEN_COST[gemma].model_dump() == {
+        "input": 21.0,
+        "output": 60.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[gemma].max_output_tokens == 16384
+    gemma_entry = next(m for m in CATALOG.models if m.slug == "google/gemma-4-31b-it")
+    assert gemma_entry.price_tier == 1
+    assert gemma_entry.context_window == 262144
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
