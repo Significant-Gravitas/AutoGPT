@@ -43,12 +43,16 @@ function ReviewInputField({
 }) {
   switch (field.kind) {
     case "input":
+      // RunAgentInputs' readOnly only blocks the pointer; a keyboard could
+      // still edit a value the approval would never send.
+      if (readOnly) {
+        return <StaticField label={field.label} text={displayValue(value)} />;
+      }
       return (
         <RunAgentInputs
           schema={field.schema}
           value={value}
           onChange={onChange}
-          readOnly={readOnly}
         />
       );
     case "group":
@@ -98,4 +102,10 @@ function StaticField({
       </Text>
     </div>
   );
+}
+
+function displayValue(value: unknown) {
+  if (value === undefined || value === null || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return typeof value === "string" ? value : JSON.stringify(value);
 }

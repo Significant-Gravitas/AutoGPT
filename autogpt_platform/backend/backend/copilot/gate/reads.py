@@ -51,7 +51,6 @@ JUDGED_READS: frozenset[str] = frozenset(
         "web_fetch",
         "web_search",
         # Registered straight onto the MCP server; judged at the MCP seam.
-        "Read",
         "glob",
         "grep",
         "read_file",
@@ -226,13 +225,13 @@ def readable_parts(output: str) -> tuple[str, tuple[Image, ...]]:
     encoded = data["content_base64"]
     if mime.startswith("image/"):
         return "", (Image(mime_type=mime, data_base64=encoded),)
-    if mime.startswith("text/") or mime in ("application/json", "application/xml"):
-        try:
-            decoded = base64.b64decode(encoded).decode("utf-8", "replace")
-        except ValueError:
-            return output, ()
-        return f"{output}\n\n{decoded}", ()
-    return "", ()
+    # Decided by the bytes, not a MIME list: the reader inlines more text
+    # types than any list here would track.
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+    except ValueError:
+        return "", ()
+    return f"{output}\n\n{decoded}", ()
 
 
 def source_of(tool_name: str, args: dict[str, Any]) -> str:

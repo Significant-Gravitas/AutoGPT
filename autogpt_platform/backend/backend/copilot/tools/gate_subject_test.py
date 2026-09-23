@@ -12,17 +12,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.blocks._base import BlockEffect
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
+from backend.blocks.github.repo_files import GithubCreateFileBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
-from backend.copilot.gate.effects import graph_effect
+from backend.blocks.sql_query_block import SQLQueryBlock
+from backend.copilot.gate.effects import block_effect, graph_effect
 from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.subject import workflow_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
@@ -33,6 +36,7 @@ from backend.data.graph import BaseGraph, GraphModel, Link, Node, NodeModel
 
 _GATE = "backend.copilot.gate"
 _CAP = "backend.copilot.tools.run_capability"
+_AGENT_GRAPH = "backend.copilot.tools.run_agent._agent_graph"
 
 
 def _session(mode: AutopilotMode = "auto") -> ChatSession:
@@ -302,7 +306,7 @@ async def test_a_trigger_workflow_shows_no_card(gate):
     )
     details = _answer()
     with (
-        patch.object(RunAgentTool, "_subject_graph", AsyncMock(return_value=graph)),
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
         patch.object(RunAgentTool, "_execute", AsyncMock(return_value=details)),
     ):
         result = await RunAgentTool().execute(
@@ -316,7 +320,7 @@ async def test_an_external_workflow_asks_naming_it(gate):
     graph = _graph([_node("send", GmailSendBlock(), {})])
     run = AsyncMock(return_value=_answer())
     with (
-        patch.object(RunAgentTool, "_subject_graph", AsyncMock(return_value=graph)),
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
         patch.object(RunAgentTool, "_execute", run),
     ):
         result = await RunAgentTool().execute(
@@ -336,20 +340,10 @@ async def test_only_an_approved_run_skips_the_irreversible_pause(gate, approved)
     graph = _graph([_node("send", GmailSendBlock(), {})])
     run = AsyncMock(return_value=_answer())
     with (
-        patch.object(RunAgentTool, "_subject_graph", AsyncMock(return_value=graph)),
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, MagicMock(id="lib-1")))),
         patch.object(RunAgentTool, "_run_agent", run),
         patch.object(
             RunAgentTool, "_check_prerequisites", AsyncMock(return_value=({}, None))
-        ),
-        patch(
-            "backend.copilot.tools.run_agent.library_db",
-            return_value=MagicMock(
-                get_library_agent=AsyncMock(return_value=MagicMock(id="lib-1")),
-            ),
-        ),
-        patch(
-            "backend.copilot.tools.run_agent.graph_db",
-            return_value=MagicMock(get_graph=AsyncMock(return_value=graph)),
         ),
         patch(
             "backend.copilot.tools.run_agent.require_installed_workflow",
@@ -360,6 +354,92 @@ async def test_only_an_approved_run_skips_the_irreversible_pause(gate, approved)
             "user-1", _session("unsupervised"), "call-1", library_agent_id="lib-1"
         )
     assert run.await_args.kwargs["gate_approved"] is approved
+
+
+@pytest.mark.parametrize("unreadable_first", [True, False])
+@pytest.mark.parametrize("kind", ["undeclared block", "linked web request"])
+def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, kind):
+    """Approving the card lifts the pause, so the card must show the send."""
+    unreadable = (
+        _node("label", GithubAddLabelBlock(), {})
+        if kind == "undeclared block"
+        else _node("req", SendWebRequestBlock(), {"url": "u", "method": "GET"})
+    )
+    send = _node("send", GmailSendBlock(), {})
+    nodes = [unreadable, send] if unreadable_first else [send, unreadable]
+    links = [_link("in", "result", "req", "method")]
+    subject = workflow_subject(
+        _graph([_node("in", AgentInputBlock(), {"name": "m"}), *nodes], links=links)
+    )
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.reason == "cannot be taken back: Gmail Send"
+
+
+@pytest.mark.parametrize("send_first", [True, False])
+def test_an_irreversible_node_names_an_external_workflow(send_first):
+    nodes = [
+        _node("send", GmailSendBlock(), {}),
+        _node("file", GithubCreateFileBlock(), {}),
+    ]
+    subject = workflow_subject(_graph(nodes if send_first else nodes[::-1]))
+    assert subject.reason == "cannot be taken back: Gmail Send"
+
+
+@pytest.mark.parametrize(
+    "block, inputs, linked, effect",
+    [
+        (SendWebRequestBlock(), {}, (), BlockEffect.EXTERNAL),
+        (SendWebRequestBlock(), {"method": "POST"}, (), BlockEffect.EXTERNAL),
+        (SendWebRequestBlock(), {"method": "HEAD"}, (), BlockEffect.READ),
+        (SQLQueryBlock(), {}, (), BlockEffect.READ),
+        (SQLQueryBlock(), {"read_only": False}, (), BlockEffect.EXTERNAL),
+        (SQLQueryBlock(), {"read_only": True}, ("read_only",), None),
+    ],
+    ids=["no method", "POST", "HEAD", "SQL default", "SQL write", "SQL linked"],
+)
+def test_input_decided_blocks_follow_their_input(block, inputs, linked, effect):
+    assert block_effect(block, inputs, linked) is effect
+
+
+async def test_a_workflow_the_lookup_misses_asks(gate):
+    """The tool's own effect is external, so a miss asks rather than runs."""
+    run = AsyncMock(return_value=_answer())
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(None, None))),
+        patch.object(RunAgentTool, "_execute", run),
+    ):
+        result = await RunAgentTool().execute(
+            "user-1", _session(), "call-1", library_agent_id="lib-1"
+        )
+    assert _is_held(result)
+    run.assert_not_awaited()
+
+
+async def test_saving_a_preset_of_a_read_workflow_is_a_platform_edit(gate):
+    graph = _graph([_node("read", GetWikipediaSummaryBlock(), {})])
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", AsyncMock(return_value=_answer())),
+    ):
+        result = await RunAgentTool().execute(
+            "user-1",
+            _session("ask_first"),
+            "call-1",
+            library_agent_id="lib-1",
+            save_as_preset=True,
+            preset_name="otters",
+        )
+    assert _is_held(result)
+    assert gate.open_review.await_args.args[5] == "saves a preset"
+
+
+async def test_a_graph_only_block_is_never_carded(gate, ran):
+    """``run_block`` refuses it and the registry does not list it, so nothing runs."""
+    result = await _run_capability(
+        _session(), AgentExecutorBlock().id, {"graph_id": "x"}
+    )
+    assert not _is_held(result)
+    gate.open_review.assert_not_awaited()
 
 
 def _answer() -> ErrorResponse:

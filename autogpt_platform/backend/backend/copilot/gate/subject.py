@@ -51,8 +51,11 @@ def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
     )
 
 
-def workflow_subject(graph: "GraphModel", *, schedules: bool = False) -> Subject:
-    """``schedules``: the call creates a schedule, itself a platform edit."""
+def workflow_subject(
+    graph: "GraphModel", *, schedules: bool = False, saves_preset: bool = False
+) -> Subject:
+    """``schedules`` and ``saves_preset``: the call also creates a platform
+    object, so a read workflow is at least a platform edit."""
     effect, decided_by = graph_effect(graph)
     subject = Subject(
         key=f"workflow:{graph.id}",
@@ -61,10 +64,12 @@ def workflow_subject(graph: "GraphModel", *, schedules: bool = False) -> Subject
         reason=_reason(effect, decided_by, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
     )
-    if schedules and subject.effect in (Effect.READ, Effect.WORKSPACE):
-        return subject.model_copy(
-            update={"effect": Effect.PLATFORM, "reason": "creates a schedule"}
-        )
+    creates = "creates a schedule" if schedules else "saves a preset"
+    if (schedules or saves_preset) and subject.effect in (
+        Effect.READ,
+        Effect.WORKSPACE,
+    ):
+        return subject.model_copy(update={"effect": Effect.PLATFORM, "reason": creates})
     return subject
 
 

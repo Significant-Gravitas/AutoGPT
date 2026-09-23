@@ -345,7 +345,7 @@ async def _execute_tool_sync(
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
-    token = model_view.set(_model_text)
+    token = model_view.set(cap_late_tool_result)
     try:
         result = await base_tool.execute(
             user_id=user_id,
@@ -359,16 +359,10 @@ async def _execute_tool_sync(
     text = (
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
-    return _envelope(text, result.success)
-
-
-def _model_text(text: str, success: bool) -> str:
-    """The text the wrapper's cap leaves of this output, for the held-read judge."""
-    return _text_from_mcp_result(truncate(_envelope(text, success), _MCP_MAX_CHARS))
-
-
-def _envelope(text: str, success: bool) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": text}], "isError": not success}
+    return {
+        "content": [{"type": "text", "text": text}],
+        "isError": not result.success,
+    }
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -696,9 +690,10 @@ _READ_TOOL_SCHEMA = {
 # ---------------------------------------------------------------------------
 
 
-def cap_late_tool_result(text: str) -> str:
-    """A late tool result, cut exactly as the MCP wrapper cuts a direct one."""
-    result = {"content": [{"type": "text", "text": text}], "isError": False}
+def cap_late_tool_result(text: str, success: bool = True) -> str:
+    """A tool result, cut exactly as the MCP wrapper cuts a direct one: what
+    the held-read judge reads and what a late result delivers."""
+    result = {"content": [{"type": "text", "text": text}], "isError": not success}
     return _text_from_mcp_result(truncate(result, _MCP_MAX_CHARS))
 
 

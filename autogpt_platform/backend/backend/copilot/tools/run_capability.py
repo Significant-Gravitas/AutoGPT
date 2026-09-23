@@ -13,11 +13,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backend.blocks import get_block
-from backend.blocks._base import Block
-from backend.copilot.capabilities.block_meta import (
-    COPILOT_EXCLUDED_BLOCK_IDS,
-    COPILOT_EXCLUDED_BLOCK_TYPES,
-)
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
     needs_review,
@@ -39,6 +34,7 @@ from backend.data.activity_event import ActivityEventDraft
 from .base import GATE_APPROVED, BaseTool
 from .capability_gates import gate_denied, gate_denied_error
 from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
+from .helpers import required_input_keys
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
@@ -122,8 +118,10 @@ class RunCapabilityTool(BaseTool):
             (impl.ref for impl in entry.implementations if impl.kind == "block"), ""
         )
         block = get_block(block_id)
-        if block is None or not _runs(block, payload or {}):
+        if block is None:
             return NO_OP
+        if not required_input_keys(block) <= set(payload or {}):
+            return NO_OP  # a schema lookup: run_block answers with the schema
         return block_subject(block, payload or {})
 
     def activity_event(
@@ -234,19 +232,6 @@ def _mcp_subject(server_url: str, payload: dict[str, Any]) -> Subject:
     if not tool or not server_url:
         return NO_OP
     return mcp_subject(server_url, tool)
-
-
-def _runs(block: Block, payload: dict[str, Any]) -> bool:
-    """False where ``run_block`` answers without running: a block it refuses to
-    run directly, or one missing a required input, which returns its schema."""
-    if block.disabled or (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    ):
-        return False
-    credentials = set(block.input_schema.get_credentials_fields())
-    required = set(block.input_schema.jsonschema().get("required", [])) - credentials
-    return required <= set(payload) - credentials
 
 
 async def _describe_tool(
