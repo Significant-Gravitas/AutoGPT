@@ -256,6 +256,24 @@ def test_multivariate_flag_serves_launchdarkly_values_as_payloads():
     assert served("system", {}) == {"daily": 1}
 
 
+def test_variant_keys_stay_unique_when_a_fallback_collides_with_a_name():
+    flag = _flag(
+        "multivariate",
+        variations=[
+            {"value": 1, "name": "x"},
+            {"value": 2, "name": "x-2"},
+            {"value": 3, "name": "x"},
+        ],
+        fallthrough=2,
+    )
+
+    payload = _payload(map_flag(flag, ENV, _cohorts()))
+
+    keys = [v["key"] for v in payload["filters"]["multivariate"]["variants"]]
+    assert len(set(keys)) == 3
+    assert _served(payload)("user-x", {}) == 3
+
+
 def test_system_keyed_config_flag_resolves_without_person_properties():
     flag = _flag(
         "multivariate", variations=[{"value": {"PRO": 5}}, {"value": {}}], fallthrough=0

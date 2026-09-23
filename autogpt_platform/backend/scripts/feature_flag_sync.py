@@ -574,8 +574,12 @@ def _variant_keys(variations: list[dict[str, Any]]) -> list[str]:
     for i, v in enumerate(variations):
         source = v.get("name") or (v["value"] if isinstance(v["value"], str) else "")
         slug = re.sub(r"[^a-z0-9_-]+", "-", str(source).lower()).strip("-")[:40]
-        key = slug or f"variation-{i}"
-        keys.append(key if key not in keys else f"{key}-{i}")
+        key = candidate = slug or f"variation-{i}"
+        suffix = i
+        while candidate in keys:
+            candidate = f"{key}-{suffix}"
+            suffix += 1
+        keys.append(candidate)
     return keys
 
 
