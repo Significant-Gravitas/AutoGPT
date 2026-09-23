@@ -153,6 +153,33 @@ describe("dual backend", () => {
     expect(postHog.capture).not.toHaveBeenCalled();
   });
 
+  it("stays quiet when a JSON flag differs only in key order", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    launchDarkly.flags = {
+      [Flag.COPILOT_BOT_PLATFORMS]: { slack: true, discord: false },
+    };
+    postHog.enabled.mockReturnValue(true);
+    postHog.payload.mockReturnValue({ discord: false, slack: true });
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(postHog.capture).not.toHaveBeenCalled();
+  });
+
+  it("reports a JSON flag whose values really differ", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    launchDarkly.flags = {
+      [Flag.COPILOT_BOT_PLATFORMS]: { slack: true, discord: false },
+    };
+    postHog.enabled.mockReturnValue(true);
+    postHog.payload.mockReturnValue({ discord: true, slack: true });
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(postHog.capture).toHaveBeenCalledTimes(1);
+  });
+
   it("stays quiet while only one vendor has answered", async () => {
     // The two never resolve on the same render, so comparing before both
     // have answered reports the load order rather than a disagreement.
