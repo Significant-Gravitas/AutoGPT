@@ -59,6 +59,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
+from backend.util.workspace_storage import compute_file_checksum
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
@@ -743,12 +744,17 @@ class SkillWrite(NamedTuple):
     version: str | None = None
     extra: Mapping[str, Any] | None = None
     files: list[SkillFile] | None = None
+    # Server-recorded SHA-256s of bytes already scanned clean (never a
+    # client's); a file hashing to one skips the virus scan.
+    scanned_checksums: frozenset[str] = frozenset()
 
 
 class StoredSkill(NamedTuple):
     skill: ParsedSkill
     # False when the write replaced a copy the owner already had.
     is_new: bool
+    # SHA-256 of every file written, each of which passed the scan or matched.
+    checksums: frozenset[str] = frozenset()
 
 
 async def store_user_skills(
@@ -804,7 +810,7 @@ async def store_user_skills(
         for index, skill in prepared:
             try:
                 is_new = skill.parsed.name not in same_origin
-                await _write_skill(
+                checksums = await _write_skill(
                     manager, skill, expert_id, origin, same_origin, owners
                 )
             except Exception as e:
@@ -812,7 +818,7 @@ async def store_user_skills(
                 continue
             same_origin.add(skill.parsed.name)
             stored.append((index, skill.parsed.name))
-            outcomes[index] = StoredSkill(skill.parsed, is_new)
+            outcomes[index] = StoredSkill(skill.parsed, is_new, checksums)
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None:
@@ -838,6 +844,7 @@ class _PreparedSkill(NamedTuple):
     parsed: ParsedSkill
     rendered: str
     files: list[SkillFile] | None
+    scanned_checksums: frozenset[str]
 
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
@@ -877,7 +884,7 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         # Whole-package validation before the first write, so a package that
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=write.files))
-    return _PreparedSkill(parsed, rendered, write.files)
+    return _PreparedSkill(parsed, rendered, write.files, write.scanned_checksums)
 
 
 async def _write_skill(
@@ -887,7 +894,8 @@ async def _write_skill(
     origin: str,
     same_origin: set[str],
     owners: set[str],
-) -> None:
+) -> frozenset[str]:
+    """Write one prepared package; return the SHA-256 of every file written."""
     name = skill.parsed.name
     if origin == SKILL_ORIGIN_MARKETPLACE and name in owners:
         raise SkillOwnedError(
@@ -921,6 +929,7 @@ async def _write_skill(
     # because ``write_file``'s quota check is read-then-write.
     existing_paths = {f.path for f in stale}
     written: set[str] = set()
+    checksums: set[str] = set()
     try:
         for entry in skill.files or []:
             path = f"{folder}/{name}/{entry.relative_path}"
@@ -932,15 +941,20 @@ async def _write_skill(
                 mime_type=None,
                 overwrite=True,
                 metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
+                scanned_checksums=skill.scanned_checksums,
             )
+            checksums.add(compute_file_checksum(entry.content))
+        skill_md = skill.rendered.encode("utf-8")
         await manager.write_file(
-            content=skill.rendered.encode("utf-8"),
+            content=skill_md,
             filename="SKILL.md",
             path=_skill_md_path(name, expert_id),
             mime_type="text/markdown",
             overwrite=True,
             metadata=metadata,
+            scanned_checksums=skill.scanned_checksums,
         )
+        checksums.add(compute_file_checksum(skill_md))
     except Exception:
         # Not a rollback: a file already here keeps the new bytes, so an
         # upsert can fail mixed. Undo only what this call created — deleting
@@ -950,6 +964,7 @@ async def _write_skill(
     await _delete_paths(
         manager, {f.path for f in stale if f.path not in written}, stale
     )
+    return frozenset(checksums)
 
 
 async def _delete_paths(

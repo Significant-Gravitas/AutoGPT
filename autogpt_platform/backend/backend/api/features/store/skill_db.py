@@ -226,6 +226,7 @@ async def install_marketplace_skills(
                 # `[]`, never `None` — which means "leave the folder alone"
                 # and would keep a sibling only the previous version had.
                 files=files.get(active.id, []),
+                scanned_checksums=frozenset(active.scannedSha256),
             )
         )
     stored = (
@@ -254,6 +255,7 @@ async def install_marketplace_skills(
         await prisma.models.SkillListing.prisma().update_many(
             where={"id": {"in": new_ids}}, data={"installCount": {"increment": 1}}
         )
+    await _record_scanned(live, stored)
     outcomes: list[skill_model.InstalledSkill | Exception] = []
     for slug in slugs:
         outcome = stored.get(slug)
@@ -271,6 +273,27 @@ async def install_marketplace_skills(
                 )
             )
     return outcomes
+
+
+async def _record_scanned(
+    live: list[prisma.models.SkillListing],
+    stored: dict[str, StoredSkill | Exception],
+) -> None:
+    """Remember the bytes each install wrote past the scan, so the next
+    install of the same version writing the same bytes need not scan them."""
+    for listing in live:
+        outcome = stored.get(listing.slug)
+        active = skill_model.active_version(listing)
+        if not isinstance(outcome, StoredSkill) or outcome.checksums <= set(
+            active.scannedSha256
+        ):
+            continue
+        await prisma.models.SkillListingVersion.prisma().update(
+            where={"id": active.id},
+            data={
+                "scannedSha256": sorted(outcome.checksums | set(active.scannedSha256))
+            },
+        )
 
 
 async def _read_versions_files(
