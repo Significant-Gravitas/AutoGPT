@@ -100,3 +100,63 @@ async def test_backfill_keeps_custom_avatar_and_uses_concurrency_guard():
     assert kwargs["where"]["updatedAt"] == "version-read"
     assert kwargs["where"]["sourceTemplateId"] == "template"
     assert kwargs["where"]["isTemplate"] is False
+
+
+async def test_rescope_retry_defers_until_legacy_baseline_is_available():
+    from unittest.mock import AsyncMock, patch
+
+    from backend.api.features.experts.seed import _backfill_hired_copies
+
+    previous = SimpleNamespace(
+        id="template",
+        name="Maria",
+        avatarUrl="/old.svg",
+        jobTitle="Marketing Specialist",
+        tagline="Marketing tasks",
+        bio="Marketing bio",
+        categories=["marketing"],
+        role="Marketing",
+        identity="Legacy marketing identity",
+    )
+    replacement = SimpleNamespace(
+        **{
+            **vars(previous),
+            "role": "SEO & Content",
+            "identity": "SEO identity",
+            "jobTitle": "SEO Content Strategist",
+            "tagline": "SEO tasks",
+            "bio": "SEO bio",
+        }
+    )
+    hired = SimpleNamespace(
+        **{**vars(previous), "id": "hire", "updatedAt": "version-read"}
+    )
+    db = AsyncMock()
+    db.find_many.return_value = [hired]
+    db.update_many.return_value = 1
+    with (
+        patch(
+            "backend.api.features.experts.seed.prisma.models.Expert.prisma",
+            return_value=db,
+        ),
+        patch(
+            "backend.api.features.experts.seed.RESCOPED_TEMPLATES",
+            [
+                {
+                    "name": "Maria",
+                    "old_role": previous.role,
+                    "old_identity": previous.identity,
+                }
+            ],
+        ),
+    ):
+        assert await _backfill_hired_copies(replacement, replacement) == 0
+        db.update_many.assert_not_awaited()
+        assert await _backfill_hired_copies(replacement, previous) == 1
+    assert db.update_many.call_args.kwargs["data"] == {
+        "role": "SEO & Content",
+        "identity": "SEO identity",
+        "jobTitle": "SEO Content Strategist",
+        "tagline": "SEO tasks",
+        "bio": "SEO bio",
+    }

@@ -1225,6 +1225,13 @@ async def _backfill_hired_copies(
             (template.role, template.identity),
         ):
             continue
+        if (
+            rescope
+            and (hire.role, hire.identity)
+            == (rescope["old_role"], rescope["old_identity"])
+            and (previous.role, previous.identity) != (hire.role, hire.identity)
+        ):
+            continue
         data = presentation_changes(hire, previous, template)
         if rescope and (hire.role, hire.identity) != (template.role, template.identity):
             data.update(role=template.role, identity=template.identity)
