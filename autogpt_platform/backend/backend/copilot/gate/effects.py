@@ -37,28 +37,33 @@ def graph_effect(graph: "GraphModel") -> Resolved:
     """The worst effect of any node across a graph and its sub-graphs.
 
     A write iterated N times is still a write, so the loop structure is
-    irrelevant; one node nobody can read makes the whole run unreadable.
+    irrelevant; one node nobody can read makes the whole run unreadable. The
+    walk never stops early: an irreversible node anywhere names the run, since
+    approving the card lifts the pause that would otherwise have caught it.
     """
     graphs: list["BaseGraph"] = [graph, *graph.sub_graphs]
     present = {g.id for g in graphs}
     worst = Resolved(BlockEffect.NONE)
+    unreadable: Block | None = None
     for each in graphs:
         linked = _linked_input_names(each)
         for node in each.nodes:
             block = node.block
             if block.block_type is BlockType.AGENT:
                 # Its nodes are counted where the sub-graph itself is walked.
-                if node.input_default.get("graph_id") in present:
-                    continue
-                return Resolved(None, block)
+                if node.input_default.get("graph_id") not in present:
+                    unreadable = unreadable or block
+                continue
             effect = block_effect(
                 block, node.input_default, linked.get(node.id, frozenset())
             )
             if effect is None:
-                return Resolved(None, block)
-            if _worse(effect, block, worst):
+                unreadable = unreadable or block
+            elif _worse(effect, block, worst):
                 worst = Resolved(effect, block)
-    return worst
+    if unreadable is None or _irreversible(worst):
+        return worst
+    return Resolved(None, unreadable)
 
 
 RANK = {effect: rank for rank, effect in enumerate(BlockEffect)}
@@ -69,9 +74,12 @@ def _worse(effect: BlockEffect, block: Block, than: Resolved) -> bool:
     current = than.effect or BlockEffect.NONE
     if RANK[effect] != RANK[current]:
         return RANK[effect] > RANK[current]
-    held_by = than.decided_by
-    return block.is_irreversible_action and not (
-        held_by is not None and held_by.is_irreversible_action
+    return block.is_irreversible_action and not _irreversible(than)
+
+
+def _irreversible(resolved: Resolved) -> bool:
+    return (
+        resolved.decided_by is not None and resolved.decided_by.is_irreversible_action
     )
 
 

@@ -5,7 +5,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.library.model import (
+    LibraryAgent,
+    LibraryAgentPreset,
+    LibraryAgentPresetCreatable,
+)
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.gate.subject import NO_OP, Subject, workflow_subject
@@ -173,72 +177,32 @@ class RunAgentTool(BaseTool):
     async def gate_subject(
         self, user_id: str, session: ChatSession, args: dict[str, Any]
     ) -> Subject | None:
-        """The workflow this call runs, with its sub-graphs; NO_OP for a dry
-        run, a trigger workflow (which only returns its trigger details) or a
-        call that names no workflow the tool would find."""
+        """The workflow this call runs, with its sub-graphs; NO_OP where nothing
+        runs: a dry run, a trigger workflow (which only returns its trigger
+        details), or a call ``_execute`` refuses before looking anything up."""
         try:
             params = RunAgentInput(**args)
         except ValidationError:
             return NO_OP
         if params.dry_run or session.dry_run:
             return NO_OP
-        graph = await self._subject_graph(user_id, session, params)
-        if graph is None or graph.has_external_trigger:
+        if params.preset_id:
+            _, graph = await _preset_graph(user_id, session, params.preset_id)
+        else:
+            await _bind_builder_graph(user_id, session, params)
+            if not _names_an_agent(params):
+                return NO_OP
+            graph, _ = await _agent_graph(user_id, params)
+        if graph is None:
+            # A miss must not run ungated; the tool's own effect asks.
+            return None
+        if graph.has_external_trigger:
             return NO_OP
         return workflow_subject(
-            graph, schedules=bool(params.schedule_name or params.cron)
+            graph,
+            schedules=bool(params.schedule_name or params.cron),
+            saves_preset=params.save_as_preset,
         )
-
-    async def _subject_graph(
-        self, user_id: str, session: ChatSession, params: RunAgentInput
-    ) -> GraphModel | None:
-        """The graph ``_execute`` would run, resolved the same way."""
-        if params.preset_id:
-            preset = await library_db().get_preset(
-                user_id=user_id, preset_id=params.preset_id
-            )
-            if preset is None or preset.expert_id != session.expert_id:
-                return None
-            return await graph_db().get_graph(
-                preset.graph_id,
-                preset.graph_version,
-                user_id=user_id,
-                include_subgraphs=True,
-            )
-        library_agent_id = params.library_agent_id
-        builder_graph_id = session.metadata.builder_graph_id
-        if (
-            builder_graph_id
-            and not library_agent_id
-            and "/" not in (params.username_agent_slug)
-        ):
-            library_agent_id = builder_graph_id
-        if library_agent_id:
-            try:
-                library_agent = await library_db().get_library_agent(
-                    library_agent_id, user_id
-                )
-            except NotFoundError:
-                library_agent = None
-            library_agent = (
-                library_agent
-                or await library_db().get_library_agent_by_graph_id(
-                    user_id, library_agent_id
-                )
-            )
-            if library_agent is None:
-                return None
-            return await graph_db().get_graph(
-                library_agent.graph_id,
-                library_agent.graph_version,
-                user_id=user_id,
-                include_subgraphs=True,
-            )
-        if "/" in params.username_agent_slug:
-            username, agent_name = params.username_agent_slug.split("/", 1)
-            graph, _ = await fetch_graph_from_store_slug(username, agent_name)
-            return graph
-        return None
 
     @property
     def description(self) -> str:
@@ -345,22 +309,12 @@ class RunAgentTool(BaseTool):
         if params.preset_id:
             return await self._handle_preset_run(user_id, session, params, approved)
 
-        # Validate at least one identifier is provided
-        has_slug = params.username_agent_slug and "/" in params.username_agent_slug
+        if user_id:
+            await _bind_builder_graph(user_id, session, params)
+        builder_graph_id = session.metadata.builder_graph_id
         has_library_id = bool(params.library_agent_id)
 
-        # Builder-bound sessions can omit the identifier — default to the
-        # bound graph so the LLM doesn't have to pass IDs the user never sees.
-        builder_graph_id = session.metadata.builder_graph_id
-        if builder_graph_id and user_id and not has_slug and not has_library_id:
-            library_agent = await library_db().get_library_agent_by_graph_id(
-                user_id, builder_graph_id
-            )
-            if library_agent:
-                params.library_agent_id = library_agent.id
-                has_library_id = True
-
-        if not has_slug and not has_library_id:
+        if not _names_an_agent(params):
             return ErrorResponse(
                 message=(
                     "Please provide either a username_agent_slug "
@@ -393,41 +347,12 @@ class RunAgentTool(BaseTool):
 
         try:
             # Step 1: Fetch agent details
-            graph: GraphModel | None = None
-            library_agent = None
-
-            # Priority: library_agent_id if provided
-            if has_library_id:
-                try:
-                    library_agent = await library_db().get_library_agent(
-                        params.library_agent_id, user_id
-                    )
-                except NotFoundError:
-                    # get_library_agent raises rather than returning None, so
-                    # the graph-id fallback this tool documents is only
-                    # reachable from here.
-                    library_agent = None
-                if not library_agent:
-                    library_agent = await library_db().get_library_agent_by_graph_id(
-                        user_id, params.library_agent_id
-                    )
-                if not library_agent:
-                    return ErrorResponse(
-                        message=f"Library agent '{params.library_agent_id}' not found",
-                        session_id=session_id,
-                    )
-                # Sub-graphs are needed to aggregate the full set of required credentials.
-                graph = await graph_db().get_graph(
-                    library_agent.graph_id,
-                    library_agent.graph_version,
-                    user_id=user_id,
-                    include_subgraphs=True,
+            graph, library_agent = await _agent_graph(user_id, params)
+            if has_library_id and library_agent is None:
+                return ErrorResponse(
+                    message=f"Library agent '{params.library_agent_id}' not found",
+                    session_id=session_id,
                 )
-            else:
-                # Fetch from marketplace slug
-                username, agent_name = params.username_agent_slug.split("/", 1)
-                graph, _ = await fetch_graph_from_store_slug(username, agent_name)
-
             if not graph:
                 identifier = (
                     params.library_agent_id
@@ -886,27 +811,13 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        preset = await library_db().get_preset(
-            user_id=user_id, preset_id=params.preset_id
-        )
+        preset, graph = await _preset_graph(user_id, session, params.preset_id)
         if not preset:
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
                 error="preset_not_found",
                 session_id=session_id,
             )
-        if preset.expert_id != session.expert_id:
-            return ErrorResponse(
-                message=f"Preset '{params.preset_id}' not found.",
-                error="preset_not_found",
-                session_id=session_id,
-            )
-        graph = await graph_db().get_graph(
-            preset.graph_id,
-            preset.graph_version,
-            user_id=user_id,
-            include_subgraphs=True,  # needed for full credentials aggregation
-        )
         if not graph:
             return ErrorResponse(
                 message=(
@@ -1437,3 +1348,71 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         )
+
+
+# One lookup for the run and for the gate: were they two, a drift between
+# them would gate one graph and run another.
+async def _agent_graph(
+    user_id: str, params: RunAgentInput
+) -> tuple[GraphModel | None, LibraryAgent | None]:
+    if params.library_agent_id:
+        try:
+            library_agent = await library_db().get_library_agent(
+                params.library_agent_id, user_id
+            )
+        except NotFoundError:
+            # get_library_agent raises rather than returning None, so the
+            # graph-id fallback this tool documents is only reachable here.
+            library_agent = None
+        library_agent = library_agent or (
+            await library_db().get_library_agent_by_graph_id(
+                user_id, params.library_agent_id
+            )
+        )
+        if library_agent is None:
+            return None, None
+        # Sub-graphs are needed to aggregate the full set of required credentials.
+        graph = await graph_db().get_graph(
+            library_agent.graph_id,
+            library_agent.graph_version,
+            user_id=user_id,
+            include_subgraphs=True,
+        )
+        return graph, library_agent
+    username, agent_name = params.username_agent_slug.split("/", 1)
+    graph, _ = await fetch_graph_from_store_slug(username, agent_name)
+    return graph, None
+
+
+async def _preset_graph(
+    user_id: str, session: ChatSession, preset_id: str
+) -> tuple[LibraryAgentPreset | None, GraphModel | None]:
+    preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
+    if preset is None or preset.expert_id != session.expert_id:
+        return None, None
+    graph = await graph_db().get_graph(
+        preset.graph_id,
+        preset.graph_version,
+        user_id=user_id,
+        include_subgraphs=True,  # needed for full credentials aggregation
+    )
+    return preset, graph
+
+
+async def _bind_builder_graph(
+    user_id: str, session: ChatSession, params: RunAgentInput
+) -> None:
+    """Builder-bound sessions can omit the identifier: default to the bound
+    graph so the LLM doesn't have to pass ids the user never sees."""
+    builder_graph_id = session.metadata.builder_graph_id
+    if not builder_graph_id or _names_an_agent(params):
+        return
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id, builder_graph_id
+    )
+    if library_agent:
+        params.library_agent_id = library_agent.id
+
+
+def _names_an_agent(params: RunAgentInput) -> bool:
+    return bool(params.library_agent_id) or "/" in params.username_agent_slug
