@@ -1,3 +1,10 @@
+import {
+  getConsentAnswer,
+  isConsentManagerConfigured,
+  NO_CONSENT,
+  subscribeToConsent,
+  type ConsentState,
+} from "@/services/consent/consent";
 import { DATA_LAYER_NAME } from "./gtag";
 
 const EU_MEMBER_STATES = [
@@ -48,10 +55,9 @@ export const CONSENT_DENIED_BY_DEFAULT_REGIONS = [
 const WAIT_FOR_UPDATE_MS = 500;
 
 // Consent Mode v2 defaults, rendered as a beforeInteractive script ahead of
-// Cookiebot and the Google tag. Cookiebot sends every `consent update` itself
-// (statistics → analytics_storage; marketing → ad_storage, ad_user_data and
-// ad_personalization). The shim stays local so it doesn't define window.gtag:
-// that global is how the rest of the app knows the tag itself loaded.
+// Cookiebot and the Google tag. The updates come from followConsentForGoogleTag
+// below. The shim stays local so it doesn't define window.gtag: that global is
+// how the rest of the app knows the tag itself loaded.
 export function buildConsentDefaultsScript(): string {
   return [
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
@@ -75,4 +81,58 @@ export function buildConsentDefaultsScript(): string {
     `gtag('set','url_passthrough',true);`,
     `})();`,
   ].join("\n");
+}
+
+type Signal = "granted" | "denied";
+
+function signal(granted: boolean): Signal {
+  return granted ? "granted" : "denied";
+}
+
+export function buildConsentUpdate(consent: ConsentState) {
+  const ads = signal(consent.advertising);
+  return {
+    analytics_storage: signal(consent.analytics),
+    ad_storage: ads,
+    ad_user_data: ads,
+    ad_personalization: ads,
+  };
+}
+
+/**
+ * Sends the visitor's answer to the Google tag as a Consent Mode update, now
+ * and whenever it changes. Cookiebot's own Consent Mode integration sends the
+ * same signals; this keeps a denial reaching the tag even if that integration
+ * is switched off in the Cookiebot admin. Until there is an answer the region
+ * defaults stand; an answer Cookiebot later withdraws is sent as a denial.
+ * Returns the unsubscribe.
+ */
+export function followConsentForGoogleTag(): () => void {
+  if (typeof window === "undefined" || !isConsentManagerConfigured()) {
+    return () => {};
+  }
+  let sent: string | null = null;
+
+  function sync() {
+    const answer = getConsentAnswer() ?? (sent ? NO_CONSENT : null);
+    if (!answer) return;
+    const update = buildConsentUpdate(answer);
+    const key = JSON.stringify(update);
+    if (key === sent) return;
+    sent = key;
+    queueGtagCommand("consent", "update", update);
+  }
+
+  sync();
+  return subscribeToConsent(sync);
+}
+
+// Queued straight onto the dataLayer so the update lands whether or not the
+// tag has loaded yet. gtag.js only runs entries that are real `arguments`
+// objects, hence the rest parameter goes unused.
+function queueGtagCommand(..._command: unknown[]) {
+  const scope = window as unknown as Record<string, unknown[] | undefined>;
+  const dataLayer = (scope[DATA_LAYER_NAME] ??= []);
+  // eslint-disable-next-line prefer-rest-params
+  dataLayer.push(arguments);
 }

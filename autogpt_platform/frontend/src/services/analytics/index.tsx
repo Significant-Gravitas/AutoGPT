@@ -12,6 +12,7 @@ import {
 } from "@/services/consent/consent";
 import Script from "next/script";
 import { environment } from "../environment";
+import { GoogleConsentModeSync } from "./GoogleConsentModeSync";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
 import { isDataFastConsentExempt } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
@@ -40,6 +41,7 @@ export function SetupAnalytics(props: SetupProps) {
       {/* Google tag: GA4 + Google Ads */}
       {googleTagEnabled ? (
         <>
+          <GoogleConsentModeSync />
           <Script
             id="_custom-ga-init"
             strategy="afterInteractive"
@@ -81,8 +83,8 @@ interface InitScriptArgs {
   debugMode?: boolean;
 }
 
-// The root layout queued the Consent Mode defaults before Cookiebot loaded,
-// and Cookiebot sends the visitor's answer itself.
+// The root layout queued the Consent Mode defaults before anything else, and
+// GoogleConsentModeSync (with Cookiebot's own integration) sends the answer.
 function buildGoogleTagInitScript({
   GAID,
   adsID,

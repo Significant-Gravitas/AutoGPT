@@ -98,6 +98,27 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
     expect(queryScript(DATAFAST_SRC)).toBeNull();
   });
 
+  it("sends the answer to the Google tag as a Consent Mode update", () => {
+    installCookiebot();
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    const dataLayer = (window as unknown as { dataLayer?: IArguments[] })
+      .dataLayer;
+    expect(dataLayer?.map((entry) => Array.from(entry))).toContainEqual([
+      "consent",
+      "update",
+      {
+        analytics_storage: "granted",
+        ad_storage: "denied",
+        ad_user_data: "denied",
+        ad_personalization: "denied",
+      },
+    ]);
+    delete (window as unknown as { dataLayer?: unknown }).dataLayer;
+  });
+
   it("starts DataFast and Vercel Analytics when the visitor accepts, without a reload", () => {
     installCookiebot();
     render(
