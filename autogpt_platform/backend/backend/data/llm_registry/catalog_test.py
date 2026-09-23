@@ -140,12 +140,15 @@ def test_exactly_one_enabled_recommended_model():
 
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
-    and per-1M token rates — must match its authored catalog entry."""
+    and per-1M token rates — must match its authored catalog entry.
+
+    Pin updated for a live OpenRouter reprice ($1.70/$8.50 -> $3.00/$15.00
+    per Mtok, verified 2026-09-22)."""
     k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
-        "input": 255.0,
-        "output": 1275.0,
+        "input": 450.0,
+        "output": 2250.0,
         "cache_read": 0.0,
         "cache_creation": 0.0,
     }
@@ -337,15 +340,15 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter, DeepSeek list price $0.15/$0.60 per
-    1M, $0.003/1M cached input) — flat tier and per-1M projections must
-    match the authored catalog entry."""
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.06/$0.32 per 1M,
+    $0.01/1M cached input as of 2026-09-23) — flat tier and per-1M
+    projections must match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 22.5,
-        "output": 90.0,
-        "cache_read": 0.45,
+        "input": 9.0,
+        "output": 48.0,
+        "cache_read": 1.5,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000
@@ -459,6 +462,24 @@ def test_ling_3_0_flash_vl_bills_at_authored_rates():
     assert ling_entry.supports_tools is True
     assert ling_entry.supports_json_output is True
     assert ling_entry.supports_reasoning is True
+
+
+def test_gemma_4_31b_it_bills_at_authored_rates():
+    """Google Gemma 4 31B (OpenRouter live rate $0.09/$0.34 per 1M,
+    $0.05/1M cached input as of 2026-09-23) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    gemma = LLMModel("google/gemma-4-31b-it")
+    assert MODEL_COST[gemma] == 1
+    assert TOKEN_COST[gemma].model_dump() == {
+        "input": 13.5,
+        "output": 51.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[gemma].max_output_tokens == 16384
+    gemma_entry = next(m for m in CATALOG.models if m.slug == "google/gemma-4-31b-it")
+    assert gemma_entry.price_tier == 1
+    assert gemma_entry.context_window == 262144
 
 
 def test_provider_usd_prices_are_all_or_nothing():

@@ -5,20 +5,6 @@ import {
   PendingUploadMessage,
 } from "../PendingUploadMessage";
 
-const flagState = vi.hoisted(() => ({ artifacts: false }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ARTIFACTS ? flagState.artifacts : false,
-  };
-});
-
 vi.mock("../ThinkingIndicator", () => ({
   ThinkingIndicator: ({ statusMessage }: { statusMessage?: string | null }) => (
     <div data-testid="thinking-indicator">{statusMessage}</div>
@@ -49,12 +35,10 @@ const attachments = [
 
 afterEach(() => {
   cleanup();
-  flagState.artifacts = false;
 });
 
 describe("PendingUploadMessage", () => {
-  it("renders artifact-style cards with kind and size when artifacts are on", () => {
-    flagState.artifacts = true;
+  it("renders artifact-style cards with kind and size", () => {
     render(
       <PendingUploadMessage
         pendingSend={{ text: "look at these", attachments }}
@@ -70,13 +54,6 @@ describe("PendingUploadMessage", () => {
     expect(screen.getByTestId("thinking-indicator").textContent).toBe(
       "Uploading 3 files…",
     );
-  });
-
-  it("falls back to plain file cards showing the media type when artifacts are off", () => {
-    render(<PendingUploadMessage pendingSend={{ text: "", attachments }} />);
-
-    expect(screen.getByText("application/pdf")).toBeDefined();
-    expect(screen.getByText("text/markdown")).toBeDefined();
   });
 
   it("carries the message id the tail spacer measures", () => {

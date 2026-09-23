@@ -504,11 +504,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.06/$0.32 per 1M,
+                # cache read $0.01/1M (further drift since this PR's prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=22.5,
-                    output_credits_per_1m=90.0,
-                    cache_read_credits_per_1m=0.45,
+                    input_credits_per_1m=9.0,
+                    output_credits_per_1m=48.0,
+                    cache_read_credits_per_1m=1.5,
                 ),
             ),
             CatalogModel(
@@ -629,6 +631,23 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=3,
                     input_credits_per_1m=112.5,
                     output_credits_per_1m=562.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemma-4-31b-it",
+                display_name="Gemma 4 31B",
+                provider="open_router",
+                creator="google",
+                context_window=262144,
+                max_output_tokens=16384,
+                price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.09/$0.34 per 1M,
+                # cache read $0.05/1M (drifted from the $0.14/$0.40 launch price).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=13.5,
+                    output_credits_per_1m=51.0,
+                    cache_read_credits_per_1m=7.5,
                 ),
             ),
             CatalogModel(
@@ -840,14 +859,15 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — $1.70/$8.50 per Mtok on
-                # OpenRouter, credit rates at the standard 1.5x margin.
+                # Moonshot's premium tier — $3.00/$15.00 per Mtok on
+                # OpenRouter (repriced from $1.70/$8.50; verified live
+                # 2026-09-22), credit rates at the standard 1.5x margin.
                 cost=CatalogModelCost(
                     run_credits=9,
-                    input_credits_per_1m=255.0,
-                    output_credits_per_1m=1275.0,
-                    provider_input_usd_per_1m=1.70,
-                    provider_output_usd_per_1m=8.50,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
                 ),
             ),
             CatalogModel(
@@ -891,7 +911,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=32768,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=4.5, output_credits_per_1m=19.5
+                    run_credits=1, input_credits_per_1m=2.7, output_credits_per_1m=13.5
                 ),
             ),
             CatalogModel(

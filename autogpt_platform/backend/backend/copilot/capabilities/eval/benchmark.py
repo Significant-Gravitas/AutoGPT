@@ -35,6 +35,9 @@ NAMED_CASES: dict[str, tuple[str, set[str]]] = {
     "send email": ("direct", {"GmailSendBlock", "SendEmailBlock"}),
     "google sheets add row": ("direct", {"GoogleSheetsAppendRowBlock"}),
     "OrchestratorBlock": ("graph", {"OrchestratorBlock"}),
+    # #14646: "save" reached neither the block that saves to the workspace
+    # nor the tool that writes to it.
+    "save file output": ("direct", {"FileStoreBlock", "write_workspace_file"}),
 }
 
 

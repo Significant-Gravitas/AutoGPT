@@ -32,7 +32,6 @@ function makeProps(
     onCancelRename: vi.fn(),
     isExporting: false,
     isDeleting: false,
-    chatSharingEnabled: false,
     chatPinningEnabled: false,
     onPin: vi.fn(),
     onRename: vi.fn(),
@@ -168,17 +167,9 @@ describe("RecentChatItem — actions menu", () => {
     expect(onDelete).toHaveBeenCalledWith("s1", "My chat");
   });
 
-  it("hides the Share action when sharing is disabled", async () => {
-    renderItem(makeProps({ chatSharingEnabled: false }));
-
-    openActions();
-    await screen.findByRole("menuitem", { name: /rename/i });
-    expect(screen.queryByRole("menuitem", { name: /share chat/i })).toBeNull();
-  });
-
-  it("shows and triggers the Share action when sharing is enabled", async () => {
+  it("offers chat sharing without a feature flag", async () => {
     const onShare = vi.fn();
-    renderItem(makeProps({ chatSharingEnabled: true, onShare }));
+    renderItem(makeProps({ onShare }));
 
     openActions();
     fireEvent.click(

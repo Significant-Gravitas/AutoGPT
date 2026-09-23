@@ -45,6 +45,9 @@ export interface DateTimeInputProps {
   id?: string;
   size?: "default" | "small";
   wrapperClassName?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 export const DateTimeInput = ({
@@ -62,10 +65,14 @@ export const DateTimeInput = ({
   id,
   size = "default",
   wrapperClassName,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: DateTimeInputProps) => {
   const selected = React.useMemo(() => parseISODateTimeString(value), [value]);
   const [open, setOpen] = React.useState(false);
   const [timeValue, setTimeValue] = React.useState("");
+  const timeInputId = React.useId();
 
   // Update time value when selected date changes
   React.useEffect(() => {
@@ -180,7 +187,9 @@ export const DateTimeInput = ({
             disabled={isDisabled}
             autoFocus={autoFocus}
             id={id}
-            {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-label={ariaLabel ?? (hideLabel && label ? label : undefined)}
+            aria-labelledby={ariaLabelledBy}
+            aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}
@@ -203,10 +212,14 @@ export const DateTimeInput = ({
               }}
             />
             <div className="mt-3 border-t pt-3">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
+              <label
+                htmlFor={timeInputId}
+                className="mb-2 block text-sm font-medium text-gray-700"
+              >
                 Time
               </label>
               <input
+                id={timeInputId}
                 type="time"
                 value={timeValue}
                 onChange={(e) => handleTimeChange(e.target.value)}

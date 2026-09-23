@@ -25,11 +25,9 @@ import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 import type { MCPToolResponse } from "@/app/api/__generated__/models/mCPToolResponse";
 import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
-  postV2InitiateOauthLoginForAnMcpServer,
-  postV2ExchangeOauthCodeForMcpTokens,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import { connectMCPOAuth } from "@/lib/mcp-oauth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -114,18 +112,20 @@ export function MCPToolDialog({
   } = useMCPAuthScheme(storedAuthScheme, manualToken);
 
   const startOAuthRef = useRef(false);
-  const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
-
-  // Clean up on unmount
+  const oauthRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
   useEffect(() => {
-    return () => {
-      oauthAbortRef.current?.();
-    };
-  }, []);
+    if (!open) {
+      oauthRequest.current?.abort();
+      oauthRequest.current = null;
+      setOauthLoading(false);
+      setLoading(false);
+    }
+  }, [open]);
 
   const reset = useCallback(() => {
-    oauthAbortRef.current?.();
-    oauthAbortRef.current = null;
+    oauthRequest.current?.abort();
+    oauthRequest.current = null;
     setStep("url");
     setServerUrl("");
     setManualToken("");
@@ -274,92 +274,46 @@ export function MCPToolDialog({
   }, [connectWithManualCredential, discoverTools, serverUrl, showManualToken]);
 
   const handleOAuthSignIn = useCallback(async () => {
-    if (!serverUrl.trim()) return;
+    if (!serverUrl.trim() || oauthRequest.current) return;
+    const controller = new AbortController();
+    oauthRequest.current = controller;
+    const { signal } = controller;
     setError(null);
-
-    // Abort any previous OAuth flow
-    oauthAbortRef.current?.();
-
     setOauthLoading(true);
 
     try {
-      // Only a 400 from the *initiate* call means "this server has no OAuth
-      // to offer" and justifies the manual-token fallback.  A 400 later in
-      // the flow is a rejected authorization response — a failed issuer
-      // check, say — and must surface as the error it is rather than an
-      // invitation to paste a credential instead.
-      let loginResponse: Awaited<
-        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
-      >;
-      try {
-        loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
-          server_url: serverUrl.trim(),
-        });
-        if (loginResponse.status !== 200) {
-          throw getAPIResponseError(loginResponse.status, loginResponse.data);
-        }
-      } catch (error: unknown) {
-        if (getErrorStatus(error) === 400) {
-          setShowManualToken(true);
-          setError(
-            "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-          );
-          return;
-        }
-        throw error;
-      }
-      const { login_url, state_token } = loginResponse.data;
-
-      const { promise, cleanup } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        useCrossOriginListeners: true,
+      const credential = await connectMCPOAuth({
+        serverURL: serverUrl.trim(),
+        signal,
+        exchange: allProviders?.mcp?.mcpOAuthCallback,
       });
-      oauthAbortRef.current = cleanup.abort;
-
-      const result = await promise;
-
-      // Exchange code for tokens via the credentials provider (updates cache)
+      signal.throwIfAborted();
+      if ("reason" in credential) {
+        if (credential.noOAuth) setShowManualToken(true);
+        setError(credential.reason);
+        return;
+      }
       setLoading(true);
       setOauthLoading(false);
-
-      const mcpProvider = allProviders?.["mcp"];
-      let callbackResult;
-      if (mcpProvider) {
-        callbackResult = await mcpProvider.mcpOAuthCallback(
-          result.code,
-          state_token,
-          result.iss,
-        );
-      } else {
-        const cbResponse = await postV2ExchangeOauthCodeForMcpTokens({
-          code: result.code,
-          state_token,
-          iss: result.iss,
-        });
-        if (cbResponse.status !== 200) {
-          throw getAPIResponseError(cbResponse.status, cbResponse.data);
-        }
-        callbackResult = cbResponse.data;
-      }
-
       setCredentials({
-        id: callbackResult.id,
-        provider: callbackResult.provider,
-        type: callbackResult.type,
-        title: callbackResult.title,
+        id: credential.id,
+        provider: credential.provider,
+        type: credential.type,
+        title: credential.title,
       });
       setCredentialServerUrl(serverUrl.trim());
       setAuthRequired(false);
-
-      // Discover tools now that we're authenticated
-      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: serverUrl.trim(),
-      });
-      if (toolsResponse.status !== 200) {
-        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      const response = await postV2DiscoverAvailableToolsOnAnMcpServer(
+        { server_url: serverUrl.trim() },
+        { signal },
+      );
+      signal.throwIfAborted();
+      if (response.status !== 200) {
+        throw getAPIResponseError(response.status, response.data);
       }
-      applyDiscoveredTools(toolsResponse);
+      applyDiscoveredTools(response);
     } catch (error: unknown) {
+      if (signal.aborted) return;
       const status = getErrorStatus(error);
       const message = getErrorMessage(error, "Failed to complete sign-in");
       if (message === "OAuth flow timed out") {
@@ -373,9 +327,13 @@ export function MCPToolDialog({
         setError(message);
       }
     } finally {
-      setOauthLoading(false);
-      setLoading(false);
-      oauthAbortRef.current = null;
+      if (oauthRequest.current === controller) {
+        oauthRequest.current = null;
+        if (!signal.aborted) {
+          setOauthLoading(false);
+          setLoading(false);
+        }
+      }
     }
   }, [serverUrl, allProviders, applyDiscoveredTools]);
 

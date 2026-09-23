@@ -27,7 +27,10 @@ import { splitPresetInputs } from "./components/selected-views/SelectedTriggerVi
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
+import {
+  AGENT_LIBRARY_SECTION_PADDING_X,
+  isNewAgentTaskDisabled,
+} from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -46,6 +49,7 @@ export function NewAgentLibraryView() {
     selectedTriggerKind,
     retryTriggerLists,
     sidebarLoading,
+    sidebarHasError,
     activeTab,
     setActiveTab,
     handleSelectRun,
@@ -266,7 +270,12 @@ export function NewAgentLibraryView() {
                   variant="outline"
                   size="small"
                   className="w-full"
-                  disabled={isTemplateLoading && activeTab === "templates"}
+                  disabled={isNewAgentTaskDisabled({
+                    sidebarLoading,
+                    sidebarHasError,
+                    isTemplateLoading,
+                    activeTab,
+                  })}
                 >
                   <Icon icon={PlusSignIcon} size={16} /> New agent task
                 </Button>
@@ -323,6 +332,16 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           )
+        ) : sidebarHasError ? (
+          <SelectedViewLayout
+            agent={agent}
+            banner={renderMarketplaceUpdateBanner()}
+          >
+            <ErrorCard
+              context="agent tasks"
+              hint="Use Try Again in the sidebar to reload your tasks."
+            />
+          </SelectedViewLayout>
         ) : sidebarLoading ? (
           <LoadingSelectedContent agent={agent} />
         ) : activeTab === "scheduled" ? (

@@ -157,6 +157,16 @@ def workspace_db():
     return workspace_db
 
 
+def workspace_skill_db():
+    if db.is_connected():
+        from backend.data import workspace_skill
+
+        return workspace_skill
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def review_db():
     if db.is_connected():
         from backend.data import human_review as _review_db
