@@ -44,6 +44,11 @@ first, for any body not known to fit:
 
 The audit records a swap only for bytes that have not left yet.
 
+What is scrubbed is the owner's current values for the host plus those
+swapped into the flow itself.  When the backend cannot say what the owner's
+values are, a text response is refused and a server websocket message is
+dropped, for an owner who gets swaps: an empty answer is not an empty set.
+
 A value is swapped only into a request that is provably going to the bound
 host: the scheme is https, mitmproxy has verified the upstream certificate
 (its default, never turned off here), and the ``Host`` the request names is
@@ -102,6 +107,8 @@ MAX_BODY_BYTES = 5 * 1024 * 1024
 MAX_DECODED_BYTES = 4 * MAX_BODY_BYTES
 
 _HEAD_SWAPPED = "swap_proxy_head_swapped"
+# The credentials whose values went into this flow, by name.
+_SWAPPED = "swap_proxy_swapped"
 
 
 class BufferedBody:
@@ -155,6 +162,9 @@ class BufferedBody:
         return [*held, chunk] if self._release else []
 
 
+_UNAVAILABLE = "resolver-unavailable"
+
+
 @dataclass
 class _Lookup:
     """The owner's credentials for a host, and why each other name has none."""
@@ -163,6 +173,12 @@ class _Lookup:
     refused: dict[str, str] = field(default_factory=dict)
     # A reason that holds for every name, whatever it is.
     blanket: str = ""
+
+    @property
+    def unavailable(self) -> bool:
+        """The backend could not say, for some name or all of them: what the
+        owner has for this host is unknown, which is not the same as nothing."""
+        return self.blanket == _UNAVAILABLE or _UNAVAILABLE in self.refused.values()
 
     def refusals(self, names: set[str]) -> list[SwapEvent]:
         return [
@@ -306,7 +322,7 @@ class SwapProxyAddon:
             lookup = await self._lookup(flow, owner, host, names)
             swap = RequestSwap(lookup.credentials, host, request.method, request.path)
             swap.head(request)
-            self._audit_events(owner, host, lookup.refusals(names) + swap.events)
+            self._record_swap(flow, owner, host, lookup, names, swap.events)
         if not is_scrubbable(request.headers.get("content-type", "")):
             return  # binary: streams through as it is
         # Every credential the body could name: it is not here to be read yet.
@@ -330,7 +346,7 @@ class SwapProxyAddon:
             swap = RequestSwap(lookup.credentials, host, method, path)
             swap.body(plain)
             named = placeholder_names(plain, head=False)
-            self._audit_events(owner, host, lookup.refusals(named) + swap.events)
+            self._record_swap(flow, owner, host, lookup, named, swap.events)
             if plain.raw_content == before:
                 return body
             put_back(whole, plain)
@@ -379,7 +395,7 @@ class SwapProxyAddon:
             swap.body(plain)
             if plain.raw_content != before:
                 put_back(request, plain)
-        self._audit_events(owner, host, lookup.refusals(names) + swap.events)
+        self._record_swap(flow, owner, host, lookup, names, swap.events)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
         owner = self._owners.get(flow.client_conn)
@@ -396,6 +412,10 @@ class SwapProxyAddon:
         if not message.from_client:
             # What the server says back is scrubbed like a response body.
             credentials = await self._scrub_credentials(flow, owner)
+            if credentials is None:
+                message.drop()
+                self._audit(owner, host, "refused-message", reason=_UNAVAILABLE)
+                return
             scrubbed = scrub_text(text, credentials)
             if scrubbed != text:
                 message.content = scrubbed.encode("utf-8")
@@ -410,7 +430,7 @@ class SwapProxyAddon:
         new_text = swap.text(text)
         if new_text != text:
             message.content = new_text.encode("utf-8")
-        self._audit_events(owner, host, lookup.refusals(names) + swap.events)
+        self._record_swap(flow, owner, host, lookup, names, swap.events)
 
     async def responseheaders(self, flow: http.HTTPFlow) -> None:
         """Before the body arrives: a text response that may echo a value is
@@ -425,16 +445,17 @@ class SwapProxyAddon:
         if size is not None and size <= MAX_BODY_BYTES:
             return  # held whole by mitmproxy; ``response`` scrubs it
         credentials = await self._scrub_credentials(flow, owner)
+
+        def refuse(reason: str) -> bool:
+            self._refuse_response(flow, owner, reason)
+            return False
+
+        if credentials is None:
+            refuse(_UNAVAILABLE)
+            return
         if not credentials:
             return
         host = flow.request.pretty_host
-
-        def refuse(reason: str) -> bool:
-            self._audit(owner, host, "refused-response", reason=reason)
-            if flow.killable:
-                flow.kill()
-            return False
-
         if size is not None:
             refuse("too-large-to-scrub")
             return
@@ -461,19 +482,21 @@ class SwapProxyAddon:
             return
         if response.stream:
             return  # binary, or already handled by ``responseheaders``
-        if not is_scrubbable(response.headers.get("content-type", "")):
+        if not response.raw_content or not is_scrubbable(
+            response.headers.get("content-type", "")
+        ):
             return
         credentials = await self._scrub_credentials(flow, owner)
-        host = flow.request.pretty_host
+        if credentials is None:
+            self._refuse_response(flow, owner, _UNAVAILABLE)
+            return
         try:
             if self._scrub(response, credentials):
-                self._audit(owner, host, "scrubbed")
+                self._audit(owner, flow.request.pretty_host, "scrubbed")
         except (DecodedTooLarge, Undecodable) as e:
             # A body that cannot be read cannot be vouched for: the box could
             # decode what the proxy would not.  Not passed on.
-            self._audit(owner, host, "refused-response", reason=_NOT_READABLE[type(e)])
-            if flow.killable:
-                flow.kill()
+            self._refuse_response(flow, owner, _NOT_READABLE[type(e)])
 
     # ------------------------------------------------------------ helpers
 
@@ -488,10 +511,45 @@ class SwapProxyAddon:
 
     async def _scrub_credentials(
         self, flow: http.HTTPFlow, owner: Owner
-    ) -> list[Credential]:
-        """Every value of the owner's that this host may have been sent."""
+    ) -> Optional[list[Credential]]:
+        """Every value of the owner's that this host may have been sent, and
+        every value swapped into this very flow (a credential rotated since
+        is still scrubbed).
+
+        ``None`` when the backend cannot say, for an owner who gets swaps.  An
+        empty answer would pass the body on as if it had been scrubbed, and a
+        value can come back in a response that did not ask for it: one the
+        box had swapped into something the provider stores (a gist, an issue,
+        a file) comes back from a later, placeholder-free read.  So the
+        caller refuses what it cannot scrub.
+        """
         lookup = await self._lookup(flow, owner, flow.request.pretty_host, None)
-        return list(lookup.credentials.values())
+        if owner.swap_user_id is not None and lookup.unavailable:
+            return None
+        swapped: dict[str, Credential] = flow.metadata.get(_SWAPPED, {})
+        return [*lookup.credentials.values(), *swapped.values()]
+
+    def _refuse_response(self, flow: http.HTTPFlow, owner: Owner, reason: str) -> None:
+        self._audit(owner, flow.request.pretty_host, "refused-response", reason=reason)
+        if flow.killable:
+            flow.kill()
+
+    def _record_swap(
+        self,
+        flow: http.HTTPFlow,
+        owner: Owner,
+        host: str,
+        lookup: _Lookup,
+        names: set[str],
+        events: list[SwapEvent],
+    ) -> None:
+        """Audit a swap and remember which credentials went into the flow."""
+        self._audit_events(owner, host, lookup.refusals(names) + events)
+        swapped = flow.metadata.setdefault(_SWAPPED, {})
+        for event in events:
+            name = event.placeholder.split(":")[1]
+            if event.kind == "swapped" and name in lookup.credentials:
+                swapped[name] = lookup.credentials[name]
 
     @staticmethod
     def _scrub(message: Union[http.Response, http.Request], credentials) -> bool:
@@ -523,7 +581,7 @@ class SwapProxyAddon:
         try:
             bound = await self._source.bound_names(host)
         except SourceUnavailable:
-            return _Lookup(blanket="resolver-unavailable")
+            return _Lookup(blanket=_UNAVAILABLE)
         # A placeholder on its way to a host it is not bound to is the one
         # signal that one went somewhere it should not: ``unbound-host``.
         wanted = bound if names is None else names & bound
@@ -535,7 +593,7 @@ class SwapProxyAddon:
             try:
                 credential = await self._source.resolve(user_id, name, host)
             except SourceUnavailable:
-                lookup.refused[name] = "resolver-unavailable"
+                lookup.refused[name] = _UNAVAILABLE
                 continue
             if credential is None:
                 lookup.refused[name] = "not-connected"

@@ -20,6 +20,7 @@ from swap_proxy.addon import (
 )
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
+from swap_proxy.source import SourceUnavailable
 from swap_proxy.swap import Credential
 
 TOKEN = "ghp_userAsecretvalue0001"
@@ -27,11 +28,23 @@ HOST = "api.github.com"
 
 
 class Source:
+    """*down* makes every value lookup fail, *bindings_down* the table too."""
+
+    def __init__(self):
+        self.token: str | None = TOKEN
+        self.down = self.bindings_down = False
+
     async def bound_names(self, host):
+        if self.bindings_down:
+            raise SourceUnavailable("bindings")
         return {"github"} if host == HOST else set()
 
     async def resolve(self, user_id, name, host):
-        return Credential("github", {"access_token": TOKEN}, (HOST,))
+        if self.down:
+            raise SourceUnavailable("resolve")
+        if self.token is None:
+            return None
+        return Credential("github", {"access_token": self.token}, (HOST,))
 
 
 class NoRedis:
@@ -39,8 +52,10 @@ class NoRedis:
         return None
 
 
-def addon_for(flow: http.HTTPFlow, swaps: bool = True) -> SwapProxyAddon:
-    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), Source(), EgressGuard())
+def addon_for(
+    flow: http.HTTPFlow, swaps: bool = True, source: Source | None = None
+) -> SwapProxyAddon:
+    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source or Source(), EgressGuard())
     addon._owners[flow.client_conn] = Owner("session:s-a", "user-a", "sb-1", swaps)
     flow.request.host, flow.request.scheme = HOST, "https"
     flow.request.headers["host"] = HOST
@@ -470,3 +485,117 @@ async def test_a_response_with_data_after_its_gzip_stream_is_refused(caplog):
         await addon.response(flow)
     assert flow.error is not None
     assert audit(caplog) == [("refused-response", "undecodable-encoding")]
+
+
+# ------------------------------------------------------------ the backend is down
+#
+# An empty answer is not the same as "cannot say".  Scrubbing with nothing
+# would pass an echoed value on as if it had been scrubbed.
+
+
+def text_response(body: bytes, *, chunked: bool = False) -> http.HTTPFlow:
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    flow.live = True
+    flow.response.headers["content-type"] = "application/json"
+    flow.response.raw_content = body
+    if chunked:
+        del flow.response.headers["content-length"]
+        flow.response.headers["transfer-encoding"] = "chunked"
+    else:
+        flow.response.headers["content-length"] = str(len(body))
+    return flow
+
+
+@pytest.mark.parametrize("which", ["down", "bindings_down"])
+async def test_a_response_the_backend_cannot_vouch_for_is_refused(caplog, which):
+    source = Source()
+    setattr(source, which, True)
+    flow = text_response(b'{"echo": "%s"}' % TOKEN.encode())
+    addon = addon_for(flow, source=source)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        await addon.response(flow)
+    assert flow.error is not None and not flow.killable
+    assert audit(caplog) == [("refused-response", "resolver-unavailable")]
+
+
+async def test_a_response_without_a_length_is_refused_before_its_body(caplog):
+    source = Source()
+    source.down = True
+    flow = text_response(b"", chunked=True)
+    addon = addon_for(flow, source=source)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "resolver-unavailable")]
+
+
+async def test_a_value_the_box_stored_earlier_is_not_read_back_during_an_outage():
+    """The read carries no placeholder, so nothing was swapped into it; the
+    value came from an earlier write.  Only the lookup could have caught it."""
+    source = Source()
+    source.down = True
+    flow = text_response(b'{"gist": "%s"}' % TOKEN.encode())
+    flow.request.headers.pop("authorization", None)
+    await addon_for(flow, source=source).response(flow)
+    assert flow.error is not None
+
+
+@pytest.mark.parametrize(
+    "body, swaps", [(b"", True), (b'{"echo": "%s"}' % TOKEN.encode(), False)]
+)
+async def test_an_outage_refuses_nothing_there_is_nothing_to_scrub_in(body, swaps):
+    """An empty body, or a box that never gets swaps: no value of the user's
+    can have reached either, so an outage is no reason to cut it off."""
+    source = Source()
+    source.down = source.bindings_down = True
+    flow = text_response(body)
+    addon = addon_for(flow, swaps=swaps, source=source)
+    await addon.responseheaders(flow)
+    await addon.response(flow)
+    assert flow.error is None
+    assert flow.response is not None and flow.response.raw_content == body
+
+
+async def test_a_frame_from_the_server_the_backend_cannot_vouch_for_is_dropped(
+    caplog,
+):
+    source = Source()
+    source.down = True
+    flow = websocket_flow('{"ack": "%s"}' % TOKEN, from_client=False)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow, source=source).websocket_message(flow)
+    assert flow.websocket is not None and flow.websocket.messages[-1].dropped
+    assert audit(caplog) == [("refused-message", "resolver-unavailable")]
+
+
+async def test_during_an_outage_a_request_still_goes_out_unswapped(caplog):
+    source = Source()
+    source.down = True
+    flow = tflow.tflow()
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow, source=source).request(flow)
+    assert flow.error is None
+    assert flow.request.headers["authorization"] == "Bearer hsurr:github"
+    assert audit(caplog) == [("refused", "hsurr:github")]
+
+
+async def test_a_value_swapped_into_the_request_is_scrubbed_after_it_is_rotated(
+    caplog,
+):
+    """Rotated or disconnected between the request and its response: the
+    lookup no longer knows the old value, the flow still does."""
+    source = Source()
+    flow = text_response(b'{"echo": "%s"}' % TOKEN.encode())
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    addon = addon_for(flow, source=source)
+    await addon.request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    source.token = None  # disconnected
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.response(flow)
+    assert flow.response is not None
+    assert flow.response.raw_content == b'{"echo": "hsurr:github"}'
+    assert audit(caplog) == [("scrubbed", None)]

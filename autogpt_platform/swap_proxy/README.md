@@ -28,6 +28,13 @@ users at once.
    bound to. (`swap_proxy/swap.py`, `swap_proxy/source.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it.
+   The values scrubbed are the user's current ones for that host plus any
+   swapped into that very request. If the backend cannot say what the user's
+   values are, a text response with a body is refused (`refused-response` /
+   `resolver-unavailable`) and a server websocket message dropped
+   (`refused-message`), rather than passed on unscrubbed: a value the box once
+   swapped into something the provider stores can come back from a later read
+   that carried no placeholder.
 
 Every swap, scrub and refusal is one JSON line on the `swap_proxy.audit` logger,
 with names and reasons, never values. A swap is recorded only for bytes that had
@@ -193,9 +200,13 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   event stream from a bound host does not arrive incrementally.
 - Websocket messages are swapped and scrubbed one message at a time; a value
   split across two messages is not recognised.
-- If the backend cannot be asked when a response arrives, that response is not
-  scrubbed. Nothing is swapped while the backend is down either, beyond the
-  15 s a fetched value stays cached.
+- While the backend cannot be asked, a box that gets swaps receives no text
+  response with a body and no server websocket message from a bound host
+  (each refused and audited), and nothing is swapped into its requests beyond
+  the 15 s a fetched value stays cached. Binary responses still pass, as they
+  are never scrubbed. Boxes that do not get swaps are unaffected.
+- A body in gzip or zstd may hold at most 64 members or frames; more is
+  treated as undecodable.
 - A connection stays authenticated while it stays open, also after its box's
   credential is rotated.
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged

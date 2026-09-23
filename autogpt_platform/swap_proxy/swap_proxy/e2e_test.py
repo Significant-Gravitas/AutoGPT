@@ -367,13 +367,24 @@ async def test_a_placeholder_for_an_unbound_host_goes_out_literally(stack, caplo
     assert line["owner"] == "session:s-a" and line["placeholder"] == "hsurr:github"
 
 
-async def test_a_backend_that_cannot_be_asked_means_no_swap(stack):
+async def test_a_backend_that_cannot_be_asked_means_no_swap_and_no_answer(
+    stack, caplog
+):
+    """Nothing is swapped in, and what comes back is not passed on: without the
+    backend the proxy cannot tell which of the user's values it might hold."""
     proxy, upstream, source = stack
     source.down = True
-    await socks5_request(
-        proxy.port, *BOX_A, UPSTREAM_HOST, upstream.port, http_get(headers=BEARER)
-    )
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        raw = await socks5_request(
+            proxy.port, *BOX_A, UPSTREAM_HOST, upstream.port, http_get(headers=BEARER)
+        )
     assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
+    assert b"200 OK" not in (raw or b"")
+    events = [(line["event"], line.get("reason")) for line in audit_lines(caplog)]
+    assert events == [
+        ("refused", "resolver-unavailable"),
+        ("refused-response", "resolver-unavailable"),
+    ]
 
 
 async def test_the_audit_names_the_swap_and_never_the_value(stack, caplog):
