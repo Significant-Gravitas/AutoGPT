@@ -415,6 +415,36 @@ async def test_seed_is_idempotent_and_rewrites_the_live_package_in_place(tmp_pat
     ]
 
 
+async def test_seed_delists_a_retired_starter_slug(tmp_path, monkeypatch):
+    """A slug that shipped and was then renamed keeps its listing row, so the
+    seed hides it: delisted and its version unavailable, while the live
+    listings beside it are untouched."""
+    catalog = _write_catalog(tmp_path)
+    await skill_seed.seed_catalog_skills(catalog)
+    (catalog / "catalog.yml").write_text(
+        "skills:\n"
+        "  - slug: brand-voice-guide\n"
+        "    categories: [content]\n"
+        "    required_providers: []\n"
+        "    source: platform\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(skill_seed, "RETIRED_STARTER_SLUGS", ["cold-email"])
+
+    await skill_seed.seed_catalog_skills(catalog)
+
+    retired = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}, include={"ActiveVersion": True}
+    )
+    assert retired is not None and retired.isDeleted
+    assert retired.ActiveVersion is not None and not retired.ActiveVersion.isAvailable
+    live = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "brand-voice-guide"}, include={"ActiveVersion": True}
+    )
+    assert live is not None and not live.isDeleted
+    assert live.ActiveVersion is not None and live.ActiveVersion.isAvailable
+
+
 async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tmp_path):
     catalog = _write_catalog(tmp_path)
     await skill_seed.seed_catalog_skills(catalog)
