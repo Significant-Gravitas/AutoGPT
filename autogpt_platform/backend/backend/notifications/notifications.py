@@ -476,6 +476,7 @@ class NotificationManager(AppService):
         logger.info(f"Starting consumer for queue: {queue_name}")
         slots = asyncio.Semaphore(ordering.concurrency)
         in_flight: set[asyncio.Task[None]] = set()
+        draining = asyncio.Event()
 
         async def handle(message: aio_pika.abc.AbstractIncomingMessage) -> None:
             try:
@@ -490,7 +491,10 @@ class NotificationManager(AppService):
                 # this consumer would be cancelled between their send and
                 # their ack, and redelivered as second emails. Give them the
                 # same bounded grace a shutdown gives, here, before the
-                # exception leaves this task and the group aborts.
+                # exception leaves this task and the group aborts. The grace
+                # covers only the handlers already running, so the loop must
+                # stop starting new ones in the slots they free.
+                draining.set()
                 siblings = in_flight - {asyncio.current_task()}
                 if siblings:
                     await asyncio.wait(siblings, timeout=HANDLER_SHUTDOWN_GRACE_SECONDS)
@@ -513,6 +517,15 @@ class NotificationManager(AppService):
                             if not self.running:
                                 break
                             await slots.acquire()
+                            if draining.is_set():
+                                slots.release()
+                                await self._requeue(message, queue_name)
+                                # Park until the failing handler's grace is
+                                # up and the abort cancels this task. Leaving
+                                # the iterator now would cancel the consumer
+                                # and nack its buffer mid-grace, and anything
+                                # that raised there would abort the grace.
+                                await asyncio.Event().wait()
                             task = group.create_task(handle(message))
                             in_flight.add(task)
                             task.add_done_callback(in_flight.discard)
@@ -646,6 +659,26 @@ class NotificationManager(AppService):
             logger.warning(
                 f"Could not {action} a message in {queue_name}: channel lost, "
                 "the broker will redeliver it"
+            )
+
+    async def _requeue(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        queue_name: str,
+    ) -> None:
+        """Hand back a delivery the consumer pulled but will not work.
+
+        Only reached while the consumer is coming down on another handler's
+        failure, so a nack that fails is logged, not raised: raising would
+        abort the grace the other handlers are settling in, and an unsettled
+        delivery is redelivered once its channel goes anyway.
+        """
+        try:
+            await message.nack(requeue=True)
+        except Exception as e:
+            logger.warning(
+                f"Could not requeue a message in {queue_name}, the broker will "
+                f"redeliver it when the channel closes: {e}"
             )
 
     async def _shutdown_service(self) -> None:

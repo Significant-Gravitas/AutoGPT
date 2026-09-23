@@ -37,7 +37,9 @@ def _manager() -> NotificationManager:
 
 
 def _message(body: str = "{}") -> MagicMock:
-    return MagicMock(body=body.encode(), ack=AsyncMock(), reject=AsyncMock())
+    return MagicMock(
+        body=body.encode(), ack=AsyncMock(), reject=AsyncMock(), nack=AsyncMock()
+    )
 
 
 class _FakeIterator:
@@ -418,6 +420,61 @@ async def test_a_settle_failure_lets_its_siblings_finish_before_taking_them_down
 
     assert raised.value.subgroup(RuntimeError) is not None
     sibling.ack.assert_awaited_once()
+
+
+@pytest.mark.parametrize("requeue_fails", [False, True])
+@pytest.mark.asyncio
+async def test_no_handler_starts_while_a_settle_failure_waits_on_its_siblings(
+    requeue_fails: bool,
+):
+    """The grace covers the handlers running when the settle failed, and no
+    others. Each of those that finishes frees a slot, and a loop still pulling
+    would start the next delivery in it, outside the grace: the abort then
+    cancels that handler between its send and its ack, and the broker
+    redelivers it as a second email. The prefetch is full and more is queued
+    behind it, which is how a large fan-out looks when one ack fails. The
+    channel that failed the ack may fail the requeue too, and that must not
+    cut the grace short either."""
+    manager = _manager()
+    broken = _message("broken")
+    broken.ack.side_effect = RuntimeError("channel is in a bad way")
+    fast = _message("fast")
+    slow = [_message(f"slow-{i}") for i in range(delivery.CONSUMER_CONCURRENCY - 2)]
+    queued = [_message(f"queued-{i}") for i in range(delivery.CONSUMER_CONCURRENCY)]
+    if requeue_fails:
+        queued[0].nack.side_effect = RuntimeError("channel is in a bad way")
+    sent: list[str] = []
+
+    async def send(body: str) -> bool:
+        sent.append(body)
+        # `fast` frees a slot at once; the slow siblings hold the grace open
+        # long enough that anything started in that slot is still mid-send
+        # when the grace ends.
+        await asyncio.sleep(
+            {"broken": 0, "fast": 0.01}.get(body, 0.1 if "slow" in body else 0.5)
+        )
+        return True
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await manager._consume_queue(
+            _queue([broken, fast, *slow, *queued], then_wait=True),
+            send,
+            "q",
+            delivery.Ordering.COMMUTATIVE,
+        )
+
+    assert raised.value.subgroup(RuntimeError) is not None
+    sent_but_unacked = [
+        m.body.decode()
+        for m in [fast, *slow, *queued]
+        if m.body.decode() in sent and not m.ack.await_count
+    ]
+    assert sent_but_unacked == []
+    for sibling in [fast, *slow]:
+        sibling.ack.assert_awaited_once()
+    # The one delivery the loop had already pulled goes straight back to the
+    # queue, rather than sitting unacked on a channel that may outlive it.
+    queued[0].nack.assert_awaited_once_with(requeue=True)
 
 
 @pytest.mark.asyncio
