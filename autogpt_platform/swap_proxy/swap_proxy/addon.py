@@ -63,6 +63,7 @@ presented was valid and the box is the same box; new connections need the new
 one.
 """
 
+import ipaddress
 import json
 import logging
 import weakref
@@ -75,6 +76,7 @@ from mitmproxy import connection, http, tls
 from mitmproxy.net.http.http1.read import expected_http_body_size
 from mitmproxy.proxy import server_hooks
 from mitmproxy.proxy.layers import modes
+from OpenSSL import SSL
 
 from swap_proxy.decode import DecodedTooLarge, Undecodable, bounded_decode
 from swap_proxy.egress import EgressGuard
@@ -220,6 +222,14 @@ def put_back(message: http.Message, plain: http.Message) -> None:
         message.content = plain.raw_content
 
 
+def is_address(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]").split("%")[0])
+    except ValueError:
+        return False
+    return True
+
+
 def known_size(
     request: http.Request, response: Optional[http.Response]
 ) -> Optional[int]:
@@ -256,6 +266,8 @@ class SwapProxyAddon:
         self._owners: weakref.WeakKeyDictionary[connection.Client, Owner] = (
             weakref.WeakKeyDictionary()
         )
+        # Connections whose TLS handshake is to be failed (``tls_start_client``).
+        self._refused_tls: weakref.WeakSet[connection.Client] = weakref.WeakSet()
 
     # ------------------------------------------------------------ the door
 
@@ -295,10 +307,19 @@ class SwapProxyAddon:
 
     async def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         sni = data.client_hello.sni
+        owner = self._owners.get(data.context.client)
+        swaps = owner is not None and owner.swap_user_id is not None
         if not sni:
-            # Bindings are names; with none to match, nothing can be swapped
-            # in (``_provably_bound`` needs the SNI) and nothing opened.
-            data.ignore_connection = True
+            # Bindings are names, so with none nothing can be swapped in, and
+            # nothing that comes back can be judged: a box that gets swaps
+            # could reach a bound provider by address and read, unscrubbed,
+            # a value it stored there through an earlier swap.  Refused for
+            # such a box; anyone else's is passed through.
+            if swaps:
+                self._audit(owner, "-", "refused-connection", reason="no-sni")
+                self._refused_tls.add(data.context.client)
+            else:
+                data.ignore_connection = True
             return
         try:
             bound = bool(await self._source.bound_names(sni))
@@ -308,10 +329,20 @@ class SwapProxyAddon:
             # gets swaps it is opened, so that the response hooks refuse what
             # they cannot scrub; passed through, a value stored there earlier
             # would reach the box unread.  Anyone else's is left alone.
-            owner = self._owners.get(data.context.client)
-            bound = owner is not None and owner.swap_user_id is not None
+            bound = swaps
         if not bound:
             data.ignore_connection = True
+
+    def tls_start_client(self, data: tls.TlsData) -> None:
+        """Runs after mitmproxy's own ``tlsconfig`` has built the connection,
+        and swaps it for one with no certificate: the handshake fails with an
+        alert and mitmproxy closes the connection, so a refused box sees a
+        clean TLS error.  (Leaving ``ssl_conn`` empty instead, which mitmproxy
+        also treats as a failure, leaves the box waiting.)"""
+        if data.context.client in self._refused_tls:
+            refused = SSL.Connection(SSL.Context(SSL.TLS_SERVER_METHOD))
+            refused.set_accept_state()
+            data.ssl_conn = refused
 
     # ------------------------------------------------------------ the swap
 
@@ -323,6 +354,16 @@ class SwapProxyAddon:
             flow.kill()
             return
         request = flow.request
+        if (
+            owner.swap_user_id is not None
+            and request.scheme == "http"
+            and is_address(request.pretty_host)
+        ):
+            # Plain http names no host a binding could match either: the
+            # same case as TLS without SNI, refused for the same box.
+            self._audit(owner, request.pretty_host, "refused-request", reason="no-sni")
+            flow.kill()
+            return
         size = known_size(request, None)
         if size is not None and size <= MAX_BODY_BYTES:
             return
@@ -534,11 +575,19 @@ class SwapProxyAddon:
         a file) comes back from a later, placeholder-free read.  So the
         caller refuses what it cannot scrub.
         """
-        lookup = await self._lookup(flow, owner, flow.request.pretty_host, None)
-        if owner.swap_user_id is not None and lookup.unavailable:
-            return None
+        # The host the request names and the one the connection named, since
+        # the two need not agree (and over plain http nothing proves either).
+        hosts = {flow.request.pretty_host.lower()}
+        if flow.server_conn.sni:
+            hosts.add(flow.server_conn.sni.lower())
+        credentials: list[Credential] = []
+        for host in sorted(hosts):
+            lookup = await self._lookup(flow, owner, host, None, proof=False)
+            if owner.swap_user_id is not None and lookup.unavailable:
+                return None
+            credentials += lookup.credentials.values()
         swapped: dict[str, Credential] = flow.metadata.get(_SWAPPED, {})
-        return [*lookup.credentials.values(), *swapped.values()]
+        return [*credentials, *swapped.values()]
 
     def _refuse_response(self, flow: http.HTTPFlow, owner: Owner, reason: str) -> None:
         self._audit(owner, flow.request.pretty_host, "refused-response", reason=reason)
@@ -583,11 +632,20 @@ class SwapProxyAddon:
         return True
 
     async def _lookup(
-        self, flow: http.HTTPFlow, owner: Owner, host: str, names: Optional[set[str]]
+        self,
+        flow: http.HTTPFlow,
+        owner: Owner,
+        host: str,
+        names: Optional[set[str]],
+        *,
+        proof: bool = True,
     ) -> _Lookup:
         """The owner's credentials among *names* that may go to *host*, and the
-        reason for every name left out.  ``None`` asks for all bound to it."""
-        if not self._provably_bound(flow):
+        reason for every name left out.  ``None`` asks for all bound to it.
+
+        *proof* is for a swap: only where the connection proves the host.  A
+        scrub asks without it, since removing a value never sends one."""
+        if proof and not self._provably_bound(flow):
             return _Lookup(blanket="unverified-destination")
         try:
             bound = await self._source.bound_names(host)

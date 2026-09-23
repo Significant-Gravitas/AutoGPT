@@ -29,7 +29,9 @@ users at once.
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it.
    The values scrubbed are the user's current ones for that host plus any
-   swapped into that very request. If the backend cannot say what the user's
+   swapped into that very request. The host is the one the request and the
+   connection name, proven or not: over plain http too, since removing a value
+   never sends one. If the backend cannot say what the user's
    values are, a text response with a body is refused (`refused-response` /
    `resolver-unavailable`) and a server websocket message dropped
    (`refused-message`), rather than passed on unscrubbed: a value the box once
@@ -211,8 +213,12 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   the backend first answers.
 - Only bound hosts are scrubbed. A value the box wrote to a provider through a
   bound host and that the provider serves back from a host that is not bound
-  (a raw-content domain, say) passes through unread; so does anything over a
-  TLS connection without SNI.
+  (a raw-content domain, say) passes through unread. The name is the box's to
+  choose: TLS to a provider's address under an SNI that is not bound, or plain
+  http with such a `Host`, is the same case. For a box that gets swaps, TLS
+  with no SNI at all and plain http to a bare address are refused
+  (`refused-connection` / `refused-request`, reason `no-sni`); that narrows
+  the case, it does not close it.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
 - A connection stays authenticated while it stays open, also after its box's

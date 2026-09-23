@@ -8,11 +8,12 @@ packages = [{ include = "swap_proxy" }]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"
-# Both come with mitmproxy; named because decode.py uses them directly, and
-# brotli's bounded decode (output_buffer_limit) needs 1.2.
+# These three come with mitmproxy; named because decode.py and addon.py use
+# them directly, and brotli's bounded decode (output_buffer_limit) needs 1.2.
 brotli = ">=1.2.0"
 httpx = "^0.28.1"
 mitmproxy = "^12.2.3"
+pyopenssl = ">=24"
 redis = "^8.1.0"
 zstandard = ">=0.23.0"
 

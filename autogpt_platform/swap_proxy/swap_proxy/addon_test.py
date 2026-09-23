@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from mitmproxy import http
 from mitmproxy.test import tflow
+from OpenSSL import SSL
 from wsproto.frame_protocol import Opcode
 
 from swap_proxy.addon import (
@@ -607,29 +608,64 @@ async def test_a_value_swapped_into_the_request_is_scrubbed_after_it_is_rotated(
 
 
 @pytest.mark.parametrize(
-    "sni, bindings_down, swaps, opened",
+    "sni, bindings_down, swaps, outcome",
     [
-        (HOST, False, True, True),
-        (HOST, False, False, True),  # bound: opened, so a stray placeholder is audited
-        ("example.com", False, True, False),
+        (HOST, False, True, "opened"),
+        # Bound: opened, so a stray placeholder is audited.
+        (HOST, False, False, "opened"),
+        ("example.com", False, True, "passed"),
         # No table yet: unknown whether bound.  Opened only where a response
         # could hold a value of the owner's, so that it is refused.
-        ("example.com", True, True, True),
-        ("example.com", True, False, False),
-        # No name to bind to: nothing can be swapped in, nothing is opened.
-        (None, False, True, False),
-        (None, True, True, False),
+        ("example.com", True, True, "opened"),
+        ("example.com", True, False, "passed"),
+        # No name: nothing that comes back could be judged.  Refused for a
+        # box that gets swaps, passed through for any other.
+        (None, False, True, "refused"),
+        (None, True, True, "refused"),
+        (None, False, False, "passed"),
     ],
 )
-async def test_which_connections_are_opened(sni, bindings_down, swaps, opened):
+async def test_which_connections_are_opened(caplog, sni, bindings_down, swaps, outcome):
     flow = tflow.tflow()
     source = Source()
     source.bindings_down = bindings_down
     addon = addon_for(flow, swaps=swaps, source=source)
-    data: Any = SimpleNamespace(
-        client_hello=SimpleNamespace(sni=sni),
-        context=SimpleNamespace(client=flow.client_conn),
-        ignore_connection=False,
+    context = SimpleNamespace(client=flow.client_conn)
+    hello: Any = SimpleNamespace(
+        client_hello=SimpleNamespace(sni=sni), context=context, ignore_connection=False
     )
-    await addon.tls_clienthello(data)
-    assert data.ignore_connection is not opened
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.tls_clienthello(hello)
+    start: Any = SimpleNamespace(context=context, ssl_conn=object())
+    addon.tls_start_client(start)
+    seen = (
+        "passed"
+        if hello.ignore_connection
+        else "refused" if isinstance(start.ssl_conn, SSL.Connection) else "opened"
+    )
+    assert seen == outcome
+    refusals = [("refused-connection", "no-sni")] if outcome == "refused" else []
+    assert audit(caplog) == refusals
+
+
+@pytest.mark.parametrize(
+    "host, swaps, killed",
+    [
+        ("140.82.112.5", True, True),
+        ("[2606:50c0:8000::154]", True, True),
+        ("140.82.112.5", False, False),
+        ("api.github.com", True, False),
+    ],
+)
+async def test_plain_http_by_address_is_refused_for_a_box_that_swaps(
+    caplog, host, swaps, killed
+):
+    flow = tflow.tflow()
+    addon = addon_for(flow, swaps=swaps)
+    flow.request.scheme = "http"
+    flow.request.host = host.strip("[]")
+    flow.request.headers["host"] = host
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+    assert (flow.error is not None) is killed
+    assert audit(caplog) == ([("refused-request", "no-sni")] if killed else [])

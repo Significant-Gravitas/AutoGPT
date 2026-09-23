@@ -208,17 +208,21 @@ async def test_plain_http_proves_nothing_so_nothing_is_swapped(tmp_path, caplog)
     proxy = Proxy(redis, source, allow=["127.0.0.0/8"], allow_insecure_swap=False)
     await proxy.start(tmp_path)
     redis.add_box(*BOX_A, "user-a", "session:s-a")
+    # What the provider holds from an earlier swap comes back over http too.
+    upstream.stored = TOKEN_A
     try:
         with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
-            await socks5_request(
+            raw = await socks5_request(
                 proxy.port, *BOX_A, BOUND, upstream.port, http_get(headers=BEARER)
             )
     finally:
         await proxy.stop()
         await upstream.stop()
     assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
-    assert source.asked == []
     assert '"reason": "unverified-destination"' in caplog.text
+    # Looked up to scrub, which sends nothing: the box gets the placeholder.
+    assert TOKEN_A.encode() not in (raw or b"")
+    assert body_of(raw)["stored"] == "hsurr:github"
 
 
 async def test_a_cold_start_outage_still_opens_a_swapping_boxs_connection(
@@ -248,3 +252,49 @@ async def test_a_cold_start_outage_leaves_a_box_that_does_not_swap_alone(tls_sta
         proxy.port, BOX_D, upstream.port, BOUND, http_get(), upstream_ca
     )
     assert issuer == "test upstream CA" and b"200 OK" in raw
+
+
+async def tls_request_without_sni(proxy_port, box, dest_port, trust) -> bytes:
+    """As ``tls_request``, but connecting by address and sending no SNI."""
+    reader, writer = await asyncio.open_connection("127.0.0.1", proxy_port)
+    try:
+        u, p = box[0].encode(), box[1].encode()
+        writer.write(b"\x05\x01\x02")
+        assert await reader.readexactly(2) == b"\x05\x02"
+        writer.write(b"\x01" + bytes([len(u)]) + u + bytes([len(p)]) + p)
+        assert await reader.readexactly(2) == b"\x01\x00"
+        writer.write(b"\x05\x01\x00\x01" + bytes([127, 0, 0, 1]))
+        writer.write(dest_port.to_bytes(2, "big"))
+        assert (await reader.readexactly(10))[1] == 0
+        context = ssl.create_default_context(cafile=str(trust))
+        context.check_hostname = False  # an address, and nothing to match
+        await asyncio.wait_for(
+            writer.start_tls(context, server_hostname=None), timeout=10
+        )
+        writer.write(http_get(host="127.0.0.1"))
+        await writer.drain()
+        return await asyncio.wait_for(reader.read(), timeout=10)
+    finally:
+        writer.close()
+
+
+async def test_tls_without_sni_from_a_box_that_swaps_is_refused(tls_stack, caplog):
+    """By address, a bound provider could hand back a value stored through an
+    earlier swap, and with no name nothing that comes back can be judged."""
+    proxy, upstream, upstream_ca, mitm_ca = tls_stack
+    upstream.stored = TOKEN_A
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        for trust in (mitm_ca, upstream_ca):
+            with pytest.raises((ssl.SSLError, ConnectionError)):
+                await tls_request_without_sni(proxy.port, BOX_A, upstream.port, trust)
+    assert upstream.seen == []
+    events = [(line["event"], line.get("reason")) for line in audit_lines(caplog)]
+    assert events == [("refused-connection", "no-sni")] * 2
+
+
+async def test_tls_without_sni_from_a_box_that_does_not_swap_passes_through(
+    tls_stack,
+):
+    proxy, upstream, upstream_ca, _ = tls_stack
+    raw = await tls_request_without_sni(proxy.port, BOX_D, upstream.port, upstream_ca)
+    assert b"200 OK" in raw
