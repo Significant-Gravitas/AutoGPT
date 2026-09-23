@@ -308,11 +308,13 @@ export function AppSidebar(props: Props) {
             </SidebarGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={workspaceLinks} />
-            </CollapsibleNavGroup>
-          </motion.div>
+          {workspaceLinks.length > 0 ? (
+            <motion.div variants={itemVariants}>
+              <CollapsibleNavGroup label="Workspace">
+                <NavMenu links={workspaceLinks} />
+              </CollapsibleNavGroup>
+            </motion.div>
+          ) : null}
 
           <motion.div
             variants={itemVariants}
