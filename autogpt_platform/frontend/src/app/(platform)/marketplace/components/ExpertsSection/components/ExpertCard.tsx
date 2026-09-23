@@ -111,52 +111,55 @@ export function ExpertCard({ expert, isHired }: Props) {
         </div>
 
         {skills.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-4">
-            {/* The same chip the filters wear, so a skill on a card and a
-                topic in the header read as one family. */}
-            {skills.slice(0, NAMED_SKILLS).map((skill) => (
-              <span
-                key={skill.id}
-                className={cn(
-                  CHIP_SHAPE,
-                  CHIP_SIZE.small,
-                  "h-6 max-w-full border-transparent px-0",
-                )}
-              >
-                <Icon
-                  icon={Book04Icon}
-                  size={12}
-                  className="shrink-0 text-zinc-400"
-                  aria-hidden
-                />
-                <span className="truncate">{skill.title}</span>
-              </span>
-            ))}
-            {restSkills.length > 0 ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    className={cn(
-                      CHIP_SHAPE,
-                      CHIP_SIZE.small,
-                      "pointer-events-auto h-6 cursor-default border-transparent px-0 text-zinc-500",
-                    )}
-                  >
-                    +{restSkills.length} skills
-                  </span>
-                </TooltipTrigger>
-                {/* Portalled: the card clips its own overflow. */}
-                <TooltipPortal>
-                  <TooltipContent side="top">
-                    <ul className="space-y-0.5">
-                      {restSkills.map((skill) => (
-                        <li key={skill.id}>{skill.title}</li>
-                      ))}
-                    </ul>
-                  </TooltipContent>
-                </TooltipPortal>
-              </Tooltip>
-            ) : null}
+          <div>
+            <div className="mb-1 text-sm text-zinc-500">Skills:</div>
+            <div className="flex flex-wrap items-center gap-x-4">
+              {/* The area's own glyph, so the skills read as that area's
+                  work rather than as a second, unrelated list. */}
+              {skills.slice(0, NAMED_SKILLS).map((skill) => (
+                <span
+                  key={skill.id}
+                  className={cn(
+                    CHIP_SHAPE,
+                    CHIP_SIZE.small,
+                    "h-6 max-w-full border-transparent px-0",
+                  )}
+                >
+                  <Icon
+                    icon={areaAccent.icon ?? Book04Icon}
+                    size={12}
+                    className={cn("shrink-0", areaAccent.accent.icon)}
+                    aria-hidden
+                  />
+                  <span className="truncate">{skill.title}</span>
+                </span>
+              ))}
+              {restSkills.length > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className={cn(
+                        CHIP_SHAPE,
+                        CHIP_SIZE.small,
+                        "pointer-events-auto h-6 cursor-default border-transparent px-0 text-zinc-500",
+                      )}
+                    >
+                      +{restSkills.length} skills
+                    </span>
+                  </TooltipTrigger>
+                  {/* Portalled: the card clips its own overflow. */}
+                  <TooltipPortal>
+                    <TooltipContent side="top">
+                      <ul className="space-y-0.5">
+                        {restSkills.map((skill) => (
+                          <li key={skill.id}>{skill.title}</li>
+                        ))}
+                      </ul>
+                    </TooltipContent>
+                  </TooltipPortal>
+                </Tooltip>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
