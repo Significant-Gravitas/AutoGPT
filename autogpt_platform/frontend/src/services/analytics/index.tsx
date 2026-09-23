@@ -6,11 +6,14 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { hasConsentFor } from "@/services/consent/consent";
+import {
+  hasConsentFor,
+  isConsentManagerConfigured,
+} from "@/services/consent/consent";
 import Script from "next/script";
 import { environment } from "../environment";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
-import { isTourPath } from "./loading-policy";
+import { isDataFastConsentExempt } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
@@ -119,6 +122,15 @@ let datafastQueueOverflowWarned = false;
 
 function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   if (typeof window === "undefined") return;
+  // Checked on every event, not only before the script loads: a script the
+  // tour loaded stays on window after navigating away from it, and must not
+  // carry events the visitor never agreed to. Pre-consent events must not
+  // queue either — they would be replayed once consent is granted.
+  const consentExempt = isDataFastConsentExempt(
+    window.location.pathname,
+    isConsentManagerConfigured(),
+  );
+  if (!consentExempt && !hasConsentFor("analytics")) return;
   if (window.datafast) {
     // Self-heal if the Script's onLoad never fired (e.g. consent toggle
     // remounted it after the script had already loaded): replay the backlog
@@ -129,11 +141,7 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
   }
   // The script loads afterInteractive, so mount-time events (tour_start,
   // tour_scenario_start) fire before window.datafast exists. Queue them and
-  // flush from the Script's onLoad instead of dropping them. Pre-consent
-  // events must not queue — they would be replayed once consent is granted.
-  // /tour is exempt: it loads DataFast without consent by design.
-  const consentExempt = isTourPath(window.location.pathname);
-  if (!consentExempt && !hasConsentFor("analytics")) return;
+  // flush from the Script's onLoad instead of dropping them.
   if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) {
     if (!datafastQueueOverflowWarned) {
       datafastQueueOverflowWarned = true;

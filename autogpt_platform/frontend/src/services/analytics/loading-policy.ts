@@ -26,17 +26,27 @@ export function resolveAnalyticsLoading({
     googleTag:
       (isProductionDomain && isConsentManaged) ||
       (isLocal && consent.analytics),
-    // TODO(SECRT-2713): the public tour loads DataFast without the consent
-    // gate so tour funnel events fire for first-touch visitors. The old
-    // banner stayed hidden on /tour; Cookiebot's does not, so revisit this
-    // exemption there.
-    dataFast: isProductionDomain && (consent.analytics || isTourPath(pathname)),
+    dataFast:
+      isProductionDomain &&
+      (consent.analytics ||
+        isDataFastConsentExempt(pathname, isConsentManaged)),
   };
+}
+
+// TODO(SECRT-2713): the public tour loads DataFast without the consent gate
+// so tour funnel events fire for first-touch visitors. The old banner stayed
+// hidden on /tour; Cookiebot's does not, so revisit this exemption there.
+// Without a banner nothing optional loads, the tour included.
+export function isDataFastConsentExempt(
+  pathname: string | null,
+  isConsentManaged: boolean,
+): boolean {
+  return isConsentManaged && isTourPath(pathname);
 }
 
 // Segment-boundary match: /tourism must not inherit the tour's consent
 // exemption.
-export function isTourPath(pathname: string | null): boolean {
+function isTourPath(pathname: string | null): boolean {
   if (!pathname) return false;
   return pathname === "/tour" || pathname.startsWith("/tour/");
 }
