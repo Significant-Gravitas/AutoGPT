@@ -2250,7 +2250,10 @@ def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
     errors = [r for r in results if isinstance(r, StreamError)]
     assert len(errors) == 1
     assert errors[0].code == "max_budget_exhausted"
-    assert "budget" in errors[0].errorText.lower()
+    assert "spending limit" in errors[0].errorText.lower()
+    assert "follow-up" in errors[0].errorText
+    assert "account" in errors[0].errorText
+    assert "billing window" not in errors[0].errorText
     # Must NOT shadow with empty_completion overlay.
     assert all(e.code != "empty_completion" for e in errors)
 
