@@ -234,6 +234,9 @@ async def migrate_legacy_triggered_graphs():
     logger.info(f"Migrated {n_migrated_webhooks} node triggers to triggered presets")
 
 
+_BACKFILL_PAGE_SIZE = 100
+
+
 async def migrate_flat_triggered_preset_inputs():
     """Nest legacy flat trigger configs under their per-node input mask key.
 
@@ -243,6 +246,7 @@ async def migrate_flat_triggered_preset_inputs():
     instead, so a trigger block added after that migration needs no new one.
     """
     from prisma.models import AgentNodeExecutionInputOutput, AgentPreset
+    from prisma.types import AgentPresetWhereInput
 
     from backend.api.features.library.model import (
         NODE_INPUT_MASK_PREFIX,
@@ -254,69 +258,79 @@ async def migrate_flat_triggered_preset_inputs():
     from backend.data.model import is_credentials_field_name
     from backend.util.json import SafeJson
 
-    unwrapped_presets = await AgentPreset.prisma().find_many(
-        where={
-            "isDeleted": False,
-            "AgentGraph": {
-                "is": {
-                    "Nodes": {
-                        "some": {"agentBlockId": {"in": [*get_webhook_block_ids()]}}
-                    }
-                }
-            },
-            "InputPresets": {"none": {"name": {"startswith": NODE_INPUT_MASK_PREFIX}}},
-            # A run-template preset sits on a trigger-bearing graph and is
-            # refused below on every boot; excluding it here keeps the converged
-            # scan empty. Attached = triggered; detached needs a trigger field.
-            "OR": [
-                {"NOT": [{"webhookId": None}]},
-                {
-                    "InputPresets": {
-                        "some": {"name": {"in": _trigger_config_field_names()}}
-                    }
-                },
-            ],
+    where: AgentPresetWhereInput = {
+        "isDeleted": False,
+        "AgentGraph": {
+            "is": {
+                "Nodes": {"some": {"agentBlockId": {"in": [*get_webhook_block_ids()]}}}
+            }
         },
-        include={"InputPresets": True},
-    )
+        "InputPresets": {"none": {"name": {"startswith": NODE_INPUT_MASK_PREFIX}}},
+        # A run-template preset sits on a trigger-bearing graph and is
+        # refused below on every boot; excluding it here keeps the converged
+        # scan empty. Attached = triggered; detached needs a trigger field.
+        "OR": [
+            {"NOT": [{"webhookId": None}]},
+            {"InputPresets": {"some": {"name": {"in": _trigger_config_field_names()}}}},
+        ],
+    }
 
     n_migrated, n_failed = 0, 0
+    last_id: str | None = None
+    # Paged by id so a timeout keeps every committed row and the next boot
+    # resumes; converted rows leave the query, so a converged scan is one query.
+    while True:
+        page = await AgentPreset.prisma().find_many(
+            where=(
+                AgentPresetWhereInput(**where, id={"gt": last_id}) if last_id else where
+            ),
+            include={"InputPresets": True},
+            order={"id": "asc"},
+            take=_BACKFILL_PAGE_SIZE,
+        )
+        for preset in page:
+            try:
+                graph = await get_graph(
+                    preset.agentGraphId,
+                    version=preset.agentGraphVersion,
+                    user_id=preset.userId,
+                )
+                if not graph or not (trigger_node := graph.webhook_input_node):
+                    continue
 
-    for preset in unwrapped_presets:
-        try:
-            graph = await get_graph(
-                preset.agentGraphId,
-                version=preset.agentGraphVersion,
-                user_id=preset.userId,
-            )
-            if not graph or not (trigger_node := graph.webhook_input_node):
+                config_rows = [
+                    row
+                    for row in (preset.InputPresets or [])
+                    if not is_credentials_field_name(row.name)
+                ]
+                if not _holds_flat_trigger_config(preset, config_rows, graph):
+                    continue
+
+                async with transaction() as tx:
+                    await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
+                        where={"id": {"in": [row.id for row in config_rows]}}
+                    )
+                    await AgentNodeExecutionInputOutput.prisma(tx).create(
+                        data={
+                            "name": node_input_mask_key(trigger_node.id),
+                            "data": SafeJson(
+                                {row.name: row.data for row in config_rows}
+                            ),
+                            "agentPresetId": preset.id,
+                        }
+                    )
+
+                n_migrated += 1
+            except Exception as e:
+                n_failed += 1
+                logger.error(
+                    f"Failed to wrap trigger config of preset #{preset.id}: {e}"
+                )
                 continue
 
-            config_rows = [
-                row
-                for row in (preset.InputPresets or [])
-                if not is_credentials_field_name(row.name)
-            ]
-            if not _holds_flat_trigger_config(preset, config_rows, graph):
-                continue
-
-            async with transaction() as tx:
-                await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
-                    where={"id": {"in": [row.id for row in config_rows]}}
-                )
-                await AgentNodeExecutionInputOutput.prisma(tx).create(
-                    data={
-                        "name": node_input_mask_key(trigger_node.id),
-                        "data": SafeJson({row.name: row.data for row in config_rows}),
-                        "agentPresetId": preset.id,
-                    }
-                )
-
-            n_migrated += 1
-        except Exception as e:
-            n_failed += 1
-            logger.error(f"Failed to wrap trigger config of preset #{preset.id}: {e}")
-            continue
+        if len(page) < _BACKFILL_PAGE_SIZE:
+            break
+        last_id = page[-1].id
 
     if n_migrated or n_failed:
         logger.info(

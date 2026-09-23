@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
@@ -229,6 +230,45 @@ async def test_backfill_wraps_a_preset_the_sql_migration_missed():
     assert io_model.prisma.return_value.delete_many.await_args.kwargs["where"] == {
         "id": {"in": ["r1", "r2"]}
     }
+
+
+@pytest.mark.asyncio
+async def test_backfill_keeps_a_committed_page_when_the_budget_runs_out():
+    """Boot bounds the backfill with `wait_for`, so the scan must be paged: a
+    fetch that outlives the budget before any row commits never makes progress."""
+    first = _preset(webhook_id="wh-1", rows=[_Row("r1", "repo", "owner/repo")])
+    first.id = "preset-a"
+
+    async def find_many(**kwargs):
+        # An unbounded fetch, or any page after the first, outlives the budget.
+        if "take" not in kwargs or "id" in kwargs["where"]:
+            await asyncio.Event().wait()
+        return [first]
+
+    presets = MagicMock()
+    presets.prisma.return_value.find_many = find_many
+    io_model = MagicMock()
+    io_model.prisma.return_value.delete_many = AsyncMock()
+    io_model.prisma.return_value.create = AsyncMock()
+
+    with (
+        patch("prisma.models.AgentPreset", presets),
+        patch("prisma.models.AgentNodeExecutionInputOutput", io_model),
+        patch("backend.data.graph.get_graph", AsyncMock(return_value=_graph())),
+        patch("backend.blocks.get_webhook_block_ids", return_value=["block-1"]),
+        patch("backend.data.db.transaction", _null_transaction),
+        patch.object(webhooks_utils, "_BACKFILL_PAGE_SIZE", 1),
+        pytest.raises(asyncio.TimeoutError),
+    ):
+        await asyncio.wait_for(
+            webhooks_utils.migrate_flat_triggered_preset_inputs(), timeout=1
+        )
+
+    io_model.prisma.return_value.create.assert_awaited_once()
+    assert (
+        io_model.prisma.return_value.create.await_args.kwargs["data"]["agentPresetId"]
+        == "preset-a"
+    )
 
 
 def test_trigger_field_prefilter_covers_every_trigger_block():
