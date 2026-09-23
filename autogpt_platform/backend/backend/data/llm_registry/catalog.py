@@ -506,7 +506,7 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=22.5,
+                    input_credits_per_1m=11.85,
                     output_credits_per_1m=90.0,
                     cache_read_credits_per_1m=0.45,
                 ),
