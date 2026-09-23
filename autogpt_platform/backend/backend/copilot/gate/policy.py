@@ -174,6 +174,16 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
 }
 
 
+# A paid read with no subject to price it: consult_teammate is one bounded
+# call on the cheap aux model, well under a cent.
+_ESTIMATES = {"consult_teammate": 10_000}
+
+
+def estimate_for(tool_name: str) -> int:
+    """What one call of a tool is expected to cost, in microdollars."""
+    return _ESTIMATES.get(tool_name, 0)
+
+
 def effect_for(tool_name: str) -> Effect:
     # A tool nobody classified is a platform edit: judged in Auto, asked in Ask First.
     return _EFFECTS.get(tool_name, Effect.PLATFORM)

@@ -46,12 +46,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
+from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.rate_limit import get_global_rate_limits, get_remaining_usd_budget
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# One credit is $0.01.
+MICRODOLLARS_PER_CREDIT = 10_000
 
 # One bound for every spawn kind; ``expert_delegation`` re-exports it as the
 # chain bound. The provenance walk there only counts cross-expert hops — this
@@ -356,6 +361,11 @@ class TreeLedger:
             return
         await self._hincrby(key, "spent", microdollars)
 
+    async def raise_ceiling(self, tree_id: str, microdollars: int) -> None:
+        key = self.key(tree_id)
+        if await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
+            await self._hincrby(key, "ceiling", microdollars)
+
     async def claim_wrapup(self, tree_id: str) -> bool:
         """True for the one turn that first crosses the wrap-up threshold.
 
@@ -484,12 +494,13 @@ async def admit_turn(
 ) -> None:
     """Admit a spawned turn against its tree, opening the tree on first use.
 
-    Roots never touch the ledger: the per-user rate limit already gates
-    them, and the tree only needs to exist once something is spawned. So
-    the HTTP route, the scheduler and ``AutoPilotBlock`` pay nothing here,
-    and a spawned turn fails closed when the ledger is unreachable.
+    Roots never touch the ledger unless auto mode meters them: the per-user
+    rate limit already gates them, and the tree only needs to exist once
+    something is spawned. A spawned turn fails closed when the ledger is
+    unreachable; a root never does.
     """
     if envelope.depth == 0:
+        await _open_metered_root(envelope, user_id, ledger)
         return
     try:
         ledger = ledger or await get_tree_ledger()
@@ -509,6 +520,63 @@ async def admit_turn(
         raise TreeRefusal(
             "Could not account for this work right now; try again shortly."
         ) from e
+
+
+async def _open_metered_root(
+    envelope: TurnEnvelope, user_id: str | None, ledger: TreeLedger | None
+) -> None:
+    """Under auto mode a root turn's own spend is metered from its first call,
+    so a paid read can ask once it passes the ceiling."""
+    try:
+        if not await meters_spend(user_id):
+            return
+        ledger = ledger or await get_tree_ledger()
+        await ledger.open(
+            envelope.tree_id,
+            ceiling_microdollars=await resolve_root_ceiling_microdollars(user_id),
+            max_nodes=config.tree_max_nodes,
+            initial_nodes=1,
+        )
+    except Exception as e:
+        logger.warning(f"Could not open the tree for root {envelope.tree_id}: {e}")
+
+
+async def meters_spend(user_id: str | None) -> bool:
+    if not user_id:
+        return False
+    return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+async def charge_credits(user_id: str | None, credits: int) -> None:
+    """Charge block or workflow spend to the running turn's tree, beside the
+    model tokens ``token_tracking`` charges there."""
+    envelope = get_current_envelope()
+    if credits <= 0 or envelope is None or not await meters_spend(user_id):
+        return
+    await charge_turn(envelope, credits * MICRODOLLARS_PER_CREDIT)
+
+
+async def spent_past_ceiling() -> tuple[int, int] | None:
+    """``(spent, ceiling)`` once the running turn's tree has spent its
+    ceiling; None under it, or where no tree meters this turn."""
+    envelope = get_current_envelope()
+    if envelope is None:
+        return None
+    snapshot = await (await get_tree_ledger()).snapshot(envelope.tree_id)
+    if "ceiling" not in snapshot:
+        return None
+    spent, ceiling = snapshot.get("spent", 0), snapshot["ceiling"]
+    return (spent, ceiling) if spent >= ceiling else None
+
+
+async def raise_ceiling(microdollars: int) -> None:
+    envelope = get_current_envelope()
+    if envelope is None:
+        return
+    try:
+        await (await get_tree_ledger()).raise_ceiling(envelope.tree_id, microdollars)
+    except Exception as e:
+        logger.warning(f"Could not raise the ceiling of {envelope.tree_id}: {e}")
 
 
 async def release_turn(envelope: TurnEnvelope) -> None:

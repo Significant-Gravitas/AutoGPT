@@ -20,6 +20,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
@@ -31,6 +32,7 @@ from .policy import (
     Effect,
     Verdict,
     effect_for,
+    estimate_for,
     verdict_for_effect,
 )
 from .subject import Subject
@@ -52,6 +54,8 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# One approval of a paid read over the ceiling buys one more dollar.
+CEILING_UNIT_MICRODOLLARS = 1_000_000
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
 # The user's own word on the subject in this chat outranks the mode's rule.
 _RULE_VERDICTS = {"allow": Verdict.RUN, "judge": Verdict.JUDGE, "ask": Verdict.ASK}
@@ -111,6 +115,8 @@ async def check_action(
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
         if await review_store.consume(review_id, user_id):
+            if review_store.is_spend_card(review):
+                await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True)
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
@@ -132,8 +138,14 @@ async def check_action(
         await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
     )
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    estimate = subject.estimate if subject is not None else estimate_for(tool_name)
+    spend = None
+    if effect is Effect.READ and estimate > 0 and mode != "unsupervised":
+        spend = await spent_past_ceiling()
     if rule == "ask":
         reason = "You declined this action earlier in this chat."
+    elif spend is not None:
+        reason = _money_reason(estimate, *spend)
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
@@ -155,7 +167,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
     )
-    return await _park(call, user_id, session, reason, subject)
+    return await _park(call, user_id, session, reason, subject, spend is not None)
 
 
 async def _park(
@@ -164,12 +176,20 @@ async def _park(
     session: ChatSession,
     reason: str,
     subject: Subject | None,
+    over_ceiling: bool = False,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     if not await review_store.open_review(
-        call.review_id, user_id, session, call.tool_name, call.args, reason, subject
+        call.review_id,
+        user_id,
+        session,
+        call.tool_name,
+        call.args,
+        reason,
+        subject,
+        over_ceiling=over_ceiling,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(allowed=False, reason=reason, review_id=call.review_id)
@@ -188,6 +208,17 @@ def refusal_message(reason: str, review_id: str | None) -> str:
         "<held_call_result> naming this call. Carry on with whatever does not "
         "depend on it. Do not retry it or reach the same effect another way."
     )
+
+
+def _money_reason(estimate: int, spent: int, ceiling: int) -> str:
+    return (
+        f"costs about {_dollars(estimate)}, and this task has spent "
+        f"{_dollars(spent)} of its {_dollars(ceiling)} ceiling"
+    )
+
+
+def _dollars(microdollars: int) -> str:
+    return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
 def _last_user_message(session: ChatSession) -> str:

@@ -40,6 +40,7 @@ _MAX_ARG_CHARS = 4_000
 # An approval must not run a call long after the user gave it; the answered
 # card's turn normally runs it within seconds.
 APPROVAL_TTL = timedelta(hours=1)
+_OVER_CEILING = "over_ceiling"
 
 
 def session_exec_id(session_id: str) -> str:
@@ -69,7 +70,10 @@ def review_id_for(
 
 
 def review_payload(
-    tool_name: str, args: dict[str, Any], subject: "Subject | None" = None
+    tool_name: str,
+    args: dict[str, Any],
+    subject: "Subject | None" = None,
+    over_ceiling: bool = False,
 ) -> dict[str, Any]:
     """Nest the arguments one level down, and redact secret-shaped keys.
 
@@ -84,7 +88,14 @@ def review_payload(
     payload: dict[str, Any] = {"tool": tool_name, "arguments": shown}
     if subject is not None:
         payload["subject"] = subject.model_dump(mode="json", include={"name", "effect"})
+    if over_ceiling:
+        payload[_OVER_CEILING] = True
     return payload
+
+
+def is_spend_card(review: PendingHumanReviewModel) -> bool:
+    """The card asked because the turn was over its spend ceiling."""
+    return isinstance(review.payload, dict) and bool(review.payload.get(_OVER_CEILING))
 
 
 def instructions_for(tool_name: str, reason: str, label: str | None = None) -> str:
@@ -163,13 +174,14 @@ async def open_review(
     args: dict[str, Any],
     reason: str,
     subject: "Subject | None" = None,
+    over_ceiling: bool = False,
 ) -> bool:
     """Park the call for approval. False means nothing was recorded."""
     return await open_review_row(
         review_id,
         user_id,
         session,
-        review_payload(tool_name, args, subject),
+        review_payload(tool_name, args, subject, over_ceiling),
         instructions_for(tool_name, reason, subject.name if subject else None),
     )
 

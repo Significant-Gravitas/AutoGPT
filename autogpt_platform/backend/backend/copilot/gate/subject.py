@@ -5,12 +5,14 @@ decides on that subject's effect, and the card's headline names it.
 """
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
+from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
+from backend.executor.utils import block_usage_cost
 from backend.integrations.mcp_catalog import mcp_tool_effect
 
 from .effects import block_effect, graph_effect
@@ -30,6 +32,9 @@ class Subject(BaseModel):
     effect: Effect
     # The line the card shows under the name; empty where nothing asks.
     reason: str = ""
+    # What one call is expected to cost, in microdollars; a paid read asks
+    # once the turn's tree is over its ceiling.
+    estimate: int = 0
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
@@ -44,6 +49,7 @@ def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
         name=display_name(block),
         effect=_gate_effect(effect),
         reason=_reason(effect, block, culprit=None),
+        estimate=_priced(effect, lambda: block_usage_cost(block, inputs)[0]),
     )
 
 
@@ -55,6 +61,7 @@ def workflow_subject(graph: "GraphModel", *, schedules: bool = False) -> Subject
         name=graph.name or "Untitled workflow",
         effect=_gate_effect(effect),
         reason=_reason(effect, decided_by, culprit=decided_by),
+        estimate=0 if schedules else _priced(effect, lambda: graph_cost_credits(graph)),
     )
     if schedules and subject.effect in (Effect.READ, Effect.WORKSPACE):
         return subject.model_copy(
@@ -84,6 +91,15 @@ def mcp_subject(server_url: str, tool: str) -> Subject:
     return subject
 
 
+def graph_cost_credits(graph: "GraphModel") -> int:
+    """A workflow run's pre-flight estimate: every node once, sub-graphs included."""
+    return sum(
+        block_usage_cost(node.block, node.input_default)[0]
+        for each in (graph, *graph.sub_graphs)
+        for node in each.nodes
+    )
+
+
 def display_name(block: Block) -> str:
     """``GmailSendBlock`` -> ``Gmail Send``; the card drops any headline
     containing "Block", so the suffix must go."""
@@ -98,6 +114,13 @@ _EFFECTS = {
     BlockEffect.PLATFORM: Effect.PLATFORM,
     BlockEffect.EXTERNAL: Effect.EXTERNAL,
 }
+
+
+def _priced(effect: BlockEffect | None, credits: Callable[[], int]) -> int:
+    # Pure computation never consults money.
+    if effect is BlockEffect.NONE:
+        return 0
+    return credits() * MICRODOLLARS_PER_CREDIT
 
 
 def _gate_effect(effect: BlockEffect | None) -> Effect:

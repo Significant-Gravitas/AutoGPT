@@ -175,7 +175,9 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
     assert _headline(gate).endswith("— cannot be taken back")
     gate.open_review.assert_awaited_once()
 
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.APPROVED)
+    gate.find_review.return_value = SimpleNamespace(
+        status=ReviewStatus.APPROVED, payload={}
+    )
     approved = await _call(_session(), _GITHUB, "merge_pull_request", {"n": 7})
     assert not _is_held(approved)
     ran.assert_awaited_once()
@@ -184,7 +186,9 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
 
 async def test_an_approved_first_use_runs_without_a_second_card(gate, ran):
     """The server-side review would ask again for an uncatalogued server."""
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.APPROVED)
+    gate.find_review.return_value = SimpleNamespace(
+        status=ReviewStatus.APPROVED, payload={}
+    )
     result = await _call(_session(), _OPEN_WORLD, "do_thing")
     assert not _is_held(result)
     ran.assert_awaited_once()
@@ -208,7 +212,7 @@ async def test_listing_a_servers_tools_never_asks(gate, ran):
 async def _answer_with_rule(gate, rule: chat_rules.ChatRule) -> None:
     """What the approve endpoint does for the card the gate just opened."""
     subject = gate.open_review.await_args.args[6]
-    row = SimpleNamespace(status=ReviewStatus.APPROVED)
+    row = SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
     await chat_rules.set_answer_rules(
         "session-1", {"r": row}, {"r": rule}, {"r": subject.key}
     )
