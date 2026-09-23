@@ -7,6 +7,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import {
   getConsent,
+  getConsentAnswer,
   hasConsentFor,
   isConsentManagerConfigured,
   NO_CONSENT,
@@ -14,10 +15,15 @@ import {
   subscribeToConsent,
   toConsentState,
 } from "./consent";
-import { readConsentFromCookies } from "./consent-server";
+import { readConsentFromCookieHeader } from "./consent-server";
 
 const STATISTICS_ONLY =
   "{stamp:'abc',necessary:true,preferences:false,statistics:true,marketing:false,method:'explicit',ver:1,utc:1,region:'de'}";
+
+const STATISTICS_DENIED = STATISTICS_ONLY.replace(
+  "statistics:true",
+  "statistics:false",
+);
 
 function storeCookie(value: string) {
   document.cookie = `CookieConsent=${encodeURIComponent(value)}; Path=/`;
@@ -26,6 +32,7 @@ function storeCookie(value: string) {
 afterEach(() => {
   removeCookiebot();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("category mapping", () => {
@@ -64,9 +71,7 @@ describe("without a Cookiebot domain group", () => {
   });
 
   it("denies every category on the server too", () => {
-    const store = { get: () => ({ value: "-1" }) };
-
-    expect(readConsentFromCookies(store)).toEqual(NO_CONSENT);
+    expect(readConsentFromCookieHeader("CookieConsent=-1")).toEqual(NO_CONSENT);
   });
 });
 
@@ -99,6 +104,49 @@ describe("with a Cookiebot domain group", () => {
     installCookiebot();
 
     expect(getConsent()).toEqual(NO_CONSENT);
+    expect(getConsentAnswer()).toBeNull();
+  });
+
+  it("ignores a stored grant the loaded script no longer accepts", () => {
+    // Cookiebot withdraws an answer after a banner version bump, an expiry
+    // or a region change and asks again, leaving the old cookie in place
+    // until the visitor answers.
+    configureCookiebot();
+    storeCookie(STATISTICS_ONLY);
+    installCookiebot();
+
+    expect(getConsent()).toEqual(NO_CONSENT);
+    expect(getConsentAnswer()).toBeNull();
+    expect(hasConsentFor("analytics")).toBe(false);
+  });
+
+  it("falls back to the stored answer only while the script is absent", () => {
+    configureCookiebot();
+    storeCookie(STATISTICS_ONLY);
+
+    expect(hasConsentFor("analytics")).toBe(true);
+
+    installCookiebot();
+    expect(hasConsentFor("analytics")).toBe(false);
+
+    removeCookiebot();
+    storeCookie(STATISTICS_ONLY);
+    expect(hasConsentFor("analytics")).toBe(true);
+  });
+
+  it("reports the answer, or null when there is none", () => {
+    configureCookiebot();
+    expect(getConsentAnswer()).toBeNull();
+
+    storeCookie(STATISTICS_DENIED);
+    expect(getConsentAnswer()).toEqual(NO_CONSENT);
+
+    installCookiebot({ marketing: true });
+    expect(getConsentAnswer()).toEqual({
+      analytics: false,
+      monitoring: false,
+      advertising: true,
+    });
   });
 
   it("notifies subscribers on accept and decline, and stops after unsubscribe", () => {
@@ -137,20 +185,42 @@ describe("with a Cookiebot domain group", () => {
 
   it("reads the request cookie on the server", () => {
     configureCookiebot();
-    const store = {
-      get: (name: string) =>
-        name === "CookieConsent"
-          ? { value: encodeURIComponent(STATISTICS_ONLY) }
-          : undefined,
-    };
+    const header = `theme=dark; CookieConsent=${encodeURIComponent(STATISTICS_ONLY)}`;
 
-    expect(readConsentFromCookies(store)).toEqual({
+    expect(readConsentFromCookieHeader(header)).toEqual({
       analytics: true,
       monitoring: true,
       advertising: false,
     });
-    expect(readConsentFromCookies({ get: () => undefined })).toEqual(
-      NO_CONSENT,
-    );
+    expect(readConsentFromCookieHeader("theme=dark")).toEqual(NO_CONSENT);
+    expect(readConsentFromCookieHeader(null)).toEqual(NO_CONSENT);
+  });
+
+  it.each([
+    ["the granting copy first", [STATISTICS_ONLY, STATISTICS_DENIED]],
+    ["the granting copy last", [STATISTICS_DENIED, STATISTICS_ONLY]],
+  ])(
+    "denies on client and server alike when duplicate cookies disagree (%s)",
+    (_, [first, second]) => {
+      configureCookiebot();
+      const header = `CookieConsent=${encodeURIComponent(first)}; CookieConsent=${encodeURIComponent(second)}`;
+      vi.spyOn(document, "cookie", "get").mockReturnValue(header);
+
+      expect(getConsent()).toEqual(NO_CONSENT);
+      expect(readConsentFromCookieHeader(header)).toEqual(NO_CONSENT);
+    },
+  );
+
+  it("grants what duplicate cookies agree on", () => {
+    configureCookiebot();
+    const header = `CookieConsent=${encodeURIComponent(STATISTICS_ONLY)}; CookieConsent=-1`;
+    vi.spyOn(document, "cookie", "get").mockReturnValue(header);
+
+    expect(getConsent()).toEqual({
+      analytics: true,
+      monitoring: true,
+      advertising: false,
+    });
+    expect(readConsentFromCookieHeader(header)).toEqual(getConsent());
   });
 });

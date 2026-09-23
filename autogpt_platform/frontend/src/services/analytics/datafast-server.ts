@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import { readConsentFromCookies } from "@/services/consent/consent-server";
+import { requestHasConsentFor } from "@/services/consent/consent-server";
 import { environment } from "@/services/environment";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
@@ -80,8 +80,8 @@ function reportTrackingError(error: unknown) {
 async function getGoalContext(
   method: SignupMethod,
 ): Promise<GoalContext | null> {
+  if (!(await requestHasConsentFor("analytics"))) return null;
   const cookieStore = await cookies();
-  if (!readConsentFromCookies(cookieStore).analytics) return null;
 
   const visitorID = cookieStore.get(DATAFAST_VISITOR_COOKIE)?.value;
   if (!visitorID || !VISITOR_ID_PATTERN.test(visitorID)) return null;

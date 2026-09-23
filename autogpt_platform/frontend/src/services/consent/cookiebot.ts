@@ -4,6 +4,7 @@
 
 export const COOKIEBOT_CONSENT_COOKIE = "CookieConsent";
 export const COOKIEBOT_SCRIPT_URL = "https://consent.cookiebot.com/uc.js";
+export const COOKIEBOT_SCRIPT_ID = "Cookiebot";
 
 // OnAccept/OnDecline also fire on page load for a visitor who answered on an
 // earlier visit; OnConsentReady fires once the stored state is known.
@@ -58,8 +59,11 @@ const LEGACY_DECLINED = "0";
 // The answer itself is a JavaScript object literal, not JSON, usually
 // URL-encoded:
 // {stamp:'…',necessary:true,preferences:false,statistics:true,marketing:false,method:'explicit',ver:1,utc:1724770548958,region:'de'}
-const ENTRY_PATTERN =
-  /([A-Za-z_$][\w$]*)\s*:\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[^,}]*)/g;
+// Newer versions nest more objects inside it (e.g. consentmode:{…}), which can
+// repeat the category names, so only top-level keys count.
+const KEY_PATTERN = /^\s*([A-Za-z_$][\w$]*)\s*:([\s\S]*)$/;
+
+const CATEGORIES = ["preferences", "statistics", "marketing"] as const;
 
 /**
  * Parses the `CookieConsent` cookie Cookiebot stores the visitor's answer in.
@@ -76,20 +80,91 @@ export function parseCookieConsent(
   if (value === LEGACY_DECLINED) return NECESSARY_ONLY;
   if (!value.startsWith("{") || !value.endsWith("}")) return null;
 
-  const entries = new Map<string, string>();
-  for (const [, key, entry] of value.slice(1, -1).matchAll(ENTRY_PATTERN)) {
-    entries.set(key, unquote(entry.trim()));
-  }
+  const entries = readTopLevelEntries(value.slice(1, -1));
+  if (!entries) return null;
+  if (!CATEGORIES.some((category) => entries.has(category))) return null;
 
-  const categories = ["preferences", "statistics", "marketing"] as const;
-  if (!categories.some((category) => entries.has(category))) return null;
+  // A key repeated at the top level only grants when every copy does.
+  const granted = (category: (typeof CATEGORIES)[number]) =>
+    entries.get(category)?.every((entry) => entry === "true") ?? false;
 
   return {
     necessary: true,
-    preferences: entries.get("preferences") === "true",
-    statistics: entries.get("statistics") === "true",
-    marketing: entries.get("marketing") === "true",
+    preferences: granted("preferences"),
+    statistics: granted("statistics"),
+    marketing: granted("marketing"),
   };
+}
+
+/**
+ * Reads every `CookieConsent` entry in a Cookie header or `document.cookie`.
+ * A host-only cookie left beside a domain-wide one after a domain change
+ * sends both; the client and the server both resolve that to whatever every
+ * copy agrees on, so a stale copy can only ever deny.
+ */
+export function parseCookieConsentHeader(
+  cookieHeader: string | null | undefined,
+): CookiebotConsent | null {
+  if (!cookieHeader) return null;
+  const prefix = `${COOKIEBOT_CONSENT_COOKIE}=`;
+  const answers = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(prefix))
+    .map((part) => parseCookieConsent(part.slice(prefix.length)));
+
+  if (!answers.some(Boolean)) return null;
+  return answers.reduce<CookiebotConsent>(
+    (combined, answer) => {
+      const next = answer ?? NECESSARY_ONLY;
+      return {
+        necessary: true,
+        preferences: combined.preferences && next.preferences,
+        statistics: combined.statistics && next.statistics,
+        marketing: combined.marketing && next.marketing,
+      };
+    },
+    { ...ALL_GRANTED },
+  );
+}
+
+// Splits the object literal's body on the commas outside nested objects,
+// arrays and quoted strings. Returns null when the braces or quotes do not
+// balance.
+function readTopLevelEntries(body: string): Map<string, string[]> | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+
+  for (let index = 0; index < body.length; index++) {
+    const char = body[index];
+    if (quote) {
+      if (char === "\\") index++;
+      else if (char === quote) quote = null;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === "{" || char === "[") {
+      depth++;
+    } else if (char === "}" || char === "]") {
+      depth--;
+      if (depth < 0) return null;
+    } else if (char === "," && depth === 0) {
+      parts.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  if (quote || depth !== 0) return null;
+  parts.push(body.slice(start));
+
+  const entries = new Map<string, string[]>();
+  for (const part of parts) {
+    const match = KEY_PATTERN.exec(part);
+    if (!match) continue;
+    const [, key, entry] = match;
+    entries.set(key, [...(entries.get(key) ?? []), unquote(entry.trim())]);
+  }
+  return entries;
 }
 
 function unquote(entry: string): string {

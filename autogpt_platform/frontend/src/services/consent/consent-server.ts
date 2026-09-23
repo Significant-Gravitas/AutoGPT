@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import {
   isConsentManagerConfigured,
   NO_CONSENT,
@@ -6,15 +6,13 @@ import {
   type ConsentCategory,
   type ConsentState,
 } from "./consent";
-import { COOKIEBOT_CONSENT_COOKIE, parseCookieConsent } from "./cookiebot";
-
-interface CookieReader {
-  get(name: string): { value: string } | undefined;
-}
+import { parseCookieConsentHeader } from "./cookiebot";
 
 /** The visitor's consent as sent with the current request, for route handlers and server actions. */
 export async function getRequestConsent(): Promise<ConsentState> {
-  return readConsentFromCookies(await cookies());
+  // The raw header rather than cookies(): that keeps only the last of two
+  // same-named cookies, and the client weighs every copy.
+  return readConsentFromCookieHeader((await headers()).get("cookie"));
 }
 
 export async function requestHasConsentFor(
@@ -23,9 +21,9 @@ export async function requestHasConsentFor(
   return (await getRequestConsent())[category];
 }
 
-export function readConsentFromCookies(store: CookieReader): ConsentState {
+export function readConsentFromCookieHeader(
+  cookieHeader: string | null | undefined,
+): ConsentState {
   if (!isConsentManagerConfigured()) return NO_CONSENT;
-  return toConsentState(
-    parseCookieConsent(store.get(COOKIEBOT_CONSENT_COOKIE)?.value),
-  );
+  return toConsentState(parseCookieConsentHeader(cookieHeader));
 }

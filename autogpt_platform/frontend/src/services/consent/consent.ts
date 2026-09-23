@@ -1,8 +1,7 @@
 import { environment } from "@/services/environment";
 import {
-  COOKIEBOT_CONSENT_COOKIE,
   COOKIEBOT_CONSENT_EVENTS,
-  parseCookieConsent,
+  parseCookieConsentHeader,
   type CookiebotConsent,
 } from "./cookiebot";
 
@@ -44,9 +43,15 @@ export function toConsentState(
 }
 
 export function getConsent(): ConsentState {
-  if (typeof window === "undefined") return NO_CONSENT;
-  if (!isConsentManagerConfigured()) return NO_CONSENT;
-  return toConsentState(readBrowserConsent());
+  return getConsentAnswer() ?? NO_CONSENT;
+}
+
+/** The visitor's answer, or null while there is none to act on. */
+export function getConsentAnswer(): ConsentState | null {
+  if (typeof window === "undefined") return null;
+  if (!isConsentManagerConfigured()) return null;
+  const answer = readBrowserConsent();
+  return answer ? toConsentState(answer) : null;
 }
 
 export function hasConsentFor(category: ConsentCategory): boolean {
@@ -77,20 +82,13 @@ export function openConsentSettings(): void {
   window.Cookiebot?.renew();
 }
 
-// The loaded script is authoritative once the visitor has answered; before it
-// loads (or when an ad blocker stops it) the stored cookie still carries the
-// answer from an earlier visit.
+// Once loaded, the script is authoritative: it also withdraws a stored answer
+// it no longer accepts (a new banner version, an expired answer, a region
+// change) and asks again, while the old cookie stays behind until the visitor
+// answers. Only before it loads, or when a blocker stops it, does the stored
+// cookie speak for the visitor.
 function readBrowserConsent(): CookiebotConsent | null {
   const cookiebot = window.Cookiebot;
-  if (cookiebot?.hasResponse) return cookiebot.consent;
-  return parseCookieConsent(readCookie(COOKIEBOT_CONSENT_COOKIE));
-}
-
-function readCookie(name: string): string | null {
-  const prefix = `${name}=`;
-  const entry = document.cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix));
-  return entry ? entry.slice(prefix.length) : null;
+  if (cookiebot) return cookiebot.hasResponse ? cookiebot.consent : null;
+  return parseCookieConsentHeader(document.cookie);
 }
