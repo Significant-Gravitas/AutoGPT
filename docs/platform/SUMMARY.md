@@ -13,6 +13,7 @@
 * [Templates](templates.md)
 * [Credits & Billing](credits-and-billing.md)
 * [Activation Metrics & Experiments](activation-metrics.md)
+* [PostHog Tracking Plan](tracking-plan.md)
 * [Integrations & Credentials](integrations-and-credentials.md)
 * [Data Flow & Execution](data-flow-and-execution.md)
 * [Sharing & Exporting Agents](sharing-and-exporting.md)

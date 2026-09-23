@@ -23,6 +23,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -291,7 +292,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
                 await client.mark_briefing_delivered(user_id, record.id)
             emit_funnel_event(
                 user_id,
-                "briefing_generated",
+                PostHogEvent.BRIEFING_GENERATED,
                 {"run_count": 0, "decision_count": 0, "has_content": False},
                 (
                     f"briefing_generated:{record.id}"
@@ -313,7 +314,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
             )
         emit_funnel_event(
             user_id,
-            "briefing_generated",
+            PostHogEvent.BRIEFING_GENERATED,
             {
                 "run_count": content.completed_total + content.failed_total,
                 "decision_count": content.decision_total,
@@ -337,7 +338,7 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
     await client.mark_briefing_delivered(user_id, record.id)
     emit_funnel_event(
         user_id,
-        "briefing_delivered",
+        PostHogEvent.BRIEFING_DELIVERED,
         {"briefing_id": record.id},
         f"briefing_delivered:{record.id}",
     )

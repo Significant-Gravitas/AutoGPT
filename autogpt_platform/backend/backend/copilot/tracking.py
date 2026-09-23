@@ -5,6 +5,7 @@ from typing import Any
 
 from backend.util import product_analytics
 from backend.util.posthog_client import get_posthog_client as _get_posthog_client
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def track_user_message(
         }
         client.capture(
             distinct_id=user_id or f"anonymous_{session_id}",
-            event="copilot_message_sent",
+            event=PostHogEvent.COPILOT_MESSAGE_SENT.value,
             properties=properties,
         )
     except Exception as e:
@@ -101,7 +102,7 @@ def track_tool_called(
         )
         client.capture(
             distinct_id=distinct_id,
-            event="copilot_tool_called",
+            event=PostHogEvent.COPILOT_TOOL_CALLED.value,
             properties=properties,
         )
     except Exception as e:
@@ -141,7 +142,7 @@ def track_agent_run_success(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_agent_run_success",
+            event=PostHogEvent.COPILOT_AGENT_RUN_SUCCESS.value,
             properties=properties,
         )
     except Exception as e:
@@ -187,7 +188,7 @@ def track_agent_scheduled(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_agent_scheduled",
+            event=PostHogEvent.COPILOT_AGENT_SCHEDULED.value,
             properties=properties,
         )
     except Exception as e:
@@ -223,7 +224,7 @@ def track_followup_scheduled(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_followup_scheduled",
+            event=PostHogEvent.COPILOT_FOLLOWUP_SCHEDULED.value,
             properties=properties,
         )
     except Exception as e:
@@ -263,7 +264,7 @@ def track_trigger_setup(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_trigger_setup",
+            event=PostHogEvent.COPILOT_TRIGGER_SETUP.value,
             properties=properties,
         )
     except Exception as e:
@@ -303,7 +304,7 @@ def track_library_check_outcome(
         }
         client.capture(
             distinct_id=user_id,
-            event="copilot_library_check_outcome",
+            event=PostHogEvent.COPILOT_LIBRARY_CHECK_OUTCOME.value,
             properties=properties,
         )
     except Exception as e:

@@ -5,6 +5,7 @@ import {
   captureFirstLanding,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
+import { PageEvent } from "@/services/analytics/posthog-events";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -79,7 +80,7 @@ export function PostHogPageViewTracker() {
       if (searchParams && searchParams.toString()) {
         url = url + `?${searchParams.toString()}`;
       }
-      posthog.capture("$pageview", { $current_url: url });
+      posthog.capture(PageEvent.PAGEVIEW, { $current_url: url });
     }
   }, [pathname, searchParams, isPostHogEnabled]);
 
