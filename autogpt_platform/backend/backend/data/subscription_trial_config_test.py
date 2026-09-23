@@ -255,3 +255,38 @@ async def test_offer_that_fails_validation_is_still_an_error():
     errors = [r for r in records if r.levelno >= logging.ERROR]
     assert len(errors) == 1
     assert "Invalid card-required-trial-offer" in errors[0].getMessage()
+
+
+# The live production offer variation, verbatim from LaunchDarkly, and the
+# token dev computes for it before the cap existed.
+LIVE_OFFER = {
+    "allow_existing_beta_users": False,
+    "billing_cycle": "monthly",
+    "daily_cost_limit": 3125000,
+    "duration_days": 7,
+    "new_users_from": "2026-09-06T00:00:00Z",
+    "onboarding_credit_amount": 300,
+    "tier": "PRO",
+    "total_cost_limit": 31250000,
+    "version": "pro-equivalent-v1",
+    "weekly_cost_limit": 15625000,
+    "price_id": "price_live",
+    "unit_amount": 5000,
+    "currency": "usd",
+}
+DEV_TOKEN = "8e7acb63affd0d9ecc34e906a6c4f0fee8c139a1e57431881f83de455aa6a49f"
+
+
+@pytest.mark.parametrize("cap", [None, 0, 500])
+def test_the_cap_never_moves_the_offer_token(cap):
+    """Deploying the cap, or changing it, must not invalidate a shown offer.
+
+    The token gates checkout: a mismatch refuses it with "the offer changed".
+    """
+    offer = {**LIVE_OFFER, **({} if cap is None else {"max_active_trials": cap})}
+    assert trials.AcceptedTrialOffer.model_validate(offer).token == DEV_TOKEN
+
+
+def test_a_real_term_still_moves_the_offer_token():
+    changed = {**LIVE_OFFER, "duration_days": 14}
+    assert trials.AcceptedTrialOffer.model_validate(changed).token != DEV_TOKEN

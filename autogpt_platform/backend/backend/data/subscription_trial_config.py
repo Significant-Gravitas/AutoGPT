@@ -63,7 +63,14 @@ class AcceptedTrialOffer(TrialOffer):
 
     @property
     def token(self) -> str:
-        return sha256(self.model_dump_json().encode()).hexdigest()
+        """A hash of the terms the user is shown and accepts at checkout.
+
+        The cap is our capacity setting, not one of those terms, so it is left
+        out: changing it must not bounce everyone mid-checkout with "the offer
+        changed", and an offer hashes exactly as it did before the cap existed.
+        """
+        terms = self.model_dump_json(exclude={"max_active_trials"})
+        return sha256(terms.encode()).hexdigest()
 
 
 async def get_trial_offer(
