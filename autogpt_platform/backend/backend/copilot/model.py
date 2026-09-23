@@ -337,6 +337,7 @@ def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
     is_user_message: bool,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """Append a user/assistant message to the session if not already present.
 
@@ -351,7 +352,9 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
-    session.messages.append(ChatMessage(role=role, content=message))
+    session.messages.append(
+        ChatMessage(role=role, content=message, metadata=metadata or None)
+    )
     return True
 
 
@@ -546,8 +549,9 @@ class ChatSession(ChatSessionInfo):
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
-        Called by the baseline tool executor **before** the tool actually
-        runs (the announcement is about dispatch, not success).  If the
+        Called by :meth:`BaseTool.execute` — the one path both engines take —
+        after its gates and **before** the tool actually runs (the
+        announcement is about dispatch, not success).  If the
         tool raises, the name stays in the buffer for the rest of the
         turn — that matches the guide-read gate's contract ("was the tool
         called?") but means any future gate wanting *successful*

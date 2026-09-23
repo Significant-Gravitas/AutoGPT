@@ -13,7 +13,8 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
-import { math } from "@streamdown/math";
+import { createMathPlugin } from "@streamdown/math";
+import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
@@ -351,8 +352,12 @@ function ExternalLinkModal({
   );
 }
 
+// Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
+// reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
+const math = createMathPlugin({ singleDollarTextMath: true });
+
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ className, children, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
@@ -384,7 +389,11 @@ export const MessageResponse = memo(
         renderModal: (modalProps) => <ExternalLinkModal {...modalProps} />,
       }}
       {...props}
-    />
+    >
+      {typeof children === "string"
+        ? escapeCurrencyAmounts(children)
+        : children}
+    </Streamdown>
   ),
   (prevProps, nextProps) => prevProps.children === nextProps.children,
 );

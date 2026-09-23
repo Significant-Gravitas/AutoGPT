@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_NOT_INSTALLED = (
     "'{name}' is not installed on this expert. Experts can only run, edit, "
     "and schedule their installed workflows. Install it first with "
-    "install_expert_workflow, from the marketplace or the owner's library."
+    "tool:install_expert_workflow, from the marketplace or the owner's library."
 )
 EXPERT_OWNER_DENIED = (
     "Experts can only manage their own workflows and integrations. Open "
@@ -35,7 +35,7 @@ EXPERT_OWNER_DENIED = (
 )
 EXPERT_REQUIRED = (
     "Name the expert with expert_id. Personal AutoPilot manages experts' "
-    "resources on their behalf; list_team shows their ids."
+    "resources on their behalf; tool:list_team shows their ids."
 )
 
 
@@ -219,7 +219,7 @@ async def install_saved_agent(
             update={
                 "message": (
                     f"{result.message} The agent was saved but could not be "
-                    "installed on this expert; run install_expert_workflow "
+                    "installed on this expert; run tool:install_expert_workflow "
                     f"with library_agent_id='{result.library_agent_id}'."
                 )
             }
@@ -334,5 +334,5 @@ async def ungranted_credential_hint(
         "\n\nThe account already has matching credentials that this expert has "
         f"not been granted:\n{lines}\nAsk the user to grant one on the expert's "
         "Integrations page, or from personal AutoPilot with "
-        "grant_expert_credential."
+        "tool:grant_expert_credential."
     )

@@ -1307,4 +1307,162 @@ describe("ChainActionCard", () => {
       expect(onProceed).toHaveBeenCalledOnce();
     });
   });
+  describe("multi-select questions", () => {
+    const areas = {
+      question: "What areas should they own?",
+      keyword: "areas",
+      options: ["Research", "Outreach", "Reporting"],
+      allow_multiple: true,
+    };
+
+    it("renders the options as checkboxes instead of radios", () => {
+      renderCard({ questions: [questionRequest({ questions: [areas] })] });
+
+      expect(screen.getByRole("checkbox", { name: "Research" })).toBeDefined();
+      expect(screen.queryByRole("radio", { name: "Research" })).toBeNull();
+    });
+
+    it("sends every pick, in the order the options were offered", () => {
+      const request = questionRequest({ questions: [areas] });
+      const { rerender } = renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Reporting" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Reporting"],
+        custom: "",
+      });
+
+      const withOne = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Reporting"], custom: "" } },
+        onAnswer: request.onAnswer,
+      });
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[withOne]}
+          manualProceed={false}
+          isReady
+          onProceed={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+
+      expect(withOne.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research", "Reporting"],
+        custom: "",
+      });
+    });
+
+    it("unticks a pick that is clicked again", () => {
+      const request = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Research", "Outreach"], custom: "" } },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Research" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Outreach"],
+        custom: "",
+      });
+    });
+
+    it("keeps the options on screen while typing an extra answer", () => {
+      const request = questionRequest({
+        questions: [areas],
+        answers: { areas: { selected: ["Research"], custom: "" } },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "Partnerships" },
+      });
+
+      expect(screen.getByRole("checkbox", { name: "Research" })).toBeDefined();
+      expect(request.onAnswer).toHaveBeenLastCalledWith("areas", {
+        selected: ["Research"],
+        custom: "Partnerships",
+      });
+    });
+
+    it("stays on the question after a pick instead of advancing", () => {
+      const request = questionRequest({
+        questions: [areas, { question: "Which region?", keyword: "region" }],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Outreach" }));
+      expect(screen.getByText("What areas should they own?")).toBeDefined();
+      expect(screen.queryByText("Which region?")).toBeNull();
+    });
+
+    it("gates the send button until at least one option is ticked", () => {
+      const { onProceed } = renderCard({
+        questions: [questionRequest({ questions: [areas] })],
+      });
+
+      const send = screen
+        .getByRole("button", { name: "Send answers" })
+        .closest("button") as HTMLButtonElement;
+      expect(send.disabled).toBe(true);
+      fireEvent.click(send);
+      expect(onProceed).not.toHaveBeenCalled();
+    });
+
+    it("sends once the picks are in", () => {
+      const { onProceed } = renderCard({
+        questions: [
+          questionRequest({
+            questions: [areas],
+            answers: {
+              areas: { selected: ["Research", "Outreach"], custom: "" },
+            },
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("leaves a single-select question picking exactly one option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByRole("radio", { name: "Slack" }));
+      expect(request.onAnswer).toHaveBeenLastCalledWith("channel", "Slack");
+      expect(screen.queryByRole("checkbox")).toBeNull();
+    });
+
+    it("ignores the flag on a question with no options", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Anything else?",
+                keyword: "notes",
+                allow_multiple: true,
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(screen.getByRole("textbox")).toBeDefined();
+    });
+  });
 });

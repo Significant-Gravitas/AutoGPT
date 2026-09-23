@@ -254,7 +254,7 @@ class RunMCPToolTool(BaseTool):
                         f"(credential_id={ungranted.id}) is not granted to this "
                         "expert. Ask the user to grant it from the card, on the "
                         "expert's Integrations page, or from personal AutoPilot with "
-                        "grant_expert_credential."
+                        "tool:grant_expert_credential."
                     ),
                 )
         client = (
