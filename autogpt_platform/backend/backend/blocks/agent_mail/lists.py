@@ -181,7 +181,7 @@ class AgentMailCreateListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -348,7 +348,7 @@ class AgentMailDeleteListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,

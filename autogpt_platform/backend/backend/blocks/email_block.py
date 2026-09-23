@@ -97,7 +97,7 @@ class SendEmailBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Email sent successfully")],
             test_mock={"send_email": lambda *args, **kwargs: "Email sent successfully"},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
         )
 
     ALLOWED_SMTP_PORTS = {25, 465, 587, 2525}

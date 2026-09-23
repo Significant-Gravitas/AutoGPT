@@ -75,7 +75,7 @@ class RMFGPayCartBlock(Block):
             categories=CATEGORIES,
             input_schema=RMFGPayCartBlock.Input,
             output_schema=RMFGPayCartBlock.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_input={"cart_id": TEST_CART.id, "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[

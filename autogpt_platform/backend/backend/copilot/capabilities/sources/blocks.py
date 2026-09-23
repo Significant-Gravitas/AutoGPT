@@ -89,7 +89,7 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
             if field not in credential_infos
         ],
         schema_ref=f"block:{block.id}",
-        sensitive=block.is_sensitive_action,
+        sensitive=block.is_irreversible_action,
     )
 
 

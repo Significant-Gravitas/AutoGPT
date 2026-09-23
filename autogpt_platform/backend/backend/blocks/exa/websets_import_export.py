@@ -470,6 +470,7 @@ class ExaDeleteImportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaDeleteImportBlock.Input,
             output_schema=ExaDeleteImportBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

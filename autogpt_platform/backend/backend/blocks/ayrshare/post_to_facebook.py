@@ -113,6 +113,7 @@ class PostToFacebookBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToFacebookBlock.Input,
             output_schema=PostToFacebookBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

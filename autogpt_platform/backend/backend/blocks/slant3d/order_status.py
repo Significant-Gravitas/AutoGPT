@@ -135,6 +135,7 @@ class Slant3DCancelOrderBlock(Slant3DBlockBase):
                     "message": "Order cancelled",
                 }
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -179,7 +180,7 @@ class Slant3DProcessOrderBlock(Slant3DBlockBase):
                     "data": {"publicId": "SLANT_1234567890"}
                 }
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
         )
 
     async def run(

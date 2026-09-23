@@ -1708,6 +1708,7 @@ class GoogleDocsShareBlock(Block):
                     "share_link": "https://docs.google.com/document/d/1abc123def456/edit",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -1841,6 +1842,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
                     "share_link": "https://docs.google.com/document/d/1abc123def456/edit?usp=sharing",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(

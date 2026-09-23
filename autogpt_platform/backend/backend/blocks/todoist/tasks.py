@@ -633,6 +633,7 @@ class TodoistDeleteTaskBlock(Block):
                 ("success", True),
             ],
             test_mock={"delete_task": lambda *args, **kwargs: (True)},
+            is_irreversible_action=True,
         )
 
     @staticmethod

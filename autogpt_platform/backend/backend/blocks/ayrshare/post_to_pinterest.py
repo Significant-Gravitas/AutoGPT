@@ -85,6 +85,7 @@ class PostToPinterestBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToPinterestBlock.Input,
             output_schema=PostToPinterestBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

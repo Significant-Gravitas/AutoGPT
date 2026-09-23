@@ -55,6 +55,7 @@ class PostToBlueskyBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToBlueskyBlock.Input,
             output_schema=PostToBlueskyBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

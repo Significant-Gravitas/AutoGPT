@@ -472,6 +472,7 @@ class ExaDeleteEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteEnrichmentBlock.Input,
             output_schema=ExaDeleteEnrichmentBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

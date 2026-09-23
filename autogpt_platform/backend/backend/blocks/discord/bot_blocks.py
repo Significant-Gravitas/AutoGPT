@@ -233,6 +233,7 @@ class SendDiscordMessageBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def send_message(
@@ -367,6 +368,7 @@ class SendDiscordDMBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def send_dm(self, token: str, user_id: str, message_content: str) -> dict:
@@ -486,6 +488,7 @@ class SendDiscordEmbedBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def send_embed(
@@ -657,6 +660,7 @@ class SendDiscordFileBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def send_file(
@@ -845,6 +849,7 @@ class ReplyToDiscordMessageBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def send_reply(
@@ -1238,6 +1243,7 @@ class CreateDiscordThreadBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def create_thread(

@@ -113,6 +113,7 @@ class PostToXBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToXBlock.Input,
             output_schema=PostToXBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

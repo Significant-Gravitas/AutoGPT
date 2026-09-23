@@ -119,6 +119,7 @@ class AllQuietCreateIncidentBlock(Block):
                 ("on_call_users", []),
             ],
             test_mock={"create_incident": lambda *args, **kwargs: TEST_INCIDENT},
+            is_irreversible_action=True,
         )
 
     @staticmethod

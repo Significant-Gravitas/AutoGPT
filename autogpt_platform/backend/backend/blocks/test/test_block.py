@@ -59,7 +59,7 @@ def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
     delete this case once the render path is re-checked.
     """
     block_instance = block()
-    if not block_instance.is_sensitive_action:
+    if not block_instance.is_irreversible_action:
         return
 
     assert "data" not in block_instance.input_schema.model_fields, (

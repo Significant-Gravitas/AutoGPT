@@ -286,6 +286,7 @@ class TodoistDeleteSectionBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_section": lambda *args, **kwargs: (True)},
+            is_irreversible_action=True,
         )
 
     @staticmethod

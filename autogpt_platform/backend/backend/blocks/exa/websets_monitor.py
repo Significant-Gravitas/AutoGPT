@@ -518,6 +518,7 @@ class ExaDeleteMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteMonitorBlock.Input,
             output_schema=ExaDeleteMonitorBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

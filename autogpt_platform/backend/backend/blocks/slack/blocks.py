@@ -85,21 +85,22 @@ class SendSlackMessageBlock(Block):
             input_schema=SendSlackMessageBlock.Input,
             output_schema=SendSlackMessageBlock.Output,
             test_input={
-                "channel": "C1234567890",
+                "channel": "C1234567890",  # pragma: allowlist secret
                 "text": "Hello from AutoGPT!",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("ts", "1234567890.123456"),
-                ("channel", "C1234567890"),
+                ("channel", "C1234567890"),  # pragma: allowlist secret
             ],
             test_mock={
                 "_post_message": lambda *args, **kwargs: SlackMessageResult(
                     ts="1234567890.123456",
-                    channel="C1234567890",
+                    channel="C1234567890",  # pragma: allowlist secret
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(

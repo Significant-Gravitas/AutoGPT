@@ -110,6 +110,7 @@ class PostToLinkedInBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToLinkedInBlock.Input,
             output_schema=PostToLinkedInBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

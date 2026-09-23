@@ -105,6 +105,7 @@ class PostToInstagramBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToInstagramBlock.Input,
             output_schema=PostToInstagramBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

@@ -377,6 +377,7 @@ class TodoistDeleteLabelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_label": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
         )
 
     @staticmethod
@@ -536,6 +537,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"remove_shared_label": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
         )
 
     @staticmethod
