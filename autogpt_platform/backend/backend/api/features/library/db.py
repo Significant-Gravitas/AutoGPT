@@ -1423,7 +1423,8 @@ async def _fetch_user_folders(
     if extra_where:
         where_clause.update(extra_where)
     if organization_id is not None:
-        # Own rows in this org, plus rows created before org tagging.
+        # Orgless rows show under every org of their owner only (userId is always
+        # in the where); create_folder still writes them, so they are not just legacy.
         where_clause["AND"] = [
             {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
         ]
