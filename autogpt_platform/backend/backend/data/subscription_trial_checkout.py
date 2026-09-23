@@ -25,7 +25,7 @@ from backend.data.subscription_trial import (
 from backend.data.subscription_trial_capacity import (
     TRIAL_FULL,
     TrialCapacityReached,
-    trial_seat_available,
+    renew_trial_seat,
 )
 from backend.data.subscription_trial_config import (
     AcceptedTrialOffer,
@@ -84,7 +84,7 @@ async def _create_trial_checkout(
             raise TrialUnavailable("A trial has already been used for this account")
         if existing.offer.token != offer_token:
             raise TrialUnavailable("Refresh to accept the reserved trial terms")
-        if not await trial_seat_available(offer, trial_id=existing.id):
+        if not await renew_trial_seat(offer, existing.id):
             raise TrialUnavailable(TRIAL_FULL)
         return await _resume_checkout(existing)
     customer_id = await get_stripe_customer_id(user_id)

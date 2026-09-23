@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -125,3 +125,44 @@ async def test_capacity_lock_is_one_global_key():
         await capacity.lock_trial_capacity(tx)
     assert "pg_advisory_xact_lock" in query.await_args.args[0]
     assert query.await_args.args[1] == capacity._CAPACITY_LOCK
+
+
+@pytest.mark.asyncio
+async def test_renewal_without_a_cap_takes_no_lock():
+    with patch.object(capacity, "transaction") as tx:
+        assert await capacity.renew_trial_seat(offer(None), "trial-1") is True
+    tx.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("free", [True, False])
+async def test_renewal_checks_and_restarts_the_hold_under_the_lock(free):
+    """A returner is re-admitted atomically, or not at all."""
+    tx = AsyncMock()
+    calls: list[str] = []
+
+    async def lock(client):
+        assert client is tx
+        calls.append("lock")
+
+    async def seat(capped, *, trial_id, client):
+        assert (trial_id, client) == ("trial-1", tx)
+        calls.append("check")
+        return free
+
+    async def renew(sql, trial_id, *, client):
+        assert "checkout_pending" in sql and '"updatedAt" = NOW()' in sql
+        assert (trial_id, client) == ("trial-1", tx)
+        calls.append("renew")
+        return 1
+
+    transaction = MagicMock()
+    transaction.return_value.__aenter__.return_value = tx
+    with (
+        patch.object(capacity, "transaction", transaction),
+        patch.object(capacity, "lock_trial_capacity", lock),
+        patch.object(capacity, "trial_seat_available", seat),
+        patch.object(capacity, "execute_raw_with_schema", renew),
+    ):
+        assert await capacity.renew_trial_seat(offer(5), "trial-1") is free
+    assert calls == (["lock", "check", "renew"] if free else ["lock", "check"])

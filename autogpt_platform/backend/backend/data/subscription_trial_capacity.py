@@ -17,8 +17,10 @@ Seats are taken under an advisory lock and released by time, never by
 cleanup: an abandoned checkout stops counting once ``CHECKOUT_RESERVATION``
 passes. The window is deliberately much shorter than Stripe's 24h session
 expiry -- a day-long hold would let abandoned carts starve a small cap --
-which means someone who leaves checkout open past the window and returns can
-still complete, pushing the count one over. The cap is a throttle on
+which means someone who leaves checkout open past the window can still
+complete it in that tab, pushing the count one over. Coming back through our
+checkout endpoint instead re-admits them under the lock
+(:func:`renew_trial_seat`), so returners cannot all pass on one free seat. The cap is a throttle on
 enrolment, not an invariant, and it is enforced *before* the card screen so
 that going over costs nothing: no one is ever turned away after paying.
 """
@@ -28,7 +30,7 @@ from datetime import timedelta
 from prisma import Prisma
 from pydantic import BaseModel
 
-from backend.data.db import query_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.subscription_trial_config import TrialOffer
 
 # How long an opened checkout holds a seat. Long enough to type in a card,
@@ -89,6 +91,29 @@ async def trial_seat_available(
     if held_by_others < offer.max_active_trials:
         return True
     return bool(trial_id) and await _holds_seat(trial_id, client=client)
+
+
+async def renew_trial_seat(offer: TrialOffer, trial_id: str) -> bool:
+    """Re-admit the checkout ``trial_id`` under *offer*'s cap and restart its hold.
+
+    A checkout whose hold has lapsed no longer holds a seat, so returners
+    checked without the lock could each pass on the same free seat. The check
+    and the renewal happen together under the capacity lock, in their own
+    short transaction, before any Stripe call.
+    """
+    if offer.max_active_trials is None:
+        return True
+    async with transaction() as tx:
+        await lock_trial_capacity(tx)
+        if not await trial_seat_available(offer, trial_id=trial_id, client=tx):
+            return False
+        await execute_raw_with_schema(
+            'UPDATE {schema_prefix}"SubscriptionTrial" SET "updatedAt" = NOW() '
+            'WHERE "id" = $1 AND "status" = \'checkout_pending\'',
+            trial_id,
+            client=tx,
+        )
+    return True
 
 
 async def lock_trial_capacity(tx: Prisma) -> None:

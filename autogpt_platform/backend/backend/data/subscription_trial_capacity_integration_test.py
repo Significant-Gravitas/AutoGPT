@@ -16,10 +16,12 @@ from prisma.models import SubscriptionTrial, User
 
 from backend.data import db
 from backend.data import subscription_trial as trials
+from backend.data import subscription_trial_capacity as capacity
 from backend.data.subscription_trial import TrialState, reserve_subscription_trial
 from backend.data.subscription_trial_capacity import (
     TrialCapacityReached,
     count_trial_seats,
+    renew_trial_seat,
     trial_seat_available,
 )
 from backend.data.subscription_trial_config import AcceptedTrialOffer
@@ -79,6 +81,15 @@ def offer(max_active_trials: int | None) -> AcceptedTrialOffer:
         unit_amount=2000,
         currency="usd",
         max_active_trials=max_active_trials,
+    )
+
+
+async def lapse(trial_id: str) -> None:
+    """Age a checkout past the reservation window, so it holds no seat."""
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"SubscriptionTrial" '
+        'SET "updatedAt" = NOW() - interval \'31 minutes\' WHERE "id" = $1',
+        trial_id,
     )
 
 
@@ -172,3 +183,40 @@ async def test_the_stored_offer_leaves_the_cap_out(new_user):
     assert isinstance(row.offer, dict)
     assert "max_active_trials" not in row.offer
     assert held.offer.token == offer(500).token
+
+
+@pytest.mark.asyncio
+async def test_two_returners_racing_for_the_last_seat_renew_exactly_one(new_user):
+    first = await reserve(await new_user(), offer(None))
+    second = await reserve(await new_user(), offer(None))
+    await lapse(first.id)
+    await lapse(second.id)
+    # Both holds have lapsed, and exactly one seat is free.
+    capped = offer(await count_trial_seats() + 1)
+
+    counted = 0
+    both_counted = asyncio.Event()
+    real_seat_available = capacity.trial_seat_available
+
+    async def count_then_pause(*args, **kwargs):
+        nonlocal counted
+        free = await real_seat_available(*args, **kwargs)
+        counted += 1
+        if counted == 2:
+            both_counted.set()
+        try:
+            await asyncio.wait_for(both_counted.wait(), timeout=2)
+        except TimeoutError:
+            pass
+        return free
+
+    with patch.object(capacity, "trial_seat_available", count_then_pause):
+        renewed = await asyncio.gather(
+            renew_trial_seat(capped, first.id), renew_trial_seat(capped, second.id)
+        )
+
+    assert sorted(renewed) == [False, True]
+    assert await count_trial_seats() == capped.max_active_trials
+    winner = first if renewed[0] else second
+    # the winner's hold restarted, so it keeps its seat for a new window
+    assert await trial_seat_available(capped, trial_id=winner.id) is True

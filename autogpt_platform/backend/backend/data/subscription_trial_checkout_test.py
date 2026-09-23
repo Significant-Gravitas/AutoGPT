@@ -308,7 +308,7 @@ async def test_resume_is_checked_against_the_current_cap(
         patch.object(checkout, "get_trial_offer", AsyncMock(return_value=capped)),
         patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=trial)),
         patch.object(
-            checkout, "trial_seat_available", AsyncMock(return_value=seat)
+            checkout, "renew_trial_seat", AsyncMock(return_value=seat)
         ) as check,
         patch.object(
             checkout, "_resume_checkout", AsyncMock(return_value="https://x")
@@ -331,6 +331,5 @@ async def test_resume_is_checked_against_the_current_cap(
                     trial.cancel_url,
                     {},
                 )
-    assert check.await_args.args[0] is capped
-    assert check.await_args.kwargs["trial_id"] == trial.id
+    assert check.await_args.args == (capped, trial.id)
     assert resume.await_count == int(resumed)
