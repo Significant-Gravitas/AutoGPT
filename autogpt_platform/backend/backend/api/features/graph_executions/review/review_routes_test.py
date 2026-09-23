@@ -1275,3 +1275,43 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
         wake.assert_awaited_once_with(test_user_id, woken)
     else:
         wake.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+) -> None:
+    """The rule lands on the subject the server wrote on the row."""
+    review = sample_pending_review.model_copy(
+        update={
+            "graph_exec_id": "copilot-session-s1",
+            "payload": {"subject": {"key": "mcp:h/t", "name": "t on h"}},
+        }
+    )
+    routes = "backend.api.features.graph_executions.review.routes"
+    mocker.patch(
+        f"{routes}.get_reviews_by_node_exec_ids",
+        return_value={"test_node_123": review},
+    )
+    mocker.patch(
+        f"{routes}.process_all_reviews_for_execution",
+        return_value={
+            "test_node_123": review.model_copy(update={"status": ReviewStatus.APPROVED})
+        },
+    )
+    mocker.patch(f"{routes}.wake_for_held_calls")
+    set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {"node_exec_id": "test_node_123", "approved": True, "chat_rule": "allow"}
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    set_rule.assert_awaited_once_with("s1", "mcp:h/t", "allow")

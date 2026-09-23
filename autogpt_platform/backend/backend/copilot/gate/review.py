@@ -28,6 +28,8 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .chat_rules import subject_key
+
 if TYPE_CHECKING:
     from .subject import Subject
 
@@ -89,10 +91,7 @@ def review_payload(
 
 def rule_key(review: PendingHumanReviewModel, tool_name: str) -> str:
     """What a rejection of this row sets to ask: its subject, else its tool."""
-    payload = review.payload if isinstance(review.payload, dict) else {}
-    subject = payload.get("subject")
-    key = subject.get("key") if isinstance(subject, dict) else None
-    return key if isinstance(key, str) and key else tool_name
+    return subject_key(review) or tool_name
 
 
 def instructions_for(tool_name: str, reason: str, label: str | None = None) -> str:

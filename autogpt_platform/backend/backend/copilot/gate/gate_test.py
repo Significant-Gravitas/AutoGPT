@@ -57,7 +57,7 @@ def clean_session_state():
         patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.chat_rules.asks", AsyncMock(return_value=False)),
+        patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
     ):
         yield
@@ -213,7 +213,7 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
 async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state, mode):
     supervisor = AsyncMock(return_value=(True, "fine"))
     with (
-        patch(f"{_GATE}.chat_rules.asks", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value="ask")),
         patch(f"{_GATE}.classify", supervisor),
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
@@ -224,8 +224,8 @@ async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state,
 
 async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     """A Redis outage reads as 'asks', which must not turn every search into a card."""
-    asks = AsyncMock(return_value=True)
-    with patch(f"{_GATE}.chat_rules.asks", asks):
+    asks = AsyncMock(return_value="ask")
+    with patch(f"{_GATE}.chat_rules.rule_for", asks):
         decision = await check_action("web_search", {"query": "x"}, "u", _session())
     assert decision.allowed
     asks.assert_not_awaited()

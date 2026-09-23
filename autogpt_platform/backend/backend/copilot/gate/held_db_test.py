@@ -207,7 +207,7 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
 
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
-    assert await chat_rules.asks(session.session_id, _TOOL)
+    assert await chat_rules.rule_for(session.session_id, _TOOL) == "ask"
 
 
 @pytest.mark.asyncio(loop_scope="session")

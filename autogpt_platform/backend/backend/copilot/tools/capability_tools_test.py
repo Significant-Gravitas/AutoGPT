@@ -697,11 +697,16 @@ async def test_run_mcp_open_world_write_pauses_for_review():
     run.assert_not_awaited()
 
 
-async def test_run_mcp_open_world_read_runs():
-    out = MCPToolOutputResponse(message="done", server_url="u", tool_name="list_things")
-    with patch(
-        "backend.copilot.tools.run_capability.RunMCPToolTool._execute",
-        AsyncMock(return_value=out),
+async def test_run_mcp_open_world_read_shaped_name_still_pauses():
+    """A tool's name is no evidence of what it does."""
+    with (
+        patch(
+            "backend.copilot.tools.run_capability.RunMCPToolTool._execute", AsyncMock()
+        ) as run,
+        patch(
+            "backend.copilot.tools.run_capability.open_mcp_review",
+            AsyncMock(return_value="copilot-mcp-x:1"),
+        ),
     ):
         result = await RunCapabilityTool()._execute(
             USER,
@@ -709,7 +714,8 @@ async def test_run_mcp_open_world_read_runs():
             id="https://mcp.example.com/mcp",
             input={"tool": "list_things"},
         )
-    assert result is out
+    assert isinstance(result, ReviewRequiredResponse)
+    run.assert_not_awaited()
 
 
 async def test_run_mcp_validate_only_describes_input_shape():

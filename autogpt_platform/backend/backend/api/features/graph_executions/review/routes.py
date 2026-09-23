@@ -11,6 +11,7 @@ from backend.copilot.constants import (
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
+from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
@@ -323,6 +324,13 @@ async def process_review_action(
         for review in updated_reviews.values()
         if review.status == ReviewStatus.REJECTED
     )
+
+    if graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+        await set_chat_rules(
+            graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX),
+            updated_reviews,
+            {review.node_exec_id: review.chat_rule for review in request.reviews},
+        )
 
     # A held call finishes on its own: the answer starts the chat's next turn.
     if graph_exec_id.startswith(COPILOT_SESSION_PREFIX) and updated_reviews:
