@@ -38,7 +38,7 @@ _KEY = "copilot:gate:held:"
 # PendingMessage caps content at 32,000 characters.
 _MAX_RESULT_CHARS = 30_000
 
-WAKE_MESSAGE = "I answered the actions that were waiting for my approval."
+WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 
 
 class HeldCall(BaseModel):
