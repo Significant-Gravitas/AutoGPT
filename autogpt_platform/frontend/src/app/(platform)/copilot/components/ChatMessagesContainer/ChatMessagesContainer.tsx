@@ -22,6 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import {
+  extractGraphExecId,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
@@ -142,50 +143,6 @@ interface Props {
   /** Hosts that already name the thread (e.g. the expert chat drawer)
    *  turn the floating identity chip off. */
   showThreadHeader?: boolean;
-}
-
-/**
- * Extract graph_exec_id from tool outputs that need review.
- * Handles both:
- * - run_block ReviewRequiredResponse (has graph_exec_id directly)
- * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
- */
-function extractGraphExecId(
-  messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): string | null {
-  // Scan backwards — the most recent review output has the ID
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    for (const part of msg.parts) {
-      if ("output" in part && part.output) {
-        const out =
-          typeof part.output === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(part.output);
-                } catch {
-                  return null;
-                }
-              })()
-            : part.output;
-        if (out && typeof out === "object") {
-          // run_block: ReviewRequiredResponse has graph_exec_id
-          if ("graph_exec_id" in out) {
-            return (out as { graph_exec_id: string }).graph_exec_id;
-          }
-          // run_agent: ExecutionStartedResponse with status "REVIEW"
-          if (
-            "execution_id" in out &&
-            "status" in out &&
-            (out as { status: string }).status === "REVIEW"
-          ) {
-            return (out as { execution_id: string }).execution_id;
-          }
-        }
-      }
-    }
-  }
-  return null;
 }
 
 // Max consecutive auto-triggered loads where the container remains

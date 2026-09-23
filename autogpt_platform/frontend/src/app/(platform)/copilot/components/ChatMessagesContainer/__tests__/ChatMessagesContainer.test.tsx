@@ -135,6 +135,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
+  extractGraphExecId: () => null,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,

@@ -427,3 +427,51 @@ export function resolveWorkspaceUrls(
 
   return resolved;
 }
+
+/**
+ * Extract the graph_exec_id whose pending reviews the chat should show.
+ * - run_block ReviewRequiredResponse (has graph_exec_id directly)
+ * - run_agent ExecutionStartedResponse (has execution_id): one already in
+ *   REVIEW wins; otherwise the latest run still in flight, since a run
+ *   AutoPilot starts can pause at an irreversible block after it started.
+ */
+export function extractGraphExecId(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): string | null {
+  let latestInFlight: string | null = null;
+  // Scan backwards — the most recent review output has the ID
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    for (const part of msg.parts) {
+      if ("output" in part && part.output) {
+        const out =
+          typeof part.output === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(part.output);
+                } catch {
+                  return null;
+                }
+              })()
+            : part.output;
+        if (out && typeof out === "object") {
+          // run_block: ReviewRequiredResponse has graph_exec_id
+          if ("graph_exec_id" in out) {
+            return (out as { graph_exec_id: string }).graph_exec_id;
+          }
+          if ("execution_id" in out && "status" in out) {
+            const { execution_id, status } = out as {
+              execution_id: string;
+              status: string;
+            };
+            if (status === "REVIEW") return execution_id;
+            if (IN_FLIGHT_STATUSES.has(status)) latestInFlight ??= execution_id;
+          }
+        }
+      }
+    }
+  }
+  return latestInFlight;
+}
+
+const IN_FLIGHT_STATUSES = new Set(["QUEUED", "RUNNING", "INCOMPLETE"]);
