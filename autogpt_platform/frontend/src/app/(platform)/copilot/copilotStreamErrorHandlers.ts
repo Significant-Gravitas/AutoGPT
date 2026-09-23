@@ -165,11 +165,10 @@ interface HandleStreamErrorArgs {
  * (or rate-limit UI), and decides whether to retry via reconnect.
  *
  * Dispatch order (exclusive branches):
- *  0. A typed provider-failure envelope → its own copy. Preferred over
- *     everything below, which is guesswork from error text.
- *  1. `usage limit` substring → rate-limit UI via `onRateLimit`.
- *  2. 401 / auth failure → auth-error toast.
- *  3. `[code:<id>]` backend prefix → curated or generic backend toast.
+ *  0. A typed provider-failure envelope → its own copy.
+ *  1. `[code:<id>]` backend prefix → curated or generic backend toast.
+ *  2. Legacy `usage limit` substring → rate-limit UI via `onRateLimit`.
+ *  3. Legacy 401 / auth failure → auth-error toast.
  *  4. TypeError / AbortError / "connection interrupted" → reconnect.
  *  5. Anything else silently falls through (the AI-SDK also surfaces
  *     `error` into the hook's `error` return, which drives the inline
@@ -220,6 +219,7 @@ export function handleStreamError({
     return;
   }
 
+  // 1. Coded backend errors take precedence over message-text heuristics.
   const { code: backendCode, message: backendMessage } =
     parseBackendErrorCode(errorDetail);
   if (backendCode) {
@@ -233,7 +233,7 @@ export function handleStreamError({
     return;
   }
 
-  // 1. Rate limit (FastAPI 429 body contains "usage limit")
+  // 2. Rate limit (FastAPI 429 body contains "usage limit")
   if (errorDetail.toLowerCase().includes("usage limit")) {
     onRateLimit(
       errorDetail || "You've reached your usage limit. Please try again later.",
@@ -241,7 +241,7 @@ export function handleStreamError({
     return;
   }
 
-  // 2. Authentication failures (from getCopilotAuthHeaders or 401 responses)
+  // 3. Authentication failures (from getCopilotAuthHeaders or 401 responses)
   const isAuthError =
     errorDetail.includes("Authentication failed") ||
     errorDetail.includes("Unauthorized") ||
