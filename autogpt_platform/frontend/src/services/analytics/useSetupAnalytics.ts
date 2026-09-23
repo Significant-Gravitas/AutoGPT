@@ -22,8 +22,10 @@ export function useSetupAnalytics(host: string) {
     // DataFast's script tracks client-side navigation on its own and can't be
     // unloaded, so once the tour's exemption no longer covers it (the visitor
     // navigated into the app without consenting) the page reloads to shed it.
-    // The element counts too: a script still downloading runs after unmount.
-    if (dataFast || !isDataFastPresent()) return;
+    // The element stays after unmount, even while still downloading, and is
+    // only marked when the exemption loaded it: a script loaded with consent
+    // that Cookiebot is asking about again waits for the visitor's reply.
+    if (dataFast || !isDataFastLoadedWithoutConsent()) return;
     window.location.reload();
   }, [dataFast]);
 
@@ -41,12 +43,14 @@ export function useSetupAnalytics(host: string) {
   return {
     googleTagEnabled: googleTag,
     dataFastEnabled: dataFast,
+    dataFastWithoutConsent: dataFast && !consent.analytics,
   };
 }
 
-function isDataFastPresent() {
+function isDataFastLoadedWithoutConsent() {
   return Boolean(
-    window.datafast ||
-      document.querySelector(`script[src="${DATAFAST_SCRIPT_SRC}"]`),
+    document.querySelector(
+      `script[src="${DATAFAST_SCRIPT_SRC}"][data-consent-exempt]`,
+    ),
   );
 }

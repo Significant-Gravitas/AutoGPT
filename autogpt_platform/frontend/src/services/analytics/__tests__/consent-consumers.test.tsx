@@ -162,42 +162,48 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
 
 describe("DataFast loaded under the tour exemption", () => {
   const reload = vi.fn<() => void>();
+  let loaded: HTMLScriptElement | null = null;
+
+  function loadDataFast({ exempt }: { exempt: boolean }) {
+    loaded = document.createElement("script");
+    loaded.src = DATAFAST_SRC;
+    if (exempt) loaded.dataset.consentExempt = "true";
+    document.head.appendChild(loaded);
+  }
 
   beforeEach(() => {
     configureCookiebot();
     reload.mockReset();
     vi.spyOn(window.location, "reload").mockImplementation(() => reload());
-    window.datafast = vi.fn();
   });
 
   afterEach(() => {
-    delete window.datafast;
+    loaded?.remove();
+    loaded = null;
     vi.restoreAllMocks();
   });
 
   it("reloads to shed the script once the visitor leaves the tour without consent", () => {
+    loadDataFast({ exempt: true });
     installCookiebot();
 
     render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
 
     expect(reload).toHaveBeenCalledOnce();
-  });
-
-  it("reloads when the script is still downloading as the visitor leaves", () => {
-    delete window.datafast;
-    const pending = document.createElement("script");
-    pending.src = DATAFAST_SRC;
-    document.head.appendChild(pending);
-    installCookiebot();
-
-    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
-
-    expect(reload).toHaveBeenCalledOnce();
-    pending.remove();
   });
 
   it("keeps the script when the visitor has consented", () => {
+    loadDataFast({ exempt: true });
     installCookiebot({ statistics: true });
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("waits for the visitor's reply when Cookiebot asks again about a script loaded with consent", () => {
+    loadDataFast({ exempt: false });
+    installCookiebot();
 
     render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
 

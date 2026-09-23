@@ -2,6 +2,7 @@ import { environment } from "@/services/environment";
 import {
   COOKIEBOT_CONSENT_EVENTS,
   COOKIEBOT_SCRIPT_ID,
+  getCookiebotAPI,
   parseCookieConsentHeader,
   type CookiebotConsent,
 } from "./cookiebot";
@@ -80,7 +81,7 @@ export function subscribeToConsent(listener: () => void): () => void {
 
 export function openConsentSettings(): void {
   if (typeof window === "undefined") return;
-  window.Cookiebot?.renew();
+  getCookiebotAPI()?.renew();
 }
 
 export type ConsentManagerStatus = "loading" | "ready" | "unavailable";
@@ -92,7 +93,7 @@ export type ConsentManagerStatus = "loading" | "ready" | "unavailable";
  */
 export function getConsentManagerStatus(): ConsentManagerStatus {
   if (typeof window === "undefined") return "loading";
-  if (window.Cookiebot) return "ready";
+  if (getCookiebotAPI()) return "ready";
   return document.readyState === "complete" ? "unavailable" : "loading";
 }
 
@@ -119,7 +120,7 @@ export function subscribeToConsentManagerStatus(
 // answers. Only before it loads, or when a blocker stops it, does the stored
 // cookie speak for the visitor.
 function readBrowserConsent(): CookiebotConsent | null {
-  const cookiebot = window.Cookiebot;
+  const cookiebot = getCookiebotAPI();
   if (cookiebot) return cookiebot.hasResponse ? cookiebot.consent : null;
   return parseCookieConsentHeader(document.cookie);
 }

@@ -36,6 +36,25 @@ declare global {
   }
 }
 
+/**
+ * The script tag carries `id="Cookiebot"`, and browsers expose elements by id
+ * on `window`, so until uc.js replaces it `window.Cookiebot` is that element.
+ * Only an object with the API's methods counts as the loaded consent manager.
+ */
+export function getCookiebotAPI(): CookiebotAPI | null {
+  if (typeof window === "undefined") return null;
+  const candidate: unknown = window.Cookiebot;
+  if (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    "renew" in candidate &&
+    typeof candidate.renew === "function"
+  ) {
+    return candidate as CookiebotAPI;
+  }
+  return null;
+}
+
 const ALL_GRANTED: CookiebotConsent = {
   necessary: true,
   preferences: true,

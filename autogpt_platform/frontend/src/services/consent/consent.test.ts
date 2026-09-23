@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   answerCookiebot,
   configureCookiebot,
@@ -264,5 +264,33 @@ describe("consent manager status", () => {
 
     expect(listener).toHaveBeenCalledTimes(3);
     script.remove();
+  });
+});
+
+describe("before uc.js replaces the Cookiebot script element", () => {
+  // Browsers expose elements by id on window, so the <script id="Cookiebot">
+  // tag is window.Cookiebot until the script runs.
+  let element: HTMLScriptElement;
+
+  beforeEach(() => {
+    configureCookiebot();
+    element = document.createElement("script");
+    (window as unknown as { Cookiebot: unknown }).Cookiebot = element;
+  });
+
+  afterEach(() => {
+    delete window.Cookiebot;
+    vi.unstubAllEnvs();
+  });
+
+  it("reads the stored answer instead of treating the element as no answer", () => {
+    storeCookie(STATISTICS_ONLY);
+
+    expect(hasConsentFor("analytics")).toBe(true);
+  });
+
+  it("isn't reported as ready, and opening the settings doesn't throw", () => {
+    expect(getConsentManagerStatus()).not.toBe("ready");
+    expect(() => openConsentSettings()).not.toThrow();
   });
 });

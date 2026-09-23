@@ -34,7 +34,8 @@ export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
   const adsID = environment.getGoogleAdsID();
-  const { googleTagEnabled, dataFastEnabled } = useSetupAnalytics(host);
+  const { googleTagEnabled, dataFastEnabled, dataFastWithoutConsent } =
+    useSetupAnalytics(host);
 
   return (
     <>
@@ -70,6 +71,7 @@ export function SetupAnalytics(props: SetupProps) {
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
           data-domain="agpt.co"
           src={DATAFAST_SCRIPT_SRC}
+          data-consent-exempt={dataFastWithoutConsent ? "true" : undefined}
           onLoad={flushDatafastQueue}
         />
       ) : null}
