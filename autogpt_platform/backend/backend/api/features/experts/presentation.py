@@ -1,5 +1,7 @@
 from typing import Protocol, TypedDict
 
+from pydantic import BaseModel
+
 from .presentation_defaults import MANAGED_PRESENTATION
 
 
@@ -20,7 +22,13 @@ class TemplateLike(Protocol):
 
 
 class PresentationLike(Protocol):
-    avatarUrl: str | None
+    jobTitle: str | None
+    tagline: str | None
+    bio: str | None
+    categories: list[str]
+
+
+class PresentationBaseline(BaseModel):
     jobTitle: str | None
     tagline: str | None
     bio: str | None

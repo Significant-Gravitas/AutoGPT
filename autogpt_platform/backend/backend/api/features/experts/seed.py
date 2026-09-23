@@ -19,7 +19,7 @@ customizations and concurrent edits are preserved.
 import asyncio
 import logging
 from collections.abc import Mapping
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 import prisma.enums
 import prisma.models
@@ -31,7 +31,11 @@ from backend.api.features.experts.models import (
     encode_day_one,
     encode_voice_preferences,
 )
-from backend.api.features.experts.presentation import presentation_changes
+from backend.api.features.experts.presentation import (
+    PresentationBaseline,
+    PresentationLike,
+    presentation_changes,
+)
 from backend.api.features.experts.roster_types import RosterEntry, RoutineSeed
 from backend.api.features.experts.roster_wave_three import WAVE_THREE_ROSTER
 from backend.api.features.store.categories import validate_canonical_categories
@@ -2324,6 +2328,7 @@ class RescopedTemplate(TypedDict):
     # owner, so it is safe to move onto the new persona.
     old_role: str
     old_identity: str
+    old_presentation: NotRequired[PresentationBaseline]
 
 
 # One-off migrations for personas whose scope changed, not just their copy.
@@ -2343,6 +2348,12 @@ class RescopedTemplate(TypedDict):
 RESCOPED_TEMPLATES: list[RescopedTemplate] = [
     {
         "name": "Max",
+        "old_presentation": PresentationBaseline(
+            jobTitle="Sales Development Rep",
+            tagline="Finds your leads, their decision-makers, and their contact details.",
+            bio="I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.",
+            categories=["sales"],
+        ),
         "old_role": "Sales",
         "old_identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
 
@@ -2352,6 +2363,12 @@ You are rigorous about data quality. You flag when contact information looks sta
     },
     {
         "name": "Maria",
+        "old_presentation": PresentationBaseline(
+            jobTitle=None,
+            tagline="Writes your LinkedIn posts, SEO articles, and webpage copy.",
+            bio="I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.",
+            categories=["marketing", "content"],
+        ),
         "old_role": "Marketing",
         "old_identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
 
@@ -2499,8 +2516,8 @@ async def _backfill_hired_copies(
 ) -> int:
     """Copy unchanged defaults with a concurrency guard; preserve owner edits.
 
-    Without a previous template there is no safe baseline. Rescopes also need
-    the matching legacy persona so presentation and behavior move together.
+    Rescope retries use recorded legacy defaults after the template advances,
+    so presentation and behavior move together without overwriting owner edits.
     Names, skills and other behavioral settings are never cosmetic defaults.
     """
     if previous is None:
@@ -2521,6 +2538,7 @@ async def _backfill_hired_copies(
             take=_PRESENTATION_BACKFILL_BATCH_SIZE,
         )
         for hire in hires:
+            baseline: PresentationLike = previous
             if rescope and (hire.role, hire.identity) not in (
                 (rescope["old_role"], rescope["old_identity"]),
                 (previous.role, previous.identity),
@@ -2533,8 +2551,11 @@ async def _backfill_hired_copies(
                 == (rescope["old_role"], rescope["old_identity"])
                 and (previous.role, previous.identity) != (hire.role, hire.identity)
             ):
-                continue
-            data = presentation_changes(hire, previous, template)
+                legacy = rescope.get("old_presentation")
+                if legacy is None:
+                    continue
+                baseline = legacy
+            data = presentation_changes(hire, baseline, template)
             if rescope and (hire.role, hire.identity) != (
                 template.role,
                 template.identity,
