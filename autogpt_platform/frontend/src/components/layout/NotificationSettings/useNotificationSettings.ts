@@ -29,11 +29,32 @@ export function useNotificationSettings() {
   const toggleSound = useCopilotUIStore((s) => s.toggleSound);
 
   // `Notification.permission` doesn't exist during SSR and reading it during
-  // render would desync hydration, so it lands after mount.
+  // render would desync hydration, so it lands after mount. It is re-read when
+  // the tab comes back, since site settings can change it behind our back.
   const [permission, setPermission] = useState<
     NotificationPermission | "unsupported"
   >("default");
-  useEffect(() => setPermission(readPermission()), []);
+  useEffect(() => {
+    function syncPermission() {
+      const current = readPermission();
+      setPermission(current);
+      // The store only checks permission once, at load. A revoke since then
+      // must switch our flag off too, or the switch shows on while nothing
+      // can ever be delivered.
+      const store = useCopilotUIStore.getState();
+      if (current !== "granted" && store.isNotificationsEnabled) {
+        store.setNotificationsEnabled(false);
+      }
+    }
+
+    syncPermission();
+    window.addEventListener("focus", syncPermission);
+    document.addEventListener("visibilitychange", syncPermission);
+    return () => {
+      window.removeEventListener("focus", syncPermission);
+      document.removeEventListener("visibilitychange", syncPermission);
+    };
+  }, []);
 
   const isSupported = permission !== "unsupported";
   const isBlocked = permission === "denied";
@@ -58,6 +79,17 @@ export function useNotificationSettings() {
 
     if (result === "granted") {
       setNotificationsEnabled(true);
+      return;
+    }
+
+    // The prompt was dismissed or never shown (Chrome's quiet UI), not
+    // refused, so nothing needs unblocking in browser settings.
+    if (result === "default") {
+      toast({
+        title: "Notifications not turned on",
+        description:
+          "Your browser didn't confirm permission. Try again, or allow them from the icon in the address bar.",
+      });
       return;
     }
 
