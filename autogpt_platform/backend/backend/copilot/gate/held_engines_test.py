@@ -17,6 +17,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.sdk.expert_tool_gate_test import _make_patches, _make_session
+from backend.copilot.sdk.tool_adapter import cap_late_tool_result
 
 _RESULT = PendingMessage(
     content='<held_call_result tool="post_to_chat_platform">posted</held_call_result>'
@@ -34,8 +35,11 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
     order: list[str] = []
     folded: list[list[PendingMessage]] = []
 
-    async def resolve(*_args, **_kwargs):
+    caps: list[object] = []
+
+    async def resolve(*_args, **kwargs):
         order.append("resolve")
+        caps.append(kwargs.get("cap"))
         return [_RESULT]
 
     async def persist(_session, _builder, pending, **_kwargs):
@@ -75,6 +79,8 @@ async def test_the_sdk_engine_opens_its_turn_with_the_held_result():
     context.assert_called()
     assert order.index("context") < order.index("resolve")
     assert folded == [[_RESULT]]
+    # A late result is cut by the same rule as a direct MCP tool result.
+    assert caps == [cap_late_tool_result]
 
 
 @pytest.mark.asyncio

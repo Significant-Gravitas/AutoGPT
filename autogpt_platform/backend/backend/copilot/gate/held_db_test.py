@@ -130,6 +130,28 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_large_late_result_arrives_as_the_direct_result_would(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Longer than a typed follow-up may be: the engine caps it, nothing else."""
+    session = await _new_session(test_user_id)
+    text = "y" * 50_000
+    with patch(
+        "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
+    ):
+        direct = await post_tool.execute(test_user_id, session, "call-1", text=text)
+    review_id = await _hold(session, test_user_id, text)
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert delivered.content == (
+        f'<held_call_result tool="{_TOOL}" tool_call_id="call-1" '
+        f'review_id="{review_id}">\n{direct.output}\n</held_call_result>'
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
     setup_test_user, test_user_id, gate_on, post_tool
 ):

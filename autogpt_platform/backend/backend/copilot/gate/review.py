@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 # tool handler runs, so an argument can arrive holding a whole file.
 _MAX_ARG_CHARS = 4_000
 
-# An approval the model never came back for must not run the same call days
-# later; the normal retry follows the click within seconds.
+# An approval must not run a call long after the user gave it; the answered
+# card's turn normally runs it within seconds.
 APPROVAL_TTL = timedelta(hours=1)
 
 
