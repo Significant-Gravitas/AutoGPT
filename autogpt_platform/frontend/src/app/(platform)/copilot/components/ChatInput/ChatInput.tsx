@@ -89,6 +89,8 @@ interface Props {
   stacked?: boolean;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
   /**
    * Replaces the composer's controls while voice mode is on: typing,
    * attachments and send do nothing hands-free, and a bar of its own above
@@ -121,6 +123,7 @@ export function ChatInput({
   recipientPicker,
   stacked = false,
   voiceToggle,
+  modeSelector,
   voiceBar,
   variant = "default",
   expertId = null,
@@ -442,6 +445,7 @@ export function ChatInput({
             {!stacked && !isCompact && (!hasSession || !isStreaming) && (
               <ConnectionPicker connectionLocked={hasSession} />
             )}
+            {modeSelector}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}

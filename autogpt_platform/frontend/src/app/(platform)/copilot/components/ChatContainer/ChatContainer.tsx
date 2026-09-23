@@ -41,6 +41,8 @@ import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
+import type { AutopilotMode } from "../../autopilotModeStore";
+import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -56,6 +58,8 @@ export interface ChatContainerProps {
   sessionId: string | null;
   sessionChatStatus?: string;
   sessionSentFrom?: SentFrom | null;
+  /** The approval mode stored on the session, when it has one. */
+  sessionAutopilotMode?: AutopilotMode | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -127,6 +131,7 @@ export const ChatContainer = ({
   sessionId,
   sessionChatStatus,
   sessionSentFrom,
+  sessionAutopilotMode = null,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -200,6 +205,13 @@ export const ChatContainer = ({
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
+  const modeSelector = isAutoModeEnabled ? (
+    <AutopilotModeSelector
+      sessionId={sessionId}
+      persistedMode={sessionAutopilotMode}
+    />
+  ) : undefined;
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -403,6 +415,7 @@ export const ChatContainer = ({
                             hasSession={!!sessionId}
                             sessionId={sessionId}
                             expertId={expertIdentity?.id ?? null}
+                            modeSelector={modeSelector}
                             voiceToggle={
                               isVoiceModeEnabled ? (
                                 <VoiceModeButton
@@ -451,6 +464,7 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                modeSelector={modeSelector}
                 voiceToggle={
                   isVoiceModeEnabled ? (
                     <VoiceModeButton

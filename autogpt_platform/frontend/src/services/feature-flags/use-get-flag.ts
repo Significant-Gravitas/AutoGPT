@@ -54,6 +54,9 @@ export enum Flag {
   // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
   // so both sides must agree. Fail-closed.
   COPILOT_VOICE_MODE = "copilot-voice-mode",
+  // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
+  // which ignores a sent mode when off. Fail-closed.
+  COPILOT_AUTO_MODE = "copilot-auto-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -87,6 +90,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
+  [Flag.COPILOT_AUTO_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -152,6 +156,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
+    case Flag.COPILOT_AUTO_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }
