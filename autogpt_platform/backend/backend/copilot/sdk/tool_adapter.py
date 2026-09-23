@@ -32,7 +32,12 @@ from backend.copilot.context import (
     is_sdk_tool_path,
     reset_consult_budget,
 )
-from backend.copilot.gate.mcp_seam import gate_non_registry_tool
+from backend.copilot.gate.mcp_seam import (
+    gate_non_registry_tool,
+    release_non_registry_read,
+    screen_non_registry_read,
+)
+from backend.copilot.gate.reads import model_view
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -340,21 +345,30 @@ async def _execute_tool_sync(
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
-    result = await base_tool.execute(
-        user_id=user_id,
-        session=session,
-        tool_call_id=effective_id,
-        **args,
-    )
+    token = model_view.set(_model_text)
+    try:
+        result = await base_tool.execute(
+            user_id=user_id,
+            session=session,
+            tool_call_id=effective_id,
+            **args,
+        )
+    finally:
+        model_view.reset(token)
 
     text = (
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
+    return _envelope(text, result.success)
 
-    return {
-        "content": [{"type": "text", "text": text}],
-        "isError": not result.success,
-    }
+
+def _model_text(text: str, success: bool) -> str:
+    """The text the wrapper's cap leaves of this output, for the held-read judge."""
+    return _text_from_mcp_result(truncate(_envelope(text, success), _MCP_MAX_CHARS))
+
+
+def _envelope(text: str, success: bool) -> dict[str, Any]:
+    return {"content": [{"type": "text", "text": text}], "isError": not success}
 
 
 def _mcp_error(message: str) -> dict[str, Any]:
@@ -836,9 +850,19 @@ def _make_truncating_wrapper(
             refusal = await gate_non_registry_tool(name, args, user_id, session)
             if refusal is not None:
                 return refusal
+            released = await release_non_registry_read(
+                name, original_args, user_id, session
+            )
+            if released is not None:
+                return released
 
         result = await run(args)
         truncated = truncate(result, _MCP_MAX_CHARS)
+        # Registry tools were judged inside ``BaseTool.execute`` on this cap.
+        if session is not None and name not in TOOL_REGISTRY:
+            truncated = await screen_non_registry_read(
+                name, original_args, user_id, session, truncated
+            )
 
         if truncated.get("isError"):
             _record_tool_failure(name, original_args)

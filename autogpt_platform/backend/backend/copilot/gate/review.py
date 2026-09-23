@@ -15,6 +15,7 @@ from typing import Any
 
 from prisma.enums import ReviewStatus
 
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -102,6 +103,14 @@ async def find_decision(
     including ones an injected page dictates, and before the taint rule is
     ever reached.
     """
+    review = await find_review(review_id, user_id, session_id)
+    return review.status if review else None
+
+
+async def find_review(
+    review_id: str, user_id: str, session_id: str
+) -> PendingHumanReviewModel | None:
+    """This session's row, or None; an approval past its TTL is burnt and None."""
     try:
         reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
     except Exception:
@@ -117,7 +126,7 @@ async def find_decision(
     ):
         await consume(review_id, user_id)
         return None
-    return review.status
+    return review
 
 
 async def consume(review_id: str, user_id: str) -> bool:
@@ -167,6 +176,22 @@ async def open_review(
     reason: str,
 ) -> bool:
     """Park the call for approval. False means nothing was recorded."""
+    return await open_review_row(
+        review_id,
+        user_id,
+        session,
+        review_payload(tool_name, args),
+        instructions_for(tool_name, reason),
+    )
+
+
+async def open_review_row(
+    review_id: str,
+    user_id: str,
+    session: ChatSession,
+    payload: dict[str, Any],
+    instructions: str,
+) -> bool:
     try:
         await review_db().get_or_create_human_review(
             user_id=user_id,
@@ -174,8 +199,8 @@ async def open_review(
             graph_exec_id=session_exec_id(session.session_id),
             graph_id=session_exec_id(session.session_id),
             graph_version=1,
-            input_data=review_payload(tool_name, args),
-            message=instructions_for(tool_name, reason),
+            input_data=payload,
+            message=instructions,
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
@@ -183,7 +208,7 @@ async def open_review(
         return True
     except Exception:
         logger.warning(
-            f"Gate could not open a review for {tool_name} in session "
+            f"Gate could not open review {review_id} in session "
             f"{session.session_id}",
             exc_info=True,
         )

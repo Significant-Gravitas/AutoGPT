@@ -1,12 +1,13 @@
 """The gate's state against Postgres: the approval mutex and the chat's mode."""
 
 import asyncio
+import json
 
 import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 
-from backend.copilot.gate import resolve_mode
+from backend.copilot.gate import reads, resolve_mode
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
@@ -69,3 +70,33 @@ async def test_another_users_session_cannot_be_moved(setup_test_user, test_user_
     assert not await update_session_autopilot_mode(
         session.session_id, "someone-else", "unsupervised"
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "output",
+    [
+        '{"type": "web_fetch", "content": "plain page — naïve"}',
+        json.dumps({"content": [{"type": "text", "text": "\x1b[31mraw\x00\x1b[0m"}]}),
+    ],
+    ids=["registry-json", "mcp-envelope-with-control-chars"],
+)
+async def test_a_held_read_comes_back_from_its_row_byte_identical(
+    setup_test_user, test_user_id, output
+):
+    """The JSON column strips raw control characters; the seams hand it
+    escaped ones, so nothing is lost."""
+    session = await upsert_chat_session(
+        ChatSession.new(user_id=test_user_id, dry_run=False)
+    )
+    args = {"path": "/tmp/page"}
+    await reads._hold(
+        "read_file", args, test_user_id, session, "src", "passage", output, True
+    )
+    review = await review_store.find_review(
+        reads.read_review_id(session.session_id, test_user_id, "read_file", args),
+        test_user_id,
+        session.session_id,
+    )
+    assert review is not None
+    assert reads.held_bytes(review).output == output

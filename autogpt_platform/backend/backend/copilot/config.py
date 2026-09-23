@@ -278,6 +278,12 @@ class ChatConfig(BaseSettings):
         description="Hard timeout for one gate classification. Expiry is not "
         "an error path — it resolves to 'ask'.",
     )
+    content_judge_timeout_s: float = Field(
+        default=15.0,
+        description="Hard timeout for one content-judge call on an outside "
+        "read. Provisional until the supervisor measurement sets it from the "
+        "judge's p95; expiry holds the read.",
+    )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
         default=OPENROUTER_BASE_URL,
