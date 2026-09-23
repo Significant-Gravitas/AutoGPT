@@ -39,6 +39,9 @@ _init_attempted = False
 _shadow_evaluations: set[asyncio.Task] = set()
 _shadow_evaluations_stopped = False
 MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
+# Flags PostHog could not answer for, already reported once. Before phase 2
+# creates the flags that is every read; one record per flag keeps the signal.
+_unanswered_flags_reported: set[str] = set()
 
 
 class Flag(str, Enum):
@@ -238,6 +241,7 @@ def initialize_feature_flags() -> None:
     """Start whichever vendor(s) the configured backend reads from."""
     global _shadow_evaluations_stopped
     _shadow_evaluations_stopped = False
+    _unanswered_flags_reported.clear()
     backend = settings.config.feature_flag_backend
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
@@ -557,6 +561,10 @@ async def _record_mismatch(
 
     ld_value, ld_evaluated = ld_result
     ph_value, ph_evaluated = ph_result
+    if not ph_evaluated:
+        if flag_key in _unanswered_flags_reported:
+            return
+        _unanswered_flags_reported.add(flag_key)
     mismatch_logger.warning(
         "feature-flag mismatch: "
         + json.dumps(
@@ -652,13 +660,14 @@ def _person_properties(context: Context) -> dict[str, Any]:
 
     Reads the LaunchDarkly context rather than the auth row so both vendors
     see one cached lookup and cannot drift; ``custom.role`` is dropped
-    because PostHog targets flat properties.
+    because PostHog targets flat properties, and ``email`` because no ported
+    rule reads it — individual targets key on the ``distinct_id``.
     """
     if context.anonymous:
         return {}
     return {
         attribute: context.get(attribute)
-        for attribute in ("role", "email", "email_domain", "created_at")
+        for attribute in ("role", "email_domain", "created_at")
         if context.get(attribute) is not None
     }
 

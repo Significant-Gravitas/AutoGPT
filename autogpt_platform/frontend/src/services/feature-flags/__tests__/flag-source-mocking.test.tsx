@@ -35,6 +35,10 @@ describe("mocking the flag source controls every flag hook", () => {
 
     const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
 
-    expect(result.current).toEqual({ enabled: false, ready: false });
+    expect(result.current).toEqual({
+      enabled: false,
+      ready: false,
+      answered: false,
+    });
   });
 });

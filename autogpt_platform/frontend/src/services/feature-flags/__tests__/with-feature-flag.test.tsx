@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Flag } from "../use-get-flag";
 import { withFeatureFlag } from "../with-feature-flag";
@@ -54,6 +54,25 @@ describe("withFeatureFlag reads through the flag seam", () => {
 
     expect(screen.queryByText("gated content")).toBeNull();
     expect(router.push).toHaveBeenCalledWith("/404");
+  });
+
+  it("keeps waiting, without redirecting, past the resolution timeout", () => {
+    // A user who has the flag must not land on /404 because the vendor is
+    // slow or ad-blocked; only an answer may move them.
+    vi.useFakeTimers();
+    try {
+      source.results = {};
+
+      render(<Wrapped />);
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+
+      expect(screen.queryByText("gated content")).toBeNull();
+      expect(router.push).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("waits, without redirecting, while the answer is outstanding", () => {
