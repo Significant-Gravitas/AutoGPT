@@ -18,7 +18,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
-import { formatCategoryLabel } from "../../SkillsSection/helpers";
+import { CategoryTag } from "../../CategoryChip/CategoryTag";
 import { getCategoryAccent, getExpertAccent } from "../helpers";
 import { ExpertHireButton } from "./ExpertHireButton";
 
@@ -93,21 +93,7 @@ export function ExpertCard({ expert, isHired }: Props) {
               ) : undefined
             }
           />
-          {area ? (
-            <span
-              className={cn(CHIP_SHAPE, CHIP_SIZE.small, "mt-2 max-w-full")}
-            >
-              {areaAccent.icon ? (
-                <Icon
-                  icon={areaAccent.icon}
-                  size={12}
-                  className={cn("shrink-0", areaAccent.accent.icon)}
-                  aria-hidden
-                />
-              ) : null}
-              <span className="truncate">{formatCategoryLabel(area)}</span>
-            </span>
-          ) : null}
+          {area ? <CategoryTag category={area} className="mt-2" /> : null}
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
