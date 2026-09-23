@@ -682,6 +682,12 @@ _READ_TOOL_SCHEMA = {
 # ---------------------------------------------------------------------------
 
 
+def cap_late_tool_result(text: str) -> str:
+    """A late tool result, cut exactly as the MCP wrapper cuts a direct one."""
+    result = {"content": [{"type": "text", "text": text}], "isError": False}
+    return _text_from_mcp_result(truncate(result, _MCP_MAX_CHARS))
+
+
 def _text_from_mcp_result(result: dict[str, Any]) -> str:
     """Extract concatenated text from an MCP response's content blocks."""
     content = result.get("content", [])
