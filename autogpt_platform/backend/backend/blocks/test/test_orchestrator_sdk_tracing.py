@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import claude_agent_sdk
 import pytest
 from claude_agent_sdk import (
     AssistantMessage,
@@ -24,7 +25,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 from langsmith import tracing_context
-from langsmith.integrations.claude_agent_sdk._client import instrument_claude_client
+from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from langsmith.run_trees import RunTree
 from pydantic import SecretStr
 
@@ -68,9 +69,22 @@ class _ScriptedClient:
         )
 
 
-# The same in-place patch ``configure_claude_agent_sdk`` applies to the real
-# ``ClaudeSDKClient`` in production.
-instrument_claude_client(_ScriptedClient)
+@pytest.fixture
+def traced_client() -> type[_ScriptedClient]:
+    """Wrap the scripted client exactly as production wraps ``ClaudeSDKClient``.
+
+    ``configure_claude_agent_sdk`` patches whichever class
+    ``claude_agent_sdk.ClaudeSDKClient`` names, so pointing that name at the
+    scripted client for the call wraps it through the public API.  The real
+    tool class and the global trace config are left untouched.
+    """
+    with (
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", _ScriptedClient),
+        patch.object(claude_agent_sdk, "SdkMcpTool", None),
+        patch("langsmith.integrations.claude_agent_sdk.set_tracing_config"),
+    ):
+        assert configure_claude_agent_sdk()
+    return _ScriptedClient
 
 
 @pytest.fixture
@@ -84,6 +98,7 @@ def posted_runs(monkeypatch: pytest.MonkeyPatch) -> list[RunTree]:
 
 @pytest.mark.asyncio
 async def test_sdk_mode_replies_get_assistant_turn_runs(
+    traced_client: type[_ScriptedClient],
     posted_runs: list[RunTree],
 ) -> None:
     input_data = MagicMock(sys_prompt="", prompt="list the files")
@@ -97,7 +112,7 @@ async def test_sdk_mode_replies_get_assistant_turn_runs(
     )
 
     with (
-        patch("claude_agent_sdk.ClaudeSDKClient", _ScriptedClient),
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", traced_client),
         tracing_context(enabled=True),
     ):
         outputs = [
