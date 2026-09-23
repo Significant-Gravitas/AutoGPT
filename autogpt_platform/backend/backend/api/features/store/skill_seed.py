@@ -417,7 +417,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
         ],
     },
     {
-        "slug": "blake-getting-started",
+        "slug": "max-getting-started",
         "categories": ["sales"],
         "required_providers": [
             "google",
@@ -1184,6 +1184,80 @@ STARTER_SKILLS: list[CatalogEntry] = [
         "categories": ["marketing", "research"],
         "required_providers": [],
     },
+    {
+        "slug": "zara-getting-started",
+        "categories": ["marketing", "sales"],
+        "required_providers": [
+            "apollo",
+            "google",
+            "hubspot",
+            "mcp_amplitude",
+            "mcp_gong",
+            "mcp_linear",
+            "slack",
+            "stripe",
+        ],
+    },
+    {
+        "slug": "positioning-and-messaging",
+        "categories": ["marketing"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "icp-and-segmentation",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["apollo", "hubspot"],
+    },
+    {
+        "slug": "pricing-and-packaging",
+        "categories": ["marketing", "finance"],
+        "required_providers": ["google", "stripe"],
+    },
+    {
+        "slug": "commercial-launch-strategy",
+        "categories": ["marketing"],
+        "required_providers": ["google", "mcp_linear"],
+    },
+    {
+        "slug": "competitive-intelligence",
+        "categories": ["marketing", "research"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "gtm-performance-diagnostics",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["google", "hubspot", "mcp_amplitude"],
+    },
+    {
+        "slug": "gtm-planning-and-market-entry",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["google"],
+    },
+    {
+        "slug": "opportunity-sizing-and-business-case",
+        "categories": ["marketing", "finance"],
+        "required_providers": ["apollo", "google"],
+    },
+    {
+        "slug": "sales-marketing-alignment-and-sla",
+        "categories": ["marketing", "sales"],
+        "required_providers": ["hubspot"],
+    },
+    {
+        "slug": "field-enablement-content",
+        "categories": ["sales", "marketing"],
+        "required_providers": ["google", "mcp_gong"],
+    },
+    {
+        "slug": "vertical-industry-plays",
+        "categories": ["marketing", "sales"],
+        "required_providers": [],
+    },
+    {
+        "slug": "developer-and-api-motion",
+        "categories": ["marketing", "development"],
+        "required_providers": ["mcp_amplitude"],
+    },
     *WAVE_THREE_STARTER_SKILLS,
 ]
 
@@ -1226,6 +1300,37 @@ async def seed_starter_skills() -> list[str]:
     return await _seed_loaded(loaded)
 
 
+# Starter slugs that shipped and were then renamed or folded away. The seed
+# never deletes a listing, so a retired slug is delisted: hidden from the hub
+# and unavailable to new installs, while copies already installed stay put.
+RETIRED_STARTER_SLUGS: list[str] = [
+    # Renamed to max-getting-started when the senior sales package was folded
+    # into Max.
+    "blake-getting-started",
+]
+
+
+async def _delist_retired_starters(tx: prisma.Prisma) -> int:
+    listings = await prisma.models.SkillListing.prisma(tx).find_many(
+        where={
+            "slug": {"in": RETIRED_STARTER_SLUGS},
+            "isDeleted": False,
+            "owningUserId": None,
+            "owningOrgId": None,
+        }
+    )
+    for listing in listings:
+        await prisma.models.SkillListing.prisma(tx).update(
+            where={"id": listing.id}, data={"isDeleted": True}
+        )
+        if listing.activeVersionId is not None:
+            await prisma.models.SkillListingVersion.prisma(tx).update(
+                where={"id": listing.activeVersionId},
+                data={"isAvailable": False},
+            )
+    return len(listings)
+
+
 async def _seed_loaded(
     loaded: list[tuple[CatalogEntry, ParsedSkill, list[SkillFile]]],
 ) -> list[str]:
@@ -1238,6 +1343,11 @@ async def _seed_loaded(
             logger.info(
                 f"Seeded skill '{entry['slug']}' (#{listing.id})"
                 + (f" with {len(files)} package files" if files else "")
+            )
+        delisted = await _delist_retired_starters(tx)
+        if delisted:
+            logger.info(
+                f"Delisted {delisted} retired starter(s): {RETIRED_STARTER_SLUGS}"
             )
     return listing_ids
 
