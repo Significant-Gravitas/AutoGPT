@@ -1024,20 +1024,19 @@ async def upsert_chat_session(
                 # finishing after the user switched connection would otherwise
                 # put the old one back in Redis while the database holds the
                 # new one, and bill the next turn to the connection they just
-                # left. Only the two route keys are taken from the cache; the
-                # rest of this session's metadata is this turn's own.
-                cached_route = existing_cached.metadata
-                if (
-                    cached_route.llm_auth_provider != session.metadata.llm_auth_provider
-                    or cached_route.llm_credential_id
-                    != session.metadata.llm_credential_id
-                ):
-                    updates["metadata"] = session.metadata.model_copy(
-                        update={
-                            "llm_auth_provider": cached_route.llm_auth_provider,
-                            "llm_credential_id": cached_route.llm_credential_id,
-                        }
-                    )
+                # left. The approval mode is changed the same way mid-turn, and
+                # a stale one would run the next turn under the mode the user
+                # just left. Only these keys are taken from the cache; the rest
+                # of this session's metadata is this turn's own.
+                cached_meta = existing_cached.metadata
+                from_cache = {
+                    "llm_auth_provider": cached_meta.llm_auth_provider,
+                    "llm_credential_id": cached_meta.llm_credential_id,
+                    "autopilot_mode": cached_meta.autopilot_mode,
+                }
+                merged = session.metadata.model_copy(update=from_cache)
+                if merged != session.metadata:
+                    updates["metadata"] = merged
                 session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
