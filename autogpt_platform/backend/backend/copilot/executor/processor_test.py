@@ -402,6 +402,7 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
     )
     session_db = MagicMock()
     session_db.get_next_sequence = AsyncMock(return_value=1)
+    session_db.get_chat_session_metadata = AsyncMock(return_value=None)
     published = _TrackedStream(events=[])
 
     with (
