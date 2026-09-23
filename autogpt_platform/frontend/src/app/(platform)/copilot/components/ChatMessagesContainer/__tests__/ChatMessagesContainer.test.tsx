@@ -131,7 +131,7 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: () => null,
+  CopilotPendingReviews: vi.fn(() => null),
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
@@ -1481,5 +1481,36 @@ describe("ChatMessagesContainer — held call rows", () => {
     expect(screen.queryByText(/I answered an action/)).toBeNull();
     expect(screen.queryByText(/folder_created/)).toBeNull();
     expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+});
+
+describe("ChatMessagesContainer — held call cards", () => {
+  it("loads the chat's held cards even when another run is the newest review target", async () => {
+    const { CopilotPendingReviews } = await import(
+      "../../CopilotPendingReviews/CopilotPendingReviews"
+    );
+    const mounted = vi.mocked(CopilotPendingReviews);
+    mounted.mockClear();
+    const messages = [
+      {
+        id: "a1",
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-create_folder",
+            toolCallId: "c1",
+            state: "output-available",
+            input: {},
+            output: { type: "approval_required", review_id: "r1" },
+          },
+        ],
+      },
+    ] as unknown as Message[];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(mounted.mock.calls.map(([props]) => props.graphExecId)).toContain(
+      "copilot-session-sess-123",
+    );
   });
 });

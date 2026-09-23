@@ -22,7 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { getHeldCallRowKind } from "./heldCallRows";
+import { getHeldCallRowKind, hasHeldCall } from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -832,6 +832,14 @@ export function ChatMessagesContainer({
               graphId={reviewTarget.graphId}
             />
           )}
+          {!readOnly &&
+            sessionID &&
+            reviewTarget?.graphExecId !== `copilot-session-${sessionID}` &&
+            hasHeldCall(messages) && (
+              <CopilotPendingReviews
+                graphExecId={`copilot-session-${sessionID}`}
+              />
+            )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">

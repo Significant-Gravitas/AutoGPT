@@ -41,6 +41,7 @@ import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
+import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -117,6 +118,7 @@ export interface ChatContainerProps {
 }
 
 const NO_OP_SEND = () => undefined;
+const CONTINUE_AFTER_HELD_CALL = "Continue from where you left off.";
 
 export const ChatContainer = ({
   messages,
@@ -259,7 +261,14 @@ export const ChatContainer = ({
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastRow = [...messages].reverse().find((m) => m.role === "user");
+    // A turn an answered card started failed after the call ran: resuming it
+    // must not re-send the request that led to the call.
+    if (lastRow && isHeldCallRow(lastRow)) {
+      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+      return;
+    }
+    const lastUserMsg = lastRow;
     const lastText = lastUserMsg?.parts
       .filter(
         (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
