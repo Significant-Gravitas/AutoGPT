@@ -193,6 +193,27 @@ async def test_upsert_preserves_pinned_set_concurrently(setup_test_user, test_us
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_keeps_an_approval_mode_changed_mid_turn(
+    setup_test_user, test_user_id
+):
+    """A turn that started under one mode must not put it back in the cache
+    after the user switched mode while it ran."""
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    assert await update_session_autopilot_mode(s.session_id, test_user_id, "ask_first")
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage_user_id_mismatch(
     setup_test_user, test_user_id
 ):

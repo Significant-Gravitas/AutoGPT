@@ -88,15 +88,16 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     session = ChatSession.new("user-1", dry_run=False)
     session.title = "already titled"
     seen_context: list[tuple[str | None, ChatSession | None]] = []
-    folded: list[list[PendingMessage]] = []
+    sent: list[list[dict]] = []
 
     async def resolve(*_args, **_kwargs):
         seen_context.append(get_execution_context())
         return [_RESULT]
 
-    async def persist(_session, _builder, pending, **_kwargs):
-        folded.append(list(pending))
+    async def model_loop(*, messages, **_kwargs):
+        sent.append(list(messages))
         raise _StopAtFold
+        yield
 
     svc = "backend.copilot.baseline.service"
     with (
@@ -131,8 +132,8 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         patch(f"{svc}.extract_context_messages", new=AsyncMock(return_value=[])),
         patch(f"{svc}._compress_session_messages", new=AsyncMock(return_value=[])),
         patch(f"{svc}.resolve_answered", new=resolve),
-        patch(f"{svc}.persist_pending_as_user_rows", new=persist),
-        pytest.raises(_StopAtFold),
+        patch(f"{svc}.persist_pending_as_user_rows", new=AsyncMock(return_value=True)),
+        patch(f"{svc}.tool_call_loop", new=model_loop),
     ):
         try:
             async for _ in stream_chat_completion_baseline(
@@ -143,8 +144,11 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
                 session=session,
             ):
                 pass
+        except Exception:
+            pass  # what the turn does after the model's first call is not under test
         finally:
             set_execution_context(None, None)
 
     assert seen_context == [("user-1", session)]
-    assert folded == [[_RESULT]]
+    assert len(sent) == 1
+    assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
