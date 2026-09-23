@@ -128,11 +128,16 @@ async def test_approved_image_is_submitted_with_owner_and_image_type():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("connection_fails", [False, True])
-async def test_receipt_outage_returns_retryable_error(connection_fails):
-    from backend.api.features.experts.avatar_moderation import record_approved_avatar
+@pytest.mark.parametrize("operation", ["record", "require"])
+async def test_receipt_outage_returns_retryable_error(connection_fails, operation):
+    from backend.api.features.experts.avatar_moderation import (
+        record_approved_avatar,
+        require_approved_avatar,
+    )
 
     redis = AsyncMock()
     redis.setex.side_effect = ConnectionError("unavailable")
+    redis.get.side_effect = ConnectionError("unavailable")
     with patch(
         "backend.api.features.experts.avatar_moderation.get_redis_async",
         new=AsyncMock(
@@ -141,6 +146,11 @@ async def test_receipt_outage_returns_retryable_error(connection_fails):
         ),
     ):
         with pytest.raises(HTTPException) as error:
-            await record_approved_avatar("owner", "https://example.com/upload.png")
+            action = (
+                record_approved_avatar
+                if operation == "record"
+                else require_approved_avatar
+            )
+            await action("owner", "https://example.com/upload.png")
     assert error.value.status_code == 503
     assert "try again" in error.value.detail

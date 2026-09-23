@@ -66,8 +66,14 @@ async def record_approved_avatar(user_id: str, url: str) -> None:
 async def require_approved_avatar(user_id: str, url: str | None) -> None:
     if not url or _MANAGED_AVATAR.fullmatch(url):
         return
-    redis = await get_redis_async()
-    if await redis.get(_receipt_key(user_id, url)):
+    try:
+        redis = await get_redis_async()
+        approved = await redis.get(_receipt_key(user_id, url))
+    except Exception as error:
+        raise HTTPException(
+            503, "Appearance review is unavailable. Please try again later."
+        ) from error
+    if approved:
         return
     raise HTTPException(
         400,
