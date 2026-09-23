@@ -258,6 +258,23 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_run_with_the_flag_off_is_still_spent(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "flag off")
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    with patch(
+        "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
+    ):
+        await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [{"text": "flag off"}]
+    assert await _row(review_id, test_user_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
     setup_test_user, test_user_id, gate_on, post_tool
 ):

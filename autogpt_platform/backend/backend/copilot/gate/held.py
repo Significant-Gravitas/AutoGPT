@@ -288,6 +288,9 @@ async def _outcome(
         return "Nothing ran: this tool no longer exists."
     # The gate finds the approval for exactly these arguments and spends it.
     result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    # With the flag switched off since, the gate ran it without spending the
+    # approval; spend it here so no later identical call rides on it.
+    await review_store.consume(call.review_id, user_id)
     if isinstance(result.output, str):
         return result.output
     return json.dumps(result.output, default=str)
