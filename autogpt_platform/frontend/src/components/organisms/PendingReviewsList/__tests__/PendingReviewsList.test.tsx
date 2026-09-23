@@ -19,6 +19,8 @@ function makeReview(
     graph_version: 1,
     payload: { to: "x@y.com" },
     instructions: "SendEmailBlock",
+    action: "Send Email",
+    agent_name: "Invoice follow-up",
     editable: true,
     status: "WAITING",
     created_at: new Date(),
@@ -107,10 +109,16 @@ test("a collapsed group offers no way to decide it", async () => {
 
   expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
 
-  await userEvent.click(
-    screen.getByRole("button", { name: /Review required for/ }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: /Send Email/ }));
 
   expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+});
+
+test("a block's group is titled by its action and names its workflow", () => {
+  render(<PendingReviewsList reviews={[makeReview()]} />);
+
+  expect(screen.getByText("Send Email")).toBeDefined();
+  expect(screen.getByText("In workflow “Invoice follow-up”")).toBeDefined();
+  expect(screen.queryByText(/SendEmailBlock/)).toBeNull();
 });
