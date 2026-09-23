@@ -84,6 +84,7 @@ class BaasBotJoinMeetingBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

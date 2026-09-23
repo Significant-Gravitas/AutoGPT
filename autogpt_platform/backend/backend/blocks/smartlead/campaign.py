@@ -196,6 +196,7 @@ class AddLeadToCampaignBlock(Block):
                     bounce_count=0,
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod

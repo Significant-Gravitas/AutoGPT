@@ -3064,6 +3064,32 @@ async def test_resume_of_a_subgraph_follows_the_chat_of_the_run_that_nested_it(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("gone", ["chat", "parent"])
+async def test_resume_pauses_when_the_originating_chat_or_parent_is_gone(
+    mocker: MockerFixture, gone: str
+):
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    if gone == "chat":
+        graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+        graph_exec.trigger_ref = "deleted-session"
+    else:
+        graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+        graph_exec.trigger_ref = "deleted-parent"
+        execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
 async def test_subgraph_inherits_the_pause_through_its_context(
     mocker: MockerFixture,
 ):
