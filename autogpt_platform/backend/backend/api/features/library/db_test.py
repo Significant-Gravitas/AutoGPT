@@ -421,12 +421,12 @@ def add_to_library_steps(mocker) -> dict[str, MagicMock]:
             "add_graph_to_library",
             AsyncMock(return_value=MagicMock(id="library-agent")),
         ),
-        "track": mocker.patch.object(db, "track_marketplace_agent_added"),
+        "track": mocker.patch.object(db, "track_listing_added_to_library"),
     }
 
 
 @pytest.mark.asyncio
-async def test_first_marketplace_add_sends_marketplace_agent_added(
+async def test_first_marketplace_add_sends_listing_added_to_library(
     add_to_library_steps,
 ):
     await db.add_store_agent_to_library("version123", "test-user")

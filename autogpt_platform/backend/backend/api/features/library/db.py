@@ -36,7 +36,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
-from backend.util.product_analytics import track_marketplace_agent_added
+from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
 
 from . import model as library_model
@@ -1264,7 +1264,7 @@ async def _add_store_agent_to_library(
     if tx is None:
         # A transactional caller may still roll back, and it upserts, so only
         # the standalone path knows this is a first-time add that sticks.
-        track_marketplace_agent_added(
+        track_listing_added_to_library(
             user_id=user_id,
             store_listing_version_id=store_listing_version.id,
             graph_id=graph_model.id,

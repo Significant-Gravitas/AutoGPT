@@ -369,7 +369,7 @@ def track_subscription_ended(
     )
 
 
-def track_marketplace_agent_added(
+def track_listing_added_to_library(
     *,
     user_id: str,
     store_listing_version_id: str,
@@ -378,7 +378,7 @@ def track_marketplace_agent_added(
 ) -> None:
     track(
         user_id,
-        PostHogEvent.MARKETPLACE_AGENT_ADDED,
+        PostHogEvent.LISTING_ADDED_TO_LIBRARY,
         {
             "store_listing_version_id": store_listing_version_id,
             "graph_id": graph_id,
@@ -387,7 +387,7 @@ def track_marketplace_agent_added(
     )
 
 
-def track_marketplace_agent_downloaded(
+def track_listing_downloaded(
     *,
     user_id: str | None,
     store_listing_version_id: str,
@@ -396,6 +396,6 @@ def track_marketplace_agent_downloaded(
     """A signed-out download has no user, so ``track`` drops it."""
     track(
         user_id,
-        PostHogEvent.MARKETPLACE_AGENT_DOWNLOADED,
+        PostHogEvent.LISTING_DOWNLOADED,
         {"store_listing_version_id": store_listing_version_id, "graph_id": graph_id},
     )

@@ -860,16 +860,14 @@ class _DownloadedGraph(BaseModel):
     version: int
 
 
-def test_download_agent_file_sends_marketplace_agent_downloaded(
+def test_download_agent_file_sends_listing_downloaded(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mocker.patch(
         "backend.api.features.store.db.get_agent",
         mocker.AsyncMock(return_value=_DownloadedGraph(id="graph-1", version=3)),
     )
-    track = mocker.patch(
-        "backend.api.features.store.routes.track_marketplace_agent_downloaded"
-    )
+    track = mocker.patch("backend.api.features.store.routes.track_listing_downloaded")
     app.dependency_overrides[get_optional_user_id] = lambda: "test-user-id"
 
     response = client.get("/listings/versions/slv-1/graph/download")
@@ -885,9 +883,7 @@ def test_signed_out_download_passes_no_user(mocker: pytest_mock.MockFixture) -> 
         "backend.api.features.store.db.get_agent",
         mocker.AsyncMock(return_value=_DownloadedGraph(id="graph-1", version=3)),
     )
-    track = mocker.patch(
-        "backend.api.features.store.routes.track_marketplace_agent_downloaded"
-    )
+    track = mocker.patch("backend.api.features.store.routes.track_listing_downloaded")
 
     response = client.get("/listings/versions/slv-1/graph/download")
 

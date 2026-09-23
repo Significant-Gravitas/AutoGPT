@@ -427,26 +427,26 @@ def test_subscription_ended(capture: Mock) -> None:
     assert properties["reason"] == "payment_failed"
 
 
-def test_marketplace_agent_added_and_downloaded(capture: Mock) -> None:
-    product_analytics.track_marketplace_agent_added(
+def test_listing_added_to_library_and_downloaded(capture: Mock) -> None:
+    product_analytics.track_listing_added_to_library(
         user_id="user-1",
         store_listing_version_id="slv-1",
         graph_id="graph-1",
         library_agent_id="lib-1",
     )
-    product_analytics.track_marketplace_agent_downloaded(
+    product_analytics.track_listing_downloaded(
         user_id="user-1", store_listing_version_id="slv-1", graph_id="graph-1"
     )
 
     added, downloaded = capture.call_args_list
-    assert added.kwargs["event"] == "marketplace_agent_added"
+    assert added.kwargs["event"] == "listing_added_to_library"
     assert added.kwargs["properties"]["library_agent_id"] == "lib-1"
-    assert downloaded.kwargs["event"] == "marketplace_agent_downloaded"
+    assert downloaded.kwargs["event"] == "listing_downloaded"
     assert downloaded.kwargs["properties"]["store_listing_version_id"] == "slv-1"
 
 
 def test_signed_out_download_is_not_tracked(capture: Mock) -> None:
-    product_analytics.track_marketplace_agent_downloaded(
+    product_analytics.track_listing_downloaded(
         user_id=None, store_listing_version_id="slv-1", graph_id="graph-1"
     )
 

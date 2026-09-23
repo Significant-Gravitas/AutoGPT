@@ -15,7 +15,7 @@ import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
-from backend.util.product_analytics import track_marketplace_agent_downloaded
+from backend.util.product_analytics import track_listing_downloaded
 
 from . import cache as store_cache
 from . import categories as store_categories
@@ -288,7 +288,7 @@ async def download_agent_file(
 ) -> fastapi.responses.Response:
     """Download agent graph file for a specific marketplace listing version"""
     graph_data = await store_db.get_agent(store_listing_version_id)
-    track_marketplace_agent_downloaded(
+    track_listing_downloaded(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
         graph_id=graph_data.id,

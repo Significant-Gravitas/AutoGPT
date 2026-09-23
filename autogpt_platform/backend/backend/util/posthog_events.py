@@ -63,8 +63,8 @@ class PostHogEvent(StrEnum):
     ONBOARDING_COMPLETED = "onboarding_completed"
     CHECKOUT_STARTED = "checkout_started"
     SUBSCRIPTION_ENDED = "subscription_ended"
-    MARKETPLACE_AGENT_ADDED = "marketplace_agent_added"
-    MARKETPLACE_AGENT_DOWNLOADED = "marketplace_agent_downloaded"
+    LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
+    LISTING_DOWNLOADED = "listing_downloaded"
 
 
 class PlannedPostHogEvent(StrEnum):
