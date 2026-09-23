@@ -39,6 +39,7 @@ from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
+from backend.util.product_analytics import track_signup_completed
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -87,6 +88,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
                 )
             )
             was_created = True
+            track_signup_completed(
+                user_id=user.id, signup_method=_signup_method(user_data)
+            )
         else:
             was_created = False
 
@@ -119,6 +123,15 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         raise DatabaseError(
             f"Failed to get or create user {user_data.get('sub')}: {e}"
         ) from e
+
+
+def _signup_method(user_data: dict) -> str | None:
+    """The auth provider the account was created with (``email``, ``google``, ...)."""
+    app_metadata = user_data.get("app_metadata")
+    if not isinstance(app_metadata, dict):
+        return None
+    provider = app_metadata.get("provider")
+    return provider if isinstance(provider, str) and provider else None
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-

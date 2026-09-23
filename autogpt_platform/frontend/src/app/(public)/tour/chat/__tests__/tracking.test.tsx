@@ -13,6 +13,11 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, capture: vi.fn() },
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
 import TourChatPage from "../page";
 import { DEFAULT_SCENARIO_ID } from "../script/tourScenarios";
 import { useTourStore } from "../tourStore";
@@ -52,6 +57,7 @@ describe("Tour DataFast tracking", () => {
     vi.useFakeTimers();
     window.datafast = datafast;
     datafast.mockClear();
+    posthog.capture.mockClear();
     sessionStorage.clear();
     useTourStore.setState({
       activeScenarioId: DEFAULT_SCENARIO_ID,
@@ -119,6 +125,27 @@ describe("Tour DataFast tracking", () => {
       { label: "pricing", placement: "end-card" },
       { label: "self-host", placement: "end-card" },
       { label: "another-scenario", placement: "end-card" },
+    ]);
+  });
+
+  // The tour is public and pre-signup: the PostHog mirror carries the same
+  // metadata as DataFast and nothing that identifies the visitor.
+  test("mirrors the tour funnel to PostHog under its PostHog names", async () => {
+    render(<TourChatPage />);
+    await advanceThroughTurn();
+    await pressEnterToSend();
+    fireEvent.click(screen.getByText("Make this agent yours"));
+
+    const events = posthog.capture.mock.calls.map(([name, properties]) => [
+      name,
+      properties,
+    ]);
+    // Child effects run first, so the scenario starts before the tour does.
+    expect(events).toEqual([
+      ["tour_scenario_started", { scenario: DEFAULT_SCENARIO_ID }],
+      ["tour_started", {}],
+      ["tour_scenario_completed", { scenario: DEFAULT_SCENARIO_ID }],
+      ["tour_cta_clicked", { label: "pricing", placement: "end-card" }],
     ]);
   });
 });

@@ -1103,6 +1103,7 @@ class UserCredit(UserCreditBase):
 
         successful_transaction = None
         new_transaction_key = None
+        charged: stripe.PaymentIntent | None = None
         for payment_method in payment_methods:
             if transaction_type == CreditTransactionType.CARD_CHECK:
                 setup_intent = await stripe_call(
@@ -1140,6 +1141,7 @@ class UserCredit(UserCreditBase):
                         {"payment_intent": payment_intent}
                     )
                     new_transaction_key = payment_intent.id
+                    charged = payment_intent
                     break
 
         if not successful_transaction:
@@ -1163,6 +1165,8 @@ class UserCredit(UserCreditBase):
                 {
                     "amount_credits": amount,
                     "top_up_type": top_up_type.value,
+                    "amount_cents": charged.amount if charged else None,
+                    "currency": charged.currency if charged else None,
                 },
             )
 
@@ -1306,6 +1310,8 @@ class UserCredit(UserCreditBase):
                     {
                         "amount_credits": credit_transaction.amount,
                         "top_up_type": "CHECKOUT",
+                        "amount_cents": checkout_session.amount_total,
+                        "currency": checkout_session.currency,
                     },
                 )
 
@@ -3005,7 +3011,12 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         _track_billing_event(
             PostHogEvent.SUBSCRIPTION_PAYMENT_SUCCESS,
             user.id,
-            {"subscription_tier": tier, "billing_cycle": billing_cycle},
+            {
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+                "amount_cents": invoice.get("amount_paid"),
+                "currency": invoice.get("currency"),
+            },
         )
     except Exception:
         logger.warning(

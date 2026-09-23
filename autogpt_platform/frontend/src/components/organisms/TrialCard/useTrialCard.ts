@@ -49,10 +49,6 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200)
         throw new Error("Unable to start trial checkout.");
-      posthog?.capture(TrialEvent.SUBSCRIPTION_TRIAL_CHECKOUT_STARTED, {
-        trial_offer_version: offer.version,
-        surface: returnTo,
-      });
       window.location.assign(response.data.url);
     } catch (error) {
       setFailure({

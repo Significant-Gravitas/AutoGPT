@@ -113,7 +113,7 @@ Automated work is measured separately: `schedule_fired` and `trigger_fired`.
 | Status | Meaning |
 | --- | --- |
 | `live` | Sent today under this name. Keep it. |
-| `add` | Not sent yet. SECRT-2723 adds it; the name is already in `PlannedPostHogEvent`. |
+| `add` | Not sent yet; the name is in `PlannedPostHogEvent` until the change that starts sending it. |
 
 Events that are no longer sent are listed under [Removed](#removed), with
 what replaced them.
@@ -123,21 +123,23 @@ what replaced them.
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$pageview` | browser | live | `$current_url` | A route or query string changes (`PostHogPageViewTracker`). |
-| `tour_started` | browser | add | — | The public `/tour` page is opened (once per tab). |
-| `tour_scenario_started` | browser | add | `scenario` | A tour scenario starts playing. |
-| `tour_scenario_completed` | browser | add | `scenario` | A tour scenario reaches its end. |
-| `tour_cta_clicked` | browser | add | `label` (`pricing`, `another-scenario`, `self-host`, `share`) | A tour call to action is clicked. |
-| `signup_completed` | backend | add | `signup_method` | The user row is created. |
+| `tour_started` | browser | live | — | The public `/tour` page is opened (once per tab). |
+| `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
+| `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
+| `tour_cta_clicked` | browser | live | `label` (`pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one | A tour call to action is clicked. |
+| `signup_completed` | backend | live | `signup_method` (the auth provider from the token's `app_metadata.provider`, e.g. `email`, `google`; omitted when absent) | The user row is created (`data/user.py`), whichever request creates it. |
 
-The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
-`tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it.
+The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
+`tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
+the same properties and nothing identifying in them: `/tour` is public and
+pre-signup, so they land on the visitor's anonymous id.
 
 ## Onboarding and activation
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | add | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). |
-| `onboarding_completed` | backend | add | — | The onboarding is marked complete. |
+| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). The paywall step reports `paywall_viewed` instead. |
+| `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | — | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the whole finalize round trip. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
@@ -204,20 +206,19 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
-| `marketplace_agent_added` | backend | add | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. |
-| `marketplace_agent_downloaded` | backend | add | `store_listing_version_id`, `graph_id` | A marketplace agent is downloaded. |
+| `marketplace_agent_added` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Restoring an entry the user already had does not count, and neither does an add inside another write's transaction (attaching a workflow to an expert is `workflow_installed_on_expert`). |
+| `marketplace_agent_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
 
 ## Monetization
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `paywall_viewed` | browser | add | `surface` (`onboarding`, `paywall_gate`, `billing`) | A paywall or plan picker is shown (once per tab per surface). The pricing arm comes from PostHog's own `$feature/...` properties. |
-| `plan_selected` | browser | add | `subscription_tier`, `billing_cycle`, `surface` | A plan is picked on any paywall or on the billing page. |
-| `billing_portal_opened` | browser | add | `surface` | The Stripe billing portal is opened. |
-| `checkout_started` | backend | add | `checkout_kind` (`subscription`, `top_up`), `subscription_tier`, `billing_cycle`, `surface` | A Stripe Checkout session is created. |
-| `checkout_abandoned` | browser | add | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL). Browser-sent: Stripe only reports the expiry a day later. |
+| `paywall_viewed` | browser | live | `surface` (`onboarding`, `paywall_gate`, `billing`) | A paywall or plan picker is shown (once per tab per surface): the onboarding subscription step, the in-app paywall modal, the billing page's plan card. The pricing arm comes from PostHog's own `$feature/...` properties. |
+| `plan_selected` | browser | live | `subscription_tier` (`PRO`, `MAX`, `BUSINESS` for Team), `billing_cycle`, `surface`; `pricing_variant` on `onboarding` | A plan is picked: a plan card on either paywall, or Upgrade / Downgrade on the billing page. |
+| `billing_portal_opened` | browser | live | `surface` (`billing` for the plan card, `billing_payment_method` for the payment method card) | The Stripe billing portal is opened. |
+| `checkout_started` | backend | live | `checkout_kind` (`subscription`, `top_up`, `trial`), `subscription_tier`, `billing_cycle`, `surface` (sent by the client; unset for the low-credit top-up dialog and the legacy `/profile/credits` page), `$feature/<experiment>` for every recorded experiment arm | A Stripe Checkout session is created and its URL returned (subscription, credit top-up or trial card setup). A paid plan changed in place opens no Checkout and sends nothing. |
+| `checkout_abandoned` | browser | live | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL: `subscription=cancelled`, `topup=cancel`, `trial=cancelled`, or the paywall modal's `paywall_checkout=cancelled` marker). Browser-sent: Stripe only reports the expiry a day later. |
 | `subscription_trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
-| `subscription_trial_checkout_started` | browser | live | `trial_offer_version`, `surface` | Trial checkout is opened. Once `checkout_started` ships, fold this in as `checkout_kind: trial`. |
 | `subscription_trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every `subscription_trial_*` event, it is sent only when its notification email is queued. |
 | `subscription_trial_ending` | backend | live | as above | The reminder window opens. |
 | `subscription_trial_canceled` | backend | live | as above | The trial is set to cancel. |
@@ -226,15 +227,21 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `subscription_trial_converted` | backend | live | as above | The trial converts to paid. |
 | `subscription_trial_ended` | backend | live | as above | The trial ends without converting. |
 | `subscription_upgraded` | backend | live | `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier change takes effect. |
-| `subscription_payment_success` | backend | live | `subscription_tier`, `billing_cycle`; SECRT-2723 adds `amount_cents`, `currency` | A subscription invoice is paid. |
-| `credit_topup_success` | backend | live | `amount_credits`, `top_up_type`; SECRT-2723 adds `amount_cents`, `currency` | Credits are bought. |
+| `subscription_payment_success` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. |
+| `credit_topup_success` | backend | live | `amount_credits`, `top_up_type`, `amount_cents` (the Checkout total or the auto top-up charge), `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
-| `subscription_ended` | backend | add | `subscription_tier`, `billing_cycle`, `reason` | A paid subscription ends (Stripe `customer.subscription.deleted`). |
+| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `subscription_trial_ended` instead. |
 | `subscription_tier_reconciliation_discrepancy` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
 
-The onboarding paywall's `paywall_view`, `paywall_checkout_cancelled` and
-`hire_completed` goals go to DataFast only, which is why the paywall has no
-PostHog funnel yet.
+The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
+`checkout_started` → `subscription_payment_success`, with `checkout_abandoned`
+as the way out. The onboarding paywall's DataFast goals (`paywall_view`,
+`paywall_checkout_cancelled`) keep firing alongside.
+
+Browser events captured before `posthog.init` has run (a page's mount effect
+on a full page load, such as the return from Stripe) are held by
+`src/services/analytics/posthog-capture.ts` and sent, with the time they
+happened, once PostHog is up.
 
 ## Retention
 
@@ -262,12 +269,13 @@ so an experiment can be read in PostHog and Looker alike.
 
 ## Removed
 
-No longer sent (SECRT-2722). The names stay reserved: the pin tests fail if
+No longer sent (SECRT-2722, SECRT-2723). The names stay reserved: the pin tests fail if
 one comes back, because reusing it would splice a different action onto the
 history PostHog already holds.
 
 | Event | Was sent by | Read instead |
 | --- | --- | --- |
+| `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `subscription_trial_started` carries it. |
 | `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
 | `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |

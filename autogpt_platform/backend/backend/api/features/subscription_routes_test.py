@@ -87,6 +87,15 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Keep analytics off the network and let tests assert the event."""
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.track_checkout_started",
+        new_callable=AsyncMock,
+    )
+
+
 _DEFAULT_TIER_PRICES: dict[SubscriptionTier, str | None] = {
     SubscriptionTier.BASIC: None,  # Legacy: stripe-price-id-basic unset by default.
     SubscriptionTier.PRO: "price_pro",
@@ -628,6 +637,89 @@ def test_update_subscription_tier_creates_checkout(
 
     assert response.status_code == 200
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_abc"
+
+
+def test_update_subscription_tier_checkout_sends_checkout_started(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """A created Checkout Session is reported with its plan and surface."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.NO_TIER
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_abc",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "billing_cycle": "yearly",
+            "surface": "paywall_gate",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_awaited_once_with(
+        user_id=TEST_USER_ID,
+        checkout_kind="subscription",
+        surface="paywall_gate",
+        subscription_tier="MAX",
+        billing_cycle="yearly",
+    )
+
+
+def test_update_subscription_tier_failed_checkout_sends_no_checkout_started(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.NO_TIER
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _patch_payment_flag(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+        side_effect=stripe.StripeError("down"),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 502
+    track_checkout_started.assert_not_awaited()
 
 
 def test_update_subscription_tier_forwards_datafast_headers(

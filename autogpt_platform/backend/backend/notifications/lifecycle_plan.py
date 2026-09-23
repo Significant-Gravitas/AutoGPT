@@ -10,6 +10,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal
 
+from prisma.enums import SubscriptionTier
+
 from backend.data.credit import build_price_to_tier_map
 from backend.data.notifications import CardDetails, SubscriptionPlan
 from backend.notifications.stripe_payloads import StripeInvoice
@@ -66,6 +68,15 @@ async def plan_from_invoice(invoice: dict) -> SubscriptionPlan:
     )
 
 
+async def tier_and_cycle_from_subscription(
+    subscription: dict,
+) -> tuple[str | None, Literal["monthly", "yearly"]]:
+    """The tier key (``PRO``) and cycle, in the form analytics reports them."""
+    price = _first_price(subscription)
+    tier = await _tier(price.get("id"))
+    return (tier.value if tier else None), _cycle(price)
+
+
 def card_from_invoice(invoice: dict) -> CardDetails:
     """Card brand and last four for the "Card ···· 4242" row.
 
@@ -110,11 +121,15 @@ def _cycle(price: dict) -> Literal["monthly", "yearly"]:
 
 
 async def _tier_name(price_id: str | None) -> str:
+    tier = await _tier(price_id)
+    return tier.value.title() if tier else "AutoGPT"
+
+
+async def _tier(price_id: str | None) -> SubscriptionTier | None:
     if not price_id:
-        return "AutoGPT"
+        return None
     try:
-        tier = (await build_price_to_tier_map()).get(price_id)
+        return (await build_price_to_tier_map()).get(price_id)
     except Exception:
         logger.warning(f"Could not resolve tier for price {price_id}", exc_info=True)
-        return "AutoGPT"
-    return tier.value.title() if tier else "AutoGPT"
+        return None

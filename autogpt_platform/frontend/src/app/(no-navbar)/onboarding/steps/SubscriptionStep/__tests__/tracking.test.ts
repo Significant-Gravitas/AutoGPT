@@ -8,7 +8,42 @@ vi.mock("@/services/analytics", () => ({
   analytics: { sendDatafastEvent },
 }));
 
-import { trackPaywallView } from "../tracking";
+const { posthog } = vi.hoisted(() => ({
+  posthog: { __loaded: true, capture: vi.fn() },
+}));
+vi.mock("posthog-js", () => ({ default: posthog }));
+
+import { trackPaywallCheckoutCancelled, trackPaywallView } from "../tracking";
+
+describe("PostHog paywall funnel", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sendDatafastEvent.mockReset();
+    posthog.capture.mockReset();
+    sessionStorage.clear();
+  });
+
+  it("reports the onboarding paywall view once per tab", () => {
+    trackPaywallView();
+    trackPaywallView();
+
+    expect(posthog.capture.mock.calls).toEqual([
+      ["paywall_viewed", { surface: "onboarding" }],
+    ]);
+  });
+
+  it("reports the return from Stripe without paying as checkout_abandoned", () => {
+    trackPaywallCheckoutCancelled();
+    trackPaywallCheckoutCancelled();
+
+    expect(posthog.capture.mock.calls).toEqual([
+      [
+        "checkout_abandoned",
+        { checkout_kind: "subscription", surface: "onboarding" },
+      ],
+    ]);
+  });
+});
 
 describe("trackPaywallView", () => {
   beforeEach(() => {

@@ -1957,6 +1957,7 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
         "customer": "cus_123",
         "subscription": "sub_abc123",
         "amount_paid": 5000,
+        "currency": "usd",
         "subscription_details": {
             "metadata": {
                 "tier": "PRO",
@@ -1991,6 +1992,9 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"]["subscription_tier"] == "PRO"
     assert kwargs["properties"]["billing_cycle"] == "yearly"
+    # Revenue is what the invoice actually charged, in the minor unit.
+    assert kwargs["properties"]["amount_cents"] == 5000
+    assert kwargs["properties"]["currency"] == "usd"
 
 
 @pytest.mark.asyncio
@@ -2460,6 +2464,8 @@ async def test_top_up_credits_tracks_success():
     payment_intent = MagicMock()
     payment_intent.status = "succeeded"
     payment_intent.id = "pi_123"
+    payment_intent.amount = 500
+    payment_intent.currency = "usd"
     track_mock = MagicMock()
 
     with (
@@ -2503,6 +2509,8 @@ async def test_top_up_credits_tracks_success():
     assert kwargs["properties"] == {
         "amount_credits": 500,
         "top_up_type": "UNCATEGORIZED",
+        "amount_cents": 500,
+        "currency": "usd",
         **BASE_PROPERTIES,
     }
 
@@ -2518,6 +2526,8 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
         {
             "id": "cs_test_topup",
             "payment_status": "paid",
+            "amount_total": 2750,
+            "currency": "usd",
             "payment_intent": stripe.PaymentIntent.construct_from(
                 {"id": "pi_test_topup"}, "k"
             ),
@@ -2553,9 +2563,13 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
     _, kwargs = track_mock.call_args
     assert kwargs["event"] == "credit_topup_success"
     assert kwargs["distinct_id"] == "user-1"
+    # amount_cents is the session total actually charged (tax included), not
+    # the credit amount.
     assert kwargs["properties"] == {
         "amount_credits": 2500,
         "top_up_type": "CHECKOUT",
+        "amount_cents": 2750,
+        "currency": "usd",
         **BASE_PROPERTIES,
     }
 

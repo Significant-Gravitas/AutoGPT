@@ -1,4 +1,9 @@
 import { analytics } from "@/services/analytics";
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
+import { TourEvent } from "@/services/analytics/posthog-events";
+
+// Each tour step goes to DataFast and, under its PostHog name, to PostHog.
+// The tour is public and pre-signup: nothing here may carry an identifier.
 
 export type TourCtaLabel =
   | "pricing"
@@ -17,14 +22,21 @@ export function trackTourStart() {
     // beats dropping it.
   }
   analytics.sendDatafastEvent("tour_start", {});
+  capturePostHogEvent(TourEvent.TOUR_STARTED);
 }
 
 export function trackTourScenarioStart(scenarioId: string) {
   analytics.sendDatafastEvent("tour_scenario_start", { scenario: scenarioId });
+  capturePostHogEvent(TourEvent.TOUR_SCENARIO_STARTED, {
+    scenario: scenarioId,
+  });
 }
 
 export function trackTourScenarioComplete(scenarioId: string) {
   analytics.sendDatafastEvent("tour_scenario_complete", {
+    scenario: scenarioId,
+  });
+  capturePostHogEvent(TourEvent.TOUR_SCENARIO_COMPLETED, {
     scenario: scenarioId,
   });
 }
@@ -34,4 +46,5 @@ export function trackTourCtaClick(
   metadata: Record<string, unknown> = {},
 ) {
   analytics.sendDatafastEvent("tour_cta_click", { label, ...metadata });
+  capturePostHogEvent(TourEvent.TOUR_CTA_CLICKED, { label, ...metadata });
 }

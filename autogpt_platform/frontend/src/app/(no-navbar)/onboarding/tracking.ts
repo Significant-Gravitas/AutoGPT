@@ -1,4 +1,6 @@
 import { analytics } from "@/services/analytics";
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
+import { OnboardingEvent } from "@/services/analytics/posthog-events";
 import type { StepLayout } from "./store";
 
 export type OnboardingStepKey =
@@ -63,4 +65,8 @@ export function trackOnboardingStep(key: OnboardingStepKey) {
     // calls without a guard of its own. This runs inside the onboarding wizard,
     // so an exception here would unmount the flow into an error boundary.
   }
+
+  // PostHog funnels order steps by their filter, so one event with a `step`
+  // property serves where DataFast needs a goal per step.
+  capturePostHogEvent(OnboardingEvent.ONBOARDING_STEP_VIEWED, { step: key });
 }

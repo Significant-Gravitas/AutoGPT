@@ -398,6 +398,67 @@ class TestGetOrCreateUserStatus:
         assert result.was_created is False
         mock_prisma.user.create.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_new_user_sends_signup_completed_with_the_auth_provider(self):
+        db_user = MagicMock(id="user-new", email="alice@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-new", "alice@example.com"),
+            ),
+            patch.object(user_module, "track_signup_completed") as track,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=None)
+            mock_prisma.user.create = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user_with_status(
+                {
+                    "sub": "user-new",
+                    "email": "alice@example.com",
+                    "app_metadata": {"provider": "google", "providers": ["google"]},
+                }
+            )
+
+        # The user id only: email and name never go into event properties.
+        track.assert_called_once_with(user_id="user-new", signup_method="google")
+
+    @pytest.mark.asyncio
+    async def test_existing_user_sends_no_signup_completed(self):
+        db_user = MagicMock(id="user-existing", email="bob@example.com", name=None)
+
+        with (
+            patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(
+                user_module.User,
+                "from_db",
+                return_value=_application_user("user-existing", "bob@example.com"),
+            ),
+            patch.object(user_module, "track_signup_completed") as track,
+        ):
+            mock_prisma.user.find_unique = AsyncMock(return_value=db_user)
+
+            await user_module.get_or_create_user_with_status(
+                {"sub": "user-existing", "email": "bob@example.com"}
+            )
+
+        track.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "user_data,expected",
+    [
+        ({"app_metadata": {"provider": "email"}}, "email"),
+        ({"app_metadata": {"provider": ""}}, None),
+        ({"app_metadata": "not-a-dict"}, None),
+        ({}, None),
+    ],
+)
+def test_signup_method_reads_the_auth_provider(user_data: dict, expected):
+    assert user_module._signup_method(user_data) == expected
+
 
 class TestGetOrCreateUserProfile:
     """get_or_create_user must guarantee a marketplace Profile exists, since

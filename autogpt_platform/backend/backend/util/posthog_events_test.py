@@ -38,9 +38,6 @@ LIVE_EVENT_NAMES = {
     "subscription_trial_ended",
     "subscription_trial_converted",
     "subscription_trial_payment_failed",
-}
-
-PLANNED_EVENT_NAMES = {
     "signup_completed",
     "onboarding_completed",
     "checkout_started",
@@ -48,6 +45,8 @@ PLANNED_EVENT_NAMES = {
     "marketplace_agent_added",
     "marketplace_agent_downloaded",
 }
+
+PLANNED_EVENT_NAMES: set[str] = set()
 
 # No longer sent (SECRT-2722). The names stay reserved: reusing one would
 # splice a different action onto the history PostHog already holds for it.

@@ -34,11 +34,13 @@ from backend.notifications.lifecycle_plan import (
     format_date,
     plan_from_invoice,
     plan_from_subscription,
+    tier_and_cycle_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
 from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
+from backend.util.product_analytics import track_subscription_ended
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
@@ -302,6 +304,12 @@ async def on_subscription_deleted(subscription: dict) -> None:
             ),
         ),
         claim_key,
+    )
+    # After the claim and the publish, so a Stripe replay cannot count the
+    # same churn twice.
+    tier, cycle = await tier_and_cycle_from_subscription(subscription)
+    track_subscription_ended(
+        user_id=user.id, subscription_tier=tier, billing_cycle=cycle, reason=reason
     )
     # Churned users get win-back only, never the monthly update.
     await queue_audience_change(

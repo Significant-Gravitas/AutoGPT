@@ -85,7 +85,7 @@ describe("useBalanceCard", () => {
   });
 
   it("handleSubmit POSTs the integer-cents amount when isValid", async () => {
-    let capturedBody: { credit_amount: number } | null = null;
+    let capturedBody: { credit_amount: number; surface?: string } | null = null;
     server.use(
       jsonHandler("get", "/api/credits", { credits: 1000 }),
       http.post("*/api/credits", async ({ request }) => {
@@ -110,7 +110,8 @@ describe("useBalanceCard", () => {
 
     await waitFor(() => expect(result.current.isAdding).toBe(false));
     // Hook treats a no-checkout_url response as an error → modal stays open.
-    expect(capturedBody).toEqual({ credit_amount: 2500 });
+    // `surface` feeds the backend's checkout_started event.
+    expect(capturedBody).toEqual({ credit_amount: 2500, surface: "billing" });
   });
 
   it("handleSubmit catches API failures and stops the spinner", async () => {

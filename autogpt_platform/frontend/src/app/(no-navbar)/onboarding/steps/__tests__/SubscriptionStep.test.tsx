@@ -28,6 +28,9 @@ vi.mock("@posthog/react", () => ({
   usePostHog: () => undefined,
 }));
 
+const posthogJS = vi.hoisted(() => ({ __loaded: true, capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: posthogJS }));
+
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({
   FadeIn: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -49,6 +52,8 @@ afterEach(() => {
 
 beforeEach(() => {
   postHog.variant = undefined;
+  posthogJS.capture.mockClear();
+  sessionStorage.clear();
   useOnboardingWizardStore.getState().reset();
   // The paywall is the last interactive step (step 3), before Preparing.
   useOnboardingWizardStore.getState().goToStep(3);
@@ -362,6 +367,40 @@ describe("SubscriptionStep", () => {
     });
     expect(capturedTierBody!.tier).toBe("MAX");
     expect(useOnboardingWizardStore.getState().selectedPlan).toBe("MAX");
+  });
+
+  test("reports the paywall view and the picked plan with its pricing arm to PostHog", async () => {
+    postHog.variant = "yearly-max";
+    let capturedTierBody: { surface?: string } | null = null;
+    server.use(
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedBilling).toBe(
+        "yearly",
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    // The backend reads `surface` for its checkout_started event.
+    expect(capturedTierBody!.surface).toBe("onboarding");
+    expect(posthogJS.capture).toHaveBeenCalledWith("paywall_viewed", {
+      surface: "onboarding",
+    });
+    expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+      subscription_tier: "MAX",
+      billing_cycle: "yearly",
+      surface: "onboarding",
+      pricing_variant: "yearly-max",
+    });
   });
 
   test("selecting Team opens the intake form and does not advance", () => {

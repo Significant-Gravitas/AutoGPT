@@ -18,6 +18,11 @@ import {
   getSubscriptionValue,
   trackAdsConversion,
 } from "@/services/analytics/google-ads";
+import {
+  trackBillingPortalOpened,
+  trackPaywallViewed,
+  trackPlanSelected,
+} from "@/services/analytics/monetization-analytics";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 
@@ -103,6 +108,11 @@ export function useYourPlanCard() {
   useEffect(() => {
     setSelectedCycle(serverCycle);
   }, [serverCycle]);
+
+  const hasSubscriptionData = Boolean(subscription.data);
+  useEffect(() => {
+    if (hasSubscriptionData) trackPaywallViewed("billing");
+  }, [hasSubscriptionData]);
 
   const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
   const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
@@ -204,6 +214,7 @@ export function useYourPlanCard() {
           success_url: successUrl,
           cancel_url: cancelUrl,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+          surface: "billing",
         },
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
@@ -573,6 +584,11 @@ export function useYourPlanCard() {
     onCancelTierDowngrade: cancelTierDowngrade,
     onUpgrade: () => {
       if (!plan?.nextTier) return;
+      trackPlanSelected({
+        subscription_tier: plan.nextTier,
+        billing_cycle: plan.isPaidPlan ? serverCycle : selectedCycle,
+        surface: "billing",
+      });
       // Team (BUSINESS) tier is contact-sales — divert to marketing page
       // instead of POSTing a Checkout the user can't self-serve.
       if (plan.nextTierIsTeamLink) {
@@ -591,13 +607,20 @@ export function useYourPlanCard() {
     },
     onDowngrade: () => {
       if (!plan?.previousTier) return;
+      trackPlanSelected({
+        subscription_tier: plan.previousTier,
+        billing_cycle: serverCycle,
+        surface: "billing",
+      });
       setPendingTierDowngrade(plan.previousTier);
     },
     onResume: () => {
       void resumeSubscription();
     },
     onManage: () => {
-      if (paymentPortal.data) window.location.href = paymentPortal.data;
+      if (!paymentPortal.data) return;
+      trackBillingPortalOpened("billing");
+      window.location.href = paymentPortal.data;
     },
   };
 }

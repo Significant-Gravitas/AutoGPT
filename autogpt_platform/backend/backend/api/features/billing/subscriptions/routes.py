@@ -57,6 +57,7 @@ from backend.notifications.queue import queue_pass_work
 from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, evaluate_feature_flag
+from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
+        default=None,
+        description="Where the plan was picked; analytics only.",
+    )
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -639,6 +644,13 @@ async def update_subscription_tier(
                 "Please try again or contact support."
             ),
         )
+    await track_checkout_started(
+        user_id=user_id,
+        checkout_kind="subscription",
+        surface=request.surface,
+        subscription_tier=tier.value,
+        billing_cycle=request.billing_cycle,
+    )
 
     status = await get_subscription_status(user_id)
     status.url = url

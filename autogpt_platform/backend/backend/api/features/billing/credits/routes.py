@@ -21,6 +21,7 @@ from backend.data.credit import (
     get_credit_model,
     set_auto_top_up,
 )
+from backend.util.product_analytics import track_checkout_started
 
 # All nine routes carry tags=["credits"] and only Security(requires_user), so
 # both live at the mount and the router rather than on each route.
@@ -74,6 +75,9 @@ async def request_top_up(
         request.credit_amount,
         datafast_visitor_id=x_datafast_visitor_id,
         datafast_session_id=x_datafast_session_id,
+    )
+    await track_checkout_started(
+        user_id=user_id, checkout_kind="top_up", surface=request.surface
     )
     return {"checkout_url": checkout_url}
 

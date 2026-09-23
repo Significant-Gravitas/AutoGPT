@@ -1,4 +1,8 @@
 import { analytics } from "@/services/analytics";
+import {
+  trackCheckoutAbandoned,
+  trackPaywallViewed,
+} from "@/services/analytics/monetization-analytics";
 
 const PAYWALL_VIEW_SESSION_KEY = "paywall_view_tracked";
 
@@ -39,6 +43,8 @@ export function trackPaywallView() {
     // the screen users pay from, so an exception here would unmount the paywall
     // into an error boundary. Analytics must never be able to take checkout down.
   }
+
+  trackPaywallViewed("onboarding");
 }
 
 const CHECKOUT_CANCELLED_SESSION_KEY = "paywall_checkout_cancelled_tracked";
@@ -68,4 +74,9 @@ export function trackPaywallCheckoutCancelled() {
   } catch {
     // Never let analytics take the checkout UI down; see trackPaywallView.
   }
+
+  trackCheckoutAbandoned({
+    checkout_kind: "subscription",
+    surface: "onboarding",
+  });
 }

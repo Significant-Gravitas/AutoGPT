@@ -18,6 +18,7 @@ import {
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { trackPaywallCheckoutCancelled, trackPaywallView } from "./tracking";
+import { trackPlanSelected } from "@/services/analytics/monetization-analytics";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -46,7 +47,7 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
-  const { billing, plans } = useSubscriptionPricingExperiment();
+  const { billing, plans, variant } = useSubscriptionPricingExperiment();
   const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is
@@ -73,13 +74,24 @@ export function useSubscriptionStep() {
   const country = COUNTRIES[countryIdx];
   const isYearly = billing === "yearly";
 
+  function reportPlanSelected(planKey: PlanKey) {
+    trackPlanSelected({
+      subscription_tier: planKey === PLAN_KEYS.TEAM ? "BUSINESS" : planKey,
+      billing_cycle: isYearly ? "yearly" : "monthly",
+      surface: "onboarding",
+      pricing_variant: variant,
+    });
+  }
+
   async function handlePlanSelect(planKey: PlanKey) {
     if (planKey === PLAN_KEYS.TEAM) {
+      reportPlanSelected(planKey);
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
     if (planKey === PLAN_KEYS.BUSINESS) return;
     if (isProcessing) return;
+    reportPlanSelected(planKey);
     setIsSubmitting(true);
 
     // Local dev: backend has no Stripe wiring, so skip the checkout
@@ -109,6 +121,7 @@ export function useSubscriptionStep() {
           success_url: `${baseUrl}?step=${(steps.subscription ?? currentStep) + 1}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
           cancel_url: `${baseUrl}?step=${steps.subscription ?? currentStep}&subscription=cancelled`,
           billing_cycle: cycle,
+          surface: "onboarding",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
