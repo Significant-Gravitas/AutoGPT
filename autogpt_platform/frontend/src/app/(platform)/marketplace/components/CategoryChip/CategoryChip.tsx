@@ -11,6 +11,15 @@ import {
 
 export type ChipSize = "small" | "default";
 
+/** The marketplace's chip: a filter wears it on a button, a label on a span,
+ *  and the two read as the same object because they are the same classes. */
+export const CHIP_SHAPE =
+  "inline-flex items-center rounded-full border border-[#e9e9e9] bg-transparent font-medium text-black";
+export const CHIP_SIZE: Record<ChipSize, string> = {
+  small: "h-7 gap-1 px-2 text-xs",
+  default: "h-9 gap-1.5 px-3.5 text-sm",
+};
+
 /** The zinc fallback `getCategoryAccent` hands back for "All", research and
  *  development. Its glossy chip is too faint to read as selected next to a
  *  white row, so those chips take a plain fill instead. */
@@ -64,8 +73,9 @@ export function CategoryChip({
       className={cn(
         // The variant's #a6a6a6 is for a lone action; a row of chips reads
         // quieter with a lighter edge.
-        "min-w-0 rounded-full border-[#e9e9e9] hover:border-[#e9e9e9]",
-        size === "small" ? "gap-1 px-2" : "gap-1.5 px-3.5",
+        "min-w-0 hover:border-[#e9e9e9]",
+        CHIP_SHAPE,
+        CHIP_SIZE[size],
         isSelected &&
           (accent === NEUTRAL_ACCENT
             ? NEUTRAL_SELECTED

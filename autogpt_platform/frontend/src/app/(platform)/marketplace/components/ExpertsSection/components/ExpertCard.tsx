@@ -13,9 +13,11 @@ import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/comp
 import { cn } from "@/lib/utils";
 import {
   ArrowRight02Icon,
+  Book04Icon,
   CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
 import { getExpertAccent } from "../helpers";
 import { ExpertHireButton } from "./ExpertHireButton";
 
@@ -82,18 +84,32 @@ export function ExpertCard({ expert, isHired }: Props) {
 
         {skills.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* The same chip the filters wear, so a skill on a card and a
+                topic in the header read as one family. */}
             {skills.slice(0, NAMED_SKILLS).map((skill) => (
               <span
                 key={skill.id}
-                className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500 ring-1 ring-inset ring-zinc-200/80"
+                className={cn(CHIP_SHAPE, CHIP_SIZE.small, "max-w-full")}
               >
-                {skill.title}
+                <Icon
+                  icon={Book04Icon}
+                  size={12}
+                  className="shrink-0 text-zinc-400"
+                  aria-hidden
+                />
+                <span className="truncate">{skill.title}</span>
               </span>
             ))}
             {restSkills.length > 0 ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="pointer-events-auto cursor-default rounded-full px-2.5 py-1 text-xs font-medium text-zinc-400 ring-1 ring-inset ring-zinc-200/80">
+                  <span
+                    className={cn(
+                      CHIP_SHAPE,
+                      CHIP_SIZE.small,
+                      "pointer-events-auto cursor-default text-zinc-500",
+                    )}
+                  >
                     +{restSkills.length} skills
                   </span>
                 </TooltipTrigger>
