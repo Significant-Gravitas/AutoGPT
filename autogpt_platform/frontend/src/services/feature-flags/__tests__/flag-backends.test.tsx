@@ -14,6 +14,11 @@ const postHog = vi.hoisted(() => ({
 }));
 const postHogClient = vi.hoisted(() => ({
   capture: (...args: unknown[]) => postHog.capture(...args),
+  featureFlags: {
+    get hasLoadedFlags() {
+      return postHog.loaded && !postHog.errorsLoading;
+    },
+  },
   onFeatureFlags: (
     callback: (
       flags: string[],

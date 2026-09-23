@@ -31,7 +31,9 @@ export function usePostHogFlag(key: string): FlagSourceResult {
 
 function useFlagsLoaded() {
   const posthog = usePostHog();
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(
+    () => posthog?.featureFlags?.hasLoadedFlags ?? false,
+  );
 
   useEffect(() => {
     return posthog?.onFeatureFlags((_flags, _variants, context) => {
