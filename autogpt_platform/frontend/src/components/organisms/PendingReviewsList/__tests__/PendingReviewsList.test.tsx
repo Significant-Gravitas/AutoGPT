@@ -163,3 +163,28 @@ test("a block's group is titled by its action and names its workflow", () => {
   expect(screen.getByText("In workflow “Invoice follow-up”")).toBeDefined();
   expect(screen.queryByText(/SendEmailBlock/)).toBeNull();
 });
+
+test("an AutoPilot action's card neither calls it a workflow nor offers an edit", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          action: undefined,
+          agent_name: undefined,
+          instructions: "Bash exec — lists files",
+          editable: false,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Otto is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/edit it if needed/)).toBeNull();
+  expect(screen.queryByText(/Node #/)).toBeNull();
+});

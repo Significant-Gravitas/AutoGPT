@@ -263,3 +263,13 @@ async def test_an_unrecordable_approval_refuses_rather_than_runs(
         )
     assert not decision.allowed
     assert decision.review_id is None
+
+
+async def test_an_unreadable_ask_rule_counts_as_asking():
+    from backend.copilot.gate import chat_rules
+
+    with patch(
+        "backend.copilot.gate.chat_rules.get_redis_async",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    ):
+        assert await chat_rules.asks("session-1", "bash_exec") is True
