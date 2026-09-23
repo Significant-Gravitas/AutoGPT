@@ -1038,6 +1038,10 @@ async def upsert_chat_session(
                 if merged != session.metadata:
                     updates["metadata"] = merged
                 session = session.model_copy(update=updates)
+            else:
+                # With no cached copy the database holds the mode, which this
+                # upsert never writes, so it cannot be stale there.
+                session = await _with_stored_autopilot_mode(session)
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -1789,10 +1793,26 @@ async def update_session_autopilot_mode(
                 await cache_chat_session(cached)
         except Exception as e:
             logger.warning(
-                f"Cache mode update failed for session {session_id} "
-                f"(non-critical): {e}"
+                f"Cache mode update failed for session {session_id}; "
+                f"evicting so the next read takes the database's mode: {e}"
             )
+            await invalidate_session_cache(session_id)
         return True
+
+
+async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession:
+    stored = await chat_db().get_chat_session_metadata(session.session_id)
+    if stored is None or stored.metadata.autopilot_mode == (
+        session.metadata.autopilot_mode
+    ):
+        return session
+    return session.model_copy(
+        update={
+            "metadata": session.metadata.model_copy(
+                update={"autopilot_mode": stored.metadata.autopilot_mode}
+            )
+        }
+    )
 
 
 async def update_session_pinned(
