@@ -120,11 +120,11 @@ async def test_a_mapped_read_runs_and_a_mapped_write_asks(gate, ran, mode):
     assert not _is_held(read)
     ran.assert_awaited_once()
 
-    write = await _call(_session(mode), _GITHUB, "issue_write", {"title": "x"})
+    write = await _call(_session(mode), _GITHUB, "create_branch", {"branch": "x"})
     assert _is_held(write)
     ran.assert_awaited_once()
     assert _headline(gate) == (
-        "issue_write on api.githubcopilot.com — reaches outside the platform"
+        "create_branch on api.githubcopilot.com — reaches outside the platform"
     )
 
 
@@ -133,8 +133,7 @@ async def test_an_unmapped_tool_asks_naming_the_host_and_the_tool(gate, ran):
     assert _is_held(result)
     ran.assert_not_awaited()
     assert _headline(gate) == (
-        "brand_new_tool on api.githubcopilot.com — first use of this tool: "
-        "its effect is unknown"
+        "brand_new_tool on api.githubcopilot.com — its effect is unknown"
     )
 
 
@@ -167,6 +166,30 @@ async def test_a_chat_judge_sends_the_next_call_to_the_supervisor(gate, ran):
     assert not _is_held(await _call(session, _OPEN_WORLD, "do_thing", {"n": 2}))
     gate.classify.assert_awaited_once()
     ran.assert_awaited_once()
+
+
+async def test_a_chat_allow_does_not_reach_another_server_on_the_host(gate, ran):
+    session = _session()
+    server_a, server_b = (
+        "https://tools.example.com/a/mcp",
+        "https://tools.example.com/b/mcp",
+    )
+    assert _is_held(await _call(session, server_a, "search", {"q": 1}))
+    await _answer_with_rule(gate, "allow")
+
+    assert not _is_held(await _call(session, server_a, "search", {"q": 2}))
+    assert _is_held(await _call(session, server_b, "search", {"q": 2}))
+    ran.assert_awaited_once()
+
+
+async def test_a_chat_judge_still_asks_before_an_irreversible_tool(gate, ran):
+    session = _session()
+    assert _is_held(await _call(session, _GITHUB, "merge_pull_request", {"n": 1}))
+    await _answer_with_rule(gate, "judge")
+
+    assert _is_held(await _call(session, _GITHUB, "merge_pull_request", {"n": 2}))
+    gate.classify.assert_not_awaited()
+    ran.assert_not_awaited()
 
 
 async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
@@ -224,7 +247,7 @@ async def _answer_with_rule(gate, rule: chat_rules.ChatRule) -> None:
         (_OPEN_WORLD, "get_things", False),
         (_OPEN_WORLD, "delete_things", True),
         # Catalogued servers run, mapped write or not.
-        (_GITHUB, "issue_write", False),
+        (_GITHUB, "create_branch", False),
     ],
 )
 async def test_flag_off_the_verb_heuristic_decides_as_before(ran, server, tool, pauses):

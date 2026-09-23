@@ -144,7 +144,9 @@ _BY_SUBJECT = frozenset({"run_agent", "run_capability"})
 # Registered straight onto the MCP server by ``create_copilot_mcp_server``, so
 # the second seam in ``sdk/tool_adapter.py`` is the only gate they reach.
 MCP_FILE_WRITE_TOOLS = frozenset({"Edit", "Write", "edit_file", "write_file"})
-MCP_FILE_READ_TOOLS = frozenset({"Read", "glob", "grep", "read_file"})
+MCP_FILE_READ_TOOLS = frozenset(
+    {"Read", "glob", "grep", "read_file", "read_tool_result"}
+)
 
 _EFFECTS: dict[str, Effect] = {
     **{name: Effect.READ for name in _READ | MCP_FILE_READ_TOOLS},

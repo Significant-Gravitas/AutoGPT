@@ -667,13 +667,13 @@ export function useCopilotStream({
     };
   });
 
-  // Wake detection: refetch + optional resume when the page becomes visible
   const { followBackendTurn } = useFollowBackendTurn({
     status,
     refetchSession,
     hasResumedRef,
   });
 
+  // Wake detection: refetch + optional resume when the page becomes visible
   // after being hidden for >30 s. See `useWakeResync` for details.
   const { isSyncing } = useWakeResync({
     sessionIdRef,

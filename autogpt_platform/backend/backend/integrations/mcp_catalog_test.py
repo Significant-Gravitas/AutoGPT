@@ -202,7 +202,8 @@ def test_a_tool_cannot_carry_two_effects():
     "url, tool, effect",
     [
         ("https://api.githubcopilot.com/mcp/readonly", "issue_read", "read"),
-        ("https://api.githubcopilot.com/mcp/readonly", "issue_write", "external"),
+        ("https://api.githubcopilot.com/mcp/readonly", "create_branch", "external"),
+        ("https://api.githubcopilot.com/mcp/readonly", "issue_write", "irreversible"),
         (
             "https://api.githubcopilot.com/mcp/readonly",
             "merge_pull_request",

@@ -152,6 +152,24 @@ async def test_a_large_late_result_arrives_as_the_direct_result_would(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "flaky")
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    with patch.object(held, "_outcome", AsyncMock(side_effect=RuntimeError("db"))):
+        assert await held.resolve_answered(test_user_id, session) == []
+    assert [
+        c.review_id for c in await held.answered(test_user_id, session.session_id)
+    ] == [review_id]
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+    assert "posted flaky" in delivered.content
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
     setup_test_user, test_user_id, gate_on, post_tool
 ):

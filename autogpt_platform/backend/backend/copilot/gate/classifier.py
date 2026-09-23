@@ -26,6 +26,7 @@ ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
 _MAX_ARG_CHARS = 4_000
 _MAX_REQUEST_CHARS = 1_000
 _FALLBACK_REASON = "Could not verify this action automatically."
+_TOO_LONG_REASON = "This action is too long to check automatically."
 
 
 async def classify(
@@ -40,10 +41,13 @@ async def classify(
     from backend.copilot.service import _get_aux_client
 
     call = json.dumps({"tool": tool_name, "arguments": args}, indent=1, default=str)
+    # A cut call would be judged on its head while its tail runs.
+    if len(call) > _MAX_ARG_CHARS:
+        return False, _TOO_LONG_REASON
     prompt = (
         fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
         + "\n\n"
-        + fence("PROPOSED CALL", call[:_MAX_ARG_CHARS])
+        + fence("PROPOSED CALL", call)
     )
     try:
         response = await asyncio.wait_for(

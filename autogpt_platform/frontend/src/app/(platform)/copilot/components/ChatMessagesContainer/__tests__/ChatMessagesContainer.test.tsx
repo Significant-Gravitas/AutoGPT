@@ -1448,3 +1448,38 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
   });
 });
+
+describe("ChatMessagesContainer — held call rows", () => {
+  it("never shows the server's wake row or a late result as the user's words", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-5",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      {
+        id: "sess-123-seq-6",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: '<held_call_result tool="create_folder">folder_created Q3</held_call_result>',
+          },
+        ],
+        metadata: { held_call: { review_id: "r1" } },
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByText(/I answered an action/)).toBeNull();
+    expect(screen.queryByText(/folder_created/)).toBeNull();
+    expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+});

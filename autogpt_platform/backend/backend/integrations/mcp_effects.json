@@ -65,7 +65,6 @@
     "external": [
       "actions_run_trigger",
       "add_comment_to_pending_review",
-      "add_issue_comment",
       "add_reply_to_pull_request_comment",
       "assign_copilot_to_issue",
       "assign_copilot_to_issue_with_intent",
@@ -81,13 +80,11 @@
       "discussion_comment_write",
       "dismiss_notification",
       "fork_repository",
-      "issue_write",
       "label_write",
       "manage_notification_subscription",
       "manage_repository_notification_subscription",
       "mark_all_notifications_read",
       "projects_write",
-      "pull_request_review_write",
       "push_files",
       "request_copilot_review",
       "star_repository",
@@ -99,8 +96,11 @@
       "update_pull_request_branch"
     ],
     "irreversible": [
+      "add_issue_comment",
       "delete_repository",
-      "merge_pull_request"
+      "issue_write",
+      "merge_pull_request",
+      "pull_request_review_write"
     ]
   },
   "mcp_linear": {
@@ -352,7 +352,6 @@
     ],
     "external": [
       "addBitbucketRepoPullRequestComment",
-      "addConfluenceContentPermissions",
       "addConfluenceReaction",
       "addConnectionsToGoals",
       "addConnectionsToProjects",
@@ -404,12 +403,10 @@
       "manageJiraSprint",
       "moveConfluenceContent",
       "moveLoomVideoToFolder",
-      "publishLoomVideo",
       "recoverLoomVideo",
       "removeConfluenceContentPermissions",
       "reopenBitbucketRepoPullRequestComment",
       "reopenConfluenceTask",
-      "replaceConfluenceContentPermissions",
       "requestChangesOnBitbucketRepoPullRequest",
       "resolveBitbucketRepoPullRequestComment",
       "restoreConfluenceContentVersion",
@@ -418,7 +415,6 @@
       "setConfluenceContentRestrictionState",
       "setConfluenceContentStatus",
       "setConfluenceSpaceInstructions",
-      "shareLoomVideo",
       "starConfluenceContent",
       "starConfluenceSpace",
       "transitionJiraIssue",
@@ -434,7 +430,6 @@
       "updateConfluenceContent",
       "updateFocusArea",
       "updateJiraProject",
-      "updateJsmOpsAlert",
       "updateLoomVideoPermissions",
       "updateLoomVideoTitle",
       "updateTalentPositionFocusAreaMappings",
@@ -447,11 +442,16 @@
       "watchJiraIssue"
     ],
     "irreversible": [
+      "addConfluenceContentPermissions",
       "deleteJiraComment",
       "deleteJiraIssue",
       "deleteJiraIssueAttachment",
       "executeDestructive",
-      "mergeBitbucketRepoPullRequest"
+      "mergeBitbucketRepoPullRequest",
+      "publishLoomVideo",
+      "replaceConfluenceContentPermissions",
+      "shareLoomVideo",
+      "updateJsmOpsAlert"
     ]
   },
   "mcp_sentry": {
