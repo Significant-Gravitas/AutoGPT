@@ -55,6 +55,25 @@ describe("escapeCurrencyAmounts", () => {
     );
   });
 
+  it.each([
+    ["a thematic break", "---\n    echo $5 and $10"],
+    ["a setext heading", "Title\n===\n    echo $5 and $10"],
+  ])("skips indented code right after %s", (_, markdown) => {
+    expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
+  });
+
+  it("does not open a fence indented by a tab, which is indented code", () => {
+    expect(escapeCurrencyAmounts("\t```\nprose $5 and $10")).toBe(
+      "\t```\nprose \\$5 and \\$10",
+    );
+  });
+
+  it("measures a tab after a list marker in columns", () => {
+    expect(
+      escapeCurrencyAmounts("- \titem\n\n       continued $5 and $10"),
+    ).toBe("- \titem\n\n       continued \\$5 and \\$10");
+  });
+
   it("escapes indented lines that are not code", () => {
     expect(
       escapeCurrencyAmounts(

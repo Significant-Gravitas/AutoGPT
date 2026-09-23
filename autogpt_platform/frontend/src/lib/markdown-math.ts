@@ -1,7 +1,9 @@
-const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const LATEX_SYNTAX_RE = /[\\^_{}]/;
 const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/;
 const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
+const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const SETEXT_UNDERLINE_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
 
 // With single-dollar math on, remark-math reads "$5 and $10" as one formula. A "$"
 // before a digit is therefore currency unless the span up to the next "$" on that
@@ -44,9 +46,18 @@ export function escapeCurrencyAmounts(markdown: string): string {
         return line;
       }
 
+      if (
+        indent < listIndent + 4 &&
+        (THEMATIC_BREAK_RE.test(line) ||
+          (inParagraph && SETEXT_UNDERLINE_RE.test(line)))
+      ) {
+        inParagraph = false;
+        return line;
+      }
+
       const marker = LIST_MARKER_RE.exec(line);
       if (marker && indent < listIndent + 4) {
-        listIndent = marker[0].length;
+        listIndent = columns(marker[0]);
       } else if (indent < listIndent && !inParagraph) {
         listIndent = 0;
       }
@@ -114,11 +125,12 @@ function isCurrencyAmount(line: string, index: number): boolean {
 }
 
 function indentWidth(line: string): number {
+  return columns(line.slice(0, line.length - line.trimStart().length));
+}
+
+// A tab advances to the next multiple of four columns.
+function columns(text: string): number {
   let width = 0;
-  for (const char of line) {
-    if (char === " ") width += 1;
-    else if (char === "\t") width += 4 - (width % 4);
-    else break;
-  }
+  for (const char of text) width += char === "\t" ? 4 - (width % 4) : 1;
   return width;
 }
