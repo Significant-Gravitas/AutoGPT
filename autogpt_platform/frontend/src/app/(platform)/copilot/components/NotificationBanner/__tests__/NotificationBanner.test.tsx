@@ -126,4 +126,20 @@ describe("NotificationBanner", () => {
     );
     expect(screen.getByRole("link", { name: /open settings/i })).toBeDefined();
   });
+
+  it("stays dismissable when settings is opened in a new tab", () => {
+    stubNotification("default");
+
+    render(<NotificationBanner />);
+
+    const link = screen.getByRole("link", { name: /open settings/i });
+    fireEvent.click(link, { metaKey: true });
+    fireEvent.click(link, { ctrlKey: true });
+    fireEvent.click(link, { shiftKey: true });
+
+    expect(
+      window.localStorage.getItem("copilot-notification-banner-dismissed"),
+    ).toBeNull();
+    expect(screen.getByText(/notifications are off/i)).toBeDefined();
+  });
 });

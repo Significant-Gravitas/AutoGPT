@@ -3,8 +3,9 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Key, storage } from "@/services/storage/local-storage";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import { isPlainLeftClick } from "./helpers";
 import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
 
@@ -46,6 +47,12 @@ export function NotificationBanner() {
     storage.set(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED, "true");
   }
 
+  function handleOpenSettings(event: MouseEvent) {
+    // Only persist — setting state here would unmount the banner, and this
+    // link with it, before Next gets to navigate. A new-tab click keeps it.
+    if (isPlainLeftClick(event)) persistDismissed();
+  }
+
   function handleDismiss() {
     persistDismissed();
     setDismissed(true);
@@ -63,9 +70,7 @@ export function NotificationBanner() {
           variant="primary"
           size="small"
           href="/settings/account"
-          // Only persist — setting state here would unmount the banner, and
-          // this link with it, before Next gets to navigate.
-          onClick={persistDismissed}
+          onClick={handleOpenSettings}
         >
           Open settings
         </Button>
