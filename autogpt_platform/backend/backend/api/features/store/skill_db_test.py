@@ -417,9 +417,24 @@ async def test_seed_is_idempotent_and_rewrites_the_live_package_in_place(tmp_pat
 
 async def test_seed_delists_a_retired_starter_slug(tmp_path, monkeypatch):
     """A slug that shipped and was then renamed keeps its listing row, so the
-    seed hides it: delisted and its version unavailable, while the live
-    listings beside it are untouched."""
+    seed hides it: delisted and its version unavailable. A listing that is
+    merely absent from this catalog is not retired and stays live, as does
+    the listing still in it."""
     catalog = _write_catalog(tmp_path)
+    stale = catalog / "skills" / "stale-but-live"
+    stale.mkdir(parents=True)
+    (stale / "SKILL.md").write_text(
+        "---\nname: stale-but-live\ndescription: Still live.\n---\n\n# Stale\n",
+        encoding="utf-8",
+    )
+    (catalog / "catalog.yml").write_text(
+        (catalog / "catalog.yml").read_text(encoding="utf-8")
+        + "  - slug: stale-but-live\n"
+        "    categories: [content]\n"
+        "    required_providers: []\n"
+        "    source: platform\n",
+        encoding="utf-8",
+    )
     await skill_seed.seed_catalog_skills(catalog)
     (catalog / "catalog.yml").write_text(
         "skills:\n"
@@ -433,16 +448,18 @@ async def test_seed_delists_a_retired_starter_slug(tmp_path, monkeypatch):
 
     await skill_seed.seed_catalog_skills(catalog)
 
-    retired = await prisma.models.SkillListing.prisma().find_unique(
-        where={"slug": "cold-email"}, include={"ActiveVersion": True}
-    )
-    assert retired is not None and retired.isDeleted
-    assert retired.ActiveVersion is not None and not retired.ActiveVersion.isAvailable
-    live = await prisma.models.SkillListing.prisma().find_unique(
-        where={"slug": "brand-voice-guide"}, include={"ActiveVersion": True}
-    )
-    assert live is not None and not live.isDeleted
-    assert live.ActiveVersion is not None and live.ActiveVersion.isAvailable
+    async def listing(slug: str) -> prisma.models.SkillListing:
+        row = await prisma.models.SkillListing.prisma().find_unique(
+            where={"slug": slug}, include={"ActiveVersion": True}
+        )
+        assert row is not None and row.ActiveVersion is not None, slug
+        return row
+
+    retired = await listing("cold-email")
+    assert retired.isDeleted and not retired.ActiveVersion.isAvailable
+    for slug in ("brand-voice-guide", "stale-but-live"):
+        live = await listing(slug)
+        assert not live.isDeleted and live.ActiveVersion.isAvailable, slug
 
 
 async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tmp_path):
