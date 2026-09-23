@@ -2,7 +2,6 @@
 
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
@@ -36,9 +35,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       context={context}
       timeout={LD_INIT_TIMEOUT_SECONDS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
-      options={{
-        inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
-      }}
     >
       {children}
     </LDProvider>
