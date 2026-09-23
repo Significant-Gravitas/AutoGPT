@@ -244,8 +244,9 @@ export function PendingReviewsList({
           </Text>
         </div>
         <Text variant="large" className="text-textGrey">
-          This workflow is paused until you approve the step below. Check what
-          it will do, and edit it if needed.
+          {reviews.every((review) => isGateReview(review.node_id))
+            ? "Otto is waiting for your approval before the action below."
+            : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
         </Text>
       </div>
 
@@ -289,7 +290,8 @@ export function PendingReviewsList({
                   <Text variant="body" className="font-semibold text-gray-900">
                     {reviewTitle}
                   </Text>
-                  {(workflowName || !firstReview?.action) && (
+                  {(workflowName ||
+                    (!firstReview?.action && !isGateReview(nodeId))) && (
                     <Text variant="small" className="text-gray-500">
                       {workflowName
                         ? `In workflow “${workflowName}”`
@@ -315,7 +317,7 @@ export function PendingReviewsList({
                     />
                   ))}
 
-                  {!nodeId.startsWith(COPILOT_GATE_NODE_PREFIX) && (
+                  {!isGateReview(nodeId) && (
                     <div className="flex items-center gap-3 pt-2">
                       <Switch
                         checked={autoApproveFutureMap[nodeId] || false}
@@ -402,4 +404,8 @@ function hasSubject(review: PendingHumanReviewModel) {
     typeof subject === "object" &&
     typeof (subject as Record<string, unknown>).name === "string"
   );
+}
+
+function isGateReview(nodeId: string | null | undefined) {
+  return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }

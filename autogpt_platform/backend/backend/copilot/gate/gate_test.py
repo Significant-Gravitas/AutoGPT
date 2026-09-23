@@ -232,6 +232,19 @@ async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     asks.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "tool", ["web_search", "write_workspace_file", "connect_integration"]
+)
+async def test_calls_that_always_run_never_query_the_review_store(
+    gate_on, clean_session_state, tool
+):
+    find = AsyncMock(return_value=None)
+    with patch(f"{_GATE}.review_store.find_decision", find):
+        decision = await check_action(tool, {}, "u", _session("ask_first"))
+    assert decision.allowed
+    find.assert_not_awaited()
+
+
 async def test_a_call_that_cannot_be_kept_is_not_parked(gate_on, clean_session_state):
     """A card whose call is lost could be approved and then run nothing."""
     open_review = AsyncMock(return_value=True)
@@ -256,3 +269,13 @@ async def test_an_unrecordable_approval_refuses_rather_than_runs(
         )
     assert not decision.allowed
     assert decision.review_id is None
+
+
+async def test_an_unreadable_ask_rule_counts_as_asking():
+    from backend.copilot.gate import chat_rules
+
+    with patch(
+        "backend.copilot.gate.chat_rules.get_redis_async",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    ):
+        assert await chat_rules.rule_for("session-1", "bash_exec") == "ask"

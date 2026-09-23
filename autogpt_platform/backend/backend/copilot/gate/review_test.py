@@ -97,6 +97,10 @@ def test_the_headline_leads_with_the_tool_name():
     )
 
 
+def test_a_camel_case_tool_name_keeps_its_capitals():
+    assert instructions_for("TodoWrite", "x").startswith("TodoWrite — ")
+
+
 def test_a_reason_cannot_erase_itself_from_the_card():
     """PendingReviewCard discards instructions containing a capital 'Block',
     anywhere in the string — so it is lower-cased, not stripped, which would

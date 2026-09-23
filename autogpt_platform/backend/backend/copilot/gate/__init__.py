@@ -109,6 +109,12 @@ async def check_action(
         return ALLOW
     assert user_id is not None
 
+    # Reads, workspace work and the ungated tools run in every mode and can
+    # never have been parked, so they skip the review and rule lookups; a paid
+    # read can be parked over the ceiling, so it cannot.
+    if effect_for(tool_name) not in _PARKABLE and not estimate_for(tool_name):
+        return ALLOW
+
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 

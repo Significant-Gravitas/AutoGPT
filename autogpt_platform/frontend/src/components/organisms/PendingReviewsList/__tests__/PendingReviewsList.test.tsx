@@ -211,3 +211,28 @@ test("a card for a bare tool offers no chat rule", () => {
     screen.queryByRole("button", { name: "Judge for this chat" }),
   ).toBeNull();
 });
+
+test("an AutoPilot action's card neither calls it a workflow nor offers an edit", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          action: undefined,
+          agent_name: undefined,
+          instructions: "Bash exec — lists files",
+          editable: false,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Otto is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/edit it if needed/)).toBeNull();
+  expect(screen.queryByText(/Node #/)).toBeNull();
+});
