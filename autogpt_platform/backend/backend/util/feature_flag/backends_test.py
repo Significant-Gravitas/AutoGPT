@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import uuid
 
 import pytest
@@ -31,9 +32,18 @@ async def no_leaked_shadow_evaluations():
 
 @pytest.fixture(autouse=True)
 def no_env_override(monkeypatch: pytest.MonkeyPatch):
-    """`.env` may force flags; pin the flag under test to the vendors."""
-    monkeypatch.delenv("FORCE_FLAG_HIRE_EXPERTS", raising=False)
-    monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", raising=False)
+    """`.env` may force flags; pin every flag under test to the vendors."""
+    for name in list(os.environ):
+        if name.startswith(_FORCE_PREFIXES):
+            monkeypatch.delenv(name)
+
+
+_FORCE_PREFIXES = (
+    "FORCE_FLAG_",
+    "NEXT_PUBLIC_FORCE_FLAG_",
+    "FORCE_ALL_FLAGS",
+    "NEXT_PUBLIC_FORCE_ALL_FLAGS",
+)
 
 
 @pytest.fixture
