@@ -69,13 +69,8 @@ async def require_auth(
 
     Every v2 route reaches this one dependency, so tests override it once and
     `tenancy_test` can assert no handler bypasses it.
-
-    Takes the credential the rate-limit middleware already verified for this
-    request; verifying it again costs a second Scrypt hash on every API-key call.
     """
-    auth = getattr(
-        request.state, "v2_auth", None
-    ) or await middleware.resolve_auth_info(api_key=api_key, bearer=bearer)
+    auth = await middleware.resolve_request_auth(request.scope, api_key, bearer)
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

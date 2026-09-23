@@ -124,7 +124,7 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
     """
     try:
         if not plaintext_key.startswith(APIKeySmith.PREFIX):
-            # Every OAuth bearer reaches this line, twice per request.
+            # Every OAuth bearer reaches this line.
             logger.debug("Not an API key: wrong prefix")
             return None
 

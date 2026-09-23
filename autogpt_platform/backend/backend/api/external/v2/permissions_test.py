@@ -194,8 +194,9 @@ def test_credential_listing_says_which_credentials_are_the_platform_s() -> None:
 # ============================================================================
 
 
-async def test_the_route_reuses_the_credential_the_middleware_verified() -> None:
-    """An API key costs a Scrypt hash to verify; it was paid twice per request."""
+async def test_a_request_verifies_its_credential_once() -> None:
+    """The limiter and the route both resolve the caller; an API key costs a
+    Scrypt hash to verify, and it was paid twice per request."""
     calls = _resolve_calls()
 
     with mock.patch("backend.api.external.middleware.validate_api_key", new=calls):
