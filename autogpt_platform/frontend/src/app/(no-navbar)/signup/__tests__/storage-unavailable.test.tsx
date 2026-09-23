@@ -64,9 +64,11 @@ describe("/signup when localStorage is unavailable", () => {
       </OrgTeamProvider>,
     );
 
-    expect(html).toContain("Sign up");
+    // /signup server-renders its loading shell until auth initialises in an
+    // effect (#14281); the marketing panel is in both states.
+    expect(html).toContain("Run in minutes");
     expect(captureException).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   test("renders in a browser that blocks storage, reporting nothing", async () => {
     Object.defineProperty(window, "localStorage", {
