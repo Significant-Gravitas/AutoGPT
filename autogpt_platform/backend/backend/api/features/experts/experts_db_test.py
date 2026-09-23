@@ -805,7 +805,7 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
 ):
     install = AsyncMock(side_effect=RuntimeError("storage down"))
-    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    _patch_install(monkeypatch, install)
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
@@ -822,7 +822,7 @@ async def test_hire_installs_nothing_while_the_hub_is_off(
 ):
     monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
     install = AsyncMock()
-    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    _patch_install(monkeypatch, install)
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
@@ -830,6 +830,21 @@ async def test_hire_installs_nothing_while_the_hub_is_off(
     await experts_db.hire_expert(test_user.id, template.id, None)
 
     install.assert_not_awaited()
+
+
+def _patch_install(monkeypatch, install: AsyncMock) -> None:
+    """Serve the hire's batch install from a per-slug *install* double."""
+
+    async def batch(user_id, slugs, *, expert_id):
+        outcomes = []
+        for slug in slugs:
+            try:
+                outcomes.append(await install(user_id, slug, expert_id=expert_id))
+            except Exception as e:
+                outcomes.append(e)
+        return outcomes
+
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skills", batch)
 
 
 @pytest.mark.asyncio(loop_scope="session")

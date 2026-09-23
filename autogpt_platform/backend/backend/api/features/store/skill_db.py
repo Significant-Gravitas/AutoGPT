@@ -16,8 +16,9 @@ import prisma.types
 from backend.copilot.tools.skills import (
     SKILL_ORIGIN_MARKETPLACE,
     SkillFile,
-    list_user_skills,
-    store_user_skill,
+    SkillWrite,
+    StoredSkill,
+    store_user_skills,
 )
 from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
@@ -180,57 +181,118 @@ async def install_marketplace_skill(
     idempotent and a re-install picks up a newer approved version. The whole
     package is passed, so a file the new version dropped is removed too.
     """
-    listing = await _find_live_listing(slug)
-    active = skill_model.active_version(listing)
-    # A re-install overwrites the existing copy, so counting it again would
-    # report installs rather than installers. Counting only: no healing.
-    owned = await list_user_skills(user_id, expert_id, heal_missing=False)
-    is_new = all(s.name != listing.slug for s in owned)
-    await store_user_skill(
-        user_id,
-        name=listing.slug,
-        description=active.description,
-        body=active.body,
-        triggers=list(active.triggers),
-        version=str(active.version),
-        extra={
-            key: value
-            for key, value in (
-                ("license", active.license),
-                ("source", active.sourceRepo),
-                ("source_url", active.sourceUrl),
-            )
-            if value is not None
-        },
-        # `[]`, never `None` — which means "leave the folder alone" and would
-        # keep a sibling only the previously installed version had.
-        files=await _read_version_files(active.id),
-        expert_id=expert_id,
-        origin=SKILL_ORIGIN_MARKETPLACE,
-    )
-    if is_new:
-        await prisma.models.SkillListing.prisma().update(
-            where={"id": listing.id}, data={"installCount": {"increment": 1}}
+    [outcome] = await install_marketplace_skills(user_id, [slug], expert_id=expert_id)
+    if isinstance(outcome, Exception):
+        raise outcome
+    return outcome
+
+
+async def install_marketplace_skills(
+    user_id: str, slugs: list[str], *, expert_id: str | None = None
+) -> list[skill_model.InstalledSkill | Exception]:
+    """:func:`install_marketplace_skill` for several listings: one listing
+    query, one file query and one locked write, with each slug's outcome
+    returned in order (``NotFoundError`` for one that is not live)."""
+    listings = {
+        listing.slug: listing
+        for listing in await prisma.models.SkillListing.prisma().find_many(
+            where=_live_listing_where({"slug": {"in": slugs}}),
+            include=_LISTING_INCLUDE,
         )
-    return skill_model.InstalledSkill(
-        name=listing.slug, required_providers=list(active.requiredProviders)
+    }
+    live = [listings[slug] for slug in slugs if slug in listings]
+    files = await _read_versions_files(
+        [skill_model.active_version(listing).id for listing in live]
     )
+    writes: list[SkillWrite] = []
+    for listing in live:
+        active = skill_model.active_version(listing)
+        writes.append(
+            SkillWrite(
+                name=listing.slug,
+                description=active.description,
+                body=active.body,
+                triggers=list(active.triggers),
+                version=str(active.version),
+                extra={
+                    key: value
+                    for key, value in (
+                        ("license", active.license),
+                        ("source", active.sourceRepo),
+                        ("source_url", active.sourceUrl),
+                    )
+                    if value is not None
+                },
+                # `[]`, never `None` — which means "leave the folder alone"
+                # and would keep a sibling only the previous version had.
+                files=files.get(active.id, []),
+            )
+        )
+    stored = (
+        dict(
+            zip(
+                (listing.slug for listing in live),
+                await store_user_skills(
+                    user_id,
+                    writes,
+                    expert_id=expert_id,
+                    origin=SKILL_ORIGIN_MARKETPLACE,
+                ),
+            )
+        )
+        if writes
+        else {}
+    )
+    # A re-install overwrites the existing copy, so counting it again would
+    # report installs rather than installers.
+    new_ids = [
+        listings[slug].id
+        for slug, outcome in stored.items()
+        if isinstance(outcome, StoredSkill) and outcome.is_new
+    ]
+    if new_ids:
+        await prisma.models.SkillListing.prisma().update_many(
+            where={"id": {"in": new_ids}}, data={"installCount": {"increment": 1}}
+        )
+    outcomes: list[skill_model.InstalledSkill | Exception] = []
+    for slug in slugs:
+        outcome = stored.get(slug)
+        if outcome is None:
+            outcomes.append(NotFoundError(f"Skill '{slug}' not found"))
+        elif isinstance(outcome, Exception):
+            outcomes.append(outcome)
+        else:
+            outcomes.append(
+                skill_model.InstalledSkill(
+                    name=slug,
+                    required_providers=list(
+                        skill_model.active_version(listings[slug]).requiredProviders
+                    ),
+                )
+            )
+    return outcomes
 
 
-async def _read_version_files(skill_listing_version_id: str) -> list[SkillFile]:
-    """The published package's files, contents included, ready to install."""
+async def _read_versions_files(
+    version_ids: list[str],
+) -> dict[str, list[SkillFile]]:
+    """Each version's published files, contents included, in one query."""
+    if not version_ids:
+        return {}
     rows = await prisma.models.SkillListingFile.prisma().find_many(
-        where={"skillListingVersionId": skill_listing_version_id},
+        where={"skillListingVersionId": {"in": version_ids}},
         order={"relativePath": "asc"},
     )
-    return [
-        SkillFile(
-            relative_path=row.relativePath,
-            content=row.content.decode(),
-            is_executable=row.isExecutable,
+    by_version: dict[str, list[SkillFile]] = {}
+    for row in rows:
+        by_version.setdefault(row.skillListingVersionId, []).append(
+            SkillFile(
+                relative_path=row.relativePath,
+                content=row.content.decode(),
+                is_executable=row.isExecutable,
+            )
         )
-        for row in rows
-    ]
+    return by_version
 
 
 async def _list_version_file_meta(
