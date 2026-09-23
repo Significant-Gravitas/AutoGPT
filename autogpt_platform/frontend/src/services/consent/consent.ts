@@ -1,6 +1,7 @@
 import { environment } from "@/services/environment";
 import {
   COOKIEBOT_CONSENT_EVENTS,
+  COOKIEBOT_SCRIPT_ID,
   parseCookieConsentHeader,
   type CookiebotConsent,
 } from "./cookiebot";
@@ -80,6 +81,36 @@ export function subscribeToConsent(listener: () => void): () => void {
 export function openConsentSettings(): void {
   if (typeof window === "undefined") return;
   window.Cookiebot?.renew();
+}
+
+export type ConsentManagerStatus = "loading" | "ready" | "unavailable";
+
+/**
+ * Whether the consent dialog can be opened. The script loads after the page
+ * becomes interactive; once the page has finished loading without it, a
+ * content blocker (or a network failure) stopped it.
+ */
+export function getConsentManagerStatus(): ConsentManagerStatus {
+  if (typeof window === "undefined") return "loading";
+  if (window.Cookiebot) return "ready";
+  return document.readyState === "complete" ? "unavailable" : "loading";
+}
+
+export function subscribeToConsentManagerStatus(
+  listener: () => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const script = document.getElementById(COOKIEBOT_SCRIPT_ID);
+  window.addEventListener("load", listener);
+  script?.addEventListener("load", listener);
+  script?.addEventListener("error", listener);
+  const unsubscribe = subscribeToConsent(listener);
+  return () => {
+    window.removeEventListener("load", listener);
+    script?.removeEventListener("load", listener);
+    script?.removeEventListener("error", listener);
+    unsubscribe();
+  };
 }
 
 // Once loaded, the script is authoritative: it also withdraws a stored answer

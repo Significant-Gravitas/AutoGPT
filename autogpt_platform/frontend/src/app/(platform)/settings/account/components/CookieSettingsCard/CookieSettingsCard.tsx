@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { openConsentSettings } from "@/services/consent/consent";
+import { useConsentManagerStatus } from "@/services/consent/useConsent";
 
 import { EASE_OUT } from "../../helpers";
 
@@ -14,6 +15,7 @@ interface Props {
 
 export function CookieSettingsCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
+  const status = useConsentManagerStatus();
 
   return (
     <motion.section
@@ -40,14 +42,27 @@ export function CookieSettingsCard({ index = 0 }: Props) {
           </Text>
         </div>
 
-        <Button
-          type="button"
-          size="small"
-          variant="secondary"
-          onClick={openConsentSettings}
-        >
-          Cookie settings
-        </Button>
+        {status === "unavailable" ? (
+          <Text
+            variant="small"
+            as="span"
+            role="status"
+            className="max-w-64 text-right text-zinc-500"
+          >
+            Cookie settings couldn&apos;t load. A content blocker may be
+            stopping them.
+          </Text>
+        ) : (
+          <Button
+            type="button"
+            size="small"
+            variant="secondary"
+            disabled={status !== "ready"}
+            onClick={openConsentSettings}
+          >
+            Cookie settings
+          </Button>
+        )}
       </div>
     </motion.section>
   );

@@ -3,9 +3,12 @@
 import { useSyncExternalStore } from "react";
 import {
   getConsent,
+  getConsentManagerStatus,
   isSameConsent,
   NO_CONSENT,
   subscribeToConsent,
+  subscribeToConsentManagerStatus,
+  type ConsentManagerStatus,
   type ConsentState,
 } from "./consent";
 
@@ -28,5 +31,14 @@ export function useConsent() {
     subscribeToConsent,
     getSnapshot,
     getServerSnapshot,
+  );
+}
+
+/** Whether the consent dialog can be opened; see getConsentManagerStatus. */
+export function useConsentManagerStatus() {
+  return useSyncExternalStore(
+    subscribeToConsentManagerStatus,
+    getConsentManagerStatus,
+    (): ConsentManagerStatus => "loading",
   );
 }

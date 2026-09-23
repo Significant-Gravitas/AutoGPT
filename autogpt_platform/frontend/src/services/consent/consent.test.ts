@@ -8,11 +8,13 @@ import {
 import {
   getConsent,
   getConsentAnswer,
+  getConsentManagerStatus,
   hasConsentFor,
   isConsentManagerConfigured,
   NO_CONSENT,
   openConsentSettings,
   subscribeToConsent,
+  subscribeToConsentManagerStatus,
   toConsentState,
 } from "./consent";
 import { readConsentFromCookieHeader } from "./consent-server";
@@ -222,5 +224,45 @@ describe("with a Cookiebot domain group", () => {
       advertising: false,
     });
     expect(readConsentFromCookieHeader(header)).toEqual(getConsent());
+  });
+});
+
+describe("consent manager status", () => {
+  it("is ready once the Cookiebot script has loaded", () => {
+    configureCookiebot();
+    installCookiebot();
+
+    expect(getConsentManagerStatus()).toBe("ready");
+  });
+
+  it("is unavailable when the page finished loading without it", () => {
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+
+    expect(getConsentManagerStatus()).toBe("unavailable");
+  });
+
+  it("is still loading while the page is", () => {
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("interactive");
+
+    expect(getConsentManagerStatus()).toBe("loading");
+  });
+
+  it("notifies when the Cookiebot script loads or fails", () => {
+    const script = document.createElement("script");
+    script.id = "Cookiebot";
+    document.body.append(script);
+    const listener = vi.fn();
+
+    const unsubscribe = subscribeToConsentManagerStatus(listener);
+    script.dispatchEvent(new Event("load"));
+    script.dispatchEvent(new Event("error"));
+    window.dispatchEvent(new Event("load"));
+    unsubscribe();
+    script.dispatchEvent(new Event("load"));
+
+    expect(listener).toHaveBeenCalledTimes(3);
+    script.remove();
   });
 });
