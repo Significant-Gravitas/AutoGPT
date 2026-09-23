@@ -241,17 +241,32 @@ from ._test_data import make_session
 # no-margin rule above: this lands during the v0.8.0 release while dev is
 # still moving, and the two rewordings that cost 146 chars last week would
 # each have reded this PR at the queue on a measured-plus-one ceiling.
-# Bumped 76_300 -> 76_424 for this PR's two new arguments: `constant_inputs`
+# Bumped 76_300 -> 76_686 for list_workspace_files' folder_id and recursive
+# arguments and the description rewrite that tells the model where the user's
+# own uploads live, plus the matching sentence in read_workspace_file. No tool
+# was added (89 either side). Measured on the branch merged with dev, which
+# here is the branch itself — it already contains dev's tip 480c6f5509:
+#     dev 480c6f5509                              76,245 (89 tools)
+#     + this PR's two descriptions   +440         76,685 (89 tools)
+# Plus one; that line carried no margin by design, and dev overtook it within
+# the day: #14779 made the session's skills first-class find_capability
+# candidates, growing find_capability and run_capability, and the merge ref
+# measured 76,714 — 28 over — with none of this branch's delta having moved.
+# Re-measured on this branch merged with dev b6b03f5e72:
+#     merged tree                                 76,714 (89 tools)
+#     + headroom                       +300       77,014
+# The margin is deliberate and is the same exception the wire budget's #14476
+# note names: this is queued while dev is still moving, and a measured-plus-one
+# ceiling reds the queue's merge ref on the next reworded description.
+# Raised 77_014 -> 77_280 for #11220's `constant_inputs`
 # (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
 # agent carrying both a trigger node and input nodes needs to configure the two
-# separately. Measured on this branch merged with dev at 76,423, +178 over
-# dev's 76,245. #14484 had sized 67,651 to admit that +178 by name, but later
-# bumps re-based the ceiling without it and left 55. Both tool descriptions were
-# trimmed by 303 chars first, so what is left here is the two arguments.
-# Raised 76_424 -> 76_850: dev grew +29 after that measurement and the merged
-# tree read 76,452 (dev 7e44cf7492, 2026-09-23). ~0.5% headroom so the next dev
-# rewording does not eject this PR from the queue; on conflict keep the higher.
-_CHAR_BUDGET = 76_850
+# separately. Measured on that branch merged with dev 5d28ec680a (2026-09-23):
+#     dev 5d28ec680a                              76,714 (89 tools)
+#     + #11220's two arguments        +178        76,892 (89 tools)
+#     + headroom (~0.5%)              +388        77,280
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 77_280
 
 
 @pytest.fixture(scope="module")
@@ -422,17 +437,34 @@ def test_total_schema_char_budget() -> None:
 # prefixes, so the higher of the two conflicting values was the floor here,
 # not the answer. Carries the same deliberate margin as ``_CHAR_BUDGET``.
 #
+# Raised 68_800 -> 69_156 for the same two descriptions as ``_CHAR_BUDGET``
+# above. Both file tools are in the largest session, so the whole delta lands
+# here too — but the wire form drops ``required`` and prefixes each name, so it
+# is +430 here against +440 there. Measured on the branch merged with dev,
+# which here is the branch itself (it contains dev's tip 480c6f5509):
+#     dev 480c6f5509                              68,725
+#     + this PR's two descriptions   +430         69,155
+# Plus one. Dev's 68,725 sits 75 under the old 68,800, which was the margin
+# that line took deliberately; this one takes none.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
 #
-# Raised 68_800 -> 68_890 for the same two arguments; both tools ride the
-# largest session, so the whole delta lands here too. Measured on this branch
-# merged with dev at 68,889, +164 over dev's 68,725.
+# Re-measured on this branch merged with dev b6b03f5e72, after #14779 grew
+# find_capability and run_capability: the merge ref measured 69,183, 27 over
+# the plus-one ceiling above. Same headroom, for the same reason.
+#     merged tree                                 69,183
+#     + headroom                       +300       69,483
 #
-# Raised 68_890 -> 69_250: dev grew +28 after that measurement and the merged
-# tree read 68,917 (dev 7e44cf7492, 2026-09-23); same ~0.5% headroom and rule.
-_SESSION_WIRE_BUDGET = 69_250
+# Raised 69_483 -> 69_700 for #11220's same two arguments; both tools ride the
+# largest session, so the whole delta lands here too. Measured on that branch
+# merged with dev 5d28ec680a (2026-09-23):
+#     dev 5d28ec680a                              69,183
+#     + #11220's two arguments        +164        69,347
+#     + headroom (~0.5%)              +353        69,700
+# On conflict keep the higher value.
+_SESSION_WIRE_BUDGET = 69_700
 
 
 def test_largest_declared_session_wire_budget() -> None:
