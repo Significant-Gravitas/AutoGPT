@@ -66,3 +66,9 @@ def test_capability_and_workflow_runs_stay_on_the_irreversible_pause(tool):
 def test_retired_tool_names_are_gone():
     retired = {"run_block", "run_mcp_tool", "find_block", "get_mcp_guide"}
     assert retired & classified_tools() == set()
+
+
+def test_reading_a_truncated_tool_result_is_a_read():
+    from backend.copilot.sdk.tool_adapter import _READ_TOOL_NAME
+
+    assert effect_for(_READ_TOOL_NAME) is Effect.READ
