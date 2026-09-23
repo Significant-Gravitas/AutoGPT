@@ -85,6 +85,7 @@ export function getAnimationText(part: FindCapabilityToolPart): string {
 
 export function kindLabel(item: CapabilityListing): string {
   if (item.kind === "mcp_server") return "integration";
+  if (item.kind === "skill") return "skill";
   if (item.class === "primitive") return "building block";
   if (item.kind === "tool") return "tool";
   return "action";

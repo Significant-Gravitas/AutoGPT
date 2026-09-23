@@ -22,6 +22,7 @@ interface Props {
   compactEmpty: boolean;
   listKey: string;
   showFolders: boolean;
+  folderParentId: string | null;
   onSelectFolder: (folderId: string) => void;
   onOpen: (file: WorkspaceFileItem) => void;
 }
@@ -40,6 +41,7 @@ export function ArtifactsTable({
   compactEmpty,
   listKey,
   showFolders,
+  folderParentId,
   onSelectFolder,
   onOpen,
 }: Props) {
@@ -86,7 +88,12 @@ export function ArtifactsTable({
           initial={reduceMotion ? false : "hidden"}
           animate={reduceMotion ? undefined : "show"}
         >
-          {showFolders ? <FolderRows onSelectFolder={onSelectFolder} /> : null}
+          {showFolders ? (
+            <FolderRows
+              parentId={folderParentId}
+              onSelectFolder={onSelectFolder}
+            />
+          ) : null}
           {isLoading ? (
             <li
               className="divide-y divide-zinc-100"

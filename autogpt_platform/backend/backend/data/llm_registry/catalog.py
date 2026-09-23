@@ -181,6 +181,31 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-opus-5-5",
+                display_name="Claude Opus 5.5",
+                provider="anthropic",
+                creator="anthropic",
+                # Keep the existing Anthropic compaction cap; native window is 1M.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Sticker price $4/$20 per Mtok, undercutting Opus 5's
+                # $5/$25 at launch. Cache read $0.20/1M, cache write
+                # (5m) $5/1M — live OpenRouter rates as of 2026-09-22.
+                cost=CatalogModelCost(
+                    run_credits=11,
+                    input_credits_per_1m=600.0,
+                    output_credits_per_1m=3000.0,
+                    cache_read_credits_per_1m=30.0,
+                    cache_creation_credits_per_1m=750.0,
+                    provider_input_usd_per_1m=4.00,
+                    provider_output_usd_per_1m=20.00,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-sonnet-4-5-20250929",
                 display_name="Claude Sonnet 4.5",
                 provider="anthropic",
@@ -504,11 +529,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.06/$0.32 per 1M,
+                # cache read $0.01/1M (further drift since this PR's prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=22.5,
-                    output_credits_per_1m=90.0,
-                    cache_read_credits_per_1m=0.45,
+                    input_credits_per_1m=9.0,
+                    output_credits_per_1m=48.0,
+                    cache_read_credits_per_1m=1.5,
                 ),
             ),
             CatalogModel(
@@ -629,6 +656,23 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=3,
                     input_credits_per_1m=112.5,
                     output_credits_per_1m=562.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemma-4-31b-it",
+                display_name="Gemma 4 31B",
+                provider="open_router",
+                creator="google",
+                context_window=262144,
+                max_output_tokens=16384,
+                price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.09/$0.34 per 1M,
+                # cache read $0.05/1M (drifted from the $0.14/$0.40 launch price).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=13.5,
+                    output_credits_per_1m=51.0,
+                    cache_read_credits_per_1m=7.5,
                 ),
             ),
             CatalogModel(
@@ -892,7 +936,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=32768,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=4.5, output_credits_per_1m=19.5
+                    run_credits=1, input_credits_per_1m=2.7, output_credits_per_1m=13.5
                 ),
             ),
             CatalogModel(
@@ -1379,6 +1423,40 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=20,
                     input_credits_per_1m=1500.0,
                     output_credits_per_1m=7500.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6-sol",
+                display_name="GPT-6 Sol",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out — the cost-efficient high-end tier
+                # below flagship Astra, live OpenRouter rate as of
+                # 2026-09-22. Filed as tier 2 like the prior generation's
+                # Sol tier (gpt-5.6-sol).
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6-luna",
+                display_name="GPT-6 Luna",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $0.10/1M in, $0.50/1M out — the fast, cheapest GPT-6
+                # tier, live OpenRouter rate as of 2026-09-22.
+                price_tier=1,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
                 ),
             ),
             CatalogModel(

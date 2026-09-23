@@ -18,8 +18,13 @@ type SignJWTContext = Parameters<typeof signJWT>[0];
  * emails). Signed with the same Better Auth JWKS key the backend already
  * trusts for user tokens (JWT_JWKS_URL), but with a distinct audience and
  * subject so user and service tokens can never stand in for each other.
+ * `claims` carries facts the frontend vouches for; it cannot override the
+ * subject, audience, scope or lifetime.
  */
-export async function mintServiceToken(scope: string) {
+export async function mintServiceToken(
+  scope: string,
+  claims: Record<string, string> = {},
+) {
   // Dynamic import: auth.ts (via email.ts) imports this module, so a static
   // import back to ./auth would create an init cycle.
   const { auth } = await import("./auth");
@@ -38,6 +43,7 @@ export async function mintServiceToken(scope: string) {
       jwks: { keyPairConfig: { alg: JWKS_ALG } },
     },
     payload: {
+      ...claims,
       sub: FRONTEND_SERVICE_SUBJECT,
       aud: SERVICE_TOKEN_AUDIENCE,
       scope,

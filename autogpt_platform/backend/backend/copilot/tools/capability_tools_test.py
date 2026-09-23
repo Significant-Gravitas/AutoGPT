@@ -13,6 +13,7 @@ from prisma.enums import ReviewStatus
 
 from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
+from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_execution_context
@@ -40,9 +41,17 @@ from .models import (
 )
 from .resume_capability import ResumeCapabilityTool
 from .run_capability import RunCapabilityTool
+from .session_registry import session_registry
+from .skills import ParsedSkill, ReadSkillResponse
 
 USER = "user-cap-tools"
 LINEAR_STATE = ConnectionState(providers=frozenset({"linear"}))
+TRIAGE = ParsedSkill(
+    name="triage-and-prioritize",
+    description="Triage a support ticket and set its priority.",
+    body="1. read the ticket\n2. set the priority",
+    triggers=("triage ticket",),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +60,24 @@ def _clean_context():
     set_execution_context(USER, session)
     yield
     set_execution_context(None, None)
+
+
+@pytest.fixture(autouse=True)
+def skills():
+    """The session's skill list is per user and read through Redis and the
+    workspace; stub it empty so no test here reaches either.  A test that
+    wants skills sets ``skills.return_value``."""
+    with (
+        patch(
+            "backend.copilot.tools.session_registry.is_skills_feature_enabled",
+            AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.tools.session_registry.list_all_skills",
+            AsyncMock(return_value=[]),
+        ) as listed,
+    ):
+        yield listed
 
 
 # ---------------------------------------------------------------- registry
@@ -313,7 +340,95 @@ async def test_find_capability_no_results_points_to_open_world():
     assert any("MCP server" in s for s in result.suggestions)
 
 
+async def test_find_capability_returns_the_session_owner_s_skill(skills):
+    skills.return_value = [TRIAGE]
+    session = make_session(USER, expert_id="expert-1")
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, session, query="triage a support ticket"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities[0]["id"] == "skill:triage-and-prioritize"
+    assert result.capabilities[0]["kind"] == "skill"
+    assert "kind=skill" in result.message
+    # The owner's folder, never another expert's.
+    skills.assert_awaited_with(USER, "expert-1")
+
+
+async def test_the_layered_index_is_reused_while_the_skills_are_the_same(skills):
+    """Layering rebuilds BM25 over the whole corpus, so the result is kept for
+    the skill-cache window; a changed skill, or no skills, gets its own."""
+    skills.return_value = [TRIAGE]
+    session = make_session(USER)
+    first = await session_registry(USER, session)
+    second = await session_registry(USER, session)
+    assert first is second and first is not get_registry()
+    skills.return_value = [
+        ParsedSkill(name=TRIAGE.name, description="Rewritten.", body="", triggers=())
+    ]
+    assert await session_registry(USER, session) is not first
+    skills.return_value = []
+    assert await session_registry(USER, session) is get_registry()
+
+
+async def test_find_capability_kind_skill_lists_skills_only(skills):
+    skills.return_value = [TRIAGE]
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=ConnectionState()),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, make_session(USER), query="ticket", kind="skill"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert [c["kind"] for c in result.capabilities] == ["skill"]
+
+
+async def test_find_capability_survives_a_skill_listing_failure(skills):
+    skills.side_effect = RuntimeError("redis down")
+    with patch(
+        "backend.copilot.tools.find_capability.load_connection_state",
+        AsyncMock(return_value=LINEAR_STATE),
+    ):
+        result = await FindCapabilityTool()._execute(
+            USER, make_session(USER), query="linear issue"
+        )
+    assert isinstance(result, CapabilityListResponse)
+    assert result.capabilities[0]["name"].startswith("Linear")
+
+
 # -------------------------------------------------------- describe_capability
+
+
+async def test_describe_skill_points_at_run_capability(skills):
+    skills.return_value = [TRIAGE]
+    result = await DescribeCapabilityTool()._execute(
+        USER, make_session(USER), id="skill:triage-and-prioritize"
+    )
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert "run_capability(id='skill:triage-and-prioritize'" in result.message
+    assert "Triggers: triage ticket." in result.message
+    assert result.capability["kind"] == "skill"
+    assert result.parameters == {"type": "object", "properties": {}}
+
+
+async def test_describe_unknown_skill_names_the_id_shape(skills):
+    result = await DescribeCapabilityTool()._execute(
+        USER, make_session(USER), id="skill:nope"
+    )
+    assert isinstance(result, ErrorResponse) and "skill:<name>" in result.message
+
+
+async def test_a_skill_id_never_resolves_to_the_platform_tool_of_that_name(skills):
+    """``resolve_entry`` falls back to matching a bare name, which would let
+    ``skill:web_search`` describe the platform's ``web_search`` tool."""
+    result = await DescribeCapabilityTool()._execute(
+        USER, make_session(USER), id="skill:web_search"
+    )
+    assert isinstance(result, ErrorResponse)
 
 
 async def test_describe_tool_returns_parameters():
@@ -442,6 +557,60 @@ async def test_run_tool_respects_turn_hidden_tools():
     stub._execute.assert_not_awaited()
 
 
+async def test_run_skill_validate_only_describes_without_loading(skills):
+    skills.return_value = [TRIAGE]
+    with patch("backend.copilot.tools.run_capability.ReadSkillTool") as reader:
+        result = await RunCapabilityTool()._execute(
+            USER,
+            make_session(USER),
+            id="skill:triage-and-prioritize",
+            input={},
+            validate_only=True,
+        )
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert result.capability["id"] == "skill:triage-and-prioritize"
+    reader.assert_not_called()
+
+
+async def test_run_skill_loads_it_through_the_skill_reader(skills):
+    """Off the engine path (``dispatch.py`` resolves the call there), the
+    dispatcher itself loads the skill by name."""
+    skills.return_value = [TRIAGE]
+    session = make_session(USER)
+    loaded = ReadSkillResponse(
+        name=TRIAGE.name,
+        description=TRIAGE.description,
+        body=TRIAGE.body,
+        message="Loaded",
+        session_id=session.session_id,
+    )
+    with patch("backend.copilot.tools.run_capability.ReadSkillTool") as reader:
+        reader.return_value._execute = AsyncMock(return_value=loaded)
+        result = await RunCapabilityTool()._execute(
+            USER, session, id="skill:triage-and-prioritize", input={}
+        )
+    assert result is loaded
+    reader.return_value._execute.assert_awaited_once_with(
+        USER, session, name="triage-and-prioritize"
+    )
+
+
+async def test_run_skill_honours_the_read_skill_gate(skills):
+    skills.return_value = [TRIAGE]
+    session = make_session(USER)
+    set_execution_context(USER, session, hidden_tools=frozenset({"read_skill"}))
+    with patch("backend.copilot.tools.run_capability.ReadSkillTool") as reader:
+        result = await RunCapabilityTool()._execute(
+            USER, session, id="skill:triage-and-prioritize", input={}
+        )
+    assert isinstance(result, ErrorResponse) and result.error == "tool_disabled"
+    reader.assert_not_called()
+    described = await DescribeCapabilityTool()._execute(
+        USER, session, id="skill:triage-and-prioritize"
+    )
+    assert isinstance(described, ErrorResponse) and described.error == "tool_disabled"
+
+
 async def test_run_block_honours_the_run_block_gate():
     session = make_session(USER)
     set_execution_context(
@@ -484,12 +653,15 @@ async def test_run_mcp_catalog_write_runs_without_review():
     out = MCPToolOutputResponse(
         message="done", server_url="u", tool_name="create_issue"
     )
-    with patch(
-        "backend.copilot.tools.run_capability.RunMCPToolTool._execute",
-        AsyncMock(return_value=out),
-    ) as run, patch(
-        "backend.copilot.tools.run_capability.open_mcp_review", AsyncMock()
-    ) as review:
+    with (
+        patch(
+            "backend.copilot.tools.run_capability.RunMCPToolTool._execute",
+            AsyncMock(return_value=out),
+        ) as run,
+        patch(
+            "backend.copilot.tools.run_capability.open_mcp_review", AsyncMock()
+        ) as review,
+    ):
         result = await RunCapabilityTool()._execute(
             USER,
             make_session(USER),
@@ -503,11 +675,14 @@ async def test_run_mcp_catalog_write_runs_without_review():
 
 
 async def test_run_mcp_open_world_write_pauses_for_review():
-    with patch(
-        "backend.copilot.tools.run_capability.RunMCPToolTool._execute", AsyncMock()
-    ) as run, patch(
-        "backend.copilot.tools.run_capability.open_mcp_review",
-        AsyncMock(return_value="copilot-mcp-x:1"),
+    with (
+        patch(
+            "backend.copilot.tools.run_capability.RunMCPToolTool._execute", AsyncMock()
+        ) as run,
+        patch(
+            "backend.copilot.tools.run_capability.open_mcp_review",
+            AsyncMock(return_value="copilot-mcp-x:1"),
+        ),
     ):
         result = await RunCapabilityTool()._execute(
             USER,
@@ -598,12 +773,13 @@ async def test_resume_mcp_review_replays_the_approved_call():
     out = MCPToolOutputResponse(
         message="done", server_url="u", tool_name="delete_thing"
     )
-    with patch(
-        "backend.copilot.tools.resume_capability.review_db", return_value=db
-    ), patch(
-        "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
-        AsyncMock(return_value=out),
-    ) as run:
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+            AsyncMock(return_value=out),
+        ) as run,
+    ):
         result = await ResumeCapabilityTool()._execute(
             USER, session, review_id=review_id
         )
@@ -634,15 +810,17 @@ async def test_resume_mcp_review_reopens_when_overrides_change_a_write():
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
     db.delete_review_by_node_exec_id = AsyncMock()
-    with patch(
-        "backend.copilot.tools.resume_capability.review_db", return_value=db
-    ), patch(
-        "backend.copilot.tools.resume_capability.open_mcp_review",
-        AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
-    ) as opened, patch(
-        "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
-        AsyncMock(),
-    ) as run:
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.open_mcp_review",
+            AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
+        ) as opened,
+        patch(
+            "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
         result = await ResumeCapabilityTool()._execute(
             USER, session, review_id=review_id, input_overrides={"force": True}
         )
@@ -675,15 +853,17 @@ async def test_resume_mcp_review_reopens_even_when_the_call_would_not_be_gated()
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
     db.delete_review_by_node_exec_id = AsyncMock()
-    with patch(
-        "backend.copilot.tools.resume_capability.review_db", return_value=db
-    ), patch(
-        "backend.copilot.tools.resume_capability.open_mcp_review",
-        AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
-    ), patch(
-        "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
-        AsyncMock(),
-    ) as run:
+    with (
+        patch("backend.copilot.tools.resume_capability.review_db", return_value=db),
+        patch(
+            "backend.copilot.tools.resume_capability.open_mcp_review",
+            AsyncMock(return_value="copilot-mcp-mcp.example.com:ef56"),
+        ),
+        patch(
+            "backend.copilot.tools.resume_capability.RunMCPToolTool._execute",
+            AsyncMock(),
+        ) as run,
+    ):
         result = await ResumeCapabilityTool()._execute(
             USER, session, review_id=review_id, input_overrides={"id": 2}
         )
