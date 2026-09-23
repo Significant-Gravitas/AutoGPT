@@ -331,4 +331,24 @@ describe("Marketplace with hire-experts on", () => {
 
     expect(await screen.findByText("No runs")).toBeDefined();
   });
+
+  test("keeps the publish entry point when there are no workflows", async () => {
+    server.use(
+      getGetV2ListStoreAgentsMockHandler({
+        agents: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 0,
+          current_page: 1,
+          page_size: 10,
+        },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Become a Creator" }),
+    ).toBeDefined();
+  });
 });

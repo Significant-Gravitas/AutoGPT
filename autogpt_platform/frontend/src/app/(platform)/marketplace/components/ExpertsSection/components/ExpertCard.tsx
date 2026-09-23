@@ -102,10 +102,11 @@ export function ExpertCard({ expert, isHired }: Props) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
+                      tabIndex={0}
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "h-6 cursor-default border-transparent px-0 text-zinc-500",
+                        "h-6 cursor-default border-transparent px-0 text-zinc-500 outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
                       )}
                     >
                       +{restSkills.length} skills
@@ -132,6 +133,7 @@ export function ExpertCard({ expert, isHired }: Props) {
             <Icon
               icon={ArrowRight02Icon}
               size={16}
+              aria-hidden
               className="transition-transform duration-200 group-hover:translate-x-0.5"
             />
           </span>

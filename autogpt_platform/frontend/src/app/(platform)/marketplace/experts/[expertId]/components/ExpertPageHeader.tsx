@@ -27,6 +27,7 @@ export function ExpertPageHeader({ expert, actions }: Props) {
               the chip below belongs to the area the expert works in. */}
           <ExpertIdentityDetails
             name={expert.name}
+            role={area || expert.job_title ? undefined : expert.role}
             size="page"
             nameAlign="baseline"
             nameAccessory={

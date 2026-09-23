@@ -42,6 +42,11 @@ export const MainMarkeplacePage = () => {
   // visitor browsing the marketplace needs a way to reach them. Signed-in
   // users keep the flag gate so the beta stays invisible to them.
   const showExperts = !isUserLoading && (!isLoggedIn || isHireExpertsEnabled);
+  const hasWorkflowShelf = Boolean(
+    topAgents &&
+      (topAgents.agents.length > 0 ||
+        (!category && (featuredAgents?.agents.length ?? 0) > 0)),
+  );
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -122,7 +127,7 @@ export const MainMarkeplacePage = () => {
         )}
         {/* The expert layout invites publishing from under the workflows
             shelf instead, where it cannot outshout the shelf itself. */}
-        {!isHireExpertsEnabled ? (
+        {!isHireExpertsEnabled || !hasWorkflowShelf ? (
           <BecomeACreator
             title="Become a Creator"
             description="Join our ever-growing community of hackers and tinkerers"
