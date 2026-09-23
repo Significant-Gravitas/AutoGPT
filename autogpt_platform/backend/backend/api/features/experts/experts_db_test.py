@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import prisma.enums
@@ -977,7 +977,9 @@ async def test_rehire_retries_a_failed_setup(
         experts_db.skill_db, "install_marketplace_skill", _recording_install()
     )
     # Kills: an "existing" re-hire that does not re-claim the setup.
-    retried = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        retried = await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_not_called()
     assert retried.expert.id == failed.expert.id
     assert retried.expert.setup_status == "ready"
     assert retried.expert.setup_failures == []
@@ -6039,20 +6041,12 @@ async def test_seed_roster_files_every_template_under_a_canonical_category(
 async def test_hire_expert_emits_hire_completed(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     with patch.object(experts_db, "emit_funnel_event") as emit:
-        result = await experts_db.hire_expert(test_user.id, template.id, None)
-    assert emit.call_args_list == [
-        call(test_user.id, "hire_completed", {"template_id": template.id}),
-        call(
-            test_user.id,
-            "hire_setup_finished",
-            {
-                "template_id": template.id,
-                "expert_id": result.expert.id,
-                "ready": True,
-                "failed_count": 0,
-            },
-        ),
-    ]
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -6070,7 +6064,7 @@ async def test_hire_expert_emits_hire_failed_on_unknown_template(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_hire_setup_finished_reports_failed_preloads(
+async def test_hire_completed_reports_failed_preloads_count(
     server: SpinTestServer, test_user
 ):
     slv_id = await _seed_store_listing(server)
@@ -6082,16 +6076,11 @@ async def test_hire_setup_finished_reports_failed_preloads(
         side_effect=RuntimeError("install exploded"),
     ):
         with patch.object(experts_db, "emit_funnel_event") as emit:
-            result = await experts_db.hire_expert(test_user.id, template.id, None)
-    emit.assert_called_with(
+            await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
         test_user.id,
-        "hire_setup_finished",
-        {
-            "template_id": template.id,
-            "expert_id": result.expert.id,
-            "ready": False,
-            "failed_count": 1,
-        },
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
     )
 
 
@@ -6116,7 +6105,9 @@ async def test_reviving_archived_expert_emits_hire_completed(
     with patch.object(experts_db, "emit_funnel_event") as emit:
         await experts_db.hire_expert(test_user.id, template.id, None)
     emit.assert_called_once_with(
-        test_user.id, "hire_completed", {"template_id": template.id}
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
     )
 
 
@@ -6139,7 +6130,9 @@ async def test_concurrent_revival_emits_hire_completed_once(
     assert not first.expert.is_archived
     assert not second.expert.is_archived
     emit.assert_called_once_with(
-        test_user.id, "hire_completed", {"template_id": template.id}
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
     )
 
 

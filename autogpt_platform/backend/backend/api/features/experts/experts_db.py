@@ -933,9 +933,14 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
             {"template_id": template_id, "failed_preloads_count": 0},
         )
         raise
-    # An idempotent re-hire of an already-active expert is not a hire.
-    if state != "existing":
-        emit_funnel_event(user_id, "hire_completed", {"template_id": template_id})
+    # A created hire is counted by its setup job, once its preloads are known;
+    # an idempotent re-hire of an already-active expert is not a hire.
+    if state == "revived":
+        emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {"template_id": template_id, "failed_preloads_count": 0},
+        )
     return result
 
 
@@ -993,7 +998,9 @@ async def _hire_expert_impl(
         expert = await _resume_revived_hire(expert)
     if state == "created" or await _claim_setup(expert.id):
         spawn_background_task(
-            _run_hire_setup(user_id, expert.id, template.id),
+            _run_hire_setup(
+                user_id, expert.id, template.id, count_hire=state == "created"
+            ),
             name=f"hire-setup-{expert.id}",
         )
         if state != "created":
@@ -1033,22 +1040,29 @@ async def _claim_setup(expert_id: str) -> bool:
     return claimed == 1
 
 
-async def _run_hire_setup(user_id: str, expert_id: str, template_id: str) -> None:
+async def _run_hire_setup(
+    user_id: str, expert_id: str, template_id: str, *, count_hire: bool = False
+) -> None:
     """Install a hire's workflows, skills and routines, retrying what failed.
 
     Every step skips what an earlier run installed, so a retry or a re-claimed
-    setup finishes the job instead of duplicating it.
+    setup finishes the job instead of duplicating it. *count_hire* emits the
+    hire's ``hire_completed`` once the failed preloads are known.
     """
     failures: list[str] | None = None
+    failed_preloads: list[str] = []
     for attempt in range(_SETUP_ATTEMPTS):
         if attempt:
             await asyncio.sleep(_SETUP_RETRY_DELAY_SECONDS * attempt)
         try:
-            failures = await _install_hire_contents(user_id, expert_id, template_id)
+            failed_preloads, failed_rest = await _install_hire_contents(
+                user_id, expert_id, template_id
+            )
         except Exception:
             logger.exception(f"Setup attempt {attempt + 1} failed for #{expert_id}")
             failures = None
             continue
+        failures = failed_preloads + failed_rest
         if not failures:
             break
     ready = failures == []
@@ -1063,22 +1077,19 @@ async def _run_hire_setup(user_id: str, expert_id: str, template_id: str) -> Non
             "setupFailures": failures or [],
         },
     )
-    emit_funnel_event(
-        user_id,
-        "hire_setup_finished",
-        {
-            "template_id": template_id,
-            "expert_id": expert_id,
-            "ready": ready,
-            "failed_count": len(failures or []),
-        },
-    )
+    if count_hire:
+        emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {"template_id": template_id, "failed_preloads_count": len(failed_preloads)},
+        )
 
 
 async def _install_hire_contents(
     user_id: str, expert_id: str, template_id: str
-) -> list[str]:
-    """Install what the hire does not have yet; return what still failed."""
+) -> tuple[list[str], list[str]]:
+    """Install what the hire does not have yet; return the preloads, then
+    the skills and routines, that still failed."""
     template = await prisma.models.Expert.prisma().find_unique(
         where={"id": template_id}, include=_WORKFLOW_INCLUDE
     )
@@ -1090,7 +1101,7 @@ async def _install_hire_contents(
         raise ExpertNotFoundError(expert_id)
     installed_listings = {w.storeListingVersionId for w in expert.Workflows or []}
     installed_routines = {r.key for r in expert.Routines or []}
-    failed = await _install_preloads(
+    failed_preloads = await _install_preloads(
         expert_id,
         user_id,
         [
@@ -1099,7 +1110,7 @@ async def _install_hire_contents(
             if w.storeListingVersionId not in installed_listings
         ],
     )
-    failed += await _install_bundled_skills(
+    failed = await _install_bundled_skills(
         user_id, expert_id, template_id, installed=set(expert.skills or [])
     )
     failed += await install_routines(
@@ -1110,7 +1121,7 @@ async def _install_hire_contents(
             if r.key not in installed_routines
         ],
     )
-    return failed
+    return failed_preloads, failed
 
 
 async def _reserve_hired_expert(
