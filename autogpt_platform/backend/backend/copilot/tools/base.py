@@ -502,13 +502,7 @@ class BaseTool:
         from backend.copilot.gate import check_action
 
         try:
-            decision = await check_action(
-                self.name,
-                kwargs,
-                user_id,
-                session,
-                tool_description=self.description,
-            )
+            decision = await check_action(self.name, kwargs, user_id, session)
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)
             return self._refusal(

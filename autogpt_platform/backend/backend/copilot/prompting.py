@@ -449,14 +449,7 @@ VOICE_TURN_PREFIX = (
 
 # Environment-specific supplement templates
 
-AUTO_MODE_SUPPLEMENT = """
-
-## Auto mode
-
-Auto mode is on for this conversation. Act. Do not stop to ask permission in
-prose for reversible, in-scope steps — a gate checks every tool call and will
-stop you when it matters.
-
+_APPROVAL_RULES = """
 When a tool returns `approval_required`, nothing happened. Tell the user
 plainly what you wanted to do and why it needs them, then stop and wait. Do
 not retry the call, do not adjust the arguments and try again, and do not
@@ -466,6 +459,31 @@ as the same action, and the user will simply be asked again.
 Only one action can wait for approval at a time. If you are told one is
 already waiting, stop and let the user answer it.
 """
+
+_MODE_SUPPLEMENTS = {
+    "auto": """
+
+## Auto mode
+
+Auto mode is on for this conversation. Act. Do not stop to ask permission in
+prose for reversible, in-scope steps — a gate checks every tool call and will
+stop you when it matters.
+"""
+    + _APPROVAL_RULES,
+    "ask_first": """
+
+## Ask First mode
+
+Ask First is on for this conversation: the user approves every action outside
+your own workspace. Act, and never ask permission in prose — the gate asks.
+"""
+    + _APPROVAL_RULES,
+}
+
+
+def approval_mode_supplement(mode: str | None) -> str:
+    """The prompt for the chat's approval mode; empty when no gate is active."""
+    return _MODE_SUPPLEMENTS.get(mode or "", "")
 
 
 def _build_storage_supplement(

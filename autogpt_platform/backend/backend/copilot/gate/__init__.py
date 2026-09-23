@@ -1,20 +1,14 @@
-"""AutoPilot auto mode — one permission gate in front of every tool call.
+"""AutoPilot approval modes — one gate in front of every tool call.
 
-Ordering is the design. Cheap and certain first, and the classifier last and
-least trusted, because the static tiers in ``policy.py`` are what have to hold
-if it is wrong or compromised:
+Ordering is the design, cheapest and most certain first:
 
-1. gate inactive                      -> ALLOW (today's behaviour, unchanged)
-2. an approval for exactly these args -> ALLOW, consumed single-use
-3. tier DEFER                         -> ALLOW; another gate owns this call
-4. escalated this session             -> ASK
-5. tier ALWAYS_ASK                    -> ASK
-6. tainted and effectful              -> ASK, classifier skipped
-7. tier READ                          -> ALLOW
-8. tier JUDGED                        -> classifier
+1. gate inactive                          -> ALLOW (today's behaviour)
+2. an approval for exactly these args     -> ALLOW, consumed single-use
+3. the user rejected this tool in chat    -> ASK, in every mode
+4. the mode's verdict for the tool's effect: run, ask, or the supervisor
 
-Step 6 skips the classifier deliberately: that is precisely the case where the
-injected text is sitting in the arguments the classifier would be reading.
+The supervisor is last because it is the least trusted step: it can only turn
+a run into a question, never the reverse.
 """
 
 import logging
@@ -26,10 +20,17 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
 
+from . import chat_rules
 from . import review as review_store
-from . import taint
 from .classifier import classify
-from .policy import Tier, escalates_under_taint, tier_for
+from .policy import (
+    DEFAULT_MODE,
+    AutopilotMode,
+    Effect,
+    Verdict,
+    effect_for,
+    verdict_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,9 @@ _UNRECORDABLE = (
     "This action needs the user's approval, but the approval request could "
     "not be recorded, so nothing ran. Tell the user and stop."
 )
+_ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
+_OUTWARD = "This action reaches outside the platform, so it needs your approval."
+_PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
 
 
 class Decision(BaseModel):
@@ -67,17 +71,22 @@ ALLOW = Decision(allowed=True)
 
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
-    """Auto mode runs only where a human can actually answer.
-
-    Automation sessions (the scheduler, ``AutoPilotBlock``, ``run_sub_session``)
-    and legacy rows with no origin keep today's ungated behaviour: parking a
-    question in a run nobody is watching is a stall, not a safeguard.
-    Unattended work is authorized by the interactive act that created it,
-    which is why delegation is ALWAYS_ASK and ``schedule_followup`` escalates.
-    """
+    """The gate runs only where a signed-in user can answer; sessions nobody
+    is watching stay ungated until they get their own path."""
     if not user_id or session.metadata.origin != "interactive":
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+def resolve_mode(session: ChatSession) -> AutopilotMode:
+    return session.metadata.autopilot_mode or DEFAULT_MODE
+
+
+async def active_mode(
+    user_id: str | None, session: ChatSession
+) -> AutopilotMode | None:
+    """The mode the gate enforces on this turn, or None when it is inert."""
+    return resolve_mode(session) if await gate_active(user_id, session) else None
 
 
 async def check_action(
@@ -85,15 +94,10 @@ async def check_action(
     args: dict[str, Any],
     user_id: str | None,
     session: ChatSession,
-    *,
-    tool_description: str = "",
 ) -> Decision:
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
-    # Before any decision and before the source runs, so a parallel sibling
-    # reads it — and only under an active gate.
-    await taint.mark_tainted(session.session_id, tool_name)
 
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
@@ -105,46 +109,30 @@ async def check_action(
         return Decision(allowed=False, reason=_CONSUMED)
     if status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
-        await taint.escalate(session_id, tool_name)
+        await chat_rules.set_ask(session_id, tool_name)
         return Decision(allowed=False, reason=_REJECTED)
 
-    tier = tier_for(tool_name)
-    if tier is Tier.DEFER:
+    mode = resolve_mode(session)
+    verdict = verdict_for(mode, tool_name)
+    # Only a subject that can be parked can have been rejected, so reads and
+    # workspace work skip the Redis round trip.
+    if effect_for(tool_name) in _PARKABLE and await chat_rules.asks(
+        session_id, tool_name
+    ):
+        reason = "You declined this action earlier in this chat."
+    elif verdict is Verdict.RUN:
         return ALLOW
-
-    reason = await _verdict(tier, tool_name, tool_description, args, session)
-    if reason is None:
-        return ALLOW
-    return await _park(review_id, user_id, session, tool_name, args, reason)
-
-
-async def _verdict(
-    tier: Tier,
-    tool_name: str,
-    tool_description: str,
-    args: dict[str, Any],
-    session: ChatSession,
-) -> str | None:
-    """The reason this call needs a human, or None to let it through."""
-    if await taint.is_escalated(session.session_id, tool_name):
-        return "You declined this action earlier in this chat."
-    if tier is Tier.ALWAYS_ASK:
-        return "This action always needs your approval."
-    if escalates_under_taint(tool_name) and await taint.is_tainted(session):
-        return (
-            "This chat has read content from outside the platform, so actions "
-            "with lasting effects need your approval."
+    elif verdict is Verdict.ASK:
+        reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
+    else:
+        allowed, reason = await classify(
+            tool_name=tool_name,
+            args=args,
+            user_message=_last_user_message(session),
         )
-    if tier is Tier.READ:
-        return None
-    allowed, reason = await classify(
-        tool_name=tool_name,
-        tool_description=tool_description,
-        args=args,
-        user_message=_last_user_message(session),
-        tainted=await taint.is_tainted(session),
-    )
-    return None if allowed else reason
+        if allowed:
+            return ALLOW
+    return await _park(review_id, user_id, session, tool_name, args, reason)
 
 
 async def _park(
@@ -171,4 +159,4 @@ def _last_user_message(session: ChatSession) -> str:
     return ""
 
 
-__all__ = ["Decision", "check_action", "gate_active"]
+__all__ = ["Decision", "active_mode", "check_action", "gate_active", "resolve_mode"]

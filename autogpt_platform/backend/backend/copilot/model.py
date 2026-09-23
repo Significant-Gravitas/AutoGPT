@@ -63,6 +63,7 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
+AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -122,6 +123,8 @@ class ChatSessionMetadata(BaseModel):
     # falls — see ``blocks/autopilot.py`` (legacy resumes) and
     # ``autopilot_session_guard`` (legacy cannot staff).
     origin: ChatSessionOrigin | None = None
+    # The chat's approval mode; None means the default (``copilot/gate``).
+    autopilot_mode: AutopilotMode | None = None
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -1755,6 +1758,39 @@ async def update_session_llm_route(
         except Exception as e:
             logger.warning(
                 f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
+
+
+async def update_session_autopilot_mode(
+    session_id: str, user_id: str, mode: AutopilotMode
+) -> bool:
+    """Set the chat's approval mode from the next tool call on.
+
+    Written through the cache under the session lock, as the route change is,
+    so a stale cached copy cannot put the chat back on its old mode.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize mode update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_autopilot_mode(
+            session_id, user_id, mode
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.autopilot_mode = mode
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache mode update failed for session {session_id} "
                 f"(non-critical): {e}"
             )
         return True

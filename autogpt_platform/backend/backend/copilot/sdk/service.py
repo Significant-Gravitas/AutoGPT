@@ -66,7 +66,7 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
-from backend.copilot.gate import gate_active
+from backend.copilot.gate import active_mode
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -120,7 +120,7 @@ from ..permissions import (
     denied_tool_names,
 )
 from ..prompting import (
-    AUTO_MODE_SUPPLEMENT,
+    approval_mode_supplement,
     get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -4877,8 +4877,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-        auto_mode_supplement = (
-            AUTO_MODE_SUPPLEMENT if await gate_active(user_id, session) else ""
+        auto_mode_supplement = approval_mode_supplement(
+            await active_mode(user_id, session)
         )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the

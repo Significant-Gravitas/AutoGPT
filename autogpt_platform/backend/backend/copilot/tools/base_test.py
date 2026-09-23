@@ -633,13 +633,12 @@ class TestGateEnforcement:
     @pytest.mark.asyncio
     async def test_the_envelope_refusal_precedes_the_gate(self):
         """A call the envelope refuses can never run, so spending a user's
-        approval on it — and marking a taint source for it — is wrong."""
+        approval on it is wrong."""
         from backend.copilot.context import set_execution_context
         from backend.copilot.tree import TurnEnvelope
 
         tool = self._spy_tool()
         check = AsyncMock()
-        taint = AsyncMock()
         set_execution_context(
             "u1",
             None,
@@ -648,10 +647,7 @@ class TestGateEnforcement:
             ),
         )
         try:
-            with (
-                patch("backend.copilot.gate.check_action", new=check),
-                patch("backend.copilot.gate.taint.mark_tainted", new=taint),
-            ):
+            with patch("backend.copilot.gate.check_action", new=check):
                 result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
         finally:
             set_execution_context(None, None, envelope=None)
@@ -659,7 +655,6 @@ class TestGateEnforcement:
         assert result.success is False
         assert tool.ran is False
         check.assert_not_awaited()
-        taint.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_crashing_gate_refuses_rather_than_runs(self):
@@ -673,50 +668,26 @@ class TestGateEnforcement:
         assert tool.ran is False
 
     @pytest.mark.asyncio
-    async def test_flag_off_writes_nothing_to_redis(self):
-        """Flag-off must be today's behaviour: not even a taint write, in any
-        session, for a tool that is a taint source."""
+    async def test_flag_off_writes_nothing(self):
+        """Flag-off must be today's behaviour: no rule read, no review row,
+        for a call every mode would otherwise stop."""
         calls: list[str] = []
-        tool = self._recording_tool("web_search", calls)
+        tool = self._recording_tool("post_to_chat_platform", calls)
         redis = AsyncMock()
+        reviews = MagicMock()
         with (
             patch(
                 "backend.copilot.gate.is_feature_enabled",
                 new=AsyncMock(return_value=False),
             ),
-            patch("backend.copilot.gate.taint.get_redis_async", new=redis),
+            patch("backend.copilot.gate.chat_rules.get_redis_async", new=redis),
+            patch("backend.copilot.gate.review.review_db", new=reviews),
         ):
             await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
 
         assert calls == ["run"]
         redis.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_a_taint_source_is_marked_before_it_runs(self):
-        """A parallel sibling reads the mark, so it lands before the source runs."""
-        calls: list[str] = []
-        tool = self._recording_tool("web_search", calls)
-        with (
-            patch(
-                "backend.copilot.gate.is_feature_enabled",
-                new=AsyncMock(return_value=True),
-            ),
-            patch(
-                "backend.copilot.gate.taint.mark_tainted",
-                new=AsyncMock(side_effect=lambda *_: calls.append("mark")),
-            ),
-            patch(
-                "backend.copilot.gate.review_store.find_decision",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "backend.copilot.gate.taint.is_escalated",
-                new=AsyncMock(return_value=False),
-            ),
-        ):
-            await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
-
-        assert calls == ["mark", "run"]
+        reviews.assert_not_called()
 
     @staticmethod
     def _recording_tool(tool_name: str, calls: list[str]):

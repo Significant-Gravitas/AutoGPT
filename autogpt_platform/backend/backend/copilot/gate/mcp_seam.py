@@ -3,8 +3,7 @@
 ``create_copilot_mcp_server`` registers the file handlers from
 ``sdk/e2b_file_tools.py`` directly, so they are not ``BaseTool`` subclasses and
 never reach the seam in ``BaseTool.execute``. Without this they would be the
-one write path in SDK mode with no gate in front of it, and the one read path
-that marks no provenance.
+one write path in SDK mode with no gate in front of it.
 
 Returns an MCP-shaped error rather than a ``StreamToolOutputAvailable``,
 because the caller here is the raw handler wrapper, not the tool layer.
@@ -30,13 +29,7 @@ async def gate_non_registry_tool(
 ) -> dict[str, Any] | None:
     """An MCP error payload to return instead of running, or None to proceed."""
     try:
-        decision = await check_action(
-            tool_name,
-            args,
-            user_id,
-            session,
-            tool_description=f"MCP file tool {tool_name}",
-        )
+        decision = await check_action(tool_name, args, user_id, session)
     except Exception:
         logger.warning(f"Action gate failed for MCP tool {tool_name}", exc_info=True)
         return _error(
