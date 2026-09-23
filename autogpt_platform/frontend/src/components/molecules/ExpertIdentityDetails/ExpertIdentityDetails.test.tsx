@@ -14,9 +14,9 @@ describe("ExpertIdentityDetails", () => {
         />,
       );
 
-      const area = screen.getByText("Social media");
+      const area = screen.getByText("Social Media Manager");
       const chip = area.parentElement;
-      expect(screen.getAllByText("Social media")).toHaveLength(1);
+      expect(screen.getAllByText("Social Media Manager")).toHaveLength(1);
       expect(chip?.classList.contains("bg-zinc-50")).toBe(true);
       expect(chip?.classList.contains("rounded-full")).toBe(true);
       expect(chip?.querySelector("svg")).not.toBeNull();
@@ -60,8 +60,14 @@ describe("ExpertIdentityDetails", () => {
       />,
     );
     expect(
-      screen.getByText("Social media").classList.contains("leading-4"),
+      screen.getByText("Social Media Manager").classList.contains("leading-4"),
     ).toBe(true);
     expect(container.querySelector("svg")).toBeNull();
   });
+});
+
+test("does not grant Otto's identity exception from a specialist title", () => {
+  render(<ExpertIdentityDetails name="My Expert" role="Head of AI" />);
+  expect(screen.getByText("AI Expert")).toBeDefined();
+  expect(screen.queryByText("Your personal Head of AI")).toBeNull();
 });

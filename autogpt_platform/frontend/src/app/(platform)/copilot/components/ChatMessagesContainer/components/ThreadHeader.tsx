@@ -114,6 +114,7 @@ export function ThreadHeader({
       ) : (
         <span className="min-w-0 max-w-[10rem]">
           <ExpertIdentityDetails
+            isOtto={!expertIdentity && !isResolving}
             name={name}
             role={role}
             jobTitle={jobTitle}

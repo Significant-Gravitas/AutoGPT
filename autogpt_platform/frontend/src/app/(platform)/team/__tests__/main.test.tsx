@@ -231,7 +231,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const raise = await screen.findByRole("link", { name: "Raise expert" });
+    const raise = await screen.findByRole("link", { name: "Create an Expert" });
     expect(raise.getAttribute("href")).toBe("/raise");
     expect(
       screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
@@ -1010,9 +1010,11 @@ describe("TeamPage", () => {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
-    expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
-    ).toBe("/raise");
+    for (const createLink of screen.getAllByRole("link", {
+      name: "Create an Expert",
+    })) {
+      expect(createLink.getAttribute("href")).toBe("/raise");
+    }
   });
 
   test("shows an error card and retries when loading experts fails", async () => {

@@ -289,3 +289,38 @@ async def test_upload_media_invalid_signature(mock_settings, mock_storage_client
 
     with pytest.raises(store_exceptions.InvalidFileTypeError):
         await store_media.upload_media("test-user", test_file)
+
+
+async def test_expert_avatar_is_not_stored_when_review_fails(
+    mock_settings, mock_storage_client, mocker
+):
+    mocker.patch(
+        "backend.api.features.store.media.moderate_avatar_image",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(422, "Choose another image."),
+    )
+    upload = fastapi.UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+    with pytest.raises(fastapi.HTTPException) as error:
+        await store_media.upload_media("owner", upload, review_avatar=True)
+    assert error.value.status_code == 422
+    mock_storage_client.upload.assert_not_awaited()
+
+
+async def test_submission_upload_does_not_require_avatar_review(
+    mock_settings, mock_storage_client, mocker
+):
+    review = mocker.patch(
+        "backend.api.features.store.media.moderate_avatar_image", new_callable=AsyncMock
+    )
+    upload = fastapi.UploadFile(
+        filename="image.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+    await store_media.upload_media("owner", upload)
+    review.assert_not_awaited()
+    mock_storage_client.upload.assert_awaited_once()

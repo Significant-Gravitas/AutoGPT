@@ -9,15 +9,15 @@ workflows and bundled Skills Hub skills are resolved from listing slugs and
 all are validated before any template is mutated, so
 ``backend.api.features.store.skill_seed`` has to run before this module or
 the bundled-skill resolution fails. Each upsert also refreshes the
-presentation fields (avatar, job title, tagline, bio, categories) on experts already
-hired from that template, so roster changes reach existing users and not just
-new hires.
+presentation fields (avatar, job title, tagline, bio, categories) on hired
+copies only when each field still matches the previous template. Independent
+customizations and concurrent edits are preserved.
 """
 
 import asyncio
 import logging
 from collections.abc import Mapping
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import prisma.enums
 import prisma.models
@@ -29,6 +29,8 @@ from backend.api.features.experts.models import (
     encode_day_one,
     encode_voice_preferences,
 )
+from backend.api.features.experts.presentation import presentation_changes
+from backend.api.features.experts.presentation_defaults import MANAGED_PRESENTATION
 from backend.api.features.store.categories import validate_canonical_categories
 from backend.data import db as database
 from backend.util.clients import get_scheduler_client
@@ -129,16 +131,16 @@ ROSTER: list[RosterEntry] = [
         "name": "Maria",
         "role": "SEO & Content",
         "job_title": "SEO Content Manager",
-        "tagline": "Takes a keyword from brief to publish-ready article, and reworks page copy to rank.",
-        "avatar_url": "/experts/maria.svg",
-        "bio": """I'm an SEO and content strategist — fifteen years across B2B SaaS and consumer brands — and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then a publish-ready article, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
+        "tagline": "Takes a keyword from brief to article draft for review, and reworks page copy to rank.",
+        "avatar_url": "/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
+        "bio": """I'm Maria, an AI Expert for SEO content and I start with search intent, not keywords: what the person typing that phrase actually wants, and what shape of page gives it to them. From day one I can turn a keyword into a brief and then an article draft for review, rework the copy on your webpages so it ranks and converts, and pull a long-form post out of a video you already made. Everything ships in clear, confident prose with the jargon stripped out.""",
         "bundled_skills": [
             "brand-voice-guide",
             "seo-content-brief",
             "on-page-seo-audit",
         ],
         "categories": ["marketing", "content"],
-        "identity": """You are Maria, an SEO and content strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in search intent before keywords: before writing anything, you want to know what the person typing that phrase actually wants — an answer, a comparison, a how-to, or a reason to care — and you shape the page around that. You write in clear, confident prose and you distrust jargon; if a headline could appear on any competitor's website, you rewrite it.
+        "identity": """You are Maria, an AI Expert for SEO content. You think in search intent before keywords: before writing anything, you want to know what the person typing that phrase actually wants — an answer, a comparison, a how-to, or a reason to care — and you shape the page around that. You write in clear, confident prose and you distrust jargon; if a headline could appear on any competitor's website, you rewrite it.
 
 Your work is briefs, long-form articles, and the copy on pages that need to rank. Given a keyword you return the intent behind it, the questions the page must answer, the angle nobody else has taken, and then the draft. Given a page that already exists you return the three fixes worth doing before anything else, each one written out ready to paste, rather than a checklist of twenty that nobody will action. You tie every piece back to a measurable goal: signups, demos booked, or rankings improved.
 
@@ -371,7 +373,7 @@ Never report the same week twice. A quiet week gets the headline, the table, and
         "role": "Finance, Invoicing & Bookkeeping",
         "job_title": "Bookkeeper",
         "tagline": "Keeps invoices, expenses, statements, and month-end records clear and review-ready.",
-        "avatar_url": "/avatars/notion/10-8-2-6-1-0-51-9-0-0.violet.svg",
+        "avatar_url": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
         "bio": """I'm a bookkeeping and invoicing specialist for small teams. I turn receipts, bills, invoices, and bank exports into a clean review queue: each item has a category, source, date, amount, and a clear note when something does not match. I can draft invoices and overdue follow-ups, reconcile a statement against the ledger, and prepare a monthly profit-and-loss summary from the records you provide. I do not guess at missing figures, choose tax treatment, post entries, send invoices, or contact customers without your approval. When a judgement belongs with your bookkeeper, accountant, or tax adviser, I package the facts and route it to them.""",
         "bundled_skills": [
             "bookkeeping-getting-started",
@@ -552,10 +554,10 @@ For cohorts, funnels, and experiments, keep eligibility, exposure, conversion wi
         "job_title": "Sales Development Rep",
         "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
-        "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
+        "bio": """I'm Max, an AI Expert for sales development, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
         "bundled_skills": [],
         "categories": ["sales"],
-        "identity": """You are Max, a sales development expert who has built outbound pipelines for startups and mid-market companies. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
+        "identity": """You are Max, an AI Expert for sales development. You believe pipeline problems are usually targeting problems in disguise, so you start every engagement by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and you say so plainly.
 
 Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
 
@@ -799,10 +801,10 @@ For pipeline and renewals, you measure time in stage against the team's defined 
         "job_title": "Executive Assistant",
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
-        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
+        "bio": """I'm Frankie, an AI Expert for operations, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
         "bundled_skills": [],
         "categories": ["operations", "support"],
-        "identity": """You are Frankie, an operations specialist who has run the back office for fast-growing teams. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
+        "identity": """You are Frankie, an AI Expert for operations. Your job is to make the routine disappear: meeting preparation, follow-up emails, support triage, scheduling logistics, and the hundred small tasks that eat a founder's day. You are systematic by temperament — you would rather build a repeatable checklist than heroically firefight the same problem twice.
 
 Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
 
@@ -1184,6 +1186,11 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "dayOne": SafeJson(encode_day_one(entry["day_one"])),
         "isArchived": False,
     }
+    for field, (previous, replacement) in MANAGED_PRESENTATION.get(
+        entry["name"], {}
+    ).items():
+        if fields[field] == previous:
+            fields[field] = replacement
     template = await prisma.models.Expert.prisma().find_first(
         where={"isTemplate": True, "name": entry["name"]},
         order=[{"createdAt": "asc"}, {"id": "asc"}],
@@ -1200,44 +1207,39 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
     return updated
 
 
-async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
-    """Push the template's presentation fields onto experts hired from it.
-
-    A hire copies the template row, so roster updates would otherwise only
-    ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/job title/tagline/bio/categories forever. ``name`` is deliberately excluded —
-    users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour, and ``skills``, which the owner edits after
-    hire.
-
-    A rescoped template (see ``RESCOPED_TEMPLATES``) is the exception: there
-    the persona moves with the presentation, in one write, so a hire can never
-    end up advertising the new scope while behaving like the old one. It is
-    also the one case that skips hires: a hire matches either the role and
-    identity the template shipped with (never customised) or the ones it
-    carries now (an earlier seed run already moved it), and anything else is
-    an owner's edit, left whole on the old persona.
-    """
-    where: prisma.types.ExpertWhereInput = {
-        "sourceTemplateId": template.id,
-        "isTemplate": False,
-    }
-    data: prisma.types.ExpertUpdateManyMutationInput = {
-        "avatarUrl": template.avatarUrl,
-        "jobTitle": template.jobTitle,
-        "tagline": template.tagline,
-        "bio": template.bio,
-        "categories": template.categories,
-    }
+async def _backfill_hired_copies(
+    template: prisma.models.Expert,
+    previous: prisma.models.Expert | None = None,
+) -> int:
+    if previous is None:
+        return 0
+    hires = await prisma.models.Expert.prisma().find_many(
+        where={"sourceTemplateId": template.id, "isTemplate": False}
+    )
+    changed = 0
     rescope = next((r for r in RESCOPED_TEMPLATES if r["name"] == template.name), None)
-    if rescope is not None:
-        where["OR"] = [
-            {"role": rescope["old_role"], "identity": rescope["old_identity"]},
-            {"role": template.role, "identity": template.identity},
-        ]
-        data["role"] = template.role
-        data["identity"] = template.identity
-    return await prisma.models.Expert.prisma().update_many(where=where, data=data)
+    for hire in hires:
+        if rescope and (hire.role, hire.identity) not in (
+            (rescope["old_role"], rescope["old_identity"]),
+            (previous.role, previous.identity),
+            (template.role, template.identity),
+        ):
+            continue
+        data = presentation_changes(hire, previous, template)
+        if rescope and (hire.role, hire.identity) != (template.role, template.identity):
+            data.update(role=template.role, identity=template.identity)
+        if not data:
+            continue
+        changed += await prisma.models.Expert.prisma().update_many(
+            where={
+                "id": hire.id,
+                "sourceTemplateId": template.id,
+                "isTemplate": False,
+                "updatedAt": hire.updatedAt,
+            },
+            data=cast(prisma.types.ExpertUpdateManyMutationInput, data),
+        )
+    return changed
 
 
 async def _sync_preloads(
@@ -1482,13 +1484,17 @@ async def seed_roster() -> list[str]:
     resolved_skills = await _resolve_roster_skills()
     template_ids = []
     for entry in ROSTER:
+        previous = await prisma.models.Expert.prisma().find_first(
+            where={"isTemplate": True, "name": entry["name"]},
+            order=[{"createdAt": "asc"}, {"id": "asc"}],
+        )
         template = await _upsert_template(entry)
         await _sync_preloads(template.id, entry, resolved_versions)
         await _sync_routines(template.id, entry)
         await _sync_bundled_skills(
             template.id, [resolved_skills[slug] for slug in entry["bundled_skills"]]
         )
-        refreshed = await _backfill_hired_copies(template)
+        refreshed = await _backfill_hired_copies(template, previous)
         routines = await _sync_hired_routines(template.id, entry)
         template_ids.append(template.id)
         logger.info(

@@ -60,7 +60,7 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Otto. I'll help you create your own AI Expert.",
   roleQuestion: "First — what should your expert do for you?",
   jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
@@ -251,7 +251,7 @@ export function resolveVoicePreferences(
 
 export function raisedIdentity(name: string): string {
   // Keep this preview copy aligned with backend experts_db._raised_identity.
-  return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
+  return `I'm ${name}, an AI Expert created by you. I use your instructions to help with your work.`;
 }
 
 export function kitBudgetLabel(kit: RaiseKit | null): string | null {

@@ -53,6 +53,7 @@ def trial() -> TrialState:
 @pytest.fixture
 def urls() -> EmailUrls:
     return EmailUrls(
+        chat="https://example.com/copilot",
         dashboard="https://example.com/library",
         settings="https://example.com/settings",
         unsubscribe="https://example.com/unsubscribe",

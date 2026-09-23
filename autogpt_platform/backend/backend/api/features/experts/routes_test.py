@@ -585,6 +585,10 @@ def test_create_raised_expert_passes_avatar_and_color(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.require_approved_avatar",
+        new_callable=AsyncMock,
+    )
     mock_create = mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
@@ -1233,6 +1237,15 @@ def test_update_expert_avatar_returns_updated_expert(
     test_user_id: str,
 ) -> None:
     updated = _make_expert(avatar_url="https://cdn.example.com/mara.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.require_approved_avatar",
+        new_callable=AsyncMock,
+    )
     mock_update = mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1271,6 +1284,11 @@ def test_update_expert_avatar_rejects_unsafe_url(
 def test_update_expert_avatar_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1993,3 +2011,48 @@ def test_start_expert_desktop_without_e2b_is_503(
     config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
     config.return_value.active_e2b_api_key = None
     assert client.post("/experts/expert-1/computer/desktop").status_code == 503
+
+
+def test_avatar_rejection_leaves_saved_appearance_unchanged(mocker):
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(avatar_url="https://example.com/old.png"),
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.require_approved_avatar",
+        new_callable=AsyncMock,
+        side_effect=fastapi.HTTPException(400, "Upload this image for review."),
+    )
+    update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+    )
+    response = client.patch(
+        "/experts/expert-1/avatar", json={"avatar_url": "https://example.com/new.png"}
+    )
+    assert response.status_code == 400
+    update.assert_not_awaited()
+
+
+def test_existing_custom_avatar_can_be_kept_without_review(mocker):
+    expert = _make_expert(avatar_url="https://example.com/old.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    review = mocker.patch(
+        "backend.api.features.experts.routes.require_approved_avatar",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    response = client.patch(
+        "/experts/expert-1/avatar", json={"avatar_url": expert.avatar_url}
+    )
+    assert response.status_code == 200
+    review.assert_not_awaited()

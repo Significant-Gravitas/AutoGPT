@@ -4189,7 +4189,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
         },
     )
     assert rescoped is not None
-    assert await seed._backfill_hired_copies(rescoped) == 1
+    assert await seed._backfill_hired_copies(rescoped, template) == 1
 
     moved = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
@@ -4217,7 +4217,7 @@ async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
         where={"id": template.id}, data={"tagline": "Briefs, drafts, and page copy."}
     )
     assert refreshed_template is not None
-    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    assert await seed._backfill_hired_copies(refreshed_template, rescoped) == 1
     moved_again = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
     )
@@ -4355,7 +4355,7 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed_template.dayOne == [
         {"title": "Social listening on your brand", "description": "", "timing": ""}
     ]
-    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    assert await seed._backfill_hired_copies(refreshed_template, template) == 1
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None

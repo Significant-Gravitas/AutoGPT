@@ -112,7 +112,7 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Agents")).toBeDefined();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
-    expect(screen.getByText("Files")).toBeDefined();
+    expect(screen.queryByText("Files")).toBeNull();
     // /home 404s without the experts flag, so it must not be offered here.
     expect(screen.queryByText("Home")).toBeNull();
   });

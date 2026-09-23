@@ -47,7 +47,12 @@ export function ExpertSessionGroup({
         data-testid={`expert-group-header-${groupKey}`}
         className="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-zinc-500 hover:text-zinc-700"
       >
-        <ExpertIdentityDetails name={label} role={role} size="compact" />
+        <ExpertIdentityDetails
+          isOtto={groupKey === "autopilot"}
+          name={label}
+          role={role}
+          size="compact"
+        />
         <Icon
           icon={ArrowDown01Icon}
           className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"

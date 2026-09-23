@@ -65,7 +65,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             <Text
               variant="body-medium"
               as="span"
-              className="truncate !text-zinc-800"
+              className="break-words !text-zinc-800"
             >
               {item.title}
             </Text>
@@ -79,7 +79,11 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
               </Text>
             ) : null}
           </div>
-          <Text variant="small" as="span" className="truncate !text-zinc-400">
+          <Text
+            variant="small"
+            as="span"
+            className="break-words !text-zinc-400"
+          >
             {item.description}
           </Text>
         </div>

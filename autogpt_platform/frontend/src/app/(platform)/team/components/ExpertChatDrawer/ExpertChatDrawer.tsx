@@ -1,5 +1,7 @@
 "use client";
 
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
+
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -147,7 +149,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
                 What can I do for you?
               </Text>
               <Text variant="small" tone="muted">
-                {target.name} · {target.role}
+                {target.name} · {getExpertRoleLabel(target.role)}
               </Text>
             </div>
           </div>

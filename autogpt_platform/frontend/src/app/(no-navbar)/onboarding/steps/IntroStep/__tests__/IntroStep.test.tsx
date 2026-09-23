@@ -23,13 +23,13 @@ describe("IntroStep", () => {
     ).toBeDefined();
   });
 
-  it("draws each non-idle team member's status dot", () => {
+  it("shows the three approved identities without invented task states", () => {
     render(<IntroStep slide="team" />);
-    const dots = screen
-      .getAllByTestId("status-dot")
-      .map((dot) => dot.getAttribute("data-status"));
-    expect(dots).toEqual(
-      expect.arrayContaining(["working", "thinking", "done"]),
-    );
+    expect(
+      screen.getByRole("img", { name: "Otto, your personal Head of AI" }),
+    ).toBeDefined();
+    expect(screen.getByRole("img", { name: "Maria, AI Expert" })).toBeDefined();
+    expect(screen.getByRole("img", { name: "Mina, AI Expert" })).toBeDefined();
+    expect(screen.queryAllByTestId("status-dot")).toHaveLength(0);
   });
 });

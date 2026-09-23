@@ -71,7 +71,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           <Text
             variant="body"
             tone="secondary"
-            className="line-clamp-2 text-pretty"
+            className="text-pretty break-words"
           >
             {item.description}
           </Text>

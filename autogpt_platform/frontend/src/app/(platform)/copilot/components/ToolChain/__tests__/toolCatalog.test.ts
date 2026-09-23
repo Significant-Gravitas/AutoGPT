@@ -226,7 +226,7 @@ describe("getCatalogLabel", () => {
     ).toEqual({ category: "team", text: "Ready to hire" });
     expect(getCatalogLabel("raise_expert", { name: "Otto" }, "done")).toEqual({
       category: "team",
-      text: 'Ready to raise "Otto"',
+      text: 'Ready to create "Otto"',
     });
     expect(
       getCatalogLabel(

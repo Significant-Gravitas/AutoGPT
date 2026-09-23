@@ -68,7 +68,8 @@ const raisedExpert = {
   tagline: null,
   bio: null,
   skills: [],
-  identity: "I'm Otto, raised by you. I learn how you work and grow with you.",
+  identity:
+    "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
   voice_preferences: "",
   boundaries: "",
   protected_soul_rules: [],
@@ -296,7 +297,7 @@ test("unlocks finish after a raise POST fails so the user can retry", async () =
   seedAtSkills();
   renderRaise();
   await userEvent.click(await screen.findByRole("button", { name: /life/ }));
-  expect(await screen.findByText("Couldn't raise Otto")).toBeDefined();
+  expect(await screen.findByText("Couldn't create Otto")).toBeDefined();
   await waitFor(() => expect(postCount).toBe(1));
 
   const retry = screen.getByRole("button", { name: /Bring Otto to life/ });
@@ -323,7 +324,7 @@ test("shows a friendly limit message on 409", async () => {
   expect(pushMock).not.toHaveBeenCalled();
 });
 
-test("distinguishes the lifetime raised-expert limit", async () => {
+test("distinguishes the lifetime limit for created Experts", async () => {
   server.use(
     http.post("/api/proxy/api/experts/raise", () =>
       HttpResponse.json(

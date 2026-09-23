@@ -12,6 +12,7 @@ from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
+from backend.api.features.experts.avatar_moderation import record_approved_avatar
 from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -562,9 +563,15 @@ def get_store_media(
 async def upload_submission_media(
     file: fastapi.UploadFile,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    purpose: Literal["submission", "expert-avatar"] = "submission",
 ) -> str:
-    """Upload media for a marketplace listing submission"""
-    media_url = await store_media.upload_media(user_id=user_id, file=file)
+    """Upload media for a marketplace listing submission or reviewed appearance."""
+
+    media_url = await store_media.upload_media(
+        user_id=user_id, file=file, review_avatar=purpose == "expert-avatar"
+    )
+    if purpose == "expert-avatar":
+        await record_approved_avatar(user_id, media_url)
     return media_url
 
 

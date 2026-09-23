@@ -75,7 +75,7 @@ function reportFailure(error: unknown, name: string) {
       toast({
         title: "Expert creation limit reached",
         description:
-          "This account has reached its lifetime raised-expert limit. Contact support if you need more capacity.",
+          "This account has reached its lifetime limit for created Experts. Contact support if you need more capacity.",
         variant: "destructive",
       });
       return;
@@ -83,13 +83,13 @@ function reportFailure(error: unknown, name: string) {
     toast({
       title: "Your team is full",
       description:
-        "You've reached the limit of active experts. Archive one from your team page to raise another.",
+        "You've reached the limit of active experts. Archive one from your team page to create another.",
       variant: "destructive",
     });
     return;
   }
   toast({
-    title: `Couldn't raise ${name || "your expert"}`,
+    title: `Couldn't create ${name || "your expert"}`,
     description: "Something went wrong. Please try again.",
     variant: "destructive",
   });

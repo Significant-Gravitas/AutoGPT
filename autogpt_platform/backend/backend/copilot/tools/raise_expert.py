@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -90,7 +91,10 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling tool:confirm_expert_change with that id."
+        return (
+            EXPERT_COPY_POLICY
+            + " Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling tool:confirm_expert_change with that id."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:

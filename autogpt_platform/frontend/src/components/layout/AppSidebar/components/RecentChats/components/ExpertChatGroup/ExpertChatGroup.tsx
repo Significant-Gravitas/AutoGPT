@@ -85,6 +85,7 @@ export function ExpertChatGroup({
             />
           )}
           <ExpertIdentityDetails
+            isOtto={isAutopilot}
             name={label}
             role={role}
             size="compact"

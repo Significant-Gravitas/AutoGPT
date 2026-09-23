@@ -5,6 +5,7 @@ import uuid
 import fastapi
 from gcloud.aio import storage as async_storage
 
+from backend.api.features.experts.avatar_moderation import moderate_avatar_image
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -61,7 +62,10 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
 
 
 async def upload_media(
-    user_id: str, file: fastapi.UploadFile, use_file_name: bool = False
+    user_id: str,
+    file: fastapi.UploadFile,
+    use_file_name: bool = False,
+    review_avatar: bool = False,
 ) -> str:
     # Get file content for deeper validation
     try:
@@ -148,6 +152,18 @@ async def upload_media(
             logger.error(f"Error reading file chunks: {str(e)}")
             raise store_exceptions.FileReadError("Failed to read uploaded file") from e
 
+        if review_avatar:
+            if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise fastapi.HTTPException(
+                    400, "Choose a PNG, JPEG, or WebP image for your appearance."
+                )
+            if file_size > 5 * 1024 * 1024:
+                raise fastapi.HTTPException(
+                    413, "Appearance images must be 5 MB or smaller."
+                )
+            await file.seek(0)
+            await moderate_avatar_image(user_id, await file.read(), content_type)
+
         # Reset file pointer
         await file.seek(0)
 
@@ -200,7 +216,7 @@ async def upload_media(
                 "Failed to upload file to storage"
             ) from e
 
-    except store_exceptions.MediaUploadError:
+    except (store_exceptions.MediaUploadError, fastapi.HTTPException):
         raise
     except Exception as e:
         logger.exception("Unexpected error in upload_media")

@@ -89,7 +89,7 @@ describe("EmptySession — recipient-aware intro", () => {
 
     await waitFor(() =>
       expect(normalizeWhitespace(container)).toContain(
-        "I'm Sam, your Sales expert. What should I take on?",
+        "I'm Sam, your Sales Development Rep. What should I take on?",
       ),
     );
   });

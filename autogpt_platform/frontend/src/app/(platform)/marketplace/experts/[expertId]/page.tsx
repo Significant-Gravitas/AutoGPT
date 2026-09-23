@@ -1,3 +1,4 @@
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { listExpertTemplates } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { buildPageMetadata } from "@/lib/metadata";
@@ -22,7 +23,7 @@ export async function generateMetadata({
   // avatar_url points at an SVG, which no unfurler renders, so this stays a
   // text card until experts have a raster image.
   return buildPageMetadata({
-    title: `${expert.name}, ${expert.role} - AutoGPT Marketplace`,
+    title: `${expert.name}, ${expert.job_title || getExpertRoleLabel(expert.role)} · AI Expert - AutoGPT Marketplace`,
     description: expert.tagline || expert.bio,
     path,
     type: "profile",

@@ -6,7 +6,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   isFileTooLarge,
-  SUBMISSION_MEDIA_MAX_SIZE_MB,
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,20 +28,19 @@ export function useExpertAvatarButton(expertId: string) {
   });
 
   async function uploadAvatar(file: File) {
-    if (
-      isFileTooLarge({ file, maxSizeMB: SUBMISSION_MEDIA_MAX_SIZE_MB, toast })
-    )
-      return;
+    if (isFileTooLarge({ file, maxSizeMB: 5, toast })) return;
 
     setIsUploading(true);
     try {
-      const url = (await uploadSubmissionMediaDirect(file)).trim();
+      const url = (
+        await uploadSubmissionMediaDirect(file, "expert-avatar")
+      ).trim();
       if (!url) throw new Error("Upload returned no URL");
       await updateAvatar({ expertId, data: { avatar_url: url } });
-      toast({ title: "Photo updated", variant: "success" });
+      toast({ title: "Appearance updated", variant: "success" });
     } catch (error) {
       toast({
-        title: "Failed to update photo",
+        title: "Couldn't update appearance",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       });
