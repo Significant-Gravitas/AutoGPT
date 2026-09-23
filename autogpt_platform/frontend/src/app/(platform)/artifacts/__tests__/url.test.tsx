@@ -150,8 +150,9 @@ describe("ArtifactsPage - folder in the URL", () => {
     await waitFor(() => expect(currentFolderParam()).toBeNull());
   });
 
-  test("filtering by an expert clears the folder from the URL", async () => {
+  test("filtering by an expert narrows inside the open folder instead of leaving it", async () => {
     resetNavigation("folder=fld-1");
+    const requests: URLSearchParams[] = [];
     useBaseHandlers([
       {
         id: "expert-a",
@@ -161,6 +162,16 @@ describe("ArtifactsPage - folder in the URL", () => {
         is_archived: false,
       },
     ]);
+    server.use(
+      http.get(`${PROXY}/files`, ({ request }) => {
+        requests.push(new URL(request.url).searchParams);
+        return HttpResponse.json({
+          files: [{ ...baseFile, id: "f-in", name: "inside.txt" }],
+          offset: 0,
+          has_more: false,
+        });
+      }),
+    );
 
     render(<ArtifactsPage />);
     await screen.findByTestId("folder-breadcrumb");
@@ -169,7 +180,118 @@ describe("ArtifactsPage - folder in the URL", () => {
       await screen.findByTestId("artifacts-expert-filter-expert-a"),
     );
 
-    await waitFor(() => expect(currentFolderParam()).toBeNull());
-    expect(screen.queryByTestId("folder-breadcrumb")).toBeNull();
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (params) =>
+            params.get("expert_id") === "expert-a" &&
+            params.get("folder_id") === "fld-1",
+        ),
+      ).toBe(true),
+    );
+    expect(currentFolderParam()).toBe("fld-1");
+    expect(screen.getByTestId("folder-breadcrumb")).toBeDefined();
+    // "From: Maria" keeps meaning "made in Maria's chats": widening to the
+    // user's own uploads is the picker's switch, never this tab.
+    expect(
+      requests.every((params) => params.get("include_user_files") === null),
+    ).toBe(true);
+  });
+
+  test("at the root an expert filter still asks for root-level files only", async () => {
+    const requests: URLSearchParams[] = [];
+    useBaseHandlers([
+      {
+        id: "expert-a",
+        name: "Maria",
+        avatar_url: null,
+        role: "Analyst",
+        is_archived: false,
+      },
+    ]);
+    server.use(
+      http.get(`${PROXY}/files`, ({ request }) => {
+        requests.push(new URL(request.url).searchParams);
+        return HttpResponse.json({
+          files: [{ ...baseFile, id: "f-root", name: "root.txt" }],
+          offset: 0,
+          has_more: false,
+        });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+    expect(await screen.findByText("root.txt")).toBeDefined();
+
+    fireEvent.click(
+      await screen.findByTestId("artifacts-expert-filter-expert-a"),
+    );
+
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (params) =>
+            params.get("expert_id") === "expert-a" &&
+            params.get("root_only") === "true",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  test("an ancestor crumb pushes that ancestor onto the URL", async () => {
+    resetNavigation("folder=fld-3");
+    useBaseHandlers();
+    server.use(
+      http.get(`${PROXY}/folders`, () =>
+        HttpResponse.json({ folders: NESTED_FOLDERS }),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+    // The crumb paints with a placeholder before the folders query settles,
+    // so wait for the open folder's own name rather than the nav.
+    await screen.findByText("Q3");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reports" }));
+
+    // A push, not a replace: back returns to the folder you jumped from.
+    await waitFor(() => expect(currentFolderParam()).toBe("fld-1"));
+    expect(routerMock.push).toHaveBeenCalled();
+  });
+
+  test("more than four crumbs collapse into a menu of the hidden ancestors", async () => {
+    resetNavigation("folder=fld-4");
+    useBaseHandlers();
+    server.use(
+      http.get(`${PROXY}/folders`, () =>
+        HttpResponse.json({ folders: NESTED_FOLDERS }),
+      ),
+    );
+
+    render(<ArtifactsPage />);
+    await screen.findByText("Week 1");
+
+    // Root, the parent and the current folder stay; "Reports" hides.
+    expect(screen.queryByRole("button", { name: "Reports" })).toBeNull();
+    fireEvent.pointerDown(screen.getByTestId("folder-breadcrumb-overflow"), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reports" }));
+
+    await waitFor(() => expect(currentFolderParam()).toBe("fld-1"));
   });
 });
+
+// Files / Reports / 2026 / Q3 / Week 1
+const NESTED_FOLDERS = [
+  { id: "fld-1", name: "Reports", parent_id: null },
+  { id: "fld-2", name: "2026", parent_id: "fld-1" },
+  { id: "fld-3", name: "Q3", parent_id: "fld-2" },
+  { id: "fld-4", name: "Week 1", parent_id: "fld-3" },
+].map((folder) => ({
+  ...folder,
+  workspace_id: "ws-1",
+  file_count: 0,
+  created_at: "2026-05-01T00:00:00Z",
+  updated_at: "2026-05-01T00:00:00Z",
+}));
