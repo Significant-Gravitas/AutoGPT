@@ -35,7 +35,7 @@
   ],
   "dependencies": {
     "@ai-sdk/react": "3.0.61",
-    "@faker-js/faker": "10.0.0",
+    "@faker-js/faker": "10.5.0",
     "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
     "@hugeicons/core-free-icons": "^4.2.3",
@@ -137,7 +137,7 @@
     "tailwindcss-animate": "1.0.7",
     "twemoji": "14.0.2",
     "use-stick-to-bottom": "1.1.2",
-    "uuid": "11.1.1",
+    "uuid": "14.0.0",
     "vaul": "1.1.2",
     "zod": "3.25.76",
     "zustand": "5.0.8"
@@ -184,7 +184,7 @@
     "monocart-reporter": "2.10.0",
     "msw": "2.11.6",
     "msw-storybook-addon": "2.0.6",
-    "orval": "7.13.0",
+    "orval": "8.22.0",
     "pbkdf2": "3.1.5",
     "postcss": "8.5.23",
     "prettier": "3.6.2",
