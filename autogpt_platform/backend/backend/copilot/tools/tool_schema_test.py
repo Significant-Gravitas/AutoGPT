@@ -248,7 +248,10 @@ from ._test_data import make_session
 # dev's 76,245. #14484 had sized 67,651 to admit that +178 by name, but later
 # bumps re-based the ceiling without it and left 55. Both tool descriptions were
 # trimmed by 303 chars first, so what is left here is the two arguments.
-_CHAR_BUDGET = 76_424
+# Raised 76_424 -> 76_850: dev grew +29 after that measurement and the merged
+# tree read 76,452 (dev 7e44cf7492, 2026-09-23). ~0.5% headroom so the next dev
+# rewording does not eject this PR from the queue; on conflict keep the higher.
+_CHAR_BUDGET = 76_850
 
 
 @pytest.fixture(scope="module")
@@ -426,7 +429,10 @@ def test_total_schema_char_budget() -> None:
 # Raised 68_800 -> 68_890 for the same two arguments; both tools ride the
 # largest session, so the whole delta lands here too. Measured on this branch
 # merged with dev at 68,889, +164 over dev's 68,725.
-_SESSION_WIRE_BUDGET = 68_890
+#
+# Raised 68_890 -> 69_250: dev grew +28 after that measurement and the merged
+# tree read 68,917 (dev 7e44cf7492, 2026-09-23); same ~0.5% headroom and rule.
+_SESSION_WIRE_BUDGET = 69_250
 
 
 def test_largest_declared_session_wire_budget() -> None:
