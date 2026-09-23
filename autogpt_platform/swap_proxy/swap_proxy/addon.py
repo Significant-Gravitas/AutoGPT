@@ -9,6 +9,8 @@ One connection's life:
    address space and pinned (``egress.py``).
 3. ``tls_clienthello``: if no credential is bound to the host being dialled,
    the connection is passed through untouched: no interception, no decryption.
+   If the backend has never answered, a swapping owner's connection is opened
+   anyway, so that what cannot be scrubbed is refused rather than tunnelled.
    Only hosts that can receive a credential are opened.  spark-vm intercepts
    everything; serving many users, we decrypt only what we must.
 4. ``request``: placeholders are swapped for the owner's values (``swap.py``),
@@ -293,12 +295,21 @@ class SwapProxyAddon:
 
     async def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         sni = data.client_hello.sni
+        if not sni:
+            # Bindings are names; with none to match, nothing can be swapped
+            # in (``_provably_bound`` needs the SNI) and nothing opened.
+            data.ignore_connection = True
+            return
         try:
-            bound = bool(sni) and bool(await self._source.bound_names(sni or ""))
+            bound = bool(await self._source.bound_names(sni))
         except SourceUnavailable:
-            # Nothing can be swapped without the backend; do not open traffic
-            # there is no reason to read.
-            bound = False
+            # No bindings table at all yet (a cold start with the backend
+            # down): whether this host is bound is unknown.  For an owner who
+            # gets swaps it is opened, so that the response hooks refuse what
+            # they cannot scrub; passed through, a value stored there earlier
+            # would reach the box unread.  Anyone else's is left alone.
+            owner = self._owners.get(data.context.client)
+            bound = owner is not None and owner.swap_user_id is not None
         if not bound:
             data.ignore_connection = True
 

@@ -88,6 +88,9 @@ class Upstream:
         self.pad = 0
         self.chunked = False
         self.split_at = b""
+        # Something the provider holds and answers every request with, as a
+        # gist the box once wrote a swapped value into would.
+        self.stored = ""
 
     async def start(self):
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
@@ -117,7 +120,8 @@ class Upstream:
             self.seen.append(received)
             # A large body is kept for the test to look at, not echoed back.
             echoed = received if len(body) < 65536 else {**received, "body": ""}
-            payload = json.dumps({**echoed, "pad": "x" * self.pad}).encode()
+            stored = {"stored": self.stored} if self.stored else {}
+            payload = json.dumps({**echoed, **stored, "pad": "x" * self.pad}).encode()
             head = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
             if self.chunked:
                 cut = payload.find(self.split_at) + len(self.split_at) // 2

@@ -5,6 +5,8 @@ and the body buffer on its own."""
 import gzip
 import json
 import logging
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from mitmproxy import http
@@ -599,3 +601,35 @@ async def test_a_value_swapped_into_the_request_is_scrubbed_after_it_is_rotated(
     assert flow.response is not None
     assert flow.response.raw_content == b'{"echo": "hsurr:github"}'
     assert audit(caplog) == [("scrubbed", None)]
+
+
+# ------------------------------------------------------------ what gets opened
+
+
+@pytest.mark.parametrize(
+    "sni, bindings_down, swaps, opened",
+    [
+        (HOST, False, True, True),
+        (HOST, False, False, True),  # bound: opened, so a stray placeholder is audited
+        ("example.com", False, True, False),
+        # No table yet: unknown whether bound.  Opened only where a response
+        # could hold a value of the owner's, so that it is refused.
+        ("example.com", True, True, True),
+        ("example.com", True, False, False),
+        # No name to bind to: nothing can be swapped in, nothing is opened.
+        (None, False, True, False),
+        (None, True, True, False),
+    ],
+)
+async def test_which_connections_are_opened(sni, bindings_down, swaps, opened):
+    flow = tflow.tflow()
+    source = Source()
+    source.bindings_down = bindings_down
+    addon = addon_for(flow, swaps=swaps, source=source)
+    data: Any = SimpleNamespace(
+        client_hello=SimpleNamespace(sni=sni),
+        context=SimpleNamespace(client=flow.client_conn),
+        ignore_connection=False,
+    )
+    await addon.tls_clienthello(data)
+    assert data.ignore_connection is not opened

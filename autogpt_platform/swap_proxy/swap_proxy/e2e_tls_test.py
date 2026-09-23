@@ -16,11 +16,13 @@ from cryptography.x509.oid import NameOID
 
 from swap_proxy.e2e_test import (
     BOX_A,
+    BOX_D,
     TOKEN_A,
     FakeRedis,
     FakeSource,
     Proxy,
     Upstream,
+    audit_lines,
     body_of,
     http_get,
     socks5_request,
@@ -144,6 +146,7 @@ async def tls_stack(tmp_path):
     await proxy.start(tmp_path / "conf")
     proxy.master.options.update(ssl_verify_upstream_trusted_ca=str(ca_path))
     redis.add_box(*BOX_A, "user-a", "session:s-a")
+    redis.add_box(*BOX_D, "user-a", "block:user-a", swaps=False)
     mitm_ca = tmp_path / "conf" / "mitmproxy-ca-cert.pem"
     yield proxy, upstream, ca_path, mitm_ca
     await proxy.stop()
@@ -216,3 +219,32 @@ async def test_plain_http_proves_nothing_so_nothing_is_swapped(tmp_path, caplog)
     assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
     assert source.asked == []
     assert '"reason": "unverified-destination"' in caplog.text
+
+
+async def test_a_cold_start_outage_still_opens_a_swapping_boxs_connection(
+    tls_stack, caplog
+):
+    """No bindings table has ever arrived, so whether the host is bound is
+    unknown.  Tunnelled, the hooks that refuse what cannot be scrubbed would
+    never run, and a value the box stored there earlier would come back."""
+    proxy, upstream, _, mitm_ca = tls_stack
+    proxy.source.down = True
+    upstream.stored = TOKEN_A
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        raw, issuer = await tls_request(
+            proxy.port, BOX_A, upstream.port, BOUND, http_get(), mitm_ca
+        )
+    assert issuer == "mitmproxy"
+    assert TOKEN_A.encode() not in raw and b"200 OK" not in raw
+    events = [(line["event"], line.get("reason")) for line in audit_lines(caplog)]
+    assert events == [("refused-response", "resolver-unavailable")]
+
+
+async def test_a_cold_start_outage_leaves_a_box_that_does_not_swap_alone(tls_stack):
+    """Nothing of its user's can be swapped in for it: no reason to read it."""
+    proxy, upstream, upstream_ca, _ = tls_stack
+    proxy.source.down = True
+    raw, issuer = await tls_request(
+        proxy.port, BOX_D, upstream.port, BOUND, http_get(), upstream_ca
+    )
+    assert issuer == "test upstream CA" and b"200 OK" in raw

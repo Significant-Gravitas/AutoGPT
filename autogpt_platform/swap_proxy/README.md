@@ -204,7 +204,15 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   response with a body and no server websocket message from a bound host
   (each refused and audited), and nothing is swapped into its requests beyond
   the 15 s a fetched value stays cached. Binary responses still pass, as they
-  are never scrubbed. Boxes that do not get swaps are unaffected.
+  are never scrubbed. Boxes that do not get swaps are unaffected. If the
+  proxy has never had an answer from the backend since it started, it cannot
+  tell bound hosts from others: a swapping box's TLS connections are then
+  opened whatever their host, and the same refusals apply to all of them until
+  the backend first answers.
+- Only bound hosts are scrubbed. A value the box wrote to a provider through a
+  bound host and that the provider serves back from a host that is not bound
+  (a raw-content domain, say) passes through unread; so does anything over a
+  TLS connection without SNI.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
 - A connection stays authenticated while it stays open, also after its box's
