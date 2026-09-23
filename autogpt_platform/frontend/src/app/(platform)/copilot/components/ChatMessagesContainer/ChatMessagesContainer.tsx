@@ -834,10 +834,10 @@ export function ChatMessagesContainer({
           )}
           {!readOnly &&
             sessionID &&
-            reviewTarget?.graphExecId !== `copilot-session-${sessionID}` &&
-            hasHeldCall(messages) && (
+            reviewTarget?.graphExecId !== `copilot-session-${sessionID}` && (
               <CopilotPendingReviews
                 graphExecId={`copilot-session-${sessionID}`}
+                pollWhileEmpty={hasHeldCall(messages)}
               />
             )}
           {!readOnly &&

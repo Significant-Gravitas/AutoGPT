@@ -12,6 +12,7 @@ import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 interface Props {
   graphExecId: string;
   graphId?: string;
+  pollWhileEmpty?: boolean;
 }
 
 /**
@@ -20,11 +21,16 @@ interface Props {
  * list. Works for both run_capability (synthetic copilot-session-*) and
  * run_agent (real graph exec) reviews.
  */
-export function CopilotPendingReviews({ graphExecId, graphId }: Props) {
+export function CopilotPendingReviews({
+  graphExecId,
+  graphId,
+  pollWhileEmpty,
+}: Props) {
   const { onSend, onBackendTurn } = useCopilotChatActions();
   const { pendingReviews, refetch } = useCopilotPendingReviews({
     graphExecId,
     graphId,
+    pollWhileEmpty,
   });
 
   // Graph executions auto-resume after approval; capability reviews need resume_capability.

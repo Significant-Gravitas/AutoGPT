@@ -1512,5 +1512,20 @@ describe("ChatMessagesContainer — held call cards", () => {
     expect(mounted.mock.calls.map(([props]) => props.graphExecId)).toContain(
       "copilot-session-sess-123",
     );
+    expect(mounted.mock.calls.at(-1)?.[0].pollWhileEmpty).toBe(true);
+  });
+
+  it("still finds held cards whose call has paged out of the loaded history", async () => {
+    const { CopilotPendingReviews } = await import(
+      "../../CopilotPendingReviews/CopilotPendingReviews"
+    );
+    const mounted = vi.mocked(CopilotPendingReviews);
+    mounted.mockClear();
+
+    render(<ChatMessagesContainer {...baseProps} messages={[]} />);
+
+    const props = mounted.mock.calls.at(-1)?.[0];
+    expect(props?.graphExecId).toBe("copilot-session-sess-123");
+    expect(props?.pollWhileEmpty).toBe(false);
   });
 });
