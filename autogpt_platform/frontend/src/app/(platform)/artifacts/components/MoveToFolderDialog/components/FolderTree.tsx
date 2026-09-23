@@ -116,7 +116,7 @@ export function FolderTree({
                   e.stopPropagation();
                   onToggleExpanded(row.id as string);
                 }}
-                className="shrink-0 rounded p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
+                className="flex h-[18px] w-[22px] shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
               >
                 <Icon
                   icon={ArrowRight01Icon}
