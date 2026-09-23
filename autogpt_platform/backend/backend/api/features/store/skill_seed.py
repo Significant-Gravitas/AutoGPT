@@ -1,9 +1,10 @@
 """Seed the platform-authored skill listings from the skills catalog.
 
 Run as ``python -m backend.api.features.store.skill_seed``, like the expert
-roster seed. Idempotent: re-running rewrites each listing's live version in
-place rather than stacking a new one, so the marketplace is edited by editing
-the catalog and seeding again.
+roster seed. Idempotent: re-running with an unchanged catalog writes nothing,
+and a skill whose content changed gets a new live version, with the previous
+one kept as the base its installed copies merge forward from. The marketplace
+is edited by editing the catalog and seeding again.
 
 The catalog is the private ``Significant-Gravitas/skills-catalog`` repo. Its
 ``catalog.yml`` names every listing with its categories and the integrations
@@ -24,6 +25,7 @@ Environment:
 """
 
 import asyncio
+import hashlib
 import io
 import logging
 import os
@@ -1450,44 +1452,83 @@ async def _upsert_version(
     parsed: ParsedSkill,
     files: list[SkillFile],
 ) -> prisma.models.SkillListingVersion:
-    """Rewrite the listing's live version in place, package and all.
+    """Make the catalog's content the listing's live version.
 
-    A catalog skill is platform-authored, so there is no review to preserve
-    and no creator waiting on a version history — editing the catalog should
-    change what installers get, not add a row.
+    What an installer receives (the SKILL.md fields and the package files) is
+    versioned: a change there adds a version and keeps the one before it,
+    because a hired copy is merged forward from the version it was installed
+    from (``backend.copilot.tools.skill_updates``). Listing details that never
+    reach an installed copy, such as categories and availability, are updated
+    in place. Content that has not changed writes nothing, so seeding the same
+    catalog twice leaves every row as it was.
     """
+    package, details = _version_fields(entry, parsed)
+    existing = listing.ActiveVersion
+    if existing is not None and not await _package_changed(
+        tx, existing, package, files
+    ):
+        if existing.model_dump(include=set(details)) == details:
+            return existing
+        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
+            where={"id": existing.id}, data=details
+        )
+        return updated or existing
+    latest = await prisma.models.SkillListingVersion.prisma(tx).find_first(
+        where={"skillListingId": listing.id}, order={"version": "desc"}
+    )
+    created = await prisma.models.SkillListingVersion.prisma(tx).create(
+        data={
+            **package,
+            **details,
+            "skillListingId": listing.id,
+            "version": latest.version + 1 if latest else 1,
+        }
+    )
+    await snapshot_version_files(created.id, files, tx)
+    return created
+
+
+def _version_fields(entry: CatalogEntry, parsed: ParsedSkill) -> tuple[dict, dict]:
+    """The version's columns, split into what an installed copy carries and
+    what only the listing shows."""
     metadata = parsed.extra.get("metadata") or {}
     if not isinstance(metadata, dict):
         metadata = {}
-    license_value = parsed.extra.get("license")
-    content: dict = {
+    package = {
         "name": parsed.name,
         "description": parsed.description,
         "body": parsed.body,
         "triggers": list(parsed.triggers),
-        "categories": entry["categories"],
-        "requiredProviders": entry["required_providers"],
         "sourceSkillSlug": entry["slug"],
         "sourceRepo": _attribution_value(parsed, metadata, "source"),
         "sourceUrl": _attribution_value(parsed, metadata, "source_url"),
-        "license": _optional_str(license_value),
+        "license": _optional_str(parsed.extra.get("license")),
+    }
+    details = {
+        "categories": entry["categories"],
+        "requiredProviders": entry["required_providers"],
         "isAvailable": True,
         "isDeleted": False,
         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
     }
-    existing = listing.ActiveVersion
-    if existing is not None:
-        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
-            where={"id": existing.id}, data=content
-        )
-        if updated is not None:
-            await snapshot_version_files(updated.id, files, tx)
-            return updated
-    created = await prisma.models.SkillListingVersion.prisma(tx).create(
-        data={**content, "skillListingId": listing.id}
+    return package, details
+
+
+async def _package_changed(
+    tx: prisma.Prisma,
+    version: prisma.models.SkillListingVersion,
+    package: dict,
+    files: list[SkillFile],
+) -> bool:
+    if version.model_dump(include=set(package)) != package:
+        return True
+    stored = await prisma.models.SkillListingFile.prisma(tx).find_many(
+        where={"skillListingVersionId": version.id}
     )
-    await snapshot_version_files(created.id, files, tx)
-    return created
+    return {(f.relativePath, f.sha256, f.isExecutable) for f in stored} != {
+        (f.relative_path, hashlib.sha256(f.content).hexdigest(), f.is_executable)
+        for f in files
+    }
 
 
 def _optional_str(value: object) -> str | None:

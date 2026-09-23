@@ -401,17 +401,31 @@ def _write_catalog(
     return root
 
 
-async def test_seed_is_idempotent_and_rewrites_the_live_package_in_place(tmp_path):
+async def test_seed_is_idempotent_and_versions_a_changed_package(tmp_path):
     catalog = _write_catalog(tmp_path)
     first = await skill_seed.seed_catalog_skills(catalog)
+    assert await skill_seed.seed_catalog_skills(catalog) == first
+    assert await prisma.models.SkillListingVersion.prisma().count() == 2
+
     _write_catalog(tmp_path, frameworks="# Frameworks v2\n")
     second = await skill_seed.seed_catalog_skills(catalog)
 
     assert first == second
-    assert await prisma.models.SkillListingVersion.prisma().count() == 2
-    files = await prisma.models.SkillListingFile.prisma().find_many()
-    assert [(f.relativePath, f.content.decode()) for f in files] == [
-        ("references/frameworks.md", b"# Frameworks v2\n")
+    assert await prisma.models.SkillListingVersion.prisma().count() == 3
+    cold_email = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}, include={"Versions": {"include": {"Files": True}}}
+    )
+    assert cold_email is not None
+    assert [
+        (
+            v.version,
+            v.id == cold_email.activeVersionId,
+            [f.content.decode() for f in v.Files or []],
+        )
+        for v in sorted(cold_email.Versions or [], key=lambda v: v.version)
+    ] == [
+        (1, False, [b"# Frameworks\n"]),
+        (2, True, [b"# Frameworks v2\n"]),
     ]
 
 
@@ -473,9 +487,13 @@ async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tm
     original_snapshot = skill_seed.snapshot_version_files
 
     async def fail_after_delete(skill_listing_version_id, files, tx):
-        if skill_listing_version_id == version_id:
+        if any(f.relative_path == "references/frameworks.md" for f in files):
             await prisma.models.SkillListingFile.prisma(tx).delete_many(
-                where={"skillListingVersionId": skill_listing_version_id}
+                where={
+                    "skillListingVersionId": {
+                        "in": [version_id, skill_listing_version_id]
+                    }
+                }
             )
             raise RuntimeError("file write failed")
         await original_snapshot(skill_listing_version_id, files, tx)
@@ -494,6 +512,16 @@ async def test_seed_keeps_the_old_package_when_file_replacement_fails(mocker, tm
     assert [(file.relativePath, file.content.decode()) for file in files] == [
         ("references/frameworks.md", b"# Frameworks\n")
     ]
+    after = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}
+    )
+    assert after is not None and after.activeVersionId == version_id
+    assert (
+        await prisma.models.SkillListingVersion.prisma().count(
+            where={"skillListingId": listing.id}
+        )
+        == 1
+    )
 
 
 async def test_seed_rolls_back_every_listing_when_one_file_write_fails(
@@ -509,7 +537,7 @@ async def test_seed_rolls_back_every_listing_when_one_file_write_fails(
     original_snapshot = skill_seed.snapshot_version_files
 
     async def fail_on_cold_email(skill_listing_version_id, files, tx):
-        if skill_listing_version_id == failing_version_id:
+        if any(f.relative_path == "references/frameworks.md" for f in files):
             raise RuntimeError("file write failed")
         await original_snapshot(skill_listing_version_id, files, tx)
 
@@ -526,6 +554,10 @@ async def test_seed_rolls_back_every_listing_when_one_file_write_fails(
     )
     assert brand_voice is not None and brand_voice.ActiveVersion is not None
     assert brand_voice.ActiveVersion.body == "# Voice\n"
+    after = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}
+    )
+    assert after is not None and after.activeVersionId == failing_version_id
 
 
 async def test_seed_rejects_a_slug_owned_by_a_creator(tmp_path, setup_test_user):

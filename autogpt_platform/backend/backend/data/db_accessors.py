@@ -27,6 +27,19 @@ def experts_db():
     return experts_db
 
 
+def skill_listings_db():
+    if db.is_connected():
+        from backend.api.features.store import skill_db as _skill_db
+
+        skill_listings_db = _skill_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_listings_db = get_database_manager_async_client()
+
+    return skill_listings_db
+
+
 def spend_approval_db():
     if db.is_connected():
         from backend.api.features.experts import spend_approval as _spend_approval

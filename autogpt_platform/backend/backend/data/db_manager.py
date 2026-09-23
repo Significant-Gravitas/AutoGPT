@@ -50,6 +50,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.api.features.store.skill_db import get_skill_updates
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
@@ -568,6 +569,11 @@ class DatabaseManager(AppService):
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
     hire_expert = _(experts_db.hire_expert)
+
+    # ============ Skills Hub ============ #
+    # A hire's skills are refreshed from the copilot executor, which has no
+    # database connection of its own.
+    get_skill_updates = _(get_skill_updates)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
@@ -972,6 +978,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
     hire_expert = d.hire_expert
+    get_skill_updates = d.get_skill_updates
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
     count_raised_experts = d.count_raised_experts

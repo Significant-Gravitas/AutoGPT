@@ -29,7 +29,7 @@ import posixpath
 import re
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
 from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
+from backend.copilot.tools import skill_updates
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
@@ -151,6 +152,12 @@ _META_KIND_VALUE = "copilot_skill"
 _META_DESCRIPTION = "description"
 _META_TRIGGERS = "triggers"
 _META_VERSION = "version"
+# The marketplace version an installed copy came from. It survives the owner's
+# edits, so a newer version can be merged onto the copy from its real base
+# (``skill_updates``); the ``version`` above is whatever the file now claims.
+_META_INSTALLED_VERSION = "installed_version"
+# What that merge could not apply because the owner had changed the same part.
+_META_UPDATE_CONFLICTS = "update_conflicts"
 # The workspace has no mode bits, so a script's executable bit survives
 # store → copy → sandbox as this flag.
 _META_EXECUTABLE = "executable"
@@ -240,6 +247,9 @@ class ParsedSkill:
     # owner's budget (see :func:`budget_origin`) but is nobody's to defend,
     # so a platform install may claim it.
     origin: str | None = None
+    # Server-written like ``origin``: the marketplace version this copy was
+    # installed or last updated from, ``None`` for a skill that is not one.
+    installed_version: str | None = None
 
 
 def budget_origin(skill: ParsedSkill) -> str:
@@ -688,6 +698,8 @@ async def store_user_skill(
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
     origin: str = SKILL_ORIGIN_USER,
+    installed_version: str | None = None,
+    update_conflicts: list[dict[str, str]] | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -710,6 +722,12 @@ async def store_user_skill(
     caller — leaves the existing siblings alone, which is what keeps the
     model's own ``store_skill`` from wiping a package it only rewrote the
     body of.
+
+    *installed_version* marks a marketplace copy with the version it came
+    from.  When the caller passes none, a rewrite of an existing copy keeps
+    that copy's mark, so the owner editing a hired skill does not cut it off
+    from later updates.  *update_conflicts* records what such an update left
+    alone because the owner had changed the same part.
     """
     name = name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
@@ -740,6 +758,7 @@ async def store_user_skill(
         version=version,
         extra=dict(extra or {}),
         origin=origin,
+        installed_version=installed_version,
     )
     rendered = render_skill_markdown(parsed)
     if files is not None:
@@ -787,6 +806,10 @@ async def store_user_skill(
                 f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
                 "skills). Delete an unused skill first."
             )
+        previous = next((s for s in existing if s.name == name), None)
+        installed_version = installed_version or (
+            previous.installed_version if previous else None
+        )
 
         metadata: dict[str, Any] = {
             _META_KIND: _META_KIND_VALUE,
@@ -796,6 +819,10 @@ async def store_user_skill(
         }
         if version:
             metadata[_META_VERSION] = version
+        if installed_version:
+            metadata[_META_INSTALLED_VERSION] = installed_version
+        if update_conflicts:
+            metadata[_META_UPDATE_CONFLICTS] = update_conflicts
         folder = skill_folder(expert_id)
         stale = (
             await _list_package_files(manager, folder, name, cap=None)
@@ -842,7 +869,7 @@ async def store_user_skill(
         await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None:
             await experts_db().add_expert_skill_name(user_id, expert_id, name)
-        return parsed
+        return replace(parsed, installed_version=installed_version)
     finally:
         if lock is not None and lock_held:
             try:
@@ -921,12 +948,24 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         triggers=triggers,
         version=str(version) if version else None,
         origin=_skill_origin(meta),
+        installed_version=_installed_version(meta),
     )
 
 
 def _skill_origin(meta: Mapping[str, Any]) -> str | None:
     """The origin recorded on a row, or ``None`` when none was."""
     return _normalize_origin(meta.get(_META_SKILL_ORIGIN))
+
+
+def _installed_version(meta: Mapping[str, Any]) -> str | None:
+    """The marketplace version a row was installed from. A copy installed
+    before the marker existed recorded it only as its ``version``."""
+    installed = meta.get(_META_INSTALLED_VERSION)
+    if installed:
+        return str(installed)
+    if _skill_origin(meta) == SKILL_ORIGIN_MARKETPLACE and meta.get(_META_VERSION):
+        return str(meta[_META_VERSION])
+    return None
 
 
 async def _list_user_skills_from_workspace(
@@ -979,6 +1018,7 @@ async def _list_user_skills_from_workspace(
                     triggers=p.triggers,
                     version=p.version,
                     origin=_skill_origin(meta),
+                    installed_version=_installed_version(meta),
                 )
             )
 
@@ -1014,6 +1054,7 @@ async def _read_skills_cache(
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
                 origin=_normalize_origin(item.get("origin")),
+                installed_version=item.get("installed_version"),
             )
             for item in payload
             if isinstance(item, dict) and "name" in item and "description" in item
@@ -1036,6 +1077,7 @@ async def _write_skills_cache(
                     "triggers": list(s.triggers),
                     "version": s.version,
                     "origin": s.origin,
+                    "installed_version": s.installed_version,
                 }
                 for s in skills
             ]
@@ -1087,6 +1129,10 @@ async def list_user_skills(
     the metadata-cache change shipped.  Skips files whose contents do not
     parse as valid SKILL.md so a stray file in ``/skills/`` cannot break
     the index.
+
+    A rebuild also brings installed catalog skills up to their listing's
+    newest version (``skill_updates``).  ``heal_missing=False`` skips that
+    along with the heal, for callers that are themselves writing a skill.
     """
     cached = await _read_skills_cache(user_id, expert_id)
     if cached is not None:
@@ -1096,6 +1142,10 @@ async def list_user_skills(
         heal_missing
         and expert_id is not None
         and await _copy_assigned_skills_not_yet_owned(user_id, expert_id, skills)
+    ):
+        skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+    if heal_missing and await skill_updates.refresh_installed_skills(
+        user_id, expert_id, skills, scope
     ):
         skills = await _list_user_skills_from_workspace(user_id, expert_id, scope)
     await _write_skills_cache(user_id, skills, expert_id)

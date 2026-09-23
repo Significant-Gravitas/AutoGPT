@@ -129,7 +129,10 @@ async def _snapshot(name: str, slugs: list[str]) -> dict:
                 listing.id,
                 listing.slug,
                 listing.activeVersionId,
-                sorted((v.id, v.version, v.body) for v in (listing.Versions or [])),
+                sorted(
+                    ((v.id, v.version, v.body) for v in (listing.Versions or [])),
+                    key=lambda version: version[1],
+                ),
             )
             for listing in listings
         ],
@@ -262,7 +265,7 @@ async def test_overlapping_deploys_create_one_template(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_changed_skill_is_updated_in_place_on_the_next_deploy(
+async def test_a_changed_skill_gets_a_new_version_on_the_next_deploy(
     server: SpinTestServer, stub_environment: dict, monkeypatch: pytest.MonkeyPatch
 ):
     env = stub_environment
@@ -278,9 +281,10 @@ async def test_a_changed_skill_is_updated_in_place_on_the_next_deploy(
     listing_before = {listing[1]: listing for listing in before["listings"]}
     listing_after = {listing[1]: listing for listing in after["listings"]}
     (old_version,) = listing_before[changed][3]
-    (new_version,) = listing_after[changed][3]
+    kept, new_version = listing_after[changed][3]
     assert listing_after[changed][0] == listing_before[changed][0]
-    assert new_version[0] == old_version[0]
+    assert kept == old_version
+    assert (new_version[1], listing_after[changed][2]) == (2, new_version[0])
     assert "Second edition." in new_version[2]
     assert listing_after[dropped] == listing_before[dropped]
     assert after["templates"][0][0] == template_id

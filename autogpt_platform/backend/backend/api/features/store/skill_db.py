@@ -193,20 +193,13 @@ async def install_marketplace_skill(
         body=active.body,
         triggers=list(active.triggers),
         version=str(active.version),
-        extra={
-            key: value
-            for key, value in (
-                ("license", active.license),
-                ("source", active.sourceRepo),
-                ("source_url", active.sourceUrl),
-            )
-            if value is not None
-        },
+        extra=_attribution(active),
         # `[]`, never `None` — which means "leave the folder alone" and would
         # keep a sibling only the previously installed version had.
         files=await _read_version_files(active.id),
         expert_id=expert_id,
         origin=SKILL_ORIGIN_MARKETPLACE,
+        installed_version=str(active.version),
     )
     if is_new:
         await prisma.models.SkillListing.prisma().update(
@@ -215,6 +208,77 @@ async def install_marketplace_skill(
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
     )
+
+
+async def get_skill_updates(installed: dict[str, int]) -> list[skill_model.SkillUpdate]:
+    """The newer live version of each installed copy's listing, with the
+    version the copy was installed from as the base to merge from.
+
+    *installed* maps a copy's name (its listing slug) to its installed version.
+    Only platform-authored listings update installed copies: a community
+    creator's new version reaches people when they re-install it.
+    """
+    if not installed:
+        return []
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where=_live_listing_where(
+            {
+                "slug": {"in": sorted(installed)},
+                "owningUserId": None,
+                "owningOrgId": None,
+            }
+        ),
+        include={"ActiveVersion": True},
+    )
+    stale = [
+        listing
+        for listing in listings
+        if listing.ActiveVersion is not None
+        and listing.ActiveVersion.version > installed[listing.slug]
+    ]
+    return [
+        skill_model.SkillUpdate(
+            slug=listing.slug,
+            base=await _release_of(listing.id, installed[listing.slug]),
+            latest=await _release(skill_model.active_version(listing)),
+        )
+        for listing in stale
+    ]
+
+
+async def _release_of(listing_id: str, version: int) -> skill_model.SkillRelease | None:
+    row = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={
+            "skillListingId_version": {"skillListingId": listing_id, "version": version}
+        }
+    )
+    return await _release(row) if row is not None else None
+
+
+async def _release(
+    version: prisma.models.SkillListingVersion,
+) -> skill_model.SkillRelease:
+    return skill_model.SkillRelease(
+        version=version.version,
+        description=version.description,
+        body=version.body,
+        triggers=list(version.triggers),
+        extra=_attribution(version),
+        files=await _read_version_files(version.id),
+    )
+
+
+def _attribution(version: prisma.models.SkillListingVersion) -> dict[str, str]:
+    """The frontmatter an installed copy carries for where it came from."""
+    return {
+        key: value
+        for key, value in (
+            ("license", version.license),
+            ("source", version.sourceRepo),
+            ("source_url", version.sourceUrl),
+        )
+        if value is not None
+    }
 
 
 async def _read_version_files(skill_listing_version_id: str) -> list[SkillFile]:

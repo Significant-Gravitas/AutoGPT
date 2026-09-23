@@ -14,6 +14,7 @@ import prisma.enums
 import prisma.models
 import pydantic
 
+from backend.copilot.tools.skills import SkillFile
 from backend.util.models import Pagination
 
 from .categories import validate_canonical_categories
@@ -138,6 +139,26 @@ def active_version(
     if listing.ActiveVersion is None:
         raise ValueError(f"Skill listing '{listing.slug}' has no active version")
     return listing.ActiveVersion
+
+
+class SkillRelease(pydantic.BaseModel):
+    """One version of a listing, as an installed copy would carry it."""
+
+    version: int
+    description: str
+    body: str
+    triggers: list[str]
+    extra: dict[str, str]
+    files: list[SkillFile]
+
+
+class SkillUpdate(pydantic.BaseModel):
+    """A newer version for an installed copy. ``base`` is the version the copy
+    came from, ``None`` when that version no longer exists."""
+
+    slug: str
+    base: SkillRelease | None
+    latest: SkillRelease
 
 
 class SkillReviewRequest(pydantic.BaseModel):
