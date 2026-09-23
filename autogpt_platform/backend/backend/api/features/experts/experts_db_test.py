@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -6,17 +7,29 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import prisma.enums
 import prisma.errors
 import prisma.models
 import pydantic
 import pytest
+import pytest_asyncio
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db, scheduling, seed
+from backend.api.features.experts import (
+    experts_db,
+    raise_attachments,
+    routine_jobs,
+    routines,
+    scheduling,
+    seed,
+)
 from backend.api.features.experts.models import (
+    EXPERT_DAY_ONE_MAX_ITEMS,
+    ExpertBundledSkill,
+    ExpertDayOneItem,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     HireResult,
@@ -26,19 +39,26 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store import skill_seed
+from backend.api.features.store.categories import StoreCategory
+from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
+from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
-from backend.data.model import User
 from backend.data.user import get_or_create_user
-from backend.util.exceptions import ExpertRunPausedError, NotFoundError
+from backend.executor import utils as execution_utils
+from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
+    "ai-shortform-video-generator-create-viral-ready-content",
     "ai-webpage-copy-improver",
+    "ai-youtube-to-blog-converter",
     "automated-blog-writer",
     "automated-support-ai",
     "business-ownerceo-finder",
@@ -47,12 +67,253 @@ EXPECTED_ROSTER_PRELOAD_SLUGS = {
     "linkedin-post-generator",
     "personalized-morning-coffee-newsletter",
     "smart-meeting-brief",
+    "youtube-to-linkedin-post-converter",
+    "youtube-transcription-scraper",
 }
-EXPECTED_ROSTER_SCHEDULE = (
-    "Frankie",
-    "personalized-morning-coffee-newsletter",
-    "40 7 * * *",
-)
+# Personas that ship no workflows, so the 2-4 preload bound below stays a real
+# check on everyone else. Three different reasons, and only the middle one is a
+# design choice: Remy's workflow listings are unavailable; dev's specialists are
+# skills-only by design; and Alex, Daniel, James and Sofia carry skills and
+# routines but no preloads because the marketplace has no listing in their
+# domains at all -- every one of the 17 store listings is sales, marketing or
+# content, so there is nothing for recruiting, finance, product or ops to
+# preload. That last group should leave this set once such listings exist.
+# Note this set now exempts 23 of the 32 roster entries, so the bound below is
+# only really checking the remaining nine.
+PERSONAS_WITHOUT_WORKFLOWS = {
+    "Alex",
+    "Casey",
+    "Daniel",
+    "Devon",
+    "Ellis",
+    "Harper",
+    "Ines",
+    "James",
+    "Jordan",
+    "Kai",
+    "Lena",
+    "Marco",
+    "Mina",
+    "Noor",
+    "Omar",
+    "Priya",
+    "Quinn",
+    "Remy",
+    "Riley",
+    "Sasha",
+    "Sofia",
+    "Theo",
+    "Vera",
+}
+EXPECTED_SKILLS_ONLY_ROSTER = {
+    "Devon": [
+        "dependency-security-getting-started",
+        "dependency-inventory",
+        "outdated-dependency-review",
+        "vulnerability-triage",
+        "cve-stack-relevance",
+        "dependency-upgrade-plan",
+        "dependency-upgrade-pr",
+        "dependency-change-risk-review",
+    ],
+    "Riley": [
+        "customer-success-getting-started",
+        "customer-onboarding-plan",
+        "customer-health-score",
+        "churn-risk-review",
+        "renewal-readiness-review",
+        "renewal-touchpoint-draft",
+        "expansion-opportunity-brief",
+        "customer-success-plan",
+    ],
+    "Jordan": [
+        "deal-desk-getting-started",
+        "proposal-draft",
+        "statement-of-work-draft",
+        "pipeline-stage-aging-review",
+        "deal-risk-review",
+        "renewal-negotiation-brief",
+        "pricing-and-terms-approval-brief",
+        "proposal-quality-check",
+    ],
+}
+# Every cron the roster ships, as (expert, slug, cron). A cadence fires
+# unattended from the day of hire, so PreloadSeed.cron limits which workflows
+# may carry one; pinning the whole set here makes adding a cron a deliberate
+# edit to this test rather than a silent roster change.
+EXPECTED_ROSTER_SCHEDULES = {
+    ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
+    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
+}
+EXPECTED_OPERATIONS_SKILLS = {
+    "Harper": [
+        "recruiting-getting-started",
+        "role-intake-and-job-description",
+        "hiring-rubric-design",
+        "resume-screening",
+        "interview-plan-and-scorecard",
+        "candidate-interview-debrief",
+        "candidate-rejection-email",
+        "candidate-offer-draft",
+    ],
+    "Vera": [
+        "procurement-getting-started",
+        "vendor-requirements-brief",
+        "vendor-quote-comparison",
+        "vendor-due-diligence",
+        "procurement-decision-memo",
+        "contract-renewal-tracker",
+        "vendor-performance-review",
+        "spend-anomaly-review",
+    ],
+    "Ellis": [
+        "contract-ops-getting-started",
+        "nda-playbook-review",
+        "msa-playbook-review",
+        "contract-clause-comparison",
+        "contract-key-term-extraction",
+        "contract-deviation-triage",
+        "contract-obligation-tracker",
+        "counsel-escalation-brief",
+    ],
+}
+EXPECTED_WAVE_THREE = {
+    "Sasha": {
+        "role": "Support & Help Desk",
+        "categories": ["support"],
+        "skills": [
+            "support-getting-started",
+            "ticket-triage",
+            "support-reply-draft",
+            "support-macro-library",
+            "help-article-from-tickets",
+            "bug-report-handoff",
+            "refund-and-exception-brief",
+            "weekly-ticket-themes",
+        ],
+        "timings": ["after queue access", "on request"],
+    },
+    "Priya": {
+        "role": "Product Management",
+        "categories": ["research", "operations"],
+        "skills": [
+            "product-getting-started",
+            "feedback-synthesis",
+            "feature-request-triage",
+            "user-interview-guide",
+            "opportunity-brief",
+            "product-requirements-draft",
+            "roadmap-prioritisation",
+            "release-notes-draft",
+        ],
+        "timings": ["after feedback input", "on request"],
+    },
+    "Marco": {
+        "role": "Paid Ads & Performance",
+        "categories": ["marketing"],
+        "skills": [
+            "paid-ads-getting-started",
+            "campaign-structure-plan",
+            "ad-copy-variants",
+            "landing-page-message-match",
+            "wasted-spend-audit",
+            "budget-pacing-review",
+            "creative-test-readout",
+            "paid-performance-report",
+        ],
+        "timings": ["after account export", "on request"],
+    },
+    "Noor": {
+        "role": "PR & Communications",
+        "categories": ["marketing", "content"],
+        "skills": [
+            "communications-getting-started",
+            "news-angle-and-key-messages",
+            "press-release-draft",
+            "media-list-research",
+            "media-pitch-email",
+            "launch-communications-plan",
+            "holding-statement-draft",
+            "spokesperson-briefing",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Casey": {
+        "role": "Code Review & QA",
+        "categories": ["development"],
+        "skills": [
+            "code-quality-getting-started",
+            "pull-request-review",
+            "test-plan-draft",
+            "bug-reproduction-report",
+            "flaky-test-triage",
+            "regression-risk-review",
+            "release-readiness-checklist",
+            "incident-postmortem-draft",
+        ],
+        "timings": ["after access", "on request"],
+    },
+    "Ines": {
+        "role": "People Ops & HR (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "people-ops-getting-started",
+            "new-hire-onboarding-plan",
+            "handbook-policy-draft",
+            "one-to-one-agenda",
+            "performance-review-prep",
+            "engagement-survey-readout",
+            "offboarding-checklist",
+            "hr-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Omar": {
+        "role": "RevOps & CRM Hygiene",
+        "categories": ["sales", "operations"],
+        "skills": [
+            "revops-getting-started",
+            "crm-field-audit",
+            "crm-duplicate-review",
+            "pipeline-stage-definitions",
+            "lead-routing-rules",
+            "sales-forecast-rollup",
+            "lost-deal-analysis",
+            "crm-hygiene-report",
+        ],
+        "timings": ["after CRM export", "on request"],
+    },
+    "Lena": {
+        "role": "Privacy & Compliance (Non-Advisory)",
+        "categories": ["operations"],
+        "skills": [
+            "compliance-ops-getting-started",
+            "security-questionnaire-answers",
+            "personal-data-map",
+            "subprocessor-register",
+            "dpa-checklist-review",
+            "policy-gap-review",
+            "data-subject-request-draft",
+            "compliance-escalation-brief",
+        ],
+        "timings": ["day 1", "on request"],
+    },
+    "Kai": {
+        "role": "Executive Assistant",
+        "categories": ["support", "operations"],
+        "skills": [
+            "executive-assistant-getting-started",
+            "inbox-triage",
+            "reply-draft-in-your-voice",
+            "meeting-prep-brief",
+            "meeting-follow-up-draft",
+            "calendar-conflict-review",
+            "travel-plan",
+            "weekly-priorities-review",
+        ],
+        "timings": ["after inbox access", "on request"],
+    },
+}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -65,6 +326,142 @@ def mock_embedding_functions():
         return_value=True,
     ):
         yield
+
+
+_seeded_template_ids: list[str] = []
+_seeded_user_ids: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+async def delete_rows_this_test_seeded():
+    """Delete the templates, hires and seed users the test created.
+
+    Without it a run against the shared dev database leaves every template and
+    hire behind; 4,689 stray templates had accumulated by 2026-09-11.
+    """
+    yield
+    template_ids, user_ids = list(_seeded_template_ids), list(_seeded_user_ids)
+    # Clear only once the deletion succeeded: a raise here keeps the ids so the
+    # next teardown retries them, and re-deleting a gone row is a no-op.
+    await _delete_seeded_rows(template_ids, user_ids)
+    _seeded_template_ids.clear()
+    _seeded_user_ids.clear()
+    # _load_roster_store_assets seeds the real starter-skill catalog so
+    # bundled-skill resolution has something to find; skill_db_test.py's
+    # fixture requires that table empty, so undo the seed here. Re-seeding
+    # next call is an upsert, so this is cheap.
+    starter_slugs = [entry["slug"] for entry in skill_seed.STARTER_SKILLS]
+    await prisma.models.SkillListingVersion.prisma().delete_many(
+        where={"SkillListing": {"is": {"slug": {"in": starter_slugs}}}}
+    )
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"slug": {"in": starter_slugs}}
+    )
+
+
+async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> None:
+    if template_ids:
+        # Hires outlive their template (sourceTemplateId is SET NULL), so they go first.
+        await prisma.models.Expert.prisma().delete_many(
+            where={"sourceTemplateId": {"in": template_ids}}
+        )
+        await prisma.models.Expert.prisma().delete_many(
+            where={"id": {"in": template_ids}}
+        )
+    if not user_ids:
+        return
+    # Every FK to User that is not ON DELETE CASCADE has to be cleared by hand,
+    # deepest first: a listing still pointing at a seed user's graph blocks the
+    # cascade that would delete that graph.
+    graphs = await prisma.models.AgentGraph.prisma().find_many(
+        where={"userId": {"in": user_ids}}
+    )
+    graph_ids = [graph.id for graph in graphs]
+    if graph_ids:
+        await prisma.models.StoreListing.prisma().delete_many(
+            where={"agentGraphId": {"in": graph_ids}}
+        )
+    await prisma.models.StoreListingReview.prisma().delete_many(
+        where={"reviewByUserId": {"in": user_ids}}
+    )
+    await prisma.models.StoreListing.prisma().delete_many(
+        where={"owningUserId": {"in": user_ids}}
+    )
+    await prisma.models.CreditTransaction.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.AgentPreset.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.LibraryAgent.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.IntegrationWebhook.prisma().delete_many(
+        where={"userId": {"in": user_ids}}
+    )
+    await prisma.models.User.prisma().delete_many(where={"id": {"in": user_ids}})
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def absorb_a_stale_event_loop(server: SpinTestServer):
+    """An earlier test can leave the shared Prisma client bound to a loop that
+    has since closed; only the first query on the new loop fails, and the engine
+    re-establishes itself. Spend that failure here rather than in a fixture."""
+    try:
+        await db_client.execute_raw("SELECT 1")
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
+
+
+# Read at import, before any test can monkeypatch seed.ROSTER.
+LIVE_ROSTER_NAMES = frozenset(entry["name"] for entry in seed.ROSTER)
+
+
+@pytest.fixture(autouse=True)
+def refuse_to_seed_the_live_roster(monkeypatch):
+    """Fail a test that writes a roster template under its shipped name.
+
+    ``seed._upsert_template`` resolves a template by name, so seeding the real
+    names against a shared database adopts the live roster rows and rewrites
+    them and every hire made from them — four sessions have done it by
+    accident. Tests that need the seed take ``fixture_roster``.
+    """
+    upsert = seed._upsert_template
+
+    async def guarded(entry: seed.RosterEntry) -> prisma.models.Expert:
+        if entry["name"] in LIVE_ROSTER_NAMES:
+            pytest.fail(
+                f"seeding '{entry['name']}' would rewrite the live roster template "
+                "and its hires; seed through the fixture_roster fixture"
+            )
+        return await upsert(entry)
+
+    monkeypatch.setattr(seed, "_upsert_template", guarded)
+
+
+@pytest.fixture
+async def fixture_roster(monkeypatch):
+    """Point ``seed_roster`` at the shipped roster under non-colliding names.
+
+    Only ``name`` differs from ``seed.ROSTER``, so a test still checks the
+    personas, preloads and copy we ship. Returns shipped name -> its entry.
+    """
+    suffix = uuid.uuid4().hex[:8]
+
+    def rename(entry: seed.RosterEntry) -> seed.RosterEntry:
+        return {**entry, "name": f"{entry['name']} {suffix}"}
+
+    roster = {entry["name"]: rename(entry) for entry in seed.ROSTER}
+    monkeypatch.setattr(seed, "ROSTER", list(roster.values()))
+    yield roster
+    seeded = await prisma.models.Expert.prisma().find_many(
+        where={
+            "isTemplate": True,
+            "name": {"in": [entry["name"] for entry in roster.values()]},
+        }
+    )
+    _seeded_template_ids.extend(template.id for template in seeded)
 
 
 @pytest.fixture
@@ -89,28 +486,40 @@ def _library_skill(slug: str) -> list[RaiseAttachment]:
     return [RaiseAttachment(kind="skill", source="library", id=slug)]
 
 
-def _marketplace_skill(listing_id: str) -> list[RaiseAttachment]:
-    return [RaiseAttachment(kind="skill", source="marketplace", id=listing_id)]
+def _marketplace_skill(slug: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="skill", source="marketplace", id=slug)]
 
 
 async def _create_seed_user():
     suffix = uuid.uuid4().hex[:8]
-    return await get_or_create_user(
+    user = await get_or_create_user(
         {
             "sub": str(uuid.uuid4()),
             "email": f"expert-seed-{suffix}@example.com",
             "name": "Seed Owner",
         }
     )
+    _seeded_user_ids.append(user.id)
+    return user
 
 
-async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> str:
+async def _seed_store_listing(
+    server: SpinTestServer,
+    approved: bool = True,
+    extra_block_ids: list[str] | None = None,
+    input_value: str | None = "seeded",
+) -> str:
     """Create a graph plus a store listing on top of it.
 
     Returns the StoreListingVersion ID, ready for
     ``add_store_agent_to_library``. With ``approved=False`` the version is
-    left in its submitted PENDING state. Mirrors the seeding pattern from
+    left in its submitted PENDING state. Pass ``extra_block_ids`` to put more
+    blocks in the graph — a credentialed one gives the listing an integration
+    to summarise. Mirrors the seeding pattern from
     ``backend/data/graph_test.py::test_access_store_listing_graph``.
+
+    ``input_value=None`` leaves the graph's one input without a default,
+    which is what makes it a required user-supplied field.
     """
     owner = await _create_seed_user()
     admin = await _create_seed_user()
@@ -121,8 +530,10 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
         nodes=[
             Node(
                 block_id=AgentInputBlock().id,
-                input_default={"name": "input_1"},
+                input_default={"name": "input_1"}
+                | ({} if input_value is None else {"value": input_value}),
             ),
+            *(Node(block_id=block_id) for block_id in extra_block_ids or []),
         ],
         links=[],
     )
@@ -142,7 +553,7 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
             video_url=None,
             image_urls=[],
             description="Seed description",
-            categories=[],
+            categories=["operations"],
         ),
         owner.id,
     )
@@ -161,16 +572,43 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
     return slv_id
 
 
+async def _seed_own_library_agent(
+    server: SpinTestServer, user_id: str
+) -> tuple[str, str]:
+    """Create an unpublished graph owned by *user_id*, returning its
+    LibraryAgent id and name — the private case that has no store listing."""
+    name = f"Private graph {uuid.uuid4().hex[:8]}"
+    graph = Graph(
+        name=name,
+        description="Never published to the marketplace",
+        nodes=[Node(block_id=AgentInputBlock().id, input_default={"name": "input_1"})],
+        links=[],
+    )
+    created_graph = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), user_id
+    )
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"userId": user_id, "agentGraphId": created_graph.id}
+    )
+    assert library_agent is not None, "Graph creation did not make a LibraryAgent"
+    return library_agent.id, name
+
+
 async def _load_roster_store_assets() -> dict[str, str]:
     """Load the checked-in production store assets (StoreAgent_rows.csv plus
     the matching graph JSONs) for every ROSTER preload slug into the test DB,
     published under the official creator — the exact data ``load-store-agents``
     deploys. Idempotent: the loaders skip rows that already exist.
 
+    Also seeds the starter skills, because the roster bundles them and
+    ``_resolve_roster_skills`` fails the whole seed when a bundled slug has no
+    Skills Hub listing — the same ordering a deploy has to follow.
+
     Returns slug -> the CSV's StoreListingVersion id, the version a hire is
     expected to install. A ROSTER slug with no checked-in asset fails here
     instead of being silently substituted by a synthetic listing.
     """
+    await skill_seed.seed_starter_skills()
     await store_assets.create_user_and_profile(db_client)
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
@@ -193,7 +631,7 @@ async def _load_roster_store_assets() -> dict[str, str]:
 
 
 async def _hire_roster_and_assert_preloads(
-    hire_user: User,
+    roster: dict[str, seed.RosterEntry],
     templates: dict[str, prisma.models.Expert],
     expected: dict[str, str],
 ) -> dict[str, HireResult]:
@@ -202,8 +640,11 @@ async def _hire_roster_and_assert_preloads(
         return_value=SimpleNamespace(id="sched-1")
     )
     results: dict[str, HireResult] = {}
+    hire_user = await _create_seed_user()
     with patch.object(scheduling, "get_scheduler_client", return_value=scheduler):
-        for entry in seed.ROSTER:
+        for index, (persona, entry) in enumerate(roster.items()):
+            if index and index % experts_db.ACTIVE_EXPERT_LIMIT == 0:
+                hire_user = await _create_seed_user()
             result = await experts_db.hire_expert(
                 hire_user.id, templates[entry["name"]].id, None
             )
@@ -211,7 +652,7 @@ async def _hire_roster_and_assert_preloads(
             assert {w.store_listing_version_id for w in result.expert.workflows} == {
                 expected[p["slug"]] for p in entry["preloads"]
             }
-            results[entry["name"]] = result
+            results[persona] = result
     return results
 
 
@@ -233,8 +674,9 @@ async def _seed_template(
     name: str,
     preload_listings: list[str],
     preload_crons: dict[str, str] | None = None,
+    bundled: list[str] | None = None,
 ) -> prisma.models.Expert:
-    """Create an Expert roster template plus ExpertWorkflow preload rows.
+    """Create an Expert roster template plus its preload and bundled-skill rows.
 
     The stored name gets a unique suffix so ad-hoc test templates never
     collide with seed.ROSTER's real roster names — seed._upsert_template
@@ -249,6 +691,7 @@ async def _seed_template(
             "isTemplate": True,
         }
     )
+    _seeded_template_ids.append(template.id)
     for slv_id in preload_listings:
         await prisma.models.ExpertWorkflow.prisma().create(
             data={
@@ -257,17 +700,136 @@ async def _seed_template(
                 "scheduleCron": (preload_crons or {}).get(slv_id),
             }
         )
+    for position, listing_id in enumerate(bundled or []):
+        await prisma.models.ExpertSkillListing.prisma().create(
+            data={
+                "expertId": template.id,
+                "skillListingId": listing_id,
+                "position": position,
+            }
+        )
     return template
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_expert_is_idempotent(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"jobTitle": "Marketing Manager"}
+    )
     first = await experts_db.hire_expert(test_user.id, template.id, None)
     second = await experts_db.hire_expert(test_user.id, template.id, None)
     assert first.expert.id == second.expert.id
     assert not first.expert.is_template
     assert first.expert.source_template_id == template.id
+    assert first.expert.job_title == "Marketing Manager"
+
+
+@pytest.fixture
+async def make_hub_listing(server: SpinTestServer):
+    made: list[prisma.models.SkillListing] = []
+
+    async def make() -> prisma.models.SkillListing:
+        made.append(await _make_listing(f"bundled-{uuid.uuid4().hex[:8]}"))
+        return made[-1]
+
+    yield make
+    for listing in made:
+        await prisma.models.SkillListingVersion.prisma().delete_many(
+            where={"skillListingId": listing.id}
+        )
+        await prisma.models.SkillListing.prisma().delete(where={"id": listing.id})
+
+
+@pytest.fixture
+async def hub_listing(make_hub_listing):
+    return await make_hub_listing()
+
+
+@pytest.fixture
+def skills_hub_on(monkeypatch):
+    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=True))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
+    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
+):
+    first = await make_hub_listing()
+    bundling = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[first.id, hub_listing.id]
+    )
+    # A slug on the row is not a relation: only a listing id links a skill.
+    naming = await _seed_template(name="Max", preload_listings=[])
+    await prisma.models.Expert.prisma().update(
+        where={"id": naming.id}, data={"skills": [hub_listing.slug]}
+    )
+
+    linked, unlinked = await experts_db.with_bundled_skills(
+        [experts_db._to_model(bundling), experts_db._to_model(naming)], None
+    )
+
+    assert [skill.id for skill in linked.bundled_skills] == [first.id, hub_listing.id]
+    # The title is the body's heading — `_make_listing` writes "# body" — and
+    # never the version's `name`, which is a slug.
+    assert linked.bundled_skills[1] == ExpertBundledSkill(
+        id=hub_listing.id,
+        slug=hub_listing.slug,
+        title="body",
+        description=f"{hub_listing.slug} description",
+    )
+    assert unlinked.bundled_skills == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_installs_the_hub_skills_the_template_bundles(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on
+):
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        installed = await read_user_skill_with_body(
+            test_user.id, hub_listing.slug, expert_id=hired.expert.id
+        )
+
+    assert installed is not None
+    assert installed.description == f"{hub_listing.slug} description"
+    assert hired.expert.skills == [hub_listing.slug]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+):
+    install = AsyncMock(side_effect=RuntimeError("storage down"))
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    install.assert_awaited_once()
+    assert hired.expert.skills == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_installs_nothing_while_the_hub_is_off(
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
+):
+    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
+    install = AsyncMock()
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+
+    await experts_db.hire_expert(test_user.id, template.id, None)
+
+    install.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -389,14 +951,20 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
         voice_preferences=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
+        tagline="Finds your leads and their decision-makers.",
+        job_title="Sales Development Rep",
     )
     assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert raised.expert.color == "sky-300"
+    assert raised.expert.job_title == "Sales Development Rep"
+    assert raised.expert.tagline == "Finds your leads and their decision-makers."
 
     reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
     assert reloaded is not None
     assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert reloaded.color == "sky-300"
+    assert reloaded.tagline == "Finds your leads and their decision-makers."
+    assert reloaded.job_title == "Sales Development Rep"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -846,23 +1414,108 @@ async def test_raise_expert_rejects_missing_library_skill(server: SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_attaches_marketplace_skill_name(server: SpinTestServer):
+async def test_raise_expert_installs_a_marketplace_skill(
+    server: SpinTestServer, hub_listing
+):
     owner = await _create_seed_user()
-    slv_id = await _seed_store_listing(server)
-    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": slv_id}
+
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug),
+        )
+        installed = await read_user_skill_with_body(
+            owner.id, hub_listing.slug, expert_id=raised.expert.id
+        )
+
+    assert raised.expert.skills == [hub_listing.slug]
+    assert raised.expert.workflows == []
+    assert raised.failed_attachments == []
+    assert installed is not None
+    assert installed.description == f"{hub_listing.slug} description"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_a_marketplace_skill_that_is_not_listed(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill("no-such-skill"),
+        )
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_marketplace_skill_install_leaves_no_name_on_the_row(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    owner = await _create_seed_user()
+    install = AsyncMock(side_effect=RuntimeError("storage down"))
+    monkeypatch.setattr(
+        raise_attachments.skill_db, "install_marketplace_skill", install
     )
-    assert listing is not None
 
     raised = await experts_db.create_raised_expert(
         owner.id,
         name="Nova",
         role=None,
         voice_preferences=None,
-        attachments=_marketplace_skill(slv_id),
+        attachments=_marketplace_skill(hub_listing.slug),
     )
-    assert raised.expert.skills == [listing.name]
-    assert raised.expert.workflows == []
+
+    install.assert_awaited_once()
+    assert raised.expert.skills == []
+    assert [f.reason for f in raised.failed_attachments] == ["installation_failed"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_hub_install_keeps_the_library_skill_of_the_same_slug(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    """The picker can attach one slug from both halves; the two differ only by
+    source, so the failed Hub install must not take the library copy with it."""
+    owner = await _create_seed_user()
+    monkeypatch.setattr(
+        raise_attachments.skill_db,
+        "install_marketplace_skill",
+        AsyncMock(side_effect=RuntimeError("storage down")),
+    )
+    with (
+        patch.object(
+            experts_db.raise_attachments,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db.raise_attachments,
+            "read_user_skill_with_body",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(name="My Own Playbook"),
+        ),
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_marketplace_skill(hub_listing.slug)
+            + _library_skill(hub_listing.slug),
+        )
+
+    assert raised.expert.skills == ["My Own Playbook"]
+    assert [(f.source, f.reason) for f in raised.failed_attachments] == [
+        ("marketplace", "installation_failed")
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1068,6 +1721,7 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
     identity_ids = {item.id for item in identities}
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.name == hired.expert.name
+    assert identity.color == hired.expert.color
     assert identity.is_archived is True
     active_identity = next(
         item for item in identities if item.id == active_hired.expert.id
@@ -1173,7 +1827,15 @@ def test_expert_identity_projection_columns_exist_in_schema():
     model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
     assert model is not None, "Expert model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
-    assert {"id", "name", "avatarUrl", "role", "isArchived"} <= fields
+    assert {
+        "id",
+        "name",
+        "avatarUrl",
+        "color",
+        "role",
+        "jobTitle",
+        "isArchived",
+    } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
 
@@ -1227,6 +1889,45 @@ async def test_owns_active_expert_scopes_owner_and_archive_state(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_owns_private_active_expert_adds_the_visibility_filter(
+    server: SpinTestServer, test_user, other_user
+):
+    """The gate on the per-expert resource routes. A TEAM/ORG expert resolves
+    to no grants on the chat side, so writing its folder would mutate an
+    expert nothing can read — which is the whole delta from
+    ``owns_active_expert``."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert await experts_db.owns_private_active_expert(test_user.id, hired.expert.id)
+    assert not await experts_db.owns_private_active_expert(
+        other_user.id, hired.expert.id
+    )
+    assert not await experts_db.owns_private_active_expert(test_user.id, template.id)
+
+    for shared in (
+        prisma.enums.ResourceVisibility.TEAM,
+        prisma.enums.ResourceVisibility.ORG,
+    ):
+        await prisma.models.Expert.prisma().update(
+            where={"id": hired.expert.id}, data={"visibility": shared}
+        )
+        assert await experts_db.owns_active_expert(test_user.id, hired.expert.id)
+        assert not await experts_db.owns_private_active_expert(
+            test_user.id, hired.expert.id
+        )
+
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"visibility": prisma.enums.ResourceVisibility.PRIVATE},
+    )
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    assert not await experts_db.owns_private_active_expert(
+        test_user.id, hired.expert.id
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_archive_expert_rejects_cross_user(
     server: SpinTestServer, test_user, other_user
 ):
@@ -1249,7 +1950,9 @@ async def test_install_workflow_on_archived_expert_raises(
     await experts_db.archive_expert(test_user.id, hired.expert.id)
 
     with pytest.raises(experts_db.ExpertNotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1361,9 +2064,11 @@ async def test_hire_existing_team_expert_fails_closed():
         avatarUrl=None,
         color="",
         role="Marketing Specialist",
+        jobTitle=None,
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -1411,9 +2116,11 @@ async def test_hire_raced_org_expert_fails_closed():
         avatarUrl=None,
         color="",
         role="Marketing Specialist",
+        jobTitle=None,
         tagline=None,
         bio=None,
         skills=[],
+        categories=[],
         identity="You are Maria.",
         voicePreferences=None,
         boundaries=None,
@@ -1661,6 +2368,59 @@ async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_attaches_library_skills_and_keeps_existing(
+    server: SpinTestServer, test_user
+):
+    from backend.copilot.tools.skills import DEFAULT_SKILLS
+
+    default_slug = DEFAULT_SKILLS[0].name
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"skills": ["Marketplace Skill"]}
+    )
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["marketplace skill", default_slug.upper()]
+    )
+
+    assert updated.skills[0] == "Marketplace Skill"
+    assert updated.skills[1].lower() == default_slug.lower()
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["not-a-skill-anyone-has"]
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _slugs("deep-research"))
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["deep research"]
+    )
+
+    assert updated.skills == ["deep-research"]
+
+
+def _slugs(slug):
+    async def _find(_user_id, names):
+        return {name.strip().lower(): slug for name in names}
+
+    return _find
+
+
+async def _copied(user_id, expert_id, name):
+    return name
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_other_user_cannot_update_expert_soul(
     server: SpinTestServer, test_user, other_user
 ):
@@ -1795,15 +2555,11 @@ async def test_update_soul_if_current_raises_when_the_row_vanishes_after_the_wri
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_copies_soul_fields_from_template(server: SpinTestServer, test_user):
-    template = await prisma.models.Expert.prisma().create(
-        data={
-            "name": f"Otto {uuid.uuid4().hex[:8]}",
-            "role": "Writer",
-            "identity": "You are Otto, a playful writer.",
-            "voicePreferences": "Direct, playful, and concise.",
-            "boundaries": "Never publish without approval.",
-            "isTemplate": True,
-        }
+    template = await _template(
+        f"Otto {uuid.uuid4().hex[:8]}",
+        identity="You are Otto, a playful writer.",
+        voicePreferences="Direct, playful, and concise.",
+        boundaries="Never publish without approval.",
     )
 
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -1826,14 +2582,10 @@ async def test_hire_from_template_with_samples_stores_plain_voice(
             VoiceSample(label="Warm", text="Let's start with a story."),
         ],
     )
-    template = await prisma.models.Expert.prisma().create(
-        data={
-            "name": f"Vox {uuid.uuid4().hex[:8]}",
-            "role": "Writer",
-            "identity": "You are Vox.",
-            "voicePreferences": envelope,
-            "isTemplate": True,
-        }
+    template = await _template(
+        f"Vox {uuid.uuid4().hex[:8]}",
+        identity="You are Vox.",
+        voicePreferences=envelope,
     )
 
     listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
@@ -1848,15 +2600,46 @@ async def test_hire_from_template_with_samples_stores_plain_voice(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_exposes_two_voice_samples_per_template(
-    server: SpinTestServer,
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
     ids = await seed.seed_roster()
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
-    for entry in seed.ROSTER:
+    for entry in fixture_roster.values():
         template = seeded[entry["name"]]
         assert len(template.voice_samples) == 2
         assert template.voice_preferences == entry["voice_preferences"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_detaches_it_from_the_expert(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    await experts_db.remove_workflow(test_user.id, hired.expert.id, installed.id)
+
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == []
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_unknown_id_raises(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.remove_workflow(test_user.id, hired.expert.id, "missing")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1866,8 +2649,12 @@ async def test_install_workflow_duplicate_returns_existing(
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    a = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
-    b = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
     assert a.id == b.id
     assert a.library_agent_id is not None
     assert a.store_listing_version_id == slv_id
@@ -1900,7 +2687,7 @@ async def test_install_workflow_returns_concurrent_winner(
         prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
     ):
         installed = await experts_db.install_workflow(
-            test_user.id, hired.expert.id, slv_id
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
         )
 
     assert installed.id == winner.id
@@ -1925,7 +2712,9 @@ async def test_install_workflow_reraises_race_without_winner(
         ),
         pytest.raises(prisma.errors.UniqueViolationError),
     ):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
     assert workflow_client.find_first.await_count == 2
 
@@ -1953,7 +2742,9 @@ async def test_install_workflow_reuses_library_agent_without_resetting_settings(
         where={"userId": test_user.id}
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     persisted = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -1991,7 +2782,9 @@ async def test_install_workflow_restores_archived_deleted_library_agent(
         },
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     restored = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -2016,7 +2809,131 @@ async def test_install_workflow_rejects_unapproved_store_version(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     with pytest.raises(NotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_own_library_agent(
+    server: SpinTestServer, test_user
+):
+    """The unpublished-agent case: no listing version, and the row still
+    carries the agent's own name so the UI is not left with a placeholder."""
+    library_agent_id, agent_name = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert installed.library_agent_id == library_agent_id
+    assert installed.store_listing_version_id is None
+    assert installed.name == agent_name
+    assert installed.graph_id is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_library_agent_is_idempotent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert a.id == b.id
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id, "libraryAgentId": library_agent_id}
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_other_users_library_agent(
+    server: SpinTestServer, test_user, other_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, other_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id}
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_deleted_library_agent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent_id}, data={"isDeleted": True}
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_library_path_dedupes_marketplace_row(
+    server: SpinTestServer, test_user
+):
+    """Installing a listing and then its resulting library agent is one
+    attachment, not two — the marketplace install already set libraryAgentId."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    from_listing = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    assert from_listing.library_agent_id is not None
+    from_library = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=from_listing.library_agent_id
+    )
+
+    assert from_library.id == from_listing.id
+    assert from_library.store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_requires_exactly_one_source(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(test_user.id, hired.expert.id)
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(
+            test_user.id,
+            hired.expert.id,
+            store_listing_version_id="slv-1",
+            library_agent_id="library-agent-1",
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2115,6 +3032,89 @@ async def test_hire_creates_schedule_from_template_cadence(
     call_kwargs = mock_scheduler.add_execution_schedule.call_args.kwargs
     assert call_kwargs["cron"] == "40 7 * * *"
     assert call_kwargs["expert_id"] == result.expert.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_creates_the_schedule_on_the_hiring_users_clock(
+    server: SpinTestServer, test_user
+):
+    """A 07:40 cadence means 07:40 where the user is, not UTC."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-tz")
+    )
+    with (
+        patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone="Pacific/Auckland")),
+        ),
+    ):
+        await experts_db.hire_expert(test_user.id, template.id, None)
+
+    kwargs = mock_scheduler.add_execution_schedule.call_args.kwargs
+    assert kwargs["user_timezone"] == "Pacific/Auckland"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_skips_the_schedule_when_the_graph_needs_user_input(
+    server: SpinTestServer, test_user
+):
+    """A cadence on a workflow whose inputs only the user can supply gets no
+    schedule: the cadence stays on the row so the Team page can ask for them."""
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(
+        name="Frankie",
+        preload_listings=[slv_id],
+        preload_crons={slv_id: "40 7 * * *"},
+    )
+    mock_scheduler = AsyncMock()
+    mock_scheduler.add_execution_schedule = AsyncMock(
+        return_value=SimpleNamespace(id="sched-1")
+    )
+    with patch.object(scheduling, "get_scheduler_client", return_value=mock_scheduler):
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    wf = result.expert.workflows[0]
+    assert wf.schedule_cron == "40 7 * * *"
+    assert wf.schedule_id is None
+    assert result.failed_preloads == []
+    mock_scheduler.add_execution_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_scheduler_accepts_a_schedule_missing_a_required_input(
+    server: SpinTestServer, test_user
+):
+    """Why the skip above is load-bearing: nothing downstream refuses it.
+
+    ``add_graph_execution_schedule`` validates through this call, and an
+    ``AgentInputBlock`` with no value validates clean — so an unguarded
+    install creates a schedule that fires daily on an input yielding nothing.
+    """
+    slv_id = await _seed_store_listing(server, input_value=None)
+    template = await _seed_template(name="Frankie", preload_listings=[slv_id])
+    result = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent_id = result.expert.workflows[0].library_agent_id
+    assert library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None
+
+    await execution_utils.validate_and_construct_node_execution_input(
+        graph_id=library_agent.agentGraphId,
+        user_id=test_user.id,
+        graph_inputs={},
+        graph_version=library_agent.agentGraphVersion,
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2430,18 +3430,21 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_seed_roster_round_trip(server: SpinTestServer):
+async def test_seed_roster_round_trip(
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
+):
     await _load_roster_store_assets()
     first_ids = await seed.seed_roster()
-    assert len(first_ids) == 3
+    assert len(first_ids) == len(fixture_roster)
 
     templates = await experts_db.list_templates()
     seeded = {t.name: t for t in templates if t.id in first_ids}
-    assert {e["name"] for e in seed.ROSTER} == set(seeded)
-    for entry in seed.ROSTER:
+    assert {e["name"] for e in fixture_roster.values()} == set(seeded)
+    for entry in fixture_roster.values():
         template = seeded[entry["name"]]
         assert template.is_template
         assert template.role == entry["role"]
+        assert template.job_title == entry["job_title"]
         assert template.identity == entry["identity"]
 
     second_ids = await seed.seed_roster()
@@ -2449,7 +3452,29 @@ async def test_seed_roster_round_trip(server: SpinTestServer):
 
     templates_after = await experts_db.list_templates()
     seeded_after = [t for t in templates_after if t.id in second_ids]
-    assert len(seeded_after) == 3
+    assert len(seeded_after) == len(fixture_roster)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_archives_a_retired_template(
+    server: SpinTestServer,
+    fixture_roster: dict[str, seed.RosterEntry],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A template folded into another entry keeps its row — hires point at it
+    through sourceTemplateId — so the seed archives it off the Team page
+    instead of deleting it, and leaves every live template alone."""
+    await _load_roster_store_assets()
+    retired = await _seed_template(name="Retired", preload_listings=[])
+    monkeypatch.setattr(seed, "RETIRED_TEMPLATES", [retired.name])
+
+    ids = await seed.seed_roster()
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": retired.id})
+    assert row is not None and row.isArchived
+    listed = {t.id for t in await experts_db.list_templates()}
+    assert retired.id not in listed
+    assert set(ids) <= listed
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2468,29 +3493,282 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     upsert.assert_not_awaited()
 
 
-def test_roster_assigns_two_to_four_workflows_with_one_scheduled_cadence():
-    """Launch invariant, checked without a DB: every persona ships 2-4
-    preloads, and exactly one scheduled cadence exists across the whole
-    roster (Frankie's daily ops digest), so schedule attribution has a
-    single unambiguous real case."""
+def test_roster_preload_counts_and_scheduled_cadences():
+    """Launch invariant, checked without a DB: every persona ships 2-4 preloads
+    unless it is one we deliberately ship without workflows, and every
+    scheduled cadence on the roster is one we declared — so a cron added to a
+    persona that acts outside the platform fails here rather than firing
+    unattended on someone's account."""
     for entry in seed.ROSTER:
-        assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
+        if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
+            assert entry["preloads"] == [], entry["name"]
+        else:
+            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
         preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
     } == EXPECTED_ROSTER_PRELOAD_SLUGS
-    scheduled = [
+    scheduled = {
         (entry["name"], preload["slug"], preload["cron"])
         for entry in seed.ROSTER
         for preload in entry["preloads"]
         if preload["cron"] is not None
+    }
+    assert scheduled == EXPECTED_ROSTER_SCHEDULES
+
+
+def test_roster_bundled_skills_are_seeded_starter_skills():
+    """Every bundled slug must exist in skill_seed.STARTER_SKILLS, or
+    seed_roster raises at _resolve_roster_skills against a real database."""
+    available = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
+    for entry in seed.ROSTER:
+        for slug in entry["bundled_skills"]:
+            assert slug in available, (entry["name"], slug)
+
+
+def test_roster_bundled_skills_are_hub_slugs():
+    for entry in seed.ROSTER:
+        for slug in entry["bundled_skills"]:
+            assert _NAME_RE.match(slug), (entry["name"], slug)
+
+
+def test_operations_experts_bundle_their_eight_skills_in_work_order():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in EXPECTED_OPERATIONS_SKILLS.items():
+        assert roster[name]["bundled_skills"] == skills
+        assert roster[name]["preloads"] == []
+
+
+def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected_skills in EXPECTED_SKILLS_ONLY_ROSTER.items():
+        assert roster[name]["bundled_skills"] == expected_skills
+        assert roster[name]["preloads"] == []
+    assert {
+        name: (roster[name]["role"], roster[name]["categories"])
+        for name in EXPECTED_SKILLS_ONLY_ROSTER
+    } == {
+        "Devon": ("Dependency & Security Hygiene", ["development"]),
+        "Riley": ("Customer Success & Retention", ["support"]),
+        "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
+    }
+
+
+def test_wave_three_experts_are_skills_only_with_ordered_packs():
+    roster = {entry["name"]: entry for entry in seed.ROSTER}
+    for name, expected in EXPECTED_WAVE_THREE.items():
+        entry = roster[name]
+        assert entry["role"] == expected["role"]
+        assert entry["categories"] == expected["categories"]
+        assert entry["bundled_skills"] == expected["skills"]
+        assert entry["preloads"] == []
+        assert entry["routines"] == []
+        assert [item.timing for item in entry["day_one"]] == expected["timings"]
+        assert len(entry["voice_samples"]) == 2
+
+
+def test_wave_three_covers_exactly_the_nine_new_experts():
+    assert set(EXPECTED_WAVE_THREE) == {
+        "Sasha",
+        "Priya",
+        "Marco",
+        "Noor",
+        "Casey",
+        "Ines",
+        "Omar",
+        "Lena",
+        "Kai",
+    }
+
+
+def test_the_roster_is_the_expected_size_with_unique_names():
+    """Kept out of the wave-three test above so that adding an expert on either
+    side edits the test about the roster rather than the one about dev's nine.
+    Names must be unique: two entries sharing one is what forced the rename of
+    this branch's Casey, Priya and Sasha when dev's wave three landed."""
+    # 24 from dev's waves plus the eight generalists added on top; the senior
+    # sales package was folded into Max rather than shipped as its own entry.
+    assert len(seed.ROSTER) == 32
+    names = [entry["name"] for entry in seed.ROSTER]
+    assert len(names) == len(set(names))
+
+
+def test_retired_templates_are_off_the_roster():
+    """A name in both lists would be archived and re-upserted on every run."""
+    names = {entry["name"] for entry in seed.ROSTER}
+    assert not names & set(seed.RETIRED_TEMPLATES), names & set(seed.RETIRED_TEMPLATES)
+
+
+def test_every_wave_three_skill_is_a_registered_starter():
+    registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
+    for expected in EXPECTED_WAVE_THREE.values():
+        assert set(expected["skills"]) <= registered
+    slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
+    assert len(slugs) == len(set(slugs)) == 72
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
+    server: SpinTestServer, hub_listing, monkeypatch
+):
+    monkeypatch.setattr(
+        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": [hub_listing.slug]}]
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    resolved = await seed._resolve_roster_skills()
+    await seed._sync_bundled_skills(template.id, [resolved[hub_listing.slug]])
+    rows = await prisma.models.ExpertSkillListing.prisma().find_many(
+        where={"expertId": template.id}
+    )
+    assert [row.skillListingId for row in rows] == [hub_listing.id]
+
+    await seed._sync_bundled_skills(template.id, [])
+    remaining = await prisma.models.ExpertSkillListing.prisma().count(
+        where={"expertId": template.id}
+    )
+    assert remaining == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(seed, "_resolve_roster_preloads", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": ["no-such-hub-skill"]}]
+    )
+    upsert = AsyncMock()
+    monkeypatch.setattr(seed, "_upsert_template", upsert)
+
+    with pytest.raises(RuntimeError, match="no-such-hub-skill"):
+        await seed.seed_roster()
+
+    upsert.assert_not_awaited()
+
+
+def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
+    """Day-one copy may describe draft work, but not an unattended cadence."""
+    day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
+
+    assert [(item.title, item.timing) for item in day_one["Maria"]] == [
+        ("A brief before the draft", "day 1"),
+        ("Your money pages, audited", "day 1"),
     ]
-    assert scheduled == [EXPECTED_ROSTER_SCHEDULE]
+    assert [item.timing for item in day_one["Mina"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Theo"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Quinn"]] == [
+        "day 1",
+        "day 1",
+        "on request",
+    ]
+    assert [(item.title, item.timing) for item in day_one["Harper"]] == [
+        ("A hiring plan grounded in the role", "day 1"),
+        ("A fair scorecard before screening", "day 1"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Vera"]] == [
+        ("Your next vendor choice, compared", "day 1"),
+        ("Renewals and spend risks surfaced", "on request"),
+    ]
+    assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
+        ("Key terms in one clear record", "day 1"),
+        ("Playbook gaps ready for counsel", "on request"),
+    ]
+    for name in ("Jules", "Nadia", "Remy", "Frankie"):
+        assert day_one[name] == [], name
+    # Max carries the senior sales package: two day-one reads and one that
+    # waits on a numbers source, none of them a clock.
+    assert [item.timing for item in day_one["Max"]] == [
+        "day 1",
+        "day 1",
+        "once your numbers are connected",
+    ]
+    assert [item.timing for item in day_one["Devon"]] == [
+        "after access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Riley"]] == [
+        "after data access",
+        "on request",
+    ]
+    assert [item.timing for item in day_one["Jordan"]] == [
+        "after deal input",
+        "on request",
+    ]
+
+
+def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
+    expected = {
+        "Mina": [
+            "bookkeeping-getting-started",
+            "expense-categorization",
+            "invoice-drafting-and-issue",
+            "accounts-receivable-follow-up",
+            "statement-reconciliation",
+            "month-end-close-checklist",
+            "monthly-profit-and-loss-summary",
+            "bookkeeping-exception-escalation",
+        ],
+        "Theo": [
+            "investor-relations-getting-started",
+            "pitch-deck-review",
+            "fundraising-data-room-checklist",
+            "investor-targeting-and-research",
+            "fundraising-pipeline-review",
+            "cap-table-hygiene",
+            "monthly-investor-update",
+            "board-and-investor-metrics-brief",
+        ],
+        "Quinn": [
+            "kpi-analysis-getting-started",
+            "metric-definition-and-data-quality",
+            "weekly-kpi-digest",
+            "metric-anomaly-detection",
+            "metric-movement-analysis",
+            "cohort-and-retention-analysis",
+            "funnel-conversion-analysis",
+            "experiment-readout",
+        ],
+    }
+    by_name = {entry["name"]: entry for entry in seed.ROSTER}
+
+    for name, skills in expected.items():
+        assert by_name[name]["bundled_skills"] == skills
+        assert by_name[name]["preloads"] == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
+    maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
+    too_many = maria.copy()
+    # Not the shipped "Maria": refuse_to_seed_the_live_roster guards that name.
+    too_many["name"] = f"Maria {uuid.uuid4().hex[:8]}"
+    # One past the cap, however many rows the roster currently gives her —
+    # deriving the list from len(maria["day_one"]) + 1 made this test pass
+    # silently (and then fail on a MagicMock await) the moment her row count
+    # dropped below the cap.
+    too_many["day_one"] = [maria["day_one"][0]] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
+
+    with (
+        patch.object(prisma.models.Expert, "prisma") as expert_client,
+        pytest.raises(pydantic.ValidationError),
+    ):
+        await seed._upsert_template(too_many)
+    expert_client.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_roster_preloads_resolve_and_hire_installs_cleanly(
-    server: SpinTestServer,
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     """Launch acceptance gate against the real checked-in store assets: every
     ROSTER preload slug resolves to the exact StoreListingVersion the CSV
@@ -2507,17 +3785,19 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     templates = {
         t.name: t for t in await experts_db.list_templates() if t.id in template_ids
     }
-    for entry in seed.ROSTER:
+    for entry in fixture_roster.values():
         expected_versions = {expected[p["slug"]] for p in entry["preloads"]}
         assert len(expected_versions) == len(entry["preloads"])
+        assert templates[entry["name"]].day_one == entry["day_one"]
         assert {
             w.store_listing_version_id for w in templates[entry["name"]].workflows
         } == expected_versions
 
-    # A fresh user per run: a reused fixture user would make hire_expert
-    # short-circuit to a previous run's copy and skip _install_preloads.
-    hire_user = await _create_seed_user()
-    results = await _hire_roster_and_assert_preloads(hire_user, templates, expected)
+    # Fresh users keep every hire below the active-expert cap. Reusing fixture
+    # users would also make hire_expert return old copies and skip preloads.
+    results = await _hire_roster_and_assert_preloads(
+        fixture_roster, templates, expected
+    )
 
     frankie_crons = [
         w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
@@ -2525,6 +3805,7 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     assert frankie_crons == ["40 7 * * *"]
     for name in ("Maria", "Max"):
         assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    assert all(result.expert.day_one == [] for result in results.values())
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2883,6 +4164,90 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_hired_workflows_order_by_created_at_then_id(
+    server: SpinTestServer, test_user
+):
+    oldest_listing = await _seed_store_listing(server)
+    earlier_listing = await _seed_store_listing(server)
+    later_listing = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    now = datetime.now(timezone.utc)
+
+    later_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": later_listing,
+            "createdAt": now,
+        }
+    )
+    earlier_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": earlier_listing,
+            "createdAt": now,
+        }
+    )
+    oldest_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": oldest_listing,
+            "createdAt": now - timedelta(days=1),
+        }
+    )
+
+    expected_workflows = sorted(
+        [later_workflow, earlier_workflow, oldest_workflow],
+        key=lambda workflow: (workflow.createdAt, workflow.id),
+    )
+    rehired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert [workflow.id for workflow in rehired.expert.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [
+        workflow.store_listing_version_id for workflow in rehired.expert.workflows
+    ] == [workflow.storeListingVersionId for workflow in expected_workflows]
+
+    listed = next(
+        expert
+        for expert in await experts_db.list_experts(test_user.id)
+        if expert.id == rehired.expert.id
+    )
+    assert [workflow.id for workflow in listed.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [workflow.store_listing_version_id for workflow in listed.workflows] == [
+        workflow.storeListingVersionId for workflow in expected_workflows
+    ]
+
+
+# Airtable: a provider the platform holds no credentials for, so a user has to
+# connect it — which is what the profile's access list is for.
+_AIRTABLE_BLOCK_ID = "f59b88a8-54ce-4676-a508-fd614b4e8dce"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_template_workflow_chain_comes_from_the_listing_graph(
+    server: SpinTestServer,
+):
+    """A template row has no LibraryAgent, so without the listing fallback the
+    marketplace profile has neither a chain nor an access list to build."""
+    slv_id = await _seed_store_listing(server, extra_block_ids=[_AIRTABLE_BLOCK_ID])
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+
+    listed = next(t for t in await experts_db.list_templates() if t.id == template.id)
+
+    workflow = listed.workflows[0]
+    assert workflow.library_agent_id is None
+    # The integration is the property the access list depends on: a fallback
+    # that yielded only the input step would satisfy a non-empty chain.
+    assert ("integration", "airtable") in [
+        (item.kind, item.provider) for item in workflow.chain
+    ]
+    assert workflow.integration_providers == ["airtable"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     """Re-seeding must propagate roster cadence changes onto existing
     template preload rows — the old sync was create-only."""
@@ -2898,10 +4263,12 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "",
         "avatar_url": None,
         "bio": "",
-        "skills": [],
+        "bundled_skills": [],
+        "categories": [],
         "identity": template.identity,
         "preloads": [{"slug": listing.slug, "cron": "40 7 * * *"}],
     }
@@ -2923,6 +4290,274 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_sync_preloads_drops_workflows_the_roster_reassigned(
+    server: SpinTestServer,
+):
+    """Moving a workflow to another persona must remove it from the losing
+    template. The sync used to be create-only, so the row survived and every
+    later hire still installed it."""
+    kept_id = await _seed_store_listing(server)
+    moved_id = await _seed_store_listing(server)
+    for slv_id in (kept_id, moved_id):
+        await _transfer_listing_to_official_creator(slv_id)
+    kept = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": kept_id}
+    )
+    moved = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": moved_id}
+    )
+    assert kept is not None and moved is not None
+
+    template = await _seed_template(name="Maria", preload_listings=[])
+    entry: seed.RosterEntry = {
+        "name": template.name,
+        "role": template.role,
+        "job_title": "Marketing Manager",
+        "tagline": "",
+        "avatar_url": None,
+        "bio": "",
+        "bundled_skills": [],
+        "categories": [],
+        "identity": template.identity,
+        "preloads": [
+            {"slug": kept.slug, "cron": None},
+            {"slug": moved.slug, "cron": None},
+        ],
+    }
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {kept_id, moved_id}
+
+    entry["preloads"] = [{"slug": kept.slug, "cron": None}]
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {kept_id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_sync_preloads_keeps_rows_when_a_slug_does_not_resolve(
+    server: SpinTestServer,
+):
+    """An unresolved slug leaves the wanted set incomplete, so pruning
+    against it would delete a workflow the roster still assigns. The prune
+    must be skipped rather than run on partial data."""
+    slv_id = await _seed_store_listing(server)
+    await _transfer_listing_to_official_creator(slv_id)
+    listing = await prisma.models.StoreListing.prisma().find_first(
+        where={"activeVersionId": slv_id}
+    )
+    assert listing is not None
+
+    template = await _seed_template(name="Maria", preload_listings=[])
+    entry: seed.RosterEntry = {
+        "name": template.name,
+        "role": template.role,
+        "job_title": "Marketing Manager",
+        "tagline": "",
+        "avatar_url": None,
+        "bio": "",
+        "bundled_skills": [],
+        "categories": [],
+        "identity": template.identity,
+        "preloads": [{"slug": listing.slug, "cron": None}],
+    }
+    await seed._sync_preloads(template.id, entry)
+
+    entry["preloads"] = [{"slug": "no-such-listing-anywhere", "cron": None}]
+    await seed._sync_preloads(template.id, entry)
+    assert {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": template.id}
+        )
+    } == {slv_id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rescope_moves_untouched_hires_and_spares_edited_ones(
+    server: SpinTestServer, test_user, other_user, monkeypatch
+):
+    """A rescope must reach hires that never diverged, and only those.
+
+    On a rescoped template the presentation and the persona move in one
+    write, so an edited hire keeps the old bio as well as the old role —
+    rather than advertising the new scope while behaving like the old one."""
+    old_role, old_identity = "Marketing", "You are Maria, a generalist."
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": f"Maria {uuid.uuid4().hex[:8]}",
+            "role": old_role,
+            "identity": old_identity,
+            "tagline": "Does all of marketing.",
+            "isTemplate": True,
+        }
+    )
+    _seeded_template_ids.append(template.id)
+    untouched = await experts_db.hire_expert(test_user.id, template.id, None)
+    edited = await experts_db.hire_expert(other_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": edited.expert.id},
+        data={"identity": "You are Maria, and you only do webinars."},
+    )
+
+    monkeypatch.setattr(
+        seed,
+        "RESCOPED_TEMPLATES",
+        [
+            {
+                "name": template.name,
+                "old_role": old_role,
+                "old_identity": old_identity,
+            }
+        ],
+    )
+    rescoped = await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={
+            "role": "SEO & Content",
+            "identity": "You are Maria, an SEO lead.",
+            "tagline": "Takes a keyword from brief to article.",
+        },
+    )
+    assert rescoped is not None
+    assert await seed._backfill_hired_copies(rescoped) == 1
+
+    moved = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved is not None
+    assert (moved.role, moved.identity) == (
+        "SEO & Content",
+        "You are Maria, an SEO lead.",
+    )
+    assert moved.tagline == "Takes a keyword from brief to article."
+
+    spared = await prisma.models.Expert.prisma().find_unique(
+        where={"id": edited.expert.id}
+    )
+    assert spared is not None
+    assert spared.identity == "You are Maria, and you only do webinars."
+    assert spared.role == old_role
+    # The edit spares the whole persona, presentation included: a hire that
+    # still behaves like the generalist must not advertise the new scope.
+    assert spared.tagline == "Does all of marketing."
+
+    # A later cosmetic edit still reaches the hire the rescope already moved,
+    # which no longer matches the old role and identity.
+    refreshed_template = await prisma.models.Expert.prisma().update(
+        where={"id": template.id}, data={"tagline": "Briefs, drafts, and page copy."}
+    )
+    assert refreshed_template is not None
+    assert await seed._backfill_hired_copies(refreshed_template) == 1
+    moved_again = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved_again is not None
+    assert moved_again.tagline == "Briefs, drafts, and page copy."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
+    server: SpinTestServer, test_user, other_user, monkeypatch
+):
+    """The same guarantee through the entry point that production runs.
+
+    The helper test drives ``_backfill_hired_copies`` directly; this one goes
+    through ``seed_roster`` so a future split back into two passes — one
+    pushing presentation to everyone, one moving only the untouched — fails
+    here rather than shipping half-migrated hires."""
+    entry: seed.RosterEntry = {
+        "name": f"Maria {uuid.uuid4().hex[:8]}",
+        "role": "Marketing",
+        "job_title": "Marketing Generalist",
+        "tagline": "Does all of marketing.",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a generalist marketer.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "You are Maria, a generalist.",
+        "voice_preferences": "Clear and confident.",
+        "voice_samples": [],
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [],
+        "preloads": [],
+        "routines": [],
+    }
+    monkeypatch.setattr(seed, "ROSTER", [entry])
+    (template_id,) = await seed.seed_roster()
+    _seeded_template_ids.append(template_id)
+    untouched = await experts_db.hire_expert(test_user.id, template_id, None)
+    edited = await experts_db.hire_expert(other_user.id, template_id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": edited.expert.id}, data={"role": "Webinars"}
+    )
+
+    monkeypatch.setattr(
+        seed,
+        "ROSTER",
+        [
+            {
+                **entry,
+                "role": "SEO & Content",
+                "job_title": "SEO Content Writer",
+                "identity": "You are Maria, an SEO lead.",
+                "tagline": "Takes a keyword from brief to article.",
+                "bio": "Maria is an SEO and content strategist.",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        seed,
+        "RESCOPED_TEMPLATES",
+        [
+            {
+                "name": entry["name"],
+                "old_role": entry["role"],
+                "old_identity": entry["identity"],
+            }
+        ],
+    )
+    assert await seed.seed_roster() == [template_id]
+
+    moved = await prisma.models.Expert.prisma().find_unique(
+        where={"id": untouched.expert.id}
+    )
+    assert moved is not None
+    assert moved.role == "SEO & Content"
+    assert moved.identity == "You are Maria, an SEO lead."
+    assert moved.bio == "Maria is an SEO and content strategist."
+
+    spared = await prisma.models.Expert.prisma().find_unique(
+        where={"id": edited.expert.id}
+    )
+    assert spared is not None
+    assert spared.role == "Webinars"
+    assert spared.identity == entry["identity"]
+    assert spared.bio == entry["bio"]
+    assert spared.tagline == entry["tagline"]
+
+
+def test_rescoped_templates_name_real_roster_entries():
+    """A rescope entry whose name drifts from ROSTER silently stops matching,
+    leaving the hires it was written for behind."""
+    names = {entry["name"] for entry in seed.ROSTER}
+    for rescope in seed.RESCOPED_TEMPLATES:
+        assert rescope["name"] in names, rescope["name"]
+        entry = next(e for e in seed.ROSTER if e["name"] == rescope["name"])
+        # The persona must actually move; the role may stay (Max kept "Sales"
+        # when the senior package replaced his identity).
+        assert rescope["old_identity"] != entry["identity"], rescope["name"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_seed_backfills_presentation_fields_onto_hired_copies(
     server: SpinTestServer, test_user
 ):
@@ -2936,30 +4571,99 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert hired.expert.avatar_url is None
     assert hired.expert.bio is None
     assert hired.expert.skills == []
+    # The owner's own edits after hire, which no re-seed may touch.
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"skills": ["Customer interviews"], "avatarUrl": "/avatars/mine.svg"},
+    )
 
     entry: seed.RosterEntry = {
         "name": template.name,
         "role": template.role,
+        "job_title": "Marketing Manager",
         "tagline": "Refreshed tagline",
         "avatar_url": "/experts/maria.svg",
         "bio": "Maria is a senior marketing strategist.",
-        "skills": ["Content strategy", "SEO writing"],
+        "bundled_skills": [],
+        "categories": ["marketing"],
         "identity": template.identity,
         "voice_preferences": "Clear and confident.",
         "boundaries": "Never invent customer evidence.",
+        "day_one": [ExpertDayOneItem(title="Social listening on your brand")],
         "preloads": [],
     }
     refreshed_template = await seed._upsert_template(entry)
+    assert refreshed_template.dayOne == [
+        {"title": "Social listening on your brand", "description": "", "timing": ""}
+    ]
     assert await seed._backfill_hired_copies(refreshed_template) == 1
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
-    assert refreshed.avatar_url == "/experts/maria.svg"
+    assert refreshed.job_title == "Marketing Manager"
     assert refreshed.tagline == "Refreshed tagline"
     assert refreshed.bio == "Maria is a senior marketing strategist."
-    assert refreshed.skills == ["Content strategy", "SEO writing"]
-    # A user's rename of their own hire survives the refresh.
+    assert refreshed.categories == ["marketing"]
+    # A user's rename, skill list and avatar survive the refresh: the
+    # template's skills neither replace the owner's nor get merged back into
+    # them, and its avatar never reaches a hire at all.
+    assert refreshed.skills == ["Customer interviews"]
+    assert refreshed.avatar_url == "/avatars/mine.svg"
     assert refreshed.name == "My Maria"
+    # Day one stays on the template; the backfill must not copy it onto hires.
+    assert refreshed.day_one == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_keeps_an_owner_set_avatar(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """An owner picks their hire's avatar, and no re-seed may take it back.
+
+    Driven through ``seed_roster`` rather than the helper, so a later pass
+    that pushes avatars separately fails here rather than silently resetting
+    every hire that ever set one."""
+    entry: seed.RosterEntry = {
+        "name": f"Maria {uuid.uuid4().hex[:8]}",
+        "role": "Marketing",
+        "job_title": "Marketing Generalist",
+        "tagline": "Does all of marketing.",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a generalist marketer.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "You are Maria, a generalist.",
+        "voice_preferences": "Clear and confident.",
+        "voice_samples": [],
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [],
+        "preloads": [],
+        "routines": [],
+    }
+    monkeypatch.setattr(seed, "ROSTER", [entry])
+    (template_id,) = await seed.seed_roster()
+    _seeded_template_ids.append(template_id)
+    hired = await experts_db.hire_expert(test_user.id, template_id, None)
+    assert hired.expert.avatar_url == entry["avatar_url"]
+    await experts_db.update_avatar(test_user.id, hired.expert.id, "/avatars/mine.svg")
+
+    monkeypatch.setattr(
+        seed,
+        "ROSTER",
+        [
+            {
+                **entry,
+                "avatar_url": "/experts/maria-refreshed.svg",
+                "tagline": "Takes a keyword from brief to article.",
+            }
+        ],
+    )
+    assert await seed.seed_roster() == [template_id]
+
+    refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert refreshed is not None
+    assert refreshed.avatar_url == "/avatars/mine.svg"
+    assert refreshed.tagline == "Takes a keyword from brief to article."
 
 
 # ─── Pods ──────────────────────────────────────────────────────────────
@@ -3198,7 +4902,22 @@ def _run_execution(**overrides) -> SimpleNamespace:
 def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
     return SimpleNamespace(
         libraryAgentId="library-agent-1",
+        LibraryAgent=None,
         StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def _library_run_workflow(name: str, graph_name: str | None) -> SimpleNamespace:
+    """A library-only workflow row: no listing, so the name comes from the
+    library agent — or from its graph when the agent was never published."""
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        LibraryAgent=SimpleNamespace(
+            name=name,
+            description=None,
+            AgentGraph=SimpleNamespace(name=graph_name, description=None),
+        ),
+        StoreListingVersion=None,
     )
 
 
@@ -3214,6 +4933,58 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     assert run.link == (
         "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
     )
+
+
+def test_to_expert_run_reports_how_the_run_started():
+    manual = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", "result", needs_review=False
+    )
+    scheduled = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId=None)),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    triggered = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId="wh-1")),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert manual.source == "manual"
+    assert scheduled.source == "scheduled"
+    assert triggered.source == "trigger"
+
+
+@pytest.mark.parametrize(
+    "execution_status",
+    [
+        prisma.enums.AgentExecutionStatus.FAILED,
+        prisma.enums.AgentExecutionStatus.TERMINATED,
+    ],
+)
+def test_to_expert_run_never_reports_a_failed_run_as_completed(execution_status):
+    run = experts_db._to_expert_run(
+        _run_execution(executionStatus=execution_status),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+    )
+    assert run.status == execution_status.value.lower()
+
+
+def test_to_expert_run_names_a_library_only_workflow():
+    run = experts_db._to_expert_run(
+        _run_execution(),
+        _library_run_workflow(None, "My Private Agent"),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert run.agent_name == "My Private Agent"
 
 
 def test_to_expert_run_falls_back_when_workflow_unresolved():
@@ -3392,6 +5163,94 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
     assert [run.status for run in runs] == ["completed", "review"]
     assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar():
+    tz = "Pacific/Auckland"
+    instant = datetime(2026, 1, 1, 11, 30, tzinfo=timezone.utc)
+    today = instant.astimezone(ZoneInfo(tz)).date()
+    yesterday = today - timedelta(days=1)
+    seen: list[tuple] = []
+
+    async def fake_query(sql: str, *args, model):
+        seen.append((sql, args))
+        if '"ChatSession"' in sql:
+            return [model(day=today, count=2), model(day=yesterday, count=1)]
+        return [model(day=today, count=3)]
+
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=True)
+        ),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone=tz)),
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=fake_query),
+        patch.object(experts_db, "datetime", wraps=datetime) as clock,
+    ):
+        clock.now.return_value = instant.astimezone(ZoneInfo(tz))
+        activity = await experts_db.get_expert_activity("owner-1", "expert-1")
+
+    assert activity.timezone == tz
+    assert len(activity.days) == 365
+    assert activity.days[-1].day == today
+    assert activity.days[0].day == today - timedelta(
+        days=experts_db.EXPERT_ACTIVITY_DAYS - 1
+    )
+    assert [d.day for d in activity.days] == sorted(d.day for d in activity.days)
+    assert (activity.days[-1].sessions, activity.days[-1].runs) == (2, 3)
+    assert (activity.days[-2].sessions, activity.days[-2].runs) == (1, 0)
+    assert all(d.sessions == 0 and d.runs == 0 for d in activity.days[:-2])
+
+    assert {'"ChatSession"' in sql for sql, _ in seen} == {True, False}
+    for sql, args in seen:
+        assert args[:3] == ("owner-1", "expert-1", tz)
+        assert args[3] == datetime.combine(
+            activity.days[0].day, datetime.min.time(), tzinfo=ZoneInfo(tz)
+        )
+        assert ('"isDeleted" = false' in sql) == ('"AgentGraphExecution"' in sql)
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_rejects_missing_or_foreign_expert():
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=False)
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=AsyncMock()) as query,
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db.get_expert_activity("owner-1", "foreign-expert")
+
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_expert_activity_counts_sessions_by_day(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id, name="Otto", role=None, voice_preferences=None
+    )
+    for _ in range(2):
+        await create_chat_session(owner.id, dry_run=False, expert_id=raised.expert.id)
+    await create_chat_session(owner.id, dry_run=False)
+
+    instant = datetime(2026, 1, 1, 23, 59, tzinfo=timezone.utc)
+    await prisma.models.ChatSession.prisma().update_many(
+        where={"userId": owner.id}, data={"createdAt": instant}
+    )
+    with patch.object(experts_db, "datetime", wraps=datetime) as clock:
+        clock.now.return_value = instant
+        activity = await experts_db.get_expert_activity(owner.id, raised.expert.id)
+
+    assert activity.timezone == "UTC"
+    assert activity.days[-1].day == instant.date()
+    assert activity.days[-1].sessions == 2
+    assert sum(d.sessions for d in activity.days) == 2
+    assert sum(d.runs for d in activity.days) == 0
 
 
 @pytest.mark.asyncio
@@ -3589,3 +5448,1340 @@ def test_expert_soul_fields_patch_strips_and_preserves_none():
     assert patch.voice_preferences == ""
     assert patch.boundaries == "Keep it short."
     assert patch.identity is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_every_name_before_copying(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    copies: list[str] = []
+
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names if n != "missing"}
+
+    async def _copy(user_id, expert_id, name):
+        copies.append(name)
+        return name
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["valid", "missing"]
+        )
+    assert copies == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_keeps_the_display_name_of_a_skill_already_carried(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """Copying returns the folder slug; a name the expert already carries must
+    not be renamed to it behind the user's back."""
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _slugs("deep-research"))
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied_slug)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.add_expert_skill_name(
+        test_user.id, hired.expert.id, "Deep Research"
+    )
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["Deep Research"]
+    )
+
+    assert updated.skills == ["Deep Research"]
+
+
+async def _copied_slug(user_id, expert_id, name):
+    return name.strip().lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_drops_a_name_whose_source_vanished_before_the_copy(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """The library lookup and the copy are separate awaits, so a skill can be
+    deleted in between; the row must not end up listing it."""
+
+    async def _find(user_id, names):
+        return {n.strip().lower(): n for n in names}
+
+    async def _copy(user_id, expert_id, name):
+        return None if name == "vanishing" else name
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slugs", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["kept", "vanishing"]
+    )
+
+    assert updated.skills == ["kept"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_skill_names_add_and_remove_atomically(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+
+    await asyncio.gather(
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "alpha"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "beta"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "Alpha"),
+    )
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert sorted(s.lower() for s in row.skills) == sorted(
+        {*(s.lower() for s in template.skills), "alpha", "beta"}
+    )
+
+    await experts_db.remove_expert_skill_name(test_user.id, expert_id, "ALPHA")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert "alpha" not in {s.lower() for s in row.skills}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("operation", ["add", "remove"])
+async def test_expert_skill_name_write_keeps_an_append_that_lands_mid_write(
+    server: SpinTestServer, test_user, operation
+):
+    """store_skill can append to the row between this write's read and its
+    update; the update must retry against the new list, never overwrite it."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "stale")
+    real = prisma.models.Expert.prisma()
+    raced: list[bool] = []
+
+    async def read_then_race(**kwargs):
+        row = await real.find_first(**kwargs)
+        if not raced:
+            raced.append(True)
+            await real.update(
+                where={"id": expert_id}, data={"skills": {"push": ["from-the-chat"]}}
+            )
+        return row
+
+    manager = SimpleNamespace(find_first=read_then_race, update_many=real.update_many)
+    with patch.object(prisma.models.Expert, "prisma", return_value=manager):
+        if operation == "add":
+            await experts_db.add_expert_skill_name(
+                test_user.id, expert_id, "from-the-ui"
+            )
+        else:
+            await experts_db.remove_expert_skill_name(test_user.id, expert_id, "stale")
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None and raced
+    names = {s.lower() for s in row.skills}
+    assert "from-the-chat" in names
+    if operation == "add":
+        assert "from-the-ui" in names
+    else:
+        assert "stale" not in names
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("name", ["old-skill", "agent_building_guide"])
+async def test_update_skills_dropping_a_skill_removes_the_copy_and_the_row_name(
+    server: SpinTestServer, test_user, name
+):
+    """A dropped skill loses its folder copy, or the listing, which reads the
+    folder, would keep offering it; a built-in has no copy, so only the row
+    write in update_skills removes its name."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    fake = _FakeWorkspaceManager()
+    copy = f"/experts/{expert_id}/skills/{name}/SKILL.md"
+    if name == "old-skill":
+        fake.files[copy] = b"---\nname: old-skill\ndescription: d\n---\nsteps\n"
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, name)
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        updated = await experts_db.update_skills(test_user.id, expert_id, [])
+
+    assert copy not in fake.files
+    assert name not in {s.lower() for s in updated.skills}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_skill_names_treat_a_display_name_and_its_slug_as_one(
+    server: SpinTestServer, test_user
+):
+    """The row can hold a display name ("My Skill") for the skill stored as
+    "my-skill": recording the slug adds no second entry, and forgetting either
+    spelling removes the one entry."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "My Skill")
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "my-skill")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert [s for s in row.skills if s.lower() in ("my skill", "my-skill")] == [
+        "My Skill"
+    ]
+
+    await experts_db.remove_expert_skill_name(test_user.id, expert_id, "my-skill")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert not [s for s in row.skills if s.lower() in ("my skill", "my-skill")]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("operation", ["add", "remove"])
+async def test_expert_skill_name_write_gives_up_as_a_conflict_after_losing_every_race(
+    server: SpinTestServer, test_user, operation
+):
+    """A row that keeps changing under the write ends in the typed conflict the
+    API maps to 409, after a bounded number of attempts and with nothing written."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    await experts_db.add_expert_skill_name(test_user.id, expert_id, "stale")
+    before = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert before is not None
+    real = prisma.models.Expert.prisma()
+    attempts: list[int] = []
+
+    async def always_loses(**kwargs):
+        attempts.append(1)
+        return 0
+
+    manager = SimpleNamespace(find_first=real.find_first, update_many=always_loses)
+    with patch.object(prisma.models.Expert, "prisma", return_value=manager):
+        with pytest.raises(ConflictError):
+            if operation == "add":
+                await experts_db.add_expert_skill_name(
+                    test_user.id, expert_id, "new-name"
+                )
+            else:
+                await experts_db.remove_expert_skill_name(
+                    test_user.id, expert_id, "stale"
+                )
+
+    assert len(attempts) == experts_db._SKILL_NAME_WRITE_ATTEMPTS
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None and row.skills == before.skills
+
+
+async def _template(name: str, **fields) -> prisma.models.Expert:
+    template = await prisma.models.Expert.prisma().create(
+        data={
+            "name": name,
+            "role": fields.pop("role", "Writer"),
+            "identity": f"You are {name}.",
+            "isTemplate": True,
+            **fields,
+        }
+    )
+    _seeded_template_ids.append(template.id)
+    return template
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_filters_by_category(server: SpinTestServer):
+    """A category chip narrows the roster, and never widens it: an expert
+    filed under another category must not surface under an unrelated chip."""
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mira {suffix}", categories=["marketing"])
+    seller = await _template(f"Sal {suffix}", categories=["sales"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="marketing")}
+    assert marketer.id in listed
+    assert seller.id not in listed
+
+    assert marketer.categories == ["marketing"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_category_filter_accepts_a_legacy_alias(
+    server: SpinTestServer,
+):
+    """`category_match_values` folds aliases, so a chip stored as "seo"
+    still matches an expert filed under the canonical "marketing"."""
+    suffix = uuid.uuid4().hex[:8]
+    marketer = await _template(f"Mo {suffix}", categories=["marketing"])
+    seller = await _template(f"So {suffix}", categories=["sales"])
+
+    listed = {t.id for t in await experts_db.list_templates(category="seo")}
+    assert marketer.id in listed
+    # Without the exclusion this passes on an unfiltered list, which would
+    # prove nothing about the alias.
+    assert seller.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_without_a_category_keeps_uncategorised_experts(
+    server: SpinTestServer,
+):
+    """The unfiltered roster is the whole roster. `category_filter_values`
+    would narrow it to experts that HAVE a canonical category once
+    `marketplace_require_canonical_category` is on, hiding this one."""
+    plain = await _template(f"Nil {uuid.uuid4().hex[:8]}")
+
+    assert plain.categories == []
+    assert plain.id in {t.id for t in await experts_db.list_templates()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_searches_name_role_tagline_and_bio(
+    server: SpinTestServer,
+):
+    suffix = uuid.uuid4().hex[:8]
+    by_name = await _template(f"Marigold {suffix}")
+    by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
+    by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
+
+    async def ids_for(query: str) -> set[str]:
+        return {t.id for t in await experts_db.list_templates(search_query=query)}
+
+    assert by_name.id in await ids_for("marigold")
+    assert by_role.id in await ids_for(f"podcaster {suffix}")
+    assert by_tagline.id in await ids_for(f"books {suffix}")
+    assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
+
+    # One term, four templates: the OR spans the four searchable columns.
+    assert await ids_for(suffix) >= {
+        by_name.id,
+        by_role.id,
+        by_tagline.id,
+        by_bio.id,
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_misses_return_nothing(server: SpinTestServer):
+    await _template(f"Quiet {uuid.uuid4().hex[:8]}")
+
+    assert await experts_db.list_templates(search_query=uuid.uuid4().hex) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_treats_a_blank_search_as_no_filter(
+    server: SpinTestServer,
+):
+    template = await _template(f"Blank {uuid.uuid4().hex[:8]}")
+
+    listed = await experts_db.list_templates(search_query="   ")
+
+    assert template.id in {t.id for t in listed}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_combines_search_and_category(server: SpinTestServer):
+    suffix = uuid.uuid4().hex[:8]
+    matching = await _template(f"Both {suffix}", categories=["marketing"])
+    wrong_category = await _template(f"Both {suffix} too", categories=["sales"])
+    # Right category, wrong name: without the search half this one leaks in,
+    # which is what makes the test load-bearing for both filters at once.
+    wrong_name = await _template(f"Neither {suffix}", categories=["marketing"])
+
+    listed = {
+        t.id
+        for t in await experts_db.list_templates(
+            search_query=f"both {suffix}", category="marketing"
+        )
+    }
+    assert listed == {matching.id}
+    assert wrong_category.id not in listed
+    assert wrong_name.id not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_copies_the_template_categories(server: SpinTestServer, test_user):
+    template = await _template(f"Cat {uuid.uuid4().hex[:8]}", categories=["operations"])
+
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    assert hired.expert.categories == ["operations"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_seed_roster_files_every_template_under_a_canonical_category(
+    server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
+):
+    await _load_roster_store_assets()
+    ids = await seed.seed_roster()
+    seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
+
+    for entry in fixture_roster.values():
+        assert seeded[entry["name"]].categories == entry["categories"]
+        assert set(entry["categories"]) <= {c.value for c in StoreCategory}
+
+
+# =============================================================================
+# Funnel analytics emissions
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_emits_hire_completed(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_expert_emits_hire_failed_on_unknown_template(
+    server: SpinTestServer, test_user
+):
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        with pytest.raises(experts_db.ExpertTemplateNotFoundError):
+            await experts_db.hire_expert(test_user.id, "missing-template-id", None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_failed",
+        {"template_id": "missing-template-id", "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_completed_reports_failed_preloads_count(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        with patch.object(experts_db, "emit_funnel_event") as emit:
+            await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_idempotent_rehire_does_not_reemit_hire_completed(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reviving_archived_expert_emits_hire_completed(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_revival_emits_hire_completed_once(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        first, second = await asyncio.gather(
+            experts_db.hire_expert(test_user.id, template.id, None),
+            experts_db.hire_expert(test_user.id, template.id, None),
+        )
+
+    assert first.expert.id == hired.expert.id
+    assert second.expert.id == hired.expert.id
+    assert not first.expert.is_archived
+    assert not second.expert.is_archived
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 0},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_expert_emits_expert_fired(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+    emit.assert_called_once_with(
+        test_user.id, "expert_fired", {"expert_id": hired.expert.id}
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rearchive_does_not_reemit_expert_fired(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archive_unknown_expert_still_raises(server: SpinTestServer, test_user):
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.archive_expert(test_user.id, "missing-expert-id")
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_emits_workflow_installed(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+    emit.assert_called_once_with(
+        test_user.id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": hired.expert.id,
+            "source": "marketplace",
+            "store_listing_version_id": slv_id,
+        },
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_emits_for_the_library_source_too(
+    server: SpinTestServer, test_user
+):
+    """Installing one of the caller's own library agents is the same funnel
+    step as installing a marketplace listing, and must be counted as one."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    library_agent = await experts_db.library_db.add_store_agent_to_library(
+        slv_id, test_user.id
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent.id
+        )
+    emit.assert_called_once_with(
+        test_user.id,
+        "workflow_installed_on_expert",
+        {
+            "expert_id": hired.expert.id,
+            "source": "library",
+            "library_agent_id": library_agent.id,
+        },
+    )
+
+    # A repeat install is the same attachment, so it is not a second step.
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent.id
+        )
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_race_returns_winner_without_emitting(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    winner = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    winner_row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"id": winner.id}, include=experts_db._WORKFLOW_ROW_INCLUDE
+    )
+    assert winner_row is not None
+    workflow_client = MagicMock(
+        find_first=AsyncMock(side_effect=[None, winner_row]),
+        create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
+    )
+
+    with (
+        patch.object(
+            prisma.models.ExpertWorkflow,
+            "prisma",
+            return_value=workflow_client,
+        ),
+        patch.object(
+            experts_db.library_db,
+            "add_store_agent_to_library",
+            new_callable=AsyncMock,
+            return_value=SimpleNamespace(id=winner.library_agent_id),
+        ),
+        patch.object(experts_db, "emit_funnel_event") as emit,
+    ):
+        raced = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+    assert raced.id == winner.id
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_emits_writing_style_when_voice_is_first_added(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara",
+                identity="You are Mara, a thoughtful strategist.",
+                voice_preferences="Warm, concise, and direct.",
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+    emit.assert_called_once_with(
+        test_user.id, "writing_style_added", {"expert_id": hired.expert.id}
+    )
+
+
+@pytest.mark.parametrize(
+    "next_voice",
+    ["", "Deliberate, detailed, and formal."],
+    ids=["removed", "replaced"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_skips_writing_style_when_existing_voice_changes(
+    server: SpinTestServer, test_user, next_voice: str
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences="Warm, concise, and direct.",
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara",
+                identity="You are Mara, a thoughtful strategist.",
+                voice_preferences=next_voice,
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_copilot_soul_patch_emits_writing_style_on_first_add(
+    server: SpinTestServer, test_user
+):
+    """The copilot's Soul-edit path writes voicePreferences without going
+    through update_soul, so it needs the same first-add gate."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.update_soul_fields(
+        test_user.id, hired.expert.id, voice_preferences=""
+    )
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        applied = await experts_db.update_soul_fields_if_current(
+            test_user.id,
+            hired.expert.id,
+            voice_preferences="Warm, concise, and direct.",
+            expected_voice_preferences="",
+        )
+    assert applied
+    emit.assert_called_once_with(
+        test_user.id, "writing_style_added", {"expert_id": hired.expert.id}
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_soul_fields_if_current(
+            test_user.id,
+            hired.expert.id,
+            voice_preferences="Warm and brief.",
+            expected_voice_preferences="Warm, concise, and direct.",
+        )
+    emit.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_skips_writing_style_when_voice_unchanged(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    voice = "Warm, concise, and direct."
+    await experts_db.update_soul(
+        test_user.id,
+        hired.expert.id,
+        ExpertSoulUpdate(
+            name="Mara",
+            identity="You are Mara, a thoughtful strategist.",
+            voice_preferences=voice,
+            boundaries="Never invent customer evidence.",
+        ),
+    )
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db.update_soul(
+            test_user.id,
+            hired.expert.id,
+            ExpertSoulUpdate(
+                name="Mara Two",
+                identity="You are Mara, refreshed.",
+                voice_preferences=voice,
+                boundaries="Never invent customer evidence.",
+            ),
+        )
+    emit.assert_not_called()
+
+
+# =============================================================================
+# Routines: the lifecycle against a real database
+# =============================================================================
+
+
+def _fake_scheduler() -> AsyncMock:
+    """Stands in for the scheduler service, which these tests do not run.
+
+    Each ``add_copilot_turn_schedule`` hands back a distinct id, so a test can
+    tell one-job-per-cron from one-job-reused.
+    """
+    scheduler = AsyncMock()
+    counter = itertools.count(1)
+    scheduler.add_copilot_turn_schedule = AsyncMock(
+        side_effect=lambda **_: SimpleNamespace(id=f"routine-sched-{next(counter)}")
+    )
+    scheduler.pause_schedule = AsyncMock(return_value=True)
+    scheduler.resume_schedule = AsyncMock(return_value=True)
+    scheduler.delete_schedule = AsyncMock(return_value=None)
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    return scheduler
+
+
+async def _template_with_routine(**overrides) -> prisma.models.Expert:
+    """A roster template shipping one proposal, off and reaching nothing."""
+    template = await _seed_template(name="Routiner", preload_listings=[])
+    data: prisma.types.ExpertRoutineCreateInput = {
+        "expertId": template.id,
+        "key": "queue-sweep",
+        "title": "Sweep the queue",
+        "prompt": "Read the queue and stage a draft per item.",
+        "crons": ["H 9 * * 1-5"],
+        "asks": ["Where is the queue?"],
+        **overrides,
+    }
+    await prisma.models.ExpertRoutine.prisma().create(data=data)
+    return template
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_copies_routines_switched_off_with_no_schedule(
+    server: SpinTestServer, test_user
+):
+    """The whole promise of a seeded routine: it arrives, and it does nothing
+    until somebody says so. A row with a scheduleId here would be a cadence
+    firing unattended from the day of hire."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    assert [r.key for r in installed] == ["queue-sweep"]
+    assert installed[0].enabled is False
+    assert installed[0].customized is False
+    assert installed[0].grants_credentials is False
+    # The line the fire-time mute reads: somebody else wrote this prompt.
+    assert installed[0].source == "TEMPLATE"
+    rows = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    assert rows[0].scheduleIds == []
+    assert rows[0].sessionId is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_with_unanswered_asks_refuses_to_be_scheduled(
+    server: SpinTestServer, test_user
+):
+    """Enabling straight off the template would run somebody's account against
+    a guess, every weekday, with nobody watching."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)
+
+    rows = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"id": installed[0].id}
+    )
+    assert rows[0].enabledAt is None
+    assert rows[0].scheduleIds == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_enabling_a_routine_resolves_it_and_creates_one_job_per_cron(
+    server: SpinTestServer, test_user
+):
+    template = await _template_with_routine(crons=["H 9 * * 1-5", "H 13 * * 1-5"])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        enabled = await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            installed[0].id,
+            prompt="Read the support queue and stage a draft per ticket.",
+        )
+
+    assert enabled.enabled is True
+    assert enabled.customized is True
+    assert enabled.prompt.startswith("Read the support queue")
+    # H is resolved before anything reaches APScheduler, which has never heard
+    # of it. Asserted against the resolver rather than "the two minutes
+    # differ": the minute is one byte of a digest modulo 60, so two fire times
+    # of one routine collide about once in sixty runs, and that assertion
+    # failed on its own with nothing changed.
+    assert all(not c.startswith("H ") for c in enabled.crons)
+    assert enabled.crons == [
+        routine_jobs.spread_cron(cron, seed=f"{test_user.id}:queue-sweep:{index}")
+        for index, cron in enumerate(["H 9 * * 1-5", "H 13 * * 1-5"])
+    ]
+    rows = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"id": installed[0].id}
+    )
+    assert len(rows[0].scheduleIds) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_roster_edit_never_rewrites_a_routine_that_is_running(
+    server: SpinTestServer, test_user
+):
+    """The rule the whole sync hangs on: once a routine is on, or once its
+    owner has changed anything about it, what it does is theirs."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(
+            test_user.id, hired.expert.id, installed[0].id, prompt="The owner's words."
+        )
+
+    entry: seed.RosterEntry = {
+        **seed.ROSTER[0],
+        "name": template.name,
+        "routines": [
+            {
+                "key": "queue-sweep",
+                "title": "Rewritten by the roster",
+                "prompt": "The roster's words.",
+                "crons": ["H 6 * * *"],
+                "asks": [],
+                "session_mode": "THREAD",
+            }
+        ],
+    }
+    await seed._sync_hired_routines(template.id, entry)
+
+    after = await experts_db.list_routines(test_user.id, hired.expert.id)
+    assert after[0].prompt == "The owner's words."
+    assert after[0].title == "Sweep the queue"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_roster_edit_refreshes_a_routine_offer_nobody_has_taken(
+    server: SpinTestServer, test_user
+):
+    """The other half of the same rule: an untouched, still-off proposal is an
+    offer, and refreshing an offer reaches people who hired last month."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    entry: seed.RosterEntry = {
+        **seed.ROSTER[0],
+        "name": template.name,
+        "routines": [
+            {
+                "key": "queue-sweep",
+                "title": "Sweep the queue, better worded",
+                "prompt": "The roster's improved words.",
+                "crons": ["H 6 * * *"],
+                "asks": ["Where is the queue?"],
+                "session_mode": "THREAD",
+            }
+        ],
+    }
+    await seed._sync_hired_routines(template.id, entry)
+
+    after = await experts_db.list_routines(test_user.id, hired.expert.id)
+    assert after[0].title == "Sweep the queue, better worded"
+    assert after[0].enabled is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_expert_can_record_a_routine_it_agreed_in_conversation(
+    server: SpinTestServer, test_user
+):
+    """A raised expert has no template, so this is the only way it gets any
+    standing work at all."""
+    template = await _seed_template(name="Routineless", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    created = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Morning triage",
+        prompt="Read overnight tickets and rank them.",
+        crons=["H 8 * * 1-5"],
+        session_mode="FRESH",
+    )
+
+    assert created.key is None
+    assert created.enabled is False
+    assert created.customized is True
+    assert created.session_mode == "FRESH"
+    # No third party in the prompt, so it is not muted like a template.
+    assert created.source == "OWNER"
+    assert created.grants_credentials is True
+    assert [
+        r.id for r in await experts_db.list_routines(test_user.id, hired.expert.id)
+    ] == [created.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_belongs_to_its_owner_only(
+    server: SpinTestServer, test_user, other_user
+):
+    """The routine id is the only handle a caller needs, so it is the only
+    thing standing between somebody and another account's standing work."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with (
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
+        pytest.raises(routines.RoutineNotFoundError),
+    ):
+        await experts_db.enable_routine(
+            other_user.id, hired.expert.id, installed[0].id, prompt="Mine now."
+        )
+    with pytest.raises(routines.RoutineNotFoundError):
+        await experts_db.create_routine(
+            other_user.id,
+            hired.expert.id,
+            title="Mine now",
+            prompt="Do my bidding.",
+            crons=["H 8 * * *"],
+        )
+    assert await experts_db.list_routines(other_user.id, hired.expert.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_archiving_stops_routines_and_re_hire_resumes_exactly_those(
+    server: SpinTestServer, test_user
+):
+    """Archiving has to stop a routine re-arming forever, and re-hire has to
+    bring back what archiving stopped — never one switched off on purpose."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        running = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, installed[0].id, prompt="Running."
+        )
+    off = await experts_db.create_routine(
+        test_user.id,
+        hired.expert.id,
+        title="Left off",
+        prompt="Off.",
+        crons=["H 7 * * *"],
+    )
+
+    with (
+        patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler),
+        patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
+    ):
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+    paused = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    by_id = {row.id: row for row in paused}
+    assert by_id[running.id].pausedByExpertArchive is True
+    assert by_id[off.id].pausedByExpertArchive is False
+
+    with (
+        patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler),
+        patch.object(scheduling, "get_scheduler_client", return_value=scheduler),
+    ):
+        await experts_db.hire_expert(test_user.id, template.id, None)
+    revived = {
+        row.id: row
+        for row in await prisma.models.ExpertRoutine.prisma().find_many(
+            where={"expertId": hired.expert.id}
+        )
+    }
+    assert revived[running.id].pausedByExpertArchive is False
+    assert revived[running.id].enabledAt is not None
+    assert revived[off.id].enabledAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_account_holds_routines_of_its_own(server: SpinTestServer, test_user):
+    """Otto is the platform's default assistant, not a row in ``Expert``, so
+    its standing work hangs off the owner. Without this the only way to defer
+    repeating work from an Otto chat was a follow-up pinned to whatever chat
+    the user happened to be in."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Weekly calendar read",
+        prompt="Read the week ahead and flag the conflicts.",
+        crons=["H 8 * * 1"],
+    )
+
+    assert created.expert_id is None
+    assert created.source == "OWNER"
+    assert [r.id for r in await experts_db.list_routines(test_user.id)] == [created.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_accounts_routines_and_an_experts_do_not_leak_into_each_other(
+    server: SpinTestServer, test_user
+):
+    """``expertId IS NULL`` is load-bearing in the account query: without it,
+    asking Otto for its routines would answer with every expert's as well."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    mine = await experts_db.create_routine(
+        test_user.id, None, title="Mine", prompt="Mine.", crons=["H 8 * * 1"]
+    )
+
+    account = await experts_db.list_routines(test_user.id)
+    expert = await experts_db.list_routines(test_user.id, hired.expert.id)
+    assert [r.id for r in account] == [mine.id]
+    assert [r.key for r in expert] == ["queue-sweep"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_routine_belongs_to_one_account_only(
+    server: SpinTestServer, test_user, other_user
+):
+    mine = await experts_db.create_routine(
+        test_user.id, None, title="Mine", prompt="Mine.", crons=["H 8 * * 1"]
+    )
+
+    assert await experts_db.list_routines(other_user.id) == []
+    with (
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
+        pytest.raises(routines.RoutineNotFoundError),
+    ):
+        await experts_db.enable_routine(
+            other_user.id, None, mine.id, prompt="Mine now."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_one_shot_gets_a_row_and_exactly_one_job(
+    server: SpinTestServer, test_user
+):
+    """ "Check the deploy at six" is a row like anything else, so it can be
+    listed, reworded and cancelled — and later counted."""
+    run_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check whether the deploy finished.",
+        run_at=run_at,
+    )
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        enabled = await experts_db.enable_routine(test_user.id, None, created.id)
+
+    assert enabled.crons == []
+    assert enabled.run_at is not None
+    assert enabled.enabled is True
+    assert len(scheduler.add_copilot_turn_schedule.await_args_list) == 1
+    call = scheduler.add_copilot_turn_schedule.await_args.kwargs
+    assert call["cron"] is None
+    assert call["run_at"] is not None
+    assert call["routine_id"] == created.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_spent_one_shot_stops_reading_as_scheduled(
+    server: SpinTestServer, test_user
+):
+    """APScheduler drops the job once it fires. The row outlives it on purpose,
+    so something has to say it has run — otherwise it goes on describing itself
+    as scheduled for a time that has passed."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check it.",
+        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.record_routine_fired(created.id)
+
+    after = await experts_db.list_routines(test_user.id)
+    assert after[0].enabled is False
+    assert after[0].run_at is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_firing_a_recurring_routine_does_not_spend_it(
+    server: SpinTestServer, test_user
+):
+    """A cadence's next run is the point of it; only a one-shot is spent."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Weekly", prompt="Weekly.", crons=["H 8 * * 1"]
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.record_routine_fired(created.id)
+
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_re_arming_a_one_shot_at_a_time_that_has_passed_is_refused(
+    server: SpinTestServer, test_user
+):
+    """Firing immediately and never firing are both plausible readings of a
+    past time, and neither is what the owner asked for."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Check the deploy",
+        prompt="Check it.",
+        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+    with (
+        patch.object(
+            routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+        ),
+        pytest.raises(ValueError),
+    ):
+        await experts_db.enable_routine(
+            test_user.id,
+            None,
+            created.id,
+            run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_runs_on_a_cadence_or_at_a_time_but_not_both(
+    server: SpinTestServer, test_user
+):
+    with pytest.raises(ValueError):
+        await experts_db.create_routine(
+            test_user.id,
+            None,
+            title="Both",
+            prompt="Both.",
+            crons=["H 8 * * 1"],
+            run_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    with pytest.raises(ValueError):
+        await experts_db.create_routine(
+            test_user.id, None, title="Neither", prompt="Neither."
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_losing_its_last_job_switches_a_routine_off(
+    server: SpinTestServer, test_user
+):
+    """The fire path removes a job whose chat is gone. A row left saying it is
+    on with nothing behind it is the one state the owner cannot act on: the UI
+    offers to switch off something that is already not running."""
+    created = await experts_db.create_routine(
+        test_user.id,
+        None,
+        title="Pinned somewhere deleted",
+        prompt="Read it.",
+        crons=["H 8 * * 1", "H 13 * * 1"],
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+    row = await prisma.models.ExpertRoutine.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert row is not None
+    first, second = row.scheduleIds
+
+    await experts_db.mark_routine_unscheduled(created.id, first)
+    # One fire time lost out of two is still a running routine.
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+    await experts_db.mark_routine_unscheduled(created.id, second)
+    after = await experts_db.list_routines(test_user.id)
+    assert after[0].enabled is False
+    assert (
+        await prisma.models.ExpertRoutine.prisma().find_unique(where={"id": created.id})
+    ).scheduleIds == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unknown_schedule_id_leaves_the_routine_alone(
+    server: SpinTestServer, test_user
+):
+    """The cleanup is keyed on a job the row actually holds, so a stale or
+    replayed call cannot switch off a routine that is running fine."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Fine", prompt="Fine.", crons=["H 8 * * 1"]
+    )
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+
+    await experts_db.mark_routine_unscheduled(created.id, "some-other-job")
+
+    assert (await experts_db.list_routines(test_user.id))[0].enabled is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_changing_a_running_routines_cadence_retires_the_old_jobs(
+    server: SpinTestServer, test_user
+):
+    """Editing in place is the point of the row — the routine keeps its thread
+    and its history. But the jobs behind it are replaced, and an old one left
+    armed would go on firing the cadence the owner just changed away from,
+    forever, with the row insisting it runs at the new time."""
+    created = await experts_db.create_routine(
+        test_user.id, None, title="Morning", prompt="Read it.", crons=["H 8 * * 1"]
+    )
+    scheduler = _fake_scheduler()
+    with patch.object(routine_jobs, "get_scheduler_client", return_value=scheduler):
+        await experts_db.enable_routine(test_user.id, None, created.id)
+        first = (
+            await prisma.models.ExpertRoutine.prisma().find_unique(
+                where={"id": created.id}
+            )
+        ).scheduleIds
+        await experts_db.enable_routine(
+            test_user.id, None, created.id, crons=["H 17 * * 5"]
+        )
+
+    deleted = {c.args[0] for c in scheduler.delete_schedule.await_args_list}
+    assert set(first) <= deleted
+    after = await prisma.models.ExpertRoutine.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert after is not None
+    assert not set(after.scheduleIds) & set(first)
+    assert after.crons[0].endswith(" 17 * * 5")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_switched_off_can_be_switched_back_on(
+    server: SpinTestServer, test_user
+):
+    """The asks are answered once and the answers live in the row. Reading only
+    the current call meant a routine that was set up, run, and switched off
+    could never run again: its questions are still listed, and there is no way
+    to answer them a second time."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    with patch.object(
+        routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
+    ):
+        await experts_db.enable_routine(
+            test_user.id,
+            hired.expert.id,
+            installed[0].id,
+            prompt="Read the support queue.",
+        )
+        await experts_db.disable_routine(test_user.id, hired.expert.id, installed[0].id)
+        again = await experts_db.enable_routine(
+            test_user.id, hired.expert.id, installed[0].id
+        )
+
+    assert again.enabled is True
+    # And it comes back as what the owner set up, not as the template's draft.
+    assert again.prompt == "Read the support queue."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_routine_proposal_nobody_answered_still_refuses(
+    server: SpinTestServer, test_user
+):
+    """The other half: relaxing the check must not let an untouched template
+    routine schedule itself against guesses."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await experts_db.enable_routine(test_user.id, hired.expert.id, installed[0].id)

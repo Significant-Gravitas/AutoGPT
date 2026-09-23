@@ -2,6 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -118,6 +119,7 @@ export function LibraryAgentCard({
             ) : (
               <Image
                 src={image_url}
+                unoptimized={isLocalStoreMediaUrl(image_url)}
                 alt={`${name} preview image`}
                 width={107}
                 height={58}

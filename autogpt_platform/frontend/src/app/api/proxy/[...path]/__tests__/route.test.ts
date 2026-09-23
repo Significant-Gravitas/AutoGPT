@@ -282,6 +282,40 @@ describe("proxy route — handler pass-through", () => {
       `${BACKEND}/api/v1/items?page=2&size=20`,
     );
   });
+
+  it("hardens a public shared-file response after proxying storage", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("<script>window.name = 'executed'</script>", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": 'inline; filename="payload.html"',
+        },
+      }),
+    );
+
+    const shareToken = "550e8400-e29b-41d4-a716-446655440000";
+    const fileID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+    const path = [
+      "api",
+      "public",
+      "shared",
+      shareToken,
+      "files",
+      fileID,
+      "download",
+    ];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="payload.html"',
+    );
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
 });
 
 describe("proxy route — response-start timeout", () => {

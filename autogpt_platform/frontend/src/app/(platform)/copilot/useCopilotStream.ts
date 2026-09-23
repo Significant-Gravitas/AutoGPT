@@ -32,6 +32,7 @@ import {
   hasVisibleAssistantContent,
   isEngineSwitchPart,
 } from "./helpers";
+import { asMidTurnFallbackRow } from "./components/ChatMessagesContainer/midTurnSplit";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
 import {
@@ -113,6 +114,13 @@ export function useCopilotStream({
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  // The envelope behind our own cap, when the backend sent one. It rides
+  // along to the plan dialog so that dialog can also offer a linked
+  // subscription to continue on: the cap does not apply to a turn billed to
+  // the user's own credential, so a connected ChatGPT account is a way out
+  // that costs them nothing more.
+  const [platformLimitFailure, setPlatformLimitFailure] =
+    useState<ProviderFailure | null>(null);
   // A linked subscription that stopped accepting turns, as opposed to our own
   // credits running out. Held separately because the answer is different.
   const [providerLimit, setProviderLimit] = useState<ProviderFailure | null>(
@@ -124,6 +132,7 @@ export function useCopilotStream({
   } | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
+    setPlatformLimitFailure(null);
   }
   const chatRuntime = useMemo(() => {
     if (!sessionId) return null;
@@ -250,7 +259,7 @@ export function useCopilotStream({
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
-        onRateLimit: (message, limitFailure) => {
+        onRateLimit: (message, limitFailure, origin) => {
           // Backend raises 429 BEFORE persisting the user message, so the
           // optimistic user bubble added by useChat is a lie. Restore the text
           // into the composer (via the same store slot URL pre-fills use) and
@@ -299,22 +308,28 @@ export function useCopilotStream({
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
           //
-          // Which limit it is turns on whether the server sent a failure
-          // envelope, not on which connection the turn ran on. Our own daily
-          // budget is refused at admission and arrives with no envelope; an
-          // upstream 429 always carries one. Reading the connection instead
-          // meant a self-host -- where the route is "platform" because the
-          // deployment holds the key -- was told "Daily AutoPilot limit
-          // reached, upgrade your plan" when its own OpenRouter or local
-          // gateway had rate-limited it. That is a claim about an account we
-          // do not bill, offering a plan that would not help.
-          if (limitFailure) {
+          // Which limit it is turns on where the turn was refused, not on
+          // which connection it ran on. Our own budget is refused at
+          // admission, before the stream opens; a provider refuses mid-turn,
+          // on the stream. Both carry an envelope now, so the envelope alone
+          // no longer says which. Reading the connection instead meant a
+          // self-host -- where the route is "platform" because the deployment
+          // holds the key -- was told "Daily usage limit reached, upgrade
+          // your plan" when its own OpenRouter or local gateway had
+          // rate-limited it. That is a claim about an account we do not bill,
+          // offering a plan that would not help.
+          if (limitFailure && origin === "provider") {
             // A later turn can fail in exactly the same way as an earlier one
             // the user dismissed. Live stream evidence is a new occurrence.
             dismissedProviderFailureRef.current = null;
             setProviderLimit(limitFailure);
           } else {
-            setRateLimitMessage(message);
+            // Our own cap. The envelope, when there is one, lets the plan
+            // dialog offer a linked subscription to continue on beside the
+            // upgrade it always offered. Older backends send a bare string
+            // here and get the dialog exactly as it was.
+            setPlatformLimitFailure(limitFailure ?? null);
+            setRateLimitMessage(limitFailure?.message || message);
           }
         },
         onReconnect: () => handleReconnectRef.current(),
@@ -433,18 +448,31 @@ export function useCopilotStream({
       // at the last user message: a turn the backend started on its own
       // (engine-switch continuation) has no user row in front of it, so a
       // user-anchored cut would also delete the completed answer above it
-      // — content the resume never replays. Never cut past the last user
-      // message either, so the prompt itself always survives.
+      // — content the resume never replays. The turn's own opening prompt
+      // is kept (the replay does not re-emit it); every assistant row after
+      // it goes, and the cut does not stop at a user row the backend drained
+      // into the middle of the turn — leaving the pre-drain chain above it
+      // would show that chain twice. The drained row itself is kept, as a
+      // fallback bubble above the replayed assistant: the pending buffer it
+      // came from is empty, and a replay whose hint carries no text (older
+      // backend) cannot redraw it. When the hint does carry the text, the
+      // transcript draws the bubble at the drain point and drops the
+      // matching fallback row (`splitMessagesAtDrainHints`).
       const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
       const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
       const activeTurnIndex = activeTurnStartMessageId
         ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
         : -1;
       const cutIndex =
-        activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
+        activeTurnIndex === -1
+          ? userCut
+          : activeTurnIndex + (prev[activeTurnIndex].role === "user" ? 1 : 0);
       const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
       if (tail.length > 0 && tail.every((m) => extractDbSequence(m) !== null)) {
-        return prev.slice(0, cutIndex);
+        const drainedFollowUps = tail
+          .filter((m) => m.role === "user")
+          .map(asMidTurnFallbackRow);
+        return [...prev.slice(0, cutIndex), ...drainedFollowUps];
       }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
@@ -835,11 +863,13 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,
     isUserStopping,
     rateLimitMessage,
+    platformLimitFailure,
     providerLimit,
     dismissProviderLimit: () => {
       if (sessionId && providerLimit) {

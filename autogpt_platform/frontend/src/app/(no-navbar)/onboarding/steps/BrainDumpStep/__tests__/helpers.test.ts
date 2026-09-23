@@ -2,24 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encouragementAt,
   formatElapsed,
-  headline,
   isInsufficientDump,
   isPermissionDenied,
   pickMimeType,
   recordingFeedbackAt,
-  RING_TARGET_SECONDS,
-  ringProgress,
 } from "../helpers";
-
-describe("headline", () => {
-  it("greets by name and trims the stored value", () => {
-    expect(headline("  Ada  ")).toBe("What keeps stealing your week, Ada?");
-  });
-
-  it("drops the name when the wizard never collected one", () => {
-    expect(headline("   ")).toBe("What keeps stealing your week?");
-  });
-});
 
 describe("encouragementAt", () => {
   it("shows nothing before the first line is due", () => {
@@ -77,17 +64,6 @@ describe("formatElapsed", () => {
     expect(formatElapsed(9.9)).toBe("0:09");
     expect(formatElapsed(95)).toBe("1:35");
     expect(formatElapsed(3600)).toBe("60:00");
-  });
-});
-
-describe("ringProgress", () => {
-  // A depth meter, not a limit: the ring holds at full and recording
-  // carries on past it.
-  it("fills toward the target and then holds", () => {
-    expect(ringProgress(0)).toBe(0);
-    expect(ringProgress(RING_TARGET_SECONDS / 2)).toBeCloseTo(0.5, 5);
-    expect(ringProgress(RING_TARGET_SECONDS)).toBe(1);
-    expect(ringProgress(RING_TARGET_SECONDS * 10)).toBe(1);
   });
 });
 

@@ -27,6 +27,19 @@ def experts_db():
     return experts_db
 
 
+def spend_approval_db():
+    if db.is_connected():
+        from backend.api.features.experts import spend_approval as _spend_approval
+
+        spend_approval_db = _spend_approval
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        spend_approval_db = get_database_manager_async_client()
+
+    return spend_approval_db
+
+
 def graph_db():
     if db.is_connected():
         from backend.data import graph as _graph_db
@@ -142,6 +155,29 @@ def workspace_db():
         workspace_db = get_database_manager_async_client()
 
     return workspace_db
+
+
+def workspace_folder_db():
+    if db.is_connected():
+        from backend.data import workspace_folder as _workspace_folder_db
+
+        workspace_folder_db = _workspace_folder_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        workspace_folder_db = get_database_manager_async_client()
+
+    return workspace_folder_db
+
+
+def workspace_skill_db():
+    if db.is_connected():
+        from backend.data import workspace_skill
+
+        return workspace_skill
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
 
 
 def review_db():

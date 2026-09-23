@@ -48,6 +48,22 @@ def _codex_credentials(credential_id: str = "cred-codex") -> OAuth2Credentials:
     )
 
 
+def _microsoft_credentials(
+    credential_id: str = "cred-microsoft",
+) -> OAuth2Credentials:
+    from backend.integrations.oauth.microsoft_365_copilot import (
+        Microsoft365CopilotDeviceAuthHandler,
+    )
+
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="microsoft_365_copilot",
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+
+
 @pytest.fixture(autouse=True)
 def transport_env(mocker: pytest_mock.MockerFixture):
     """Hosted deployment, entitled user, no connections, nothing saved."""
@@ -113,6 +129,50 @@ async def test_saved_choice_beats_the_server_pick() -> None:
     _saved("codex", "cred-codex")
 
     assert _default_of(await get_chat_transports(USER_ID)) == ("codex", "cred-codex")
+
+
+@pytest.mark.asyncio
+async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    microsoft = next(
+        transport
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    )
+    assert microsoft.credential_id == "cred-microsoft"
+    assert microsoft.label == "Microsoft 365 Copilot"
+    assert microsoft.default is True
+
+
+@pytest.mark.asyncio
+async def test_linking_microsoft_preserves_the_existing_self_host_chatgpt_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _self_hosted_without_deployment(mocker)
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_codex_credentials()]
+            if provider == "codex"
+            else (
+                [_microsoft_credentials()]
+                if provider == "microsoft_365_copilot"
+                else []
+            )
+        )
+    )
+
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "codex",
+        "cred-codex",
+    )
 
 
 @pytest.mark.asyncio
@@ -270,6 +330,18 @@ async def test_chatgpt_without_an_account_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_microsoft_copilot_without_an_account_is_rejected() -> None:
+    with pytest.raises(InvalidDefaultChatRoute) as error:
+        await save_default_chat_route(
+            USER_ID,
+            DefaultChatRoute(auth_provider="microsoft_365_copilot"),
+        )
+
+    assert error.value.detail == "microsoft_365_copilot_credential_required"
+    transports.set_user_default_chat_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_platform_with_an_account_is_rejected() -> None:
     with pytest.raises(InvalidDefaultChatRoute) as error:
         await save_default_chat_route(
@@ -334,3 +406,45 @@ async def test_platform_is_not_saveable_where_it_is_unavailable(
 
     assert error.value.detail == "chat_transport_not_configured"
     transports.set_user_default_chat_route.assert_not_awaited()
+
+
+# ─── Microsoft 365 Copilot cannot run tools ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unattended_callers_never_route_to_microsoft() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    # The saved default still shows for chats the user opens themselves...
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "microsoft_365_copilot",
+        "cred-microsoft",
+    )
+    # ...but a schedule, briefing or bot turn stays on a route that runs tools.
+    assert await transports.resolve_default_chat_route(USER_ID) == (
+        "platform",
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_expired_microsoft_token_without_refresh_is_not_listed() -> None:
+    dead = _microsoft_credentials()
+    dead.access_token_expires_at = 1
+    dead.refresh_token = None
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [dead] if provider == "microsoft_365_copilot" else []
+        )
+    )
+
+    assert not [
+        transport
+        for transport in await get_chat_transports(USER_ID)
+        if transport.auth_provider == "microsoft_365_copilot"
+    ]

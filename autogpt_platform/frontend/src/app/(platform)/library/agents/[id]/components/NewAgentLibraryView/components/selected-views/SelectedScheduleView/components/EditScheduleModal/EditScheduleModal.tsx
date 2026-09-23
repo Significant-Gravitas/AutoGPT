@@ -8,7 +8,7 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Select } from "@/components/atoms/Select/Select";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useEditScheduleModal } from "./useEditScheduleModal";
-import { PencilIcon } from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
@@ -52,7 +52,7 @@ export function EditScheduleModal({
           size="small"
           className={triggerClassName ?? "absolute -right-2 -top-2"}
         >
-          <Icon icon={PencilIcon} className="size-4" /> Edit schedule
+          <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>

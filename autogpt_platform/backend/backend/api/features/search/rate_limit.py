@@ -10,7 +10,10 @@ spend without backpressure.
 
 from __future__ import annotations
 
+from fastapi import HTTPException
+
 from backend.api.utils.rate_limit import RateLimiter
+from backend.monitoring.instrumentation import record_rate_limit_hit
 
 GLOBAL_SEARCH_WINDOW_SECONDS = 60
 GLOBAL_SEARCH_MAX_REQUESTS = 120
@@ -24,4 +27,8 @@ _limiter = RateLimiter(
 
 async def enforce_global_search_rate_limit(user_id: str) -> None:
     """Raise HTTP 429 when ``user_id`` exceeds the per-window cap."""
-    await _limiter.check(user_id)
+    try:
+        await _limiter.check(user_id)
+    except HTTPException:
+        record_rate_limit_hit("/api/search", user_id)
+        raise

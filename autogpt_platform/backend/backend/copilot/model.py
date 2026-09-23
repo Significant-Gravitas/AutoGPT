@@ -105,6 +105,7 @@ class ChatSessionMetadata(BaseModel):
     dry_run: bool = False
     llm_auth_provider: CopilotLlmAuthProvider = "platform"
     llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
@@ -134,7 +135,7 @@ class ChatSessionMetadata(BaseModel):
     dream_pass_id: str | None = None
 
     # Delegation provenance, set by ``delegate_to_expert``: which expert
-    # (None = plain AutoPilot) asked for this work, and from which session.
+    # (None = plain Otto) asked for this work, and from which session.
     # The session id is the poll capability — ``get_sub_session_result``
     # accepts a cross-expert sub only when it names the caller here.
     delegated_by_expert_id: str | None = None
@@ -144,6 +145,11 @@ class ChatSessionMetadata(BaseModel):
     # transfers ownership rather than borrowing a teammate, so the receiving
     # expert can tell "this is now mine" from "report back to whoever asked".
     handed_off_from_expert_id: str | None = None
+
+    # What this session is for, set by the session itself so a teammate can
+    # find it with ``find_session``. Free text: the task spine (#14240) can
+    # narrow it to its own ids later without a migration.
+    purpose: str | None = None
 
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per
@@ -331,6 +337,7 @@ def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
     is_user_message: bool,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """Append a user/assistant message to the session if not already present.
 
@@ -345,7 +352,9 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
-    session.messages.append(ChatMessage(role=role, content=message))
+    session.messages.append(
+        ChatMessage(role=role, content=message, metadata=metadata or None)
+    )
     return True
 
 
@@ -378,7 +387,7 @@ class ChatSessionInfo(BaseModel):
     team_id: str | None = None
     # Whether the user has pinned this session to the top of the sidebar.
     is_pinned: bool = False
-    # Hired expert this session is scoped to; None = plain Autopilot session.
+    # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
 
     @property
@@ -540,8 +549,9 @@ class ChatSession(ChatSessionInfo):
     ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
-        Called by the baseline tool executor **before** the tool actually
-        runs (the announcement is about dispatch, not success).  If the
+        Called by :meth:`BaseTool.execute` — the one path both engines take —
+        after its gates and **before** the tool actually runs (the
+        announcement is about dispatch, not success).  If the
         tool raises, the name stays in the buffer for the rest of the
         turn — that matches the guide-read gate's contract ("was the tool
         called?") but means any future gate wanting *successful*
@@ -877,7 +887,7 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
     async_redis = await get_redis_async()
-    raw_session: bytes | None = await async_redis.get(redis_key)
+    raw_session = await async_redis.get(redis_key)
 
     if raw_session is None:
         return None
@@ -1355,7 +1365,7 @@ async def create_chat_session(
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
         delegated_by_expert_id: Expert that delegated this session's work
-            (None = plain AutoPilot). Provenance only.
+            (None = plain Otto). Provenance only.
         delegated_by_session_id: Session that delegated this session's work.
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,

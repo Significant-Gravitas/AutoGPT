@@ -156,13 +156,6 @@ class PreconditionFailed(Exception):
     """The user must do something else first before trying the current operation"""
 
 
-class ConflictError(ValueError):
-    """
-    The request can't be applied to the resource's current state (HTTP 409),
-    e.g. "already exists" / "already taken" conditions.
-    """
-
-
 class InsufficientBalanceError(ValueError):
     user_id: str
     message: str
@@ -344,9 +337,9 @@ class WebhookSetupUnavailableError(Exception):
 
 
 class ExpertRunPausedError(ValueError):
-    """An expert-attributed scheduled/triggered run was refused because the
-    expert's schedules are paused (weekly credit budget reached or archive).
-    Chat-initiated runs are never gated by this."""
+    """An expert-attributed run (schedule, trigger, or ``run_agent`` from her
+    chat) was refused because the expert's schedules are paused (weekly credit
+    budget reached or archive)."""
 
     def __init__(self, message: str, expert_id: str):
         super().__init__(message)
@@ -358,3 +351,8 @@ class ExpertRunPausedError(ValueError):
 
     def __str__(self):
         return self.message
+
+
+class ConflictError(Exception):
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""

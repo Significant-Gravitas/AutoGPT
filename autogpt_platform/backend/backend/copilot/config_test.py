@@ -1,6 +1,7 @@
 """Unit tests for ChatConfig."""
 
 import pytest
+from pydantic import ValidationError
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
@@ -502,7 +503,7 @@ class TestApiKeyFallback:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         """Critical safety check: a stray ``OPENAI_API_KEY`` (set by users
-        for graphiti / embedders) must not silently bind to AutoPilot's
+        for graphiti / embedders) must not silently bind to Otto's
         local Ollama endpoint as the bearer token. The fallback chain
         for local is empty by design — and the
         ``_validate_local_transport_requirements`` guard surfaces the
@@ -600,7 +601,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
-        assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
+        assert cfg.fast_advanced_model == "anthropic/claude-opus-5"
 
 
 class TestLocalRequirementsValidator:
@@ -608,7 +609,7 @@ class TestLocalRequirementsValidator:
     misconfig where ``CHAT_USE_LOCAL=true`` was set but the operator
     forgot to provide either an endpoint or an api key. Without it the
     base_url field validator silently fills the OpenRouter default and
-    AutoPilot's first turn 401s — much worse UX than a startup error
+    Otto's first turn 401s — much worse UX than a startup error
     pointing at the missing env var."""
 
     def test_explicit_base_url_and_api_key_succeeds(self):
@@ -1203,3 +1204,16 @@ class TestHostMatches:
 
     def test_case_insensitive(self):
         assert _host_matches("https://API.ANTHROPIC.COM/", "anthropic.com")
+
+
+class TestLangfusePromptCacheTTL:
+    def test_default_is_five_minutes(self):
+        # Read the field default, not an instance: backend/.env can set
+        # CHAT_LANGFUSE_PROMPT_CACHE_TTL and mask it.
+        assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 300
+
+    def test_a_negative_ttl_is_rejected(self):
+        # A negative TTL would skip our revalidation and expire the SDK entry
+        # at once, which is the unbounded staleness this field exists to avoid.
+        with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
+            ChatConfig(langfuse_prompt_cache_ttl=-1)

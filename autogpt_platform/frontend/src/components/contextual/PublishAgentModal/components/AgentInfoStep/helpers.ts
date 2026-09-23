@@ -63,9 +63,7 @@ export const publishAgentSchemaFactory = (
       : z
           .string()
           .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
-    category: isMarketplaceUpdate
-      ? z.string().optional()
-      : z.string().min(1, "Category is required"),
+    category: z.string().min(1, "Category is required"),
     description: isMarketplaceUpdate
       ? z
           .string()

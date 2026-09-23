@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
+from prisma.errors import UniqueViolationError
 
 from backend.api.features.workspace.routes import router
+from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import Workspace, WorkspaceFile
+from backend.data.workspace_scope import WorkspaceScope
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -91,6 +94,7 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     files = [
         _make_file(id="f1", name="a.txt", metadata={"origin": "user-upload"}),
         _make_file(id="f2", name="b.csv", metadata={"origin": "agent-created"}),
+        _make_file(id="f3", name="tc-123.json", metadata={"purpose": "tool-output"}),
     ]
     mock_instance = AsyncMock()
     mock_instance.list_files.return_value = files
@@ -100,7 +104,7 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert response.status_code == 200
 
     data = response.json()
-    assert len(data["files"]) == 2
+    assert len(data["files"]) == 3
     assert data["has_more"] is False
     assert data["offset"] == 0
     assert data["files"][0]["id"] == "f1"
@@ -108,6 +112,8 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["origin"] == "uploaded"
     assert data["files"][1]["id"] == "f2"
     assert data["files"][1]["origin"] == "generated"
+    assert data["files"][2]["metadata"] == {"purpose": "tool-output"}
+    assert data["files"][2]["origin"] == "generated"
     mock_instance.list_files.assert_called_once_with(
         limit=201,
         offset=0,
@@ -1018,6 +1024,8 @@ class TestCreateStreamingResponse:
         assert (
             response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
         )
+        assert response.headers["Content-Security-Policy"] == "sandbox"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Content-Type"] == "application/octet-stream"
         assert response.headers["Content-Length"] == "11"
         assert response.body == b"binary-data"
@@ -1028,6 +1036,8 @@ class TestCreateStreamingResponse:
         file = _make_file(name="photo.png", mime_type="image/png")
         response = _create_streaming_response(b"\x89PNG", file, inline=True)
         assert response.headers["Content-Disposition"] == 'inline; filename="photo.png"'
+        assert response.headers["Content-Security-Policy"] == "sandbox"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Content-Type"] == "image/png"
 
     def test_inline_sanitizes_filename(self):
@@ -1160,3 +1170,263 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.txt")
         with pytest.raises(RuntimeError, match="Also failed"):
             await create_file_download_response(file)
+
+
+# -- list_workspace_files: expert filter + attribution --
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_filters_to_the_experts_own_conversations(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, test_user_id
+):
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a",
+        session_ids=["s1", "s2"],
+        delegated_session_ids=["delegated"],
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-a&q=plan")
+    assert response.status_code == 200
+    mock_resolve_scope.assert_awaited_once_with(test_user_id, "expert-a")
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="plan",
+        metadata_equals=None,
+        metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
+        allowed_path_prefixes=["/sessions/s1/", "/sessions/s2/"],
+        include_user_files=False,
+    )
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_unowned_expert_lists_nothing(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(expert_id="expert-x")
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-x")
+    assert response.status_code == 200
+    assert response.json()["files"] == []
+    # Both branches of the filter fail closed: no session prefixes, and the
+    # user-files grant is carried by the scope, never inferred from expert_id.
+    assert mock_instance.list_files.call_args.kwargs["allowed_path_prefixes"] == []
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is False
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+def test_list_files_rejects_expert_id_with_session_id(mock_get_workspace):
+    """Both name which conversations to show, so combining them is ambiguous."""
+    response = client.get("/files?expert_id=expert-a&session_id=sess-1")
+    assert response.status_code == 400
+    assert "expert_id" in response.json()["detail"]
+    mock_get_workspace.assert_not_called()
+
+
+@pytest.mark.parametrize("query", ["folder_id=fld-1", "root_only=true"])
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_combines_expert_id_with_the_folder_filters(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, query
+):
+    """A folder selects across the whole workspace, which is exactly the axis
+    the picker needs while filtered to one expert."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a", session_ids=["s1"], reads_user_files=True
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get(f"/files?expert_id=expert-a&{query}&include_user_files=true")
+
+    assert response.status_code == 200
+    kwargs = mock_instance.list_files.call_args.kwargs
+    assert kwargs["allowed_path_prefixes"] == ["/sessions/s1/"]
+    assert kwargs["include_user_files"] is True
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("expert_id=expert-a", False),
+        ("expert_id=expert-a&include_user_files=true", True),
+    ],
+)
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_spans_the_users_own_files_only_when_asked(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, query, expected
+):
+    """Opt-in: a view already filtered to one expert keeps showing that
+    expert's files, so the existing "From: <expert>" tab does not silently
+    start listing every upload the user ever made."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a", session_ids=["s1"], reads_user_files=True
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get(f"/files?{query}")
+
+    assert response.status_code == 200
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is expected
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_include_user_files_cannot_widen_a_revoked_experts_listing(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+):
+    """The scope decides: asking for user files does not grant them."""
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(expert_id="expert-x")
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-x&include_user_files=true")
+
+    assert response.status_code == 200
+    assert mock_instance.list_files.call_args.kwargs["include_user_files"] is False
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+def test_list_files_rejects_include_user_files_without_an_expert(mock_get_workspace):
+    response = client.get("/files?include_user_files=true")
+    assert response.status_code == 400
+    assert "include_user_files" in response.json()["detail"]
+    mock_get_workspace.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_attributes_each_file_to_its_expert(
+    mock_manager_cls, mock_get_workspace, mock_expert_ids, test_user_id
+):
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_expert_ids.return_value = {"sess-a": "expert-a", "sess-p": None}
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [
+        _make_file(id="f1", path="/sessions/sess-a/plan.md"),
+        _make_file(id="f2", path="/sessions/sess-p/notes.md"),
+        _make_file(id="f3", path="/report.pdf"),
+    ]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files")
+    assert response.status_code == 200
+    assert [f["expert_id"] for f in response.json()["files"]] == [
+        "expert-a",
+        None,
+        None,
+    ]
+    mock_expert_ids.assert_awaited_once_with(test_user_id, ["sess-a", "sess-p"])
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_skips_the_session_lookup_without_session_paths(
+    mock_manager_cls, mock_get_workspace, mock_expert_ids
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [_make_file(id="f1", path="/report.pdf")]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files")
+    assert response.status_code == 200
+    assert response.json()["files"][0]["expert_id"] is None
+    mock_expert_ids.assert_not_called()
+
+
+# -- rename_workspace_file tests --
+
+
+def _unique_violation() -> UniqueViolationError:
+    return UniqueViolationError(
+        {"user_facing_error": {"message": "Unique constraint failed: (`path`)"}}
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.return_value = _make_file(
+        id="f1", name="plan.md", path="/sessions/sess-a/plan.md"
+    )
+    mock_expert_ids.return_value = {"sess-a": "expert-a"}
+
+    response = client.patch("/files/f1", json={"name": "  plan.md "})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "plan.md"
+    assert data["path"] == "/sessions/sess-a/plan.md"
+    assert data["expert_id"] == "expert-a"
+    mock_rename.assert_awaited_once_with("f1", "ws-001", "plan.md")
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_not_found(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.return_value = None
+
+    response = client.patch("/files/missing", json={"name": "plan.md"})
+    assert response.status_code == 404
+    assert "File not found" in response.text
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_conflict(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.side_effect = _unique_violation()
+
+    response = client.patch("/files/f1", json={"name": "taken.md"})
+    assert response.status_code == 409
+    assert "already exists" in response.text
+
+
+@pytest.mark.parametrize("name", ["", "   ", ".", "..", "a/b.txt", "a\\b.txt"])
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_rejects_bad_names(mock_get_workspace, mock_rename, name):
+    response = client.patch("/files/f1", json={"name": name})
+    assert response.status_code == 422
+    mock_rename.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_reports_skill_capacity_conflict(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.side_effect = SkillLimitError("Skill limit reached (150 saved skills).")
+    response = client.patch("/files/f1", json={"name": "SKILL.md"})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Skill limit reached (150 saved skills)."

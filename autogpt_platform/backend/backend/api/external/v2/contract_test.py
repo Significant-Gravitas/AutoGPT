@@ -37,7 +37,7 @@ from backend.api.external.v2.pagination import (
     single_page_request,
 )
 from backend.api.external.v2.tenancy import TenantContext, require_auth
-from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 

@@ -2,6 +2,7 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import React, { ButtonHTMLAttributes } from "react";
 import Link from "next/link";
 import { highlightText } from "./helpers";
@@ -50,6 +51,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         {image_url && (
           <Image
             src={image_url}
+            unoptimized={isLocalStoreMediaUrl(image_url)}
             alt="integration-icon"
             fill
             sizes="5.625rem"

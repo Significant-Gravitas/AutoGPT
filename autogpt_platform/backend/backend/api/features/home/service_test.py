@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from pytest_mock import MockerFixture
 
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
@@ -144,7 +145,7 @@ async def test_briefing_anchors_on_todays_persisted_row(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -174,7 +175,7 @@ async def test_briefing_rejects_a_row_with_negative_totals(
     otherwise taken as canonical — a negative total is a corrupt row, so it
     has to fail validation and drop home onto the live path."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     corrupt = _stored_briefing().model_dump(mode="json") | {"completed_total": -3}
@@ -194,7 +195,7 @@ async def test_briefing_anchors_on_a_row_the_job_could_not_deliver(
     failed. The job redelivers that same stored content, so it is still the
     canonical story — going live here would drift from the pending message."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -223,7 +224,7 @@ async def test_briefing_falls_back_to_live_when_the_stored_row_is_malformed(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     _patch_stored_briefing(mocker, {"unexpected": "shape"})
@@ -241,7 +242,7 @@ async def test_briefing_falls_back_to_live_when_the_lookup_raises(
     """A briefing the page cannot read is not worth a 500 — /home is the
     landing page, and every other tile on it is still fine."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     mocker.patch(
@@ -261,7 +262,7 @@ async def test_briefing_is_live_when_no_row_exists_yet(
 ) -> None:
     """A user who signed up after 9am has no briefing to anchor on."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -291,7 +292,7 @@ async def test_briefing_date_comes_from_the_requests_own_clock(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date", lookup
     )
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -308,7 +309,7 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     """Summaries are stored regardless of the flag, so the persisted path has
     to scrub them too — otherwise the card leaks what the gate hides."""
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
     mocker.patch(
@@ -333,7 +334,7 @@ async def test_activity_summary_surfaces_when_flag_enabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
 
@@ -347,7 +348,7 @@ async def test_activity_summary_hidden_when_flag_disabled(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=False),
     )
 
@@ -361,7 +362,7 @@ async def test_schedules_stay_owner_scoped_inside_an_organization(
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()
@@ -376,7 +377,7 @@ async def test_schedules_stay_owner_scoped_inside_an_organization(
         AsyncMock(return_value=credit_model),
     )
 
-    await build_home_dashboard(user_id="user-1", organization_id="org-1")
+    await build_home_dashboard(user_id="user-1", ctx=_org_ctx(is_org_owner=True))
 
     # Executions, reviews and cost totals are personal, so a teammate's schedule
     # would show an upcoming run whose outcome never lands anywhere else.
@@ -389,7 +390,7 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     mocker: MockerFixture, home_dependencies
 ) -> None:
     mocker.patch(
-        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
         AsyncMock(return_value=True),
     )
     scheduler = MagicMock()
@@ -452,3 +453,93 @@ class TestPendingQuestionsFlagGate:
 
         assert result == ["session-info"]
         get_sessions.assert_awaited_once_with("user-1")
+
+
+def _org_ctx(
+    *,
+    org_id: str | None = "org-1",
+    is_org_owner: bool = False,
+    is_org_admin: bool = False,
+    is_org_billing_manager: bool = False,
+) -> RequestContext:
+    return RequestContext(
+        user_id="user-1",
+        org_id=org_id,
+        team_id=None,
+        is_org_owner=is_org_owner,
+        is_org_admin=is_org_admin,
+        is_org_billing_manager=is_org_billing_manager,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
+class TestPooledOrgBalanceGate:
+    """An org wallet is pooled across its members and MANAGE_BILLING gates it
+    on /credits, which 403s a plain member. Home reads the same wallet, so it
+    owes that member no figure — and no error either: the rest of the
+    dashboard has to arrive intact."""
+
+    @pytest.mark.parametrize(
+        ("ctx", "expected_balance"),
+        [
+            (_org_ctx(is_org_owner=True), 100),
+            (_org_ctx(is_org_billing_manager=True), 100),
+            (_org_ctx(), None),
+            (_org_ctx(is_org_admin=True), None),
+        ],
+        ids=["owner", "billing-manager", "member", "admin"],
+    )
+    @pytest.mark.asyncio
+    async def test_only_manage_billing_reads_the_pooled_balance(
+        self,
+        mocker: MockerFixture,
+        home_dependencies,
+        ctx: RequestContext,
+        expected_balance: int | None,
+    ) -> None:
+        mocker.patch(
+            "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
+            AsyncMock(return_value=True),
+        )
+        credit_model = MagicMock()
+        credit_model.get_credits = AsyncMock(return_value=100)
+        get_credit_model = mocker.patch(
+            "backend.api.features.home.service.get_credit_model",
+            AsyncMock(return_value=credit_model),
+        )
+
+        dashboard = await build_home_dashboard(user_id="user-1", ctx=ctx)
+
+        assert dashboard.week.credits_balance == expected_balance
+        # Withholding the figure means never reading the wallet, not reading it
+        # and dropping the answer.
+        assert get_credit_model.await_count == (0 if expected_balance is None else 1)
+        # Everything else on the page is owner-scoped and must survive the gate.
+        assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+    @pytest.mark.asyncio
+    async def test_a_personal_org_keeps_its_own_wallet(
+        self, mocker: MockerFixture, home_dependencies
+    ) -> None:
+        """A personal org's one membership row is always isOwner, so the gate
+        never fires there and the owner still sees their user wallet."""
+        mocker.patch(
+            "backend.api.features.graph_executions.activity_gate.is_feature_enabled",
+            AsyncMock(return_value=True),
+        )
+        credit_model = MagicMock()
+        credit_model.get_credits = AsyncMock(return_value=100)
+        get_credit_model = mocker.patch(
+            "backend.api.features.home.service.get_credit_model",
+            AsyncMock(return_value=credit_model),
+        )
+
+        dashboard = await build_home_dashboard(
+            user_id="user-1",
+            ctx=_org_ctx(org_id="personal-org", is_org_owner=True),
+        )
+
+        assert dashboard.week.credits_balance == 100
+        get_credit_model.assert_awaited_once_with("user-1", "personal-org")

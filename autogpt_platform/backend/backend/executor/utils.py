@@ -7,6 +7,7 @@ from collections import defaultdict
 from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast
 
+from prisma.enums import ReviewStatus
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
@@ -27,10 +28,12 @@ from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
 from backend.data.db_accessors import experts_db as get_experts_db
+from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    ExecutionTrigger,
     GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
@@ -45,6 +48,8 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.integrations.credentials_store import is_system_credential
+from backend.monitoring.instrumentation import record_graph_execution
+from backend.util import product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -986,7 +991,11 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
+# Pre-2026-09 topology: one durable queue bound to the fanout, consumed by every
+# ExecutionManager pod, so RabbitMQ round-robined each cancel to a single
+# arbitrary pod. Old-image pods keep draining it through a rollout; each new pod
+# deletes it once none is left, so no operator step is needed on any install.
+LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants
 # Agent executions can run for up to 1 day, so we need a graceful shutdown period
@@ -1019,18 +1028,14 @@ def create_execution_queue_config() -> RabbitMQConfig:
             "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
-    cancel_queue = Queue(
-        name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-        arguments={"x-queue-type": "quorum"},
-    )
+    # No cancel queue here: it is per-pod, exclusive to the consuming connection,
+    # and declared by the consumer itself through ``declare_broadcast_queue``.
+    # A queue in this config is declared by every holder, publishers included,
+    # which is how one queue came to serve the whole fleet.
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
+        queues=[run_queue],
     )
 
 
@@ -1244,7 +1249,74 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
+    trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
+    trigger_ref: Optional[str] = None,
+) -> GraphExecutionWithNodes:
+    """Add a graph execution to the queue, recording the outcome.
+
+    Thin wrapper over :func:`_add_graph_execution` so that every caller of
+    this shared path, not only the legacy v1 route, feeds
+    ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
+    not an execute outcome, and is not counted.
+    """
+    try:
+        result = await _add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            execution_context=execution_context,
+            graph_exec_id=graph_exec_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
+            bypass_paywall=bypass_paywall,
+            trigger=trigger,
+            trigger_ref=trigger_ref,
+        )
+    except GraphValidationError:
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        raise
+    except UserPaywalledError:
+        raise
+    except Exception:
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        raise
+    record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+    return result
+
+
+async def _add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: Optional[GraphInput] = None,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+    trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
+    trigger_ref: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1271,6 +1343,11 @@ async def add_graph_execution(
         bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
             recovery paths (requeueing stuck executions on behalf of a user
             who may be on NO_TIER) — never for user-initiated runs.
+        trigger: How the run was started. Persisted on the execution row and
+            used to decide which activation event (if any) to emit. Ignored
+            in REQUEUE mode, where the original row is authoritative.
+        trigger_ref: Identifier of what started the run for that trigger
+            (schedule id, webhook id, chat session id, API key id, UI surface).
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1290,9 +1367,16 @@ async def add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
+    is_new_execution = graph_exec_id is None
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1324,7 +1408,7 @@ async def add_graph_execution(
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
         # The persisted row is authoritative on resume. A caller cannot turn
-        # an AutoPilot run into an expert run or swap one expert for another.
+        # an Otto run into an expert run or swap one expert for another.
         if expert_id is not None and expert_id != graph_exec.expert_id:
             raise ValueError(
                 f"Expert scope does not match graph execution #{graph_exec.id}"
@@ -1353,6 +1437,26 @@ async def add_graph_execution(
                 team_id = graph_exec.team_id
             if not bypass_paywall:
                 await _enforce_expert_run_budget(user_id, expert_id)
+            if graph_exec.status == ExecutionStatus.REVIEW:
+                decision = await _parked_spend_decision(
+                    user_id, expert_id, graph_exec.id
+                )
+                if decision == ReviewStatus.WAITING:
+                    return graph_exec
+                if decision == ReviewStatus.REJECTED:
+                    await edb.update_node_execution_status_batch(
+                        [ne.node_exec_id for ne in graph_exec.node_executions],
+                        ExecutionStatus.TERMINATED,
+                    )
+                    await edb.update_graph_execution_stats(
+                        graph_exec_id=graph_exec.id,
+                        status=ExecutionStatus.TERMINATED,
+                        stats=GraphExecutionStats(
+                            error="Additional spending declined by the user"
+                        ),
+                    )
+                    graph_exec.status = ExecutionStatus.TERMINATED
+                    return graph_exec
 
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
@@ -1444,6 +1548,10 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            trigger_source=trigger,
+            trigger_ref=trigger_ref,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         logger.info(
@@ -1451,10 +1559,31 @@ async def add_graph_execution(
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
+        # Spend approval (SECRT-2599): once the expert has reached her
+        # threshold the run is held, unpublished, until the user approves it.
+        # Nested runs were gated with their parent; admin requeues are exempt.
+        if expert_id and not dry_run and parent_exec_id is None and not bypass_paywall:
+            if needed := await _spend_approval_required(user_id, expert_id):
+                await _park_for_spend_approval(
+                    user_id=user_id,
+                    graph_exec_id=graph_exec.id,
+                    graph_id=graph_id,
+                    graph_version=graph_exec.graph_version,
+                    needed=needed,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+                graph_exec.status = ExecutionStatus.REVIEW
+                return graph_exec
+
     # Generate execution context if it's not provided
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_exec.graph_version,
+        )
         workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(
@@ -1593,7 +1722,35 @@ async def add_graph_execution(
     except Exception as e:
         logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
 
+    if is_new_execution:
+        product_analytics.track_agent_run_started(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            trigger=trigger,
+            trigger_ref=trigger_ref,
+            expert_id=expert_id,
+            preset_id=preset_id,
+            is_dry_run=dry_run,
+        )
+
     return graph_exec
+
+
+async def _spend_approval_required(user_id: str, expert_id: str):
+    return await spend_approval_db().spend_approval_required(user_id, expert_id)
+
+
+async def _park_for_spend_approval(**kwargs) -> None:
+    await spend_approval_db().park_execution_for_spend_approval(**kwargs)
+
+
+async def _parked_spend_decision(
+    user_id: str, expert_id: str, graph_exec_id: str
+) -> ReviewStatus | None:
+    return await spend_approval_db().parked_spend_decision(
+        user_id, expert_id, graph_exec_id
+    )
 
 
 # ============ Execution Output Helpers ============ #

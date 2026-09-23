@@ -19,6 +19,7 @@ from backend.data.onboarding_steps import (
     FrontendOnboardingStep as FrontendOnboardingStep,
 )
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
@@ -123,12 +124,17 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
+    """Internal grant: callers must derive user_id from authenticated identity
+    or a verified webhook's stored owner, never an untrusted request field."""
     reward = 0
     match step:
         # The wizard fires ONBOARDING_COMPLETE on completion; this is the grant
         # backing the wallet's "Complete onboarding" task ($3).
         case OnboardingStep.ONBOARDING_COMPLETE:
             reward = 300
+            trial = await get_subscription_trial(user_id)
+            if trial and trial.consumed_at:
+                reward = trial.offer.onboarding_credit_amount
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
         case OnboardingStep.MARKETPLACE_ADD_AGENT:

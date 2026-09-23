@@ -10,9 +10,12 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import { routeOf, visibleOffers } from "./helpers";
+import { useOAuthConnect } from "../ConnectServiceDialog/components/DetailView/useOAuthConnect";
+
+import { isProviderLinked, routeOf, visibleOffers } from "./helpers";
 
 export function useAIConnectionsSection() {
   const queryClient = useQueryClient();
@@ -41,15 +44,22 @@ export function useAIConnectionsSection() {
       select: (response) => (response.status === 200 ? response.data : []),
     },
   });
-  const accountByCredentialId = new Map(
-    (credentialsQuery.data ?? [])
-      .filter((credential) => credential.username)
-      .map((credential) => [credential.id, credential.username as string]),
+  const credentialById = new Map(
+    (credentialsQuery.data ?? []).map((credential) => [
+      credential.id,
+      credential,
+    ]),
   );
 
-  function accountFor(offer: AIConnectionOffer): string | undefined {
+  function credentialFor(
+    offer: AIConnectionOffer,
+  ): CredentialsMetaResponse | undefined {
     if (!offer.credential_id) return undefined;
-    return accountByCredentialId.get(offer.credential_id);
+    return credentialById.get(offer.credential_id);
+  }
+
+  function accountFor(offer: AIConnectionOffer): string | undefined {
+    return credentialFor(offer)?.username ?? undefined;
   }
 
   const { mutate: setDefault, isPending: isSaving } =
@@ -87,9 +97,24 @@ export function useAIConnectionsSection() {
     setDefault({ data: routeOf(offer) });
   }
 
+  function refreshConnections() {
+    void connectionsQuery.refetch();
+  }
+
+  const { connect: connectChatGPT, isPending: isConnectingChatGPT } =
+    useOAuthConnect({
+      provider: "codex",
+      onSuccess: refreshConnections,
+    });
+
   return {
+    connectChatGPT,
+    isConnectingChatGPT,
+    isChatGPTLinked: isProviderLinked(offers, "codex"),
+    isMicrosoftLinked: isProviderLinked(offers, "microsoft_365_copilot"),
     connections: offers,
     accountFor,
+    credentialFor,
     selectedKey,
     chooseDefault,
     isSaving,

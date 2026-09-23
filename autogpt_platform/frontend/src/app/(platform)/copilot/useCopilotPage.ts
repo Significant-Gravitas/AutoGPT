@@ -67,6 +67,7 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const [newThreadParam] = useQueryState("new", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
@@ -141,7 +142,12 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun, expertId });
+    sessionSentFrom,
+  } = useChatSession({
+    dryRun: isDryRun,
+    expertId,
+    adoptLatestExpertThread: !newThreadParam,
+  });
 
   // An open session owns its identity: the URL param only describes who the
   // NEXT session will address, and it is absent whenever a thread is reached
@@ -169,10 +175,12 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     isUserStoppingRef,
     isUserStopping,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
@@ -273,6 +281,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
+    pendingSend,
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
@@ -397,6 +406,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -405,6 +415,7 @@ export function useCopilotPage() {
     isSessionError,
     isCreatingSession,
     isUploadingFiles,
+    pendingSend,
     isUserLoading,
     isLoggedIn,
     createSession,
@@ -418,6 +429,7 @@ export function useCopilotPage() {
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
@@ -426,6 +438,7 @@ export function useCopilotPage() {
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

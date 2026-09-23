@@ -6,11 +6,7 @@ import { consent } from "@/services/consent/cookies";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev = environment.isProd() || environment.isDev();
-const isCloud = environment.isCloud();
-const isDisabled = process.env.DISABLE_SENTRY === "true";
-
-const shouldEnable = !isDisabled && isProdOrDev && isCloud;
+const shouldEnable = environment.isSentryEnabled();
 
 // Check for monitoring consent (includes session replay)
 const hasMonitoringConsent = consent.hasConsentFor("monitoring");
@@ -42,7 +38,11 @@ Sentry.init({
       unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
     Sentry.replayCanvasIntegration(),
-    Sentry.reportingObserverIntegration(),
+    // Deprecation reports are browser platform notices about the web platform
+    // itself (e.g. Chrome's "Attribution Reporting is deprecated"), not bugs in
+    // our code, and they bury real issues. Crash and intervention reports still
+    // come through.
+    Sentry.reportingObserverIntegration({ types: ["crash", "intervention"] }),
     // Sentry.feedbackIntegration({
     //   // Additional SDK configuration goes in here, for example:
     //   colorScheme: "system",

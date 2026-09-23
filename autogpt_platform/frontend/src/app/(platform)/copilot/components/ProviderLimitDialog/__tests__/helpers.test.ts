@@ -8,6 +8,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
     provider_family: "autogpt",
+    auth_provider: "platform",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",
     credential_id: null,
@@ -21,13 +22,14 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
     lock_reason: null,
     unlock_href: null,
     ...over,
-  } as AIConnectionOffer;
+  };
 }
 
 function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return offer({
     offer_id: "codex:cred-1",
     provider_family: "openai",
+    auth_provider: "codex",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
     credential_id: "cred-1",

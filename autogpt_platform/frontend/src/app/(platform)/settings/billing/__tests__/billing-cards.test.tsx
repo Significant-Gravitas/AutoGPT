@@ -1058,12 +1058,13 @@ describe("TransactionHistoryCard", () => {
     expect(await screen.findByText(/No transactions yet/i)).toBeDefined();
   });
 
-  it("renders a row per transaction with credit/debit colour-coded amounts", async () => {
+  it("renders signed balance changes with neutral debits and highlighted credits", async () => {
     server.use(
       jsonHandler("get", "/api/credits/transactions", {
         transactions: [
           {
             transaction_key: "TXN-A",
+            id: "transaction:TXN-A",
             transaction_time: "2026-04-10T00:00:00Z",
             transaction_type: "TOP_UP",
             amount: 5000,
@@ -1071,6 +1072,9 @@ describe("TransactionHistoryCard", () => {
           },
           {
             transaction_key: "TXN-B",
+            id: "execution:TXN-B",
+            activity_type: "agent_run",
+            agent_name: "Morning briefing",
             transaction_time: "2026-04-11T00:00:00Z",
             transaction_type: "USAGE",
             amount: -250,
@@ -1083,10 +1087,11 @@ describe("TransactionHistoryCard", () => {
 
     render(<TransactionHistoryCard />);
 
-    expect(await screen.findByText("Top up")).toBeDefined();
+    expect(await screen.findByText("Credits added")).toBeDefined();
+    expect(screen.getByText("Morning briefing")).toBeDefined();
     expect(screen.getByText("Agent run")).toBeDefined();
     expect(screen.getByText("+$50.00")).toBeDefined();
-    expect(screen.getByText("-$2.50")).toBeDefined();
+    expect(screen.getByText("−$2.50")).toBeDefined();
     expect(screen.queryByText(/^Balance$/)).toBeNull();
   });
 

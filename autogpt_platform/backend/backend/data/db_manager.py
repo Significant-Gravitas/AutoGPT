@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -93,6 +95,7 @@ from backend.data.credit import (
     get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
+    sync_subscription_from_stripe,
 )
 from backend.data.execution import (
     create_graph_execution,
@@ -148,6 +151,10 @@ from backend.data.push_subscription import (
     increment_fail_count,
 )
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
+from backend.data.subscription_trial import (
+    get_subscription_trial,
+    record_subscription_trial_cost,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -179,8 +186,11 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     get_workspace_total_size,
     list_workspace_files,
+    resolve_expert_workspace_scope,
     soft_delete_workspace_file,
 )
+from backend.data.workspace_folder import list_workspace_folders
+from backend.data.workspace_skill import publish_workspace_skill_file
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -337,6 +347,9 @@ class DatabaseManager(AppService):
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_subscription_trial = _(get_subscription_trial)
+    sync_subscription_from_stripe = _(sync_subscription_from_stripe)
+    record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -435,12 +448,15 @@ class DatabaseManager(AppService):
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
+    publish_workspace_skill_file = _(publish_workspace_skill_file)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
+    list_workspace_folders = _(list_workspace_folders)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+    resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
@@ -520,12 +536,36 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    # The scheduler's fire path reads the routine behind a copilot-turn job to
+    # find its durable thread and whether the owner granted it anything.
+    create_routine = _(experts_db.create_routine)
+    list_routines = _(experts_db.list_routines)
+    enable_routine = _(experts_db.enable_routine)
+    disable_routine = _(experts_db.disable_routine)
+    get_routine = _(experts_db.get_routine)
+    record_routine_thread = _(experts_routine_jobs.record_routine_thread)
+    record_routine_fired = _(experts_routine_jobs.record_routine_fired)
+    mark_routine_unscheduled = _(experts_routine_jobs.mark_routine_unscheduled)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    spend_approval_required = _(experts_spend_approval.spend_approval_required)
+    park_execution_for_spend_approval = _(
+        experts_spend_approval.park_execution_for_spend_approval
+    )
+    parked_spend_decision = _(experts_spend_approval.parked_spend_decision)
+    open_chat_spend_review = _(experts_spend_approval.open_chat_spend_review)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
+    settle_credential_seed = _(expert_credentials.settle_credential_seed)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
+    add_expert_skill_name = _(experts_db.add_expert_skill_name)
+    remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
+    install_workflow = _(experts_db.install_workflow)
+    remove_workflow = _(experts_db.remove_workflow)
+    grant_expert_credentials = _(expert_credentials.grant_expert_credentials)
+    revoke_expert_credential = _(expert_credentials.revoke_expert_credential)
+    list_expert_credentials = _(expert_credentials.list_expert_credentials)
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
@@ -717,6 +757,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_subscription_trial = d.get_subscription_trial
+    sync_subscription_from_stripe = d.sync_subscription_from_stripe
+    record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -825,12 +868,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
+    publish_workspace_skill_file = d.publish_workspace_skill_file
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
+    list_workspace_folders = d.list_workspace_folders
     soft_delete_workspace_file = d.soft_delete_workspace_file
+    resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #
     spend_credits = d.spend_credits
@@ -901,12 +947,32 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_routine = d.get_routine
+    record_routine_thread = d.record_routine_thread
+    record_routine_fired = d.record_routine_fired
+    mark_routine_unscheduled = d.mark_routine_unscheduled
+    create_routine = d.create_routine
+    list_routines = d.list_routines
+    enable_routine = d.enable_routine
+    disable_routine = d.disable_routine
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    spend_approval_required = d.spend_approval_required
+    park_execution_for_spend_approval = d.park_execution_for_spend_approval
+    parked_spend_decision = d.parked_spend_decision
+    open_chat_spend_review = d.open_chat_spend_review
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
+    settle_credential_seed = d.settle_credential_seed
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
+    add_expert_skill_name = d.add_expert_skill_name
+    remove_expert_skill_name = d.remove_expert_skill_name
+    install_workflow = d.install_workflow
+    remove_workflow = d.remove_workflow
+    grant_expert_credentials = d.grant_expert_credentials
+    revoke_expert_credential = d.revoke_expert_credential
+    list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
     hire_expert = d.hire_expert
     create_raised_expert = d.create_raised_expert

@@ -14,7 +14,7 @@ from ldclient.config import Config
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +37,8 @@ class Flag(str, Enum):
 
     AUTOMOD = "AutoMod"
     AI_ACTIVITY_STATUS = "ai-agent-execution-summary"
-    BETA_BLOCKS = "beta-blocks"
-    AGENT_ACTIVITY = "agent-activity"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
-    CHAT = "chat"
     CHAT_MODE_OPTION = "chat-mode-option"
-    # Gates the "share chat results" feature end-to-end.  Backend create
-    # routes refuse when off so a stale frontend cannot enable shares;
-    # frontend share button hides when off so the UI doesn't tease a
-    # feature that won't take.  Existing public viewer routes stay on
-    # regardless so previously-shared URLs remain valid mid-flight.
-    CHAT_SHARING = "chat-sharing"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     # Self-distilled skills registry (store_skill / read_skill /
@@ -63,7 +54,12 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
+    CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     GRAPHITI_MEMORY = "graphiti-memory"
+
+    # Gates Otto voice mode end-to-end. The speech endpoint 404s when
+    # off so a stale frontend cannot spend TTS budget. Fail-closed.
+    COPILOT_VOICE_MODE = "copilot-voice-mode"
 
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
     # finalize / status / download endpoints 404 when off so a stale
@@ -76,6 +72,10 @@ class Flag(str, Enum):
     # so the Leiden + LLM-summarization cost doesn't ramp before
     # retrieval-relevance benefit is measured.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
+
+    # Parks expert work for the user's approval once her credit spend in the
+    # window reaches the approval threshold (SECRT-2599). Off by default.
+    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
 
     # --- Dream-system gates (P0) ---
     #
@@ -100,6 +100,18 @@ class Flag(str, Enum):
     # independent briefing kill switch — briefings ship to exactly the
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
+
+    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
+    # dump also produces expert recommendations, the copilot greeting
+    # grows a team section, and Otto's empty-roster context tells
+    # it that it is the Head of AI. Effective only when both are on;
+    # fail-closed (default False).
+    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
+
+    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
+    # browse and install end-to-end: the routes 404 when off, so the dark
+    # launch is not reachable by URL with the shelf hidden. Fail-closed.
+    SKILLS_HUB = "skills-hub"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
@@ -175,6 +187,9 @@ class Flag(str, Enum):
     # locked offer is never routable.  Off by default so the upsell reaches
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
+    # Shrinks what Otto reads: strips builder-UI annotations from the
+    # block schemas, and digests oversized tool results to the workspace.
 
 
 def is_configured() -> bool:
@@ -268,14 +283,28 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     Returns:
         LaunchDarkly Context object
     """
+    context, _ = await _fetch_user_context_status(user_id)
+    return context
+
+
+async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
+    """``(context, resolved)`` — see :func:`_fetch_user_context_data`.
+
+    ``resolved`` is False only when the lookup FAILED and the anonymous
+    context is standing in for real user data. A non-UUID key such as
+    ``"system"`` is anonymous by design and counts as resolved. The
+    distinction matters because an evaluation against a degraded context
+    still succeeds — it just answers for the wrong user — so callers acting
+    irreversibly on a ``False`` must not trust one.
+    """
     try:
         uuid.UUID(user_id)
     except ValueError:
         # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), True
 
     try:
-        return await _fetch_user_context(user_id)
+        return await _fetch_user_context(user_id), True
     except Exception as e:
         logger.warning(
             f"Failed to fetch user context for {user_id}: {e} — "
@@ -283,7 +312,7 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             "evaluations for this user may be degraded until the lookup "
             "succeeds"
         )
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), False
 
 
 def _anonymous_context(user_id: str) -> Context:
@@ -352,6 +381,21 @@ async def get_feature_flag_value(
     Returns:
         The flag value from LaunchDarkly
     """
+    value, _ = await _evaluate_flag_value(flag_key, user_id, default)
+    return value
+
+
+async def _evaluate_flag_value(
+    flag_key: str, user_id: str, default: Any = None
+) -> tuple[Any, bool]:
+    """``(value, evaluated)`` for one raw flag read.
+
+    ``evaluated`` is False whenever *default* is standing in for an answer
+    LaunchDarkly could not give — no client, an uninitialised one, a failed
+    user-context lookup, or an evaluation that raised. An initialised client
+    is not on its own enough: the context lookup is a database read, so a
+    live client can still fail to produce a value.
+    """
     try:
         client = get_client()
 
@@ -360,10 +404,10 @@ async def get_feature_flag_value(
             logger.debug(
                 f"LaunchDarkly not initialized, using default={default} for {flag_key}"
             )
-            return default
+            return default, False
 
         # Get user context (role/email) from the Better Auth user table
-        context = await _fetch_user_context_data(user_id)
+        context, context_resolved = await _fetch_user_context_status(user_id)
 
         # Evaluate flag
         result = client.variation(flag_key, context, default)
@@ -371,16 +415,87 @@ async def get_feature_flag_value(
         logger.debug(
             f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
         )
-        return result
+        # A degraded context evaluates fine, it just answers for an anonymous
+        # user rather than this one — so the value is a guess, not an answer.
+        return result, context_resolved
 
     except Exception as e:
         logger.warning(
             f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
         )
-        return default
+        return default, False
 
 
-def _env_flag_override(flag_key: Flag) -> bool | None:
+_TRUTHY = ("1", "true", "yes", "on")
+
+# Flags whose callers read a string / JSON value through
+# ``get_feature_flag_value`` rather than a bool. The master switch below skips
+# them so it never hands a bare ``True`` to a caller expecting a payload
+# (mirrors the frontend's ``ARRAY_TYPED_FLAGS``). ``get_feature_flag_value``
+# itself never consults the env override; this set only matters on the boolean
+# paths (``evaluate_feature_flag``, ``feature_flag``,
+# ``create_feature_flag_dependency``).
+_NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
+    {
+        Flag.STRIPE_PRODUCT_ID_TOPUP.value,
+        Flag.COPILOT_MODEL_ROUTING.value,
+        Flag.COPILOT_TIER_MULTIPLIERS.value,
+        Flag.COPILOT_COST_LIMITS.value,
+        Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
+        Flag.COPILOT_TIER_STRIPE_PRICES.value,
+        Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+    }
+)
+
+# Log the master switch's state once per process, not once per evaluation.
+_force_all_logged = False
+
+
+def _force_all_flags_enabled() -> bool:
+    """Master local-dev switch to turn every boolean flag on at once.
+
+    Set ``FORCE_ALL_FLAGS=true`` (or the ``NEXT_PUBLIC_FORCE_ALL_FLAGS`` the
+    frontend reads, so one shared var flips both sides) to force every boolean
+    flag on without listing them. A per-flag ``FORCE_FLAG_<NAME>`` still wins,
+    so a single flag can be excluded with ``=false`` while the rest stay on.
+    Defaults off. Intended for local dev, where LaunchDarkly is unconfigured
+    and every flag is otherwise off.
+
+    Ignored (with an error log) unless ``app_env`` is local: one env var must
+    not open every fail-closed gate for every user at once, and ``dev`` is a
+    real, publicly reachable deployment rather than a developer's machine.
+    That also rules out the single-container image, whose entrypoint exports
+    ``APP_ENV=dev``; per-flag ``FORCE_FLAG_<NAME>`` remains the escape hatch
+    there, since those overrides are unaffected by this guard.
+    """
+    global _force_all_logged
+    switched_on = False
+    for name in ("FORCE_ALL_FLAGS", "NEXT_PUBLIC_FORCE_ALL_FLAGS"):
+        raw = os.environ.get(name)
+        if raw is not None and raw.strip().lower() in _TRUTHY:
+            switched_on = True
+            break
+    if not switched_on:
+        return False
+    if settings.config.app_env != AppEnvironment.LOCAL:
+        if not _force_all_logged:
+            logger.error(
+                "FORCE_ALL_FLAGS is set but app_env is "
+                f"{settings.config.app_env.value}, not local; ignoring it. "
+                "The master switch is for local dev only."
+            )
+            _force_all_logged = True
+        return False
+    if not _force_all_logged:
+        logger.warning(
+            "FORCE_ALL_FLAGS is on: every boolean feature flag is forced on "
+            "(per-flag FORCE_FLAG_<NAME>=false still wins)."
+        )
+        _force_all_logged = True
+    return True
+
+
+def _env_flag_override(flag_key: Flag | str) -> bool | None:
     """Return a local override for ``flag_key`` from the environment.
 
     Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
@@ -393,14 +508,24 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     frontend (the frontend requires the ``NEXT_PUBLIC_`` prefix to
     expose the value to the browser bundle).
 
+    When no per-flag override is set, the ``FORCE_ALL_FLAGS`` master switch
+    (see :func:`_force_all_flags_enabled`) forces every boolean flag on;
+    non-boolean flags are left to LaunchDarkly.
+
     Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
     ``Flag.CHAT_MODE_OPTION`` on regardless of LaunchDarkly.
+
+    Accepts a raw flag key string as well as a :class:`Flag`, so the
+    ``feature_flag`` decorator (which holds a raw key) shares this path.
     """
-    suffix = flag_key.value.upper().replace("-", "_")
+    key_value = flag_key.value if isinstance(flag_key, Flag) else flag_key
+    suffix = key_value.upper().replace("-", "_")
     for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
         raw = os.environ.get(prefix + suffix)
         if raw is not None:
-            return raw.strip().lower() in ("1", "true", "yes", "on")
+            return raw.strip().lower() in _TRUTHY
+    if _force_all_flags_enabled() and key_value not in _NON_BOOLEAN_FLAG_VALUES:
+        return True
     return None
 
 
@@ -420,16 +545,33 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    enabled, _ = await evaluate_feature_flag(flag_key, user_id, default)
+    return enabled
+
+
+async def evaluate_feature_flag(
+    flag_key: Flag,
+    user_id: str,
+    default: bool = False,
+) -> tuple[bool, bool]:
+    """``(enabled, authoritative)`` for one flag read.
+
+    ``authoritative`` is False when *enabled* is only the default, because the
+    flag could not be evaluated or came back as a non-boolean. Use this rather
+    than :func:`is_feature_enabled` wherever "off" triggers something
+    irreversible — a failed read is indistinguishable from a real "off" on the
+    value alone.
+    """
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
-        return override
+        return override, True
 
-    result = await get_feature_flag_value(flag_key.value, user_id, default)
+    result, evaluated = await _evaluate_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
-        return result
+        return result, evaluated
 
     # Log a warning if the flag is not returning a boolean
     logger.warning(
@@ -437,9 +579,9 @@ async def is_feature_enabled(
         f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
     )
 
-    # Return the default if we get a non-boolean value
-    # This prevents objects from being incorrectly treated as True
-    return default
+    # A misconfigured flag is not an answer either: fall back to the default,
+    # but never let a caller take an irreversible action on it.
+    return default, False
 
 
 def feature_flag(
@@ -465,7 +607,17 @@ def feature_flag(
                 if not user_id:
                     raise ValueError("user_id is required")
 
-                if not get_client().is_initialized():
+                # A local env override (per-flag FORCE_FLAG_*, or the
+                # FORCE_ALL_FLAGS master switch) wins over LaunchDarkly and
+                # applies even when the client is uninitialised — the normal
+                # local-dev state, where the decorator would otherwise 404.
+                override = _env_flag_override(flag_key)
+                if override is not None:
+                    logger.debug(
+                        f"Feature flag {flag_key} overridden by env: {override}"
+                    )
+                    is_enabled = override
+                elif not get_client().is_initialized():
                     logger.warning(
                         "LaunchDarkly not initialized, "
                         f"using default {flag_key}={repr(default)}"
@@ -492,6 +644,11 @@ def feature_flag(
                     raise HTTPException(status_code=404, detail="Feature not available")
 
                 return await func(*args, **kwargs)
+            except HTTPException:
+                # A disabled flag is an expected outcome, not an evaluation
+                # error: logging it here would file an ERROR for every request
+                # to a gated-off route. The status is already correct.
+                raise
             except Exception as e:
                 logger.error(f"Error evaluating feature flag {flag_key}: {e}")
                 raise
@@ -521,7 +678,7 @@ def create_feature_flag_dependency(
 
     Example:
         router = APIRouter(
-            dependencies=[Depends(create_feature_flag_dependency(Flag.CHAT))]
+            dependencies=[Depends(create_feature_flag_dependency(Flag.SKILLS_HUB))]
         )
     """
 
@@ -535,6 +692,17 @@ def create_feature_flag_dependency(
         """
         # For routes that don't require authentication, use anonymous context
         check_user_id = user_id or "anonymous"
+
+        # A local env override (per-flag FORCE_FLAG_*, or the FORCE_ALL_FLAGS
+        # master switch) wins over LaunchDarkly and applies even when the client
+        # is unconfigured — the normal local-dev state, where this dependency
+        # would otherwise 404.
+        override = _env_flag_override(flag_key)
+        if override is not None:
+            logger.debug(f"Feature flag {flag_key.value} overridden by env: {override}")
+            if not override:
+                raise HTTPException(status_code=404, detail="Feature not available")
+            return
 
         if not is_configured():
             logger.debug(
@@ -558,6 +726,10 @@ def create_feature_flag_dependency(
 
             if not is_enabled:
                 raise HTTPException(status_code=404, detail="Feature not available")
+        except HTTPException:
+            # A disabled flag is an answer, not a failure: the 404s raised
+            # above must not be rewritten as a 500 by the handler below.
+            raise
         except Exception as e:
             logger.warning(
                 f"LaunchDarkly error for flag {flag_key.value}: {e}, using default={default}"

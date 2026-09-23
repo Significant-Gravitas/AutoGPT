@@ -2,10 +2,12 @@ import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
-  type InfiniteData,
-  keepPreviousData,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+  applySelection,
+  orderByList,
+  type Selection,
+  type SelectionModifiers,
+} from "./helpers";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -13,13 +15,21 @@ const PAGE_SIZE = 50;
 
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
-export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
+interface Args {
+  enabled: boolean;
+  /** Expert the chat is scoped to; lists only files that expert can attach. */
+  expertId?: string | null;
+}
+
+export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   const [searchTerm, setSearchTerm] = useState("");
   // Keep the full item (not just id) so a selection survives a search that
-  // pages the file off the currently-loaded list.
-  const [selected, setSelected] = useState<Map<string, WorkspaceFileItem>>(
-    new Map(),
-  );
+  // pages the file off the currently-loaded list. The anchor travels with it
+  // because a range is only meaningful against the list it was taken from.
+  const [selection, setSelection] = useState<Selection>({
+    selected: new Map(),
+    anchor: null,
+  });
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -28,51 +38,65 @@ export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
   const q = debouncedSearch || undefined;
 
   const query = useInfiniteQuery({
-    queryKey: ["workspace-file-picker", "list", { q: q ?? null }] as const,
+    queryKey: [
+      "workspace-file-picker",
+      "list",
+      { q: q ?? null, expertId: expertId ?? null },
+    ] as const,
     queryFn: ({ pageParam }) =>
-      listWorkspaceFiles({ limit: PAGE_SIZE, offset: pageParam, q }),
+      listWorkspaceFiles({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q,
+        expert_id: expertId ?? undefined,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
-    placeholderData: keepPreviousData,
+    // Keep the previous page while a search refines the same expert's list,
+    // but never show one expert's files while another's request is pending.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2].expertId === (expertId ?? null)
+        ? previousData
+        : undefined,
     enabled,
   });
 
-  function toggle(item: WorkspaceFileItem) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(item.id)) {
-        next.delete(item.id);
-      } else {
-        next.set(item.id, item);
-      }
-      return next;
-    });
+  const files = flattenFiles(query.data);
+
+  function select(index: number, modifiers?: SelectionModifiers) {
+    setSelection((prev) => applySelection(prev, files, index, modifiers));
+  }
+
+  function search(term: string) {
+    setSearchTerm(term);
+    // A range across a changed filter would span files never shown together.
+    setSelection((prev) => ({ ...prev, anchor: null }));
   }
 
   function reset() {
-    setSelected(new Map());
+    setSelection({ selected: new Map(), anchor: null });
     setSearchTerm("");
   }
 
   return {
-    files: flattenFiles(query.data),
+    files,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     searchTerm,
-    setSearchTerm,
+    setSearchTerm: search,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {
       query.fetchNextPage();
     },
-    selectedIds: selected,
-    selectedFiles: Array.from(selected.values()),
-    toggle,
+    selectedIds: selection.selected,
+    selectedFiles: orderByList(selection.selected, files),
+    select,
     reset,
   };
 }

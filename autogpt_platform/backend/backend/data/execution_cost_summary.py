@@ -55,7 +55,7 @@ class UserExecutionCostSummary(BaseModel):
     duration_run_count: int = 0
     by_agent: list[UserAgentCostRollup]
     # Only runs carrying an expert stamp; unattributed runs (plain library
-    # runs, Autopilot sessions) have no row here, so this does not sum to
+    # runs, Otto sessions) have no row here, so this does not sum to
     # `total_cents`.
     by_expert: list[UserExpertCostRollup] = []
     top_runs: list[UserTopRun]

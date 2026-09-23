@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import { server } from "@/mocks/mock-server";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 
 import { EditAgentModal } from "../EditAgentModal";
 
@@ -54,6 +56,30 @@ describe("EditAgentModal", () => {
     expect(
       screen.getByRole("button", { name: /update submission/i }),
     ).toBeDefined();
+  });
+
+  it("disables the category field when the category list cannot be loaded", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/store/categories", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    render(
+      <EditAgentModal
+        isOpen={true}
+        onClose={() => {}}
+        // No stored category, so the field shows the placeholder rather than a
+        // value: the error copy is the only thing that separates the failed
+        // state from the loading one, which disables the field too.
+        submission={{ ...makeSubmission(), categories: [] }}
+        onSuccess={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText("Categories unavailable")).toBeDefined();
+
+    const category = screen.getByRole("combobox", { name: /category/i });
+    expect(category.hasAttribute("disabled")).toBe(true);
   });
 
   it("invokes onClose when the Cancel button is clicked", () => {
