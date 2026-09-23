@@ -1938,18 +1938,24 @@ async def _install_bundled_skills(
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
-    failed: list[str] = []
     bundled = await _live_bundled_skills(user_id, [template_id])
-    for skill in bundled.get(template_id, []):
-        if skill.slug in installed:
-            continue
-        try:
-            await skill_db.install_marketplace_skill(
-                user_id, skill.slug, expert_id=expert_id
+    missing = [s for s in bundled.get(template_id, []) if s.slug not in installed]
+    if not missing:
+        return []
+    try:
+        outcomes: list[object] = list(
+            await skill_db.install_marketplace_skills(
+                user_id, [s.slug for s in missing], expert_id=expert_id
             )
-        except Exception:
-            logger.exception(
-                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+        )
+    except Exception as e:
+        outcomes = [e] * len(missing)
+    failed: list[str] = []
+    for skill, outcome in zip(missing, outcomes):
+        if isinstance(outcome, Exception):
+            logger.error(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}",
+                exc_info=outcome,
             )
             failed.append(skill.title)
     return failed

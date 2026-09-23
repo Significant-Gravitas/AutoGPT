@@ -31,7 +31,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import yaml
 from pydantic import BaseModel
@@ -711,41 +711,67 @@ async def store_user_skill(
     model's own ``store_skill`` from wiping a package it only rewrote the
     body of.
     """
-    name = name.strip().lower()
-    # Strip any server-injected XML tags (``<available_skills>``,
-    # ``<env_context>``, etc.) from the persisted fields *before* storage —
-    # when the skill is later loaded that text lands in conversation history
-    # and could otherwise appear alongside the real server-injected versions.
-    description = strip_server_injected_tags(description.strip())
-    body = strip_server_injected_tags(body.strip())
-    triggers = [
-        strip_server_injected_tags(t.strip())
-        for t in (triggers or [])
-        if str(t).strip()
-    ]
-    triggers = [t for t in triggers if t]
-
-    name_err = _validate_name(name)
-    if name_err:
-        raise ValueError(name_err)
-    if origin not in _SKILL_ORIGINS:
-        raise ValueError(f"origin must be one of {', '.join(sorted(_SKILL_ORIGINS))}")
-    validate_skill_content(description, body, triggers)
-
-    parsed = ParsedSkill(
-        name=name,
-        description=description,
-        body=body,
-        triggers=tuple(triggers),
-        version=version,
-        extra=dict(extra or {}),
+    [outcome] = await store_user_skills(
+        user_id,
+        [
+            SkillWrite(
+                name=name,
+                description=description,
+                body=body,
+                triggers=triggers,
+                version=version,
+                extra=extra,
+                files=files,
+            )
+        ],
+        expert_id=expert_id,
+        scope=scope,
         origin=origin,
     )
-    rendered = render_skill_markdown(parsed)
-    if files is not None:
-        # Whole-package validation before the first write, so a package that
-        # breaks a cap leaves the stored skill exactly as it was.
-        validate_package(SkillPackage(skill_md=rendered, files=files))
+    if isinstance(outcome, Exception):
+        raise outcome
+    return outcome.skill
+
+
+class SkillWrite(NamedTuple):
+    """One skill for :func:`store_user_skills`; fields as ``store_user_skill``."""
+
+    name: str
+    description: str
+    body: str
+    triggers: list[str] | None = None
+    version: str | None = None
+    extra: Mapping[str, Any] | None = None
+    files: list[SkillFile] | None = None
+
+
+class StoredSkill(NamedTuple):
+    skill: ParsedSkill
+    # False when the write replaced a copy the owner already had.
+    is_new: bool
+
+
+async def store_user_skills(
+    user_id: str,
+    writes: list[SkillWrite],
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+    origin: str = SKILL_ORIGIN_USER,
+) -> list[StoredSkill | Exception]:
+    """:func:`store_user_skill` for several skills under one write lock and
+    one listing of the owner's folder; returns each write's outcome in order,
+    so one bad skill fails alone."""
+    outcomes: list[StoredSkill | Exception | None] = []
+    prepared: list[tuple[int, _PreparedSkill]] = []
+    for write in writes:
+        try:
+            prepared.append((len(outcomes), _prepare_skill(write, origin)))
+            outcomes.append(None)
+        except Exception as e:
+            outcomes.append(e)
+    if not prepared:
+        return cast(list[StoredSkill | Exception], outcomes)
 
     # Coordinate ordinary package writes; the database owns the hard cap.
     lock: AsyncClusterLock | None = None
@@ -773,76 +799,29 @@ async def store_user_skill(
         manager = await _get_user_skill_manager(user_id, scope)
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         same_origin = {s.name for s in existing if budget_origin(s) == origin}
-        if origin == SKILL_ORIGIN_MARKETPLACE and any(
-            s.name == name and s.origin == SKILL_ORIGIN_USER for s in existing
-        ):
-            raise SkillOwnedError(
-                f"'{name}' is one of the owner's own skills; rename or delete "
-                "it before installing a skill by that name."
-            )
-        at_cap = len(same_origin) >= MAX_SKILLS_PER_EXPERT
-        is_new = name not in same_origin
-        if at_cap and is_new:
-            raise SkillLimitError(
-                f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
-                "skills). Delete an unused skill first."
-            )
-
-        metadata: dict[str, Any] = {
-            _META_KIND: _META_KIND_VALUE,
-            _META_DESCRIPTION: description,
-            _META_TRIGGERS: list(triggers),
-            _META_SKILL_ORIGIN: origin,
-        }
-        if version:
-            metadata[_META_VERSION] = version
-        folder = skill_folder(expert_id)
-        stale = (
-            await _list_package_files(manager, folder, name, cap=None)
-            if files is not None
-            else []
-        )
-        # The root is what indexes the skill, so it goes last: a new skill
-        # that fails part-way is never indexed.  An upsert cannot be made
-        # atomic here — the old bytes are gone once overwritten.  Serial
-        # because ``write_file``'s quota check is read-then-write.
-        existing_paths = {f.path for f in stale}
-        written: set[str] = set()
-        try:
-            for entry in files or []:
-                path = f"{folder}/{name}/{entry.relative_path}"
-                written.add(path)
-                await manager.write_file(
-                    content=entry.content,
-                    filename=entry.relative_path.rsplit("/", 1)[-1],
-                    path=path,
-                    mime_type=None,
-                    overwrite=True,
-                    metadata=(
-                        {_META_EXECUTABLE: True} if entry.is_executable else None
-                    ),
+        owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
+        stored: list[tuple[int, str]] = []
+        for index, skill in prepared:
+            try:
+                is_new = skill.parsed.name not in same_origin
+                await _write_skill(
+                    manager, skill, expert_id, origin, same_origin, owners
                 )
-            await manager.write_file(
-                content=rendered.encode("utf-8"),
-                filename="SKILL.md",
-                path=_skill_md_path(name, expert_id),
-                mime_type="text/markdown",
-                overwrite=True,
-                metadata=metadata,
-            )
-        except Exception:
-            # Not a rollback: a file already here keeps the new bytes, so an
-            # upsert can fail mixed. Undo only what this call created — deleting
-            # the rest would turn a failed write into a lost file.
-            await _delete_paths(manager, written - existing_paths)
-            raise
-        await _delete_paths(
-            manager, {f.path for f in stale if f.path not in written}, stale
-        )
-        await invalidate_skills_index_cache(user_id, expert_id)
+            except Exception as e:
+                outcomes[index] = e
+                continue
+            same_origin.add(skill.parsed.name)
+            stored.append((index, skill.parsed.name))
+            outcomes[index] = StoredSkill(skill.parsed, is_new)
+        if stored:
+            await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None:
-            await experts_db().add_expert_skill_name(user_id, expert_id, name)
-        return parsed
+            for index, name in stored:
+                try:
+                    await experts_db().add_expert_skill_name(user_id, expert_id, name)
+                except Exception as e:
+                    outcomes[index] = e
+        return cast(list[StoredSkill | Exception], outcomes)
     finally:
         if lock is not None and lock_held:
             try:
@@ -853,6 +832,124 @@ async def store_user_skill(
                     user_id,
                     exc_info=True,
                 )
+
+
+class _PreparedSkill(NamedTuple):
+    parsed: ParsedSkill
+    rendered: str
+    files: list[SkillFile] | None
+
+
+def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
+    """Normalise and validate one write before anything is locked or stored."""
+    name = write.name.strip().lower()
+    # Strip any server-injected XML tags (``<available_skills>``,
+    # ``<env_context>``, etc.) from the persisted fields *before* storage —
+    # when the skill is later loaded that text lands in conversation history
+    # and could otherwise appear alongside the real server-injected versions.
+    description = strip_server_injected_tags(write.description.strip())
+    body = strip_server_injected_tags(write.body.strip())
+    triggers = [
+        strip_server_injected_tags(t.strip())
+        for t in (write.triggers or [])
+        if str(t).strip()
+    ]
+    triggers = [t for t in triggers if t]
+
+    name_err = _validate_name(name)
+    if name_err:
+        raise ValueError(name_err)
+    if origin not in _SKILL_ORIGINS:
+        raise ValueError(f"origin must be one of {', '.join(sorted(_SKILL_ORIGINS))}")
+    validate_skill_content(description, body, triggers)
+
+    parsed = ParsedSkill(
+        name=name,
+        description=description,
+        body=body,
+        triggers=tuple(triggers),
+        version=write.version,
+        extra=dict(write.extra or {}),
+        origin=origin,
+    )
+    rendered = render_skill_markdown(parsed)
+    if write.files is not None:
+        # Whole-package validation before the first write, so a package that
+        # breaks a cap leaves the stored skill exactly as it was.
+        validate_package(SkillPackage(skill_md=rendered, files=write.files))
+    return _PreparedSkill(parsed, rendered, write.files)
+
+
+async def _write_skill(
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+    expert_id: str | None,
+    origin: str,
+    same_origin: set[str],
+    owners: set[str],
+) -> None:
+    name = skill.parsed.name
+    if origin == SKILL_ORIGIN_MARKETPLACE and name in owners:
+        raise SkillOwnedError(
+            f"'{name}' is one of the owner's own skills; rename or delete "
+            "it before installing a skill by that name."
+        )
+    at_cap = len(same_origin) >= MAX_SKILLS_PER_EXPERT
+    if at_cap and name not in same_origin:
+        raise SkillLimitError(
+            f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
+            "skills). Delete an unused skill first."
+        )
+
+    metadata: dict[str, Any] = {
+        _META_KIND: _META_KIND_VALUE,
+        _META_DESCRIPTION: skill.parsed.description,
+        _META_TRIGGERS: list(skill.parsed.triggers),
+        _META_SKILL_ORIGIN: origin,
+    }
+    if skill.parsed.version:
+        metadata[_META_VERSION] = skill.parsed.version
+    folder = skill_folder(expert_id)
+    stale = (
+        await _list_package_files(manager, folder, name, cap=None)
+        if skill.files is not None
+        else []
+    )
+    # The root is what indexes the skill, so it goes last: a new skill
+    # that fails part-way is never indexed.  An upsert cannot be made
+    # atomic here — the old bytes are gone once overwritten.  Serial
+    # because ``write_file``'s quota check is read-then-write.
+    existing_paths = {f.path for f in stale}
+    written: set[str] = set()
+    try:
+        for entry in skill.files or []:
+            path = f"{folder}/{name}/{entry.relative_path}"
+            written.add(path)
+            await manager.write_file(
+                content=entry.content,
+                filename=entry.relative_path.rsplit("/", 1)[-1],
+                path=path,
+                mime_type=None,
+                overwrite=True,
+                metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
+            )
+        await manager.write_file(
+            content=skill.rendered.encode("utf-8"),
+            filename="SKILL.md",
+            path=_skill_md_path(name, expert_id),
+            mime_type="text/markdown",
+            overwrite=True,
+            metadata=metadata,
+        )
+    except Exception:
+        # Not a rollback: a file already here keeps the new bytes, so an
+        # upsert can fail mixed. Undo only what this call created — deleting
+        # the rest would turn a failed write into a lost file.
+        await _delete_paths(manager, written - existing_paths)
+        raise
+    await _delete_paths(
+        manager, {f.path for f in stale if f.path not in written}, stale
+    )
 
 
 async def _delete_paths(
