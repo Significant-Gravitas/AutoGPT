@@ -67,7 +67,7 @@ export function escapeCurrencyAmounts(markdown: string): string {
 
       // Indented code cannot interrupt a paragraph, and CommonMark renders a
       // backslash escape inside it literally.
-      if (!marker && !inParagraph && indent >= listIndent + 4) {
+      if (!inParagraph && indent >= listIndent + 4) {
         codeIndent = listIndent + 4;
         return line;
       }

@@ -87,6 +87,13 @@ describe("escapeCurrencyAmounts", () => {
     ).toBe("- \titem\n\n       continued \\$5 and \\$10");
   });
 
+  it.each([
+    ["at the top level", "    - echo $5 and $10"],
+    ["inside a list item", "- item\n\n      - echo $5 and $10"],
+  ])("skips indented code that starts like a list marker %s", (_, markdown) => {
+    expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
+  });
+
   it("escapes indented lines that are not code", () => {
     expect(
       escapeCurrencyAmounts(
