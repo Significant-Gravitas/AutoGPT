@@ -1,49 +1,13 @@
 "use client";
 
+import { useId } from "react";
+
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { Alert01Icon } from "@hugeicons/core-free-icons";
 
+import { SettingRow } from "./components/SettingRow/SettingRow";
 import { useNotificationSettings } from "./useNotificationSettings";
-
-interface RowProps {
-  label: string;
-  description?: string;
-  checked: boolean;
-  disabled?: boolean;
-  onCheckedChange: () => void;
-}
-
-function SettingRow({
-  label,
-  description,
-  checked,
-  disabled,
-  onCheckedChange,
-}: RowProps) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className={cn("flex flex-col", disabled && "opacity-50")}>
-        <Text variant="body-medium" as="span" className="text-textBlack">
-          {label}
-        </Text>
-        {description ? (
-          <Text variant="small" as="span" className="text-zinc-500">
-            {description}
-          </Text>
-        ) : null}
-      </div>
-      <Switch
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onCheckedChange}
-        aria-label={label}
-      />
-    </div>
-  );
-}
 
 export function NotificationSettingsControls() {
   const {
@@ -54,6 +18,7 @@ export function NotificationSettingsControls() {
     toggleNotifications,
     toggleSound,
   } = useNotificationSettings();
+  const blockedExplainerId = useId();
 
   if (!isSupported) {
     return (
@@ -70,6 +35,7 @@ export function NotificationSettingsControls() {
         description="Get told when your experts finish, even in another tab."
         checked={isNotificationsEnabled}
         disabled={isBlocked}
+        describedBy={isBlocked ? blockedExplainerId : undefined}
         onCheckedChange={toggleNotifications}
       />
       <SettingRow
@@ -83,7 +49,10 @@ export function NotificationSettingsControls() {
       {/* A browser-level denial is the one state we can't fix from in here —
           say so rather than leaving a switch that silently refuses to move. */}
       {isBlocked ? (
-        <div className="flex items-start gap-2 rounded-lg bg-zinc-100 px-3 py-2">
+        <div
+          id={blockedExplainerId}
+          className="flex items-start gap-2 rounded-lg bg-zinc-100 px-3 py-2"
+        >
           <Icon
             icon={Alert01Icon}
             className="mt-0.5 size-4 shrink-0 text-zinc-500"

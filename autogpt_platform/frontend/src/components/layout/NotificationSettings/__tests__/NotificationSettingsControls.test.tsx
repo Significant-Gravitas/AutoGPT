@@ -23,6 +23,13 @@ function isDisabled(element: HTMLElement) {
   );
 }
 
+function describedByText(element: HTMLElement) {
+  return (element.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+}
+
 function setPermission(
   permission: string,
   requestPermission = vi.fn().mockResolvedValue(permission),
@@ -95,6 +102,42 @@ describe("NotificationSettingsControls", () => {
     expect(isDisabled(screen.getByRole("switch", { name: "Sound" }))).toBe(
       true,
     );
+  });
+
+  it("toggles sound once notifications are on", async () => {
+    setPermission("granted");
+    useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    render(<NotificationSettingsControls />);
+
+    await userEvent.click(screen.getByRole("switch", { name: "Sound" }));
+
+    expect(useCopilotUIStore.getState().isSoundEnabled).toBe(false);
+  });
+
+  it("toggles from the visible label, not just the switch", async () => {
+    setPermission("granted");
+    useCopilotUIStore.setState({ isNotificationsEnabled: true });
+    render(<NotificationSettingsControls />);
+
+    await userEvent.click(screen.getByText("Notifications"));
+
+    expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false);
+  });
+
+  it("describes each switch, including why a blocked one can't move", async () => {
+    setPermission("denied");
+    render(<NotificationSettingsControls />);
+
+    const notifications = screen.getByRole("switch", { name: "Notifications" });
+    await waitFor(() =>
+      expect(describedByText(notifications)).toMatch(
+        /browser is blocking notifications/i,
+      ),
+    );
+    expect(describedByText(notifications)).toMatch(/your experts finish/i);
+    expect(
+      describedByText(screen.getByRole("switch", { name: "Sound" })),
+    ).toMatch(/play a chime/i);
   });
 
   it("reports gracefully when the browser has no Notification API", async () => {
