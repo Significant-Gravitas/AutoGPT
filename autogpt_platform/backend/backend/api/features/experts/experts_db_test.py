@@ -1902,6 +1902,7 @@ async def test_existing_non_private_hire_is_never_revived():
 async def test_hire_existing_team_expert_fails_closed():
     template = SimpleNamespace(
         id="template-1",
+        isTemplate=True,
         name="Maria",
         avatarUrl=None,
         color="",
@@ -1954,6 +1955,7 @@ async def test_hire_raced_org_expert_fails_closed():
     closed on the retry instead of returning the shared row."""
     template = SimpleNamespace(
         id="template-1",
+        isTemplate=True,
         name="Maria",
         avatarUrl=None,
         color="",
