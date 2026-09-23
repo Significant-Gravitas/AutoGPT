@@ -1512,7 +1512,9 @@ describe("ChatMessagesContainer — held call cards", () => {
     expect(mounted.mock.calls.map(([props]) => props.graphExecId)).toContain(
       "copilot-session-sess-123",
     );
-    expect(mounted.mock.calls.at(-1)?.[0].pollWhileEmpty).toBe(true);
+    // One held call on screen: fetched, but polled only if a card comes back.
+    expect(mounted.mock.calls.at(-1)?.[0].refetchKey).toBe(1);
+    expect(mounted.mock.calls.at(-1)?.[0].pollWhileEmpty).toBe(false);
   });
 
   it("still finds held cards whose call has paged out of the loaded history", async () => {
@@ -1527,5 +1529,6 @@ describe("ChatMessagesContainer — held call cards", () => {
     const props = mounted.mock.calls.at(-1)?.[0];
     expect(props?.graphExecId).toBe("copilot-session-sess-123");
     expect(props?.pollWhileEmpty).toBe(false);
+    expect(props?.refetchKey).toBe(0);
   });
 });

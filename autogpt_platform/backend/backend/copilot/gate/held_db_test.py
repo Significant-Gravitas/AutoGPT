@@ -213,6 +213,25 @@ async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_result_lost_after_the_call_ran_says_it_ran(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Re-storing it would report "no longer open" for an action that ran."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "ran once")
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    def lose(_text: str) -> str:
+        raise RuntimeError("result lost")
+
+    [delivered] = await held.resolve_answered(test_user_id, session, cap=lose)
+
+    assert post_tool.runs == [{"text": "ran once"}]
+    assert "ran, but its result was lost" in delivered.content
+    assert await held.answered(test_user_id, session.session_id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
     setup_test_user, test_user_id, gate_on, post_tool
 ):

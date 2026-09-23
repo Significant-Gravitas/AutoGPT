@@ -22,7 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { getHeldCallRowKind, hasHeldCall } from "./heldCallRows";
+import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -837,7 +837,8 @@ export function ChatMessagesContainer({
             reviewTarget?.graphExecId !== `copilot-session-${sessionID}` && (
               <CopilotPendingReviews
                 graphExecId={`copilot-session-${sessionID}`}
-                pollWhileEmpty={hasHeldCall(messages)}
+                pollWhileEmpty={false}
+                refetchKey={countHeldCalls(messages)}
               />
             )}
           {!readOnly &&

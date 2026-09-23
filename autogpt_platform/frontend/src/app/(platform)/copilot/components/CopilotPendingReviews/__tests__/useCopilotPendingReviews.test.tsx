@@ -92,4 +92,30 @@ describe("useCopilotPendingReviews", () => {
     },
     15_000,
   );
+
+  test("a new held call on screen fetches the chat's cards again", async () => {
+    let requests = 0;
+    server.use(
+      http.get("*/api/review/execution/copilot-session-s1", () => {
+        requests++;
+        return HttpResponse.json([]);
+      }),
+    );
+    const { rerender } = renderHook(
+      ({ key }) =>
+        useCopilotPendingReviews({
+          graphExecId: "copilot-session-s1",
+          pollWhileEmpty: false,
+          refetchKey: key,
+        }),
+      { wrapper, initialProps: { key: 0 } },
+    );
+    await waitFor(() => expect(requests).toBeGreaterThan(0));
+    await sleep(300);
+    const settled = requests;
+
+    rerender({ key: 1 });
+
+    await waitFor(() => expect(requests).toBeGreaterThan(settled));
+  }, 10_000);
 });

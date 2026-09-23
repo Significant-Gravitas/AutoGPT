@@ -7,9 +7,10 @@ import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 interface Args {
   graphExecId: string;
   graphId?: string;
-  // Off for a chat's session-level list while nothing on screen was held:
-  // one fetch finds cards whose call paged out of the loaded history.
+  // Off for a chat's session-level list: it polls only while it holds cards,
+  // and fetches again whenever ``refetchKey`` changes (a new held call).
   pollWhileEmpty?: boolean;
+  refetchKey?: number;
 }
 
 const POLL_MS = 2000;
@@ -18,6 +19,7 @@ export function useCopilotPendingReviews({
   graphExecId,
   graphId,
   pollWhileEmpty = true,
+  refetchKey,
 }: Args) {
   const [hasRows, setHasRows] = useState(false);
   const isRun = !!graphId;
@@ -51,6 +53,10 @@ export function useCopilotPendingReviews({
   useEffect(() => {
     setHasRows(pendingReviews.length > 0);
   }, [pendingReviews.length]);
+
+  useEffect(() => {
+    if (refetchKey !== undefined) refetch();
+  }, [refetchKey, refetch]);
 
   useEffect(() => {
     if (status) refetch();

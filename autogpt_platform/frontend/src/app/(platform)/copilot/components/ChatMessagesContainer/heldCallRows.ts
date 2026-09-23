@@ -15,13 +15,18 @@ export function isHeldCallRow(message: { metadata?: unknown }): boolean {
   return getHeldCallRowKind(message.metadata) !== null;
 }
 
-// Whether the chat has held a call. Its cards live under the session's own
-// review id, so they are loaded even when a later run is the newest target.
-export function hasHeldCall(
+// How many calls on screen were held. A new one means a new card to fetch;
+// an old one says nothing about whether its card is still open.
+export function countHeldCalls(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): boolean {
-  return messages.some((message) =>
-    message.parts.some((part) => "output" in part && isHeldOutput(part.output)),
+): number {
+  return messages.reduce(
+    (count, message) =>
+      count +
+      message.parts.filter(
+        (part) => "output" in part && isHeldOutput(part.output),
+      ).length,
+    0,
   );
 }
 

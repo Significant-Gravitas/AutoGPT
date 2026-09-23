@@ -13,6 +13,7 @@ interface Props {
   graphExecId: string;
   graphId?: string;
   pollWhileEmpty?: boolean;
+  refetchKey?: number;
 }
 
 /**
@@ -25,12 +26,14 @@ export function CopilotPendingReviews({
   graphExecId,
   graphId,
   pollWhileEmpty,
+  refetchKey,
 }: Props) {
   const { onSend, onBackendTurn } = useCopilotChatActions();
   const { pendingReviews, refetch } = useCopilotPendingReviews({
     graphExecId,
     graphId,
     pollWhileEmpty,
+    refetchKey,
   });
 
   // Graph executions auto-resume after approval; capability reviews need resume_capability.

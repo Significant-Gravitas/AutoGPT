@@ -117,10 +117,8 @@ async def resolve_answered(
         try:
             delivered.append(await _deliver(user_id, session, call, cap))
         except Exception:
-            # Put it back for the next turn; the gate's consume still stops a
-            # second run if the call got as far as running.
             logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
-            await remember(session.session_id, call)
+            delivered.extend(await _recover(user_id, session.session_id, call))
     return delivered
 
 
@@ -215,6 +213,32 @@ async def _deliver(
     from backend.copilot.tools import get_tool
 
     output = cap(await _outcome(user_id, session, call, get_tool(call.tool_name)))
+    return _result_row(call, output)
+
+
+async def _recover(
+    user_id: str, session_id: str, call: HeldCall
+) -> list[PendingMessage]:
+    """A card still open goes back for the next turn; one whose approval was
+    spent ran, so the model is told that rather than "no longer open" later."""
+    try:
+        rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
+        spent = call.review_id not in rows
+    except Exception:
+        spent = False
+    if not spent:
+        await remember(session_id, call)
+        return []
+    return [
+        _result_row(
+            call,
+            "The approved action ran, but its result was lost before it reached "
+            "you. Tell the user, and check the outcome before relying on it.",
+        )
+    ]
+
+
+def _result_row(call: HeldCall, output: str) -> PendingMessage:
     return HeldResult(
         content=(
             f'<held_call_result tool="{call.tool_name}" '
