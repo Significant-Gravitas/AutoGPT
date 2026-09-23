@@ -1,5 +1,6 @@
 import pytest
 
+from backend.blocks._base import BlockCostType
 from backend.blocks.ayrshare.post_to_bluesky import PostToBlueskyBlock
 from backend.blocks.ayrshare.post_to_facebook import PostToFacebookBlock
 from backend.blocks.ayrshare.post_to_gmb import PostToGMBBlock
@@ -21,14 +22,17 @@ from backend.blocks.code_executor import (
 )
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     e2b_credentials,
     fal_credentials,
     jina_credentials,
+    open_router_credentials,
     webshare_proxy_credentials,
 )
 
@@ -184,3 +188,64 @@ def test_transcribe_youtube_has_one_credit_tooling_floor():
         },
     )
     assert cost == 1
+
+
+# -------- SECRT-2701: OpenRouter display rates are not billing rates --------
+
+
+def _open_router_input(model: str) -> dict:
+    return {
+        "model": model,
+        "credentials": {
+            "id": open_router_credentials.id,
+            "provider": open_router_credentials.provider,
+            "type": open_router_credentials.type,
+        },
+    }
+
+
+def test_open_router_bills_cost_usd_not_the_displayed_token_rate():
+    """open_router models settle against the provider's own x-total-cost, so
+    the catalog's per-1M credit rates only ever reach the builder's price
+    label. Pinning this keeps a refactor from quietly routing these models
+    down the TOKENS branch, which WOULD turn the displayed figures into
+    charges — and they drift against OpenRouter by design.
+    """
+    entry = next(
+        c
+        for c in BLOCK_COSTS[AITextGeneratorBlock]
+        if c.cost_filter.get("model") == LLMModel("deepseek/deepseek-chat")
+    )
+    assert entry.cost_type == BlockCostType.COST_USD
+    assert entry.cost_amount == 150
+
+    # A turn OpenRouter billed at $0.10 costs ceil(0.10 * 150) = 15 credits,
+    # whatever the displayed per-1M rates happen to say. The token counts
+    # below are deliberately huge: had this model been token-billed they
+    # would have produced 48 + 133.5 credits instead.
+    stats = NodeExecutionStats(
+        provider_cost=0.10,
+        provider_cost_type="cost_usd",
+        input_token_count=1_000_000,
+        output_token_count=1_000_000,
+    )
+    cost, _ = block_usage_cost(
+        AITextGeneratorBlock(),
+        _open_router_input("deepseek/deepseek-chat"),
+        stats=stats,
+    )
+    assert cost == 15
+
+
+def test_open_router_display_rate_matches_the_catalog_entry():
+    """The builder's "$X in / $Y out per 1M" label is the catalog credit rate
+    divided by the 150 cr/$ margin — SECRT-2701's corrected deepseek figures.
+    """
+    entry = next(
+        c
+        for c in BLOCK_COSTS[AITextGeneratorBlock]
+        if c.cost_filter.get("model") == LLMModel("deepseek/deepseek-chat")
+    )
+    assert entry.token_rate is not None
+    assert entry.token_rate.input_usd_per_1m == pytest.approx(0.32)
+    assert entry.token_rate.output_usd_per_1m == pytest.approx(0.89)

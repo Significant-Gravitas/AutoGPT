@@ -66,6 +66,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="google", display_name="Google"),
             CatalogCreator(name="gryphe", display_name="Gryphe"),
             CatalogCreator(name="inception", display_name="Inception Labs"),
+            CatalogCreator(name="inclusionai", display_name="InclusionAI"),
             CatalogCreator(name="meta", display_name="Meta"),
             CatalogCreator(name="microsoft", display_name="Microsoft"),
             CatalogCreator(name="mistral-ai", display_name="Mistral AI"),
@@ -75,6 +76,7 @@ def _build_catalog() -> CatalogPayload:
             CatalogCreator(name="perplexity", display_name="Perplexity"),
             CatalogCreator(name="qwen", display_name="Qwen"),
             CatalogCreator(name="sakana", display_name="Sakana AI"),
+            CatalogCreator(name="tencent", display_name="Tencent"),
             CatalogCreator(name="unbiased", display_name="Unbiased"),
             CatalogCreator(name="v0", display_name="v0 by Vercel"),
             CatalogCreator(name="xai", display_name="xAI"),
@@ -384,6 +386,14 @@ def _build_catalog() -> CatalogPayload:
                 cost=CatalogModelCost(run_credits=1),
             ),
             # ----- OpenRouter -----
+            # OpenRouter entries bill via COST_USD against the response's
+            # x-total-cost at 150 cr/$ (block_cost_config._open_router_llm_cost
+            # -> executor/utils.py COST_USD branch), so input/output_credits_per_1m
+            # below are DISPLAY ONLY — they fill the builder's "$X in / $Y out
+            # per 1M" label and never reach a charge. OpenRouter reprices
+            # continuously, so these drift by design; regenerate the comparison
+            # with:
+            #   python3 scripts/check_openrouter_prices.py
             CatalogModel(
                 slug="amazon/nova-lite-v1",
                 display_name="Nova Lite V1",
@@ -467,7 +477,9 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=2048,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=2, input_credits_per_1m=21.0, output_credits_per_1m=42.0
+                    run_credits=2,
+                    input_credits_per_1m=48.0,
+                    output_credits_per_1m=133.5,
                 ),
             ),
             CatalogModel(
@@ -479,7 +491,9 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=163840,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=21.0, output_credits_per_1m=42.0
+                    run_credits=1,
+                    input_credits_per_1m=75.0,
+                    output_credits_per_1m=322.5,
                 ),
             ),
             CatalogModel(
@@ -490,11 +504,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.06/$0.32 per 1M,
+                # cache read $0.01/1M (further drift since this PR's prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=22.5,
-                    output_credits_per_1m=90.0,
-                    cache_read_credits_per_1m=0.45,
+                    input_credits_per_1m=9.0,
+                    output_credits_per_1m=48.0,
+                    cache_read_credits_per_1m=1.5,
                 ),
             ),
             CatalogModel(
@@ -557,7 +573,7 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=2,
                 cost=CatalogModelCost(
                     run_credits=4,
-                    input_credits_per_1m=188.0,
+                    input_credits_per_1m=187.5,
                     output_credits_per_1m=1500.0,
                 ),
             ),
@@ -585,7 +601,7 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=38.0,
+                    input_credits_per_1m=37.5,
                     output_credits_per_1m=225.0,
                 ),
             ),
@@ -618,6 +634,23 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemma-4-31b-it",
+                display_name="Gemma 4 31B",
+                provider="open_router",
+                creator="google",
+                context_window=262144,
+                max_output_tokens=16384,
+                price_tier=1,
+                # Live OpenRouter rate as of 2026-09-23: $0.09/$0.34 per 1M,
+                # cache read $0.05/1M (drifted from the $0.14/$0.40 launch price).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=13.5,
+                    output_credits_per_1m=51.0,
+                    cache_read_credits_per_1m=7.5,
+                ),
+            ),
+            CatalogModel(
                 slug="gryphe/mythomax-l2-13b",
                 display_name="MythoMax L2 13B",
                 provider="open_router",
@@ -626,6 +659,25 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=4096,
                 price_tier=1,
                 cost=CatalogModelCost(run_credits=1),
+            ),
+            CatalogModel(
+                slug="inclusionai/ling-3.0-flash-vl",
+                display_name="Ling 3.0 Flash VL",
+                provider="open_router",
+                creator="inclusionai",
+                context_window=131072,
+                max_output_tokens=32768,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                supports_parallel_tool_calls=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=9.0,
+                    output_credits_per_1m=27.0,
+                    cache_read_credits_per_1m=1.8,
+                ),
             ),
             CatalogModel(
                 slug="meta-llama/llama-4-maverick",
@@ -637,8 +689,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=75.0,
-                    output_credits_per_1m=116.0,
+                    input_credits_per_1m=28.125,
+                    output_credits_per_1m=97.875,
                 ),
             ),
             CatalogModel(
@@ -650,7 +702,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=17.0, output_credits_per_1m=51.0
+                    run_credits=1, input_credits_per_1m=15.0, output_credits_per_1m=45.0
                 ),
             ),
             CatalogModel(
@@ -746,7 +798,9 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=15.0, output_credits_per_1m=45.0
+                    run_credits=1,
+                    input_credits_per_1m=14.0625,
+                    output_credits_per_1m=37.5,
                 ),
             ),
             CatalogModel(
@@ -773,8 +827,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=66.0,
-                    output_credits_per_1m=300.0,
+                    input_credits_per_1m=67.5,
+                    output_credits_per_1m=337.5,
                 ),
             ),
             CatalogModel(
@@ -787,8 +841,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=2,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=112.0,
-                    output_credits_per_1m=698.0,
+                    input_credits_per_1m=142.5,
+                    output_credits_per_1m=600.0,
                 ),
             ),
             CatalogModel(
@@ -805,9 +859,9 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — $3/$15 per Mtok on OpenRouter,
-                # credit rates at the standard 1.5x margin (Sonnet-class
-                # pricing).
+                # Moonshot's premium tier — $3.00/$15.00 per Mtok on
+                # OpenRouter (repriced from $1.70/$8.50; verified live
+                # 2026-09-22), credit rates at the standard 1.5x margin.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
@@ -845,7 +899,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=23.0, output_credits_per_1m=90.0
+                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90.0
                 ),
             ),
             CatalogModel(
@@ -857,7 +911,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=32768,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=11.0, output_credits_per_1m=45.0
+                    run_credits=1, input_credits_per_1m=2.7, output_credits_per_1m=13.5
                 ),
             ),
             CatalogModel(
@@ -941,6 +995,28 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="qwen/qwen3.8-flash",
+                display_name="Qwen 3.8 Flash",
+                provider="open_router",
+                creator="qwen",
+                context_window=1000000,
+                max_output_tokens=131072,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing: $0.15/$0.47 per Mtok, $0.016/Mtok
+                # cached input, $0.20/Mtok cache write — credit rates at the
+                # standard 1.5x margin (verified live 2026-09-21).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=22.5,
+                    output_credits_per_1m=70.5,
+                    cache_read_credits_per_1m=2.4,
+                    cache_creation_credits_per_1m=30.0,
+                ),
+            ),
+            CatalogModel(
                 slug="qwen/qwen3-coder",
                 display_name="Qwen 3 Coder",
                 provider="open_router",
@@ -1012,8 +1088,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 cost=CatalogModelCost(
                     run_credits=5,
-                    input_credits_per_1m=300.0,
-                    output_credits_per_1m=900.0,
+                    input_credits_per_1m=187.5,
+                    output_credits_per_1m=375.0,
                 ),
             ),
             CatalogModel(
@@ -1600,6 +1676,29 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=6.0,
                     output_credits_per_1m=22.5,
                     cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            # ----- Tencent -----
+            CatalogModel(
+                slug="tencent/hy4-preview",
+                display_name="Hy4 Preview",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=64000,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (fp8 endpoint): $0.834/$2.501 per
+                # Mtok, $0.042/Mtok cached input — credit rates at the
+                # standard 1.5x margin (verified live 2026-09-21).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=125.1,
+                    output_credits_per_1m=375.15,
+                    cache_read_credits_per_1m=6.3,
+                    provider_input_usd_per_1m=0.834,
+                    provider_output_usd_per_1m=2.501,
                 ),
             ),
             # ----- Unbiased -----

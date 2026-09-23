@@ -25,9 +25,12 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import {
   type Attachment,
   type WorkspaceAttachment,
+  appendWithinCap,
+  MAX_ATTACHMENTS,
   partitionAttachments,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
+import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
@@ -35,6 +38,7 @@ import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
@@ -130,6 +134,8 @@ export function ChatInput({
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // How many files the cap turned away on the last attach; 0 hides the notice.
+  const [refusedCount, setRefusedCount] = useState(0);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
 
@@ -147,15 +153,13 @@ export function ChatInput({
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
-      setAttachments((prev) => [
-        ...prev,
-        ...droppedFiles.map((file) => ({ kind: "local" as const, file })),
-      ]);
+      addAttachments(droppedFiles.map(toLocalAttachment));
       onDroppedFilesConsumed?.();
     }
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasAttachments = attachments.length > 0;
+  const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -176,6 +180,7 @@ export function ChatInput({
       // user already attached new ones in the meantime.
       const sent = attachments;
       setAttachments([]);
+      setRefusedCount(0);
       try {
         await onSend(
           message,
@@ -193,7 +198,7 @@ export function ChatInput({
   });
 
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy,
+    enabled: showWorkspaceFiles && !isBusy && !isAtCap,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
@@ -205,6 +210,11 @@ export function ChatInput({
   const {
     isRecording,
     isTranscribing,
+    transcriptionError,
+    hasFailedRecording,
+    retryTranscription,
+    downloadFailedRecording,
+    dismissTranscriptionError,
     elapsedTime,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
@@ -263,27 +273,27 @@ export function ChatInput({
   }
 
   function handleFilesSelected(newFiles: File[]) {
-    setAttachments((prev) => [
-      ...prev,
-      ...newFiles.map((file) => ({ kind: "local" as const, file })),
-    ]);
+    addAttachments(newFiles.map(toLocalAttachment));
   }
 
   function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    setAttachments((prev) => {
-      if (prev.some((a) => a.kind === "workspace" && a.fileId === item.id)) {
-        return prev;
-      }
-      return [...prev, workspaceItemToAttachment(item)];
-    });
+    handleWorkspaceFilesConfirmed([item]);
   }
 
   function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
-    items.forEach(handleWorkspaceFileSelected);
+    addAttachments(items.map(workspaceItemToAttachment));
   }
 
   function handleRemoveAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+    // Removing one frees a slot, so the count the notice quotes is now stale.
+    setRefusedCount(0);
+  }
+
+  function addAttachments(incoming: Attachment[]) {
+    const { next, refused } = appendWithinCap(attachments, incoming);
+    setAttachments(next);
+    setRefusedCount(refused);
   }
 
   const isCompact = variant === "compact";
@@ -328,6 +338,23 @@ export function ChatInput({
         )}
       >
         {voiceBar}
+        {!voiceBar && transcriptionError && hasFailedRecording && (
+          <TranscriptionErrorBar
+            message={transcriptionError}
+            isRetrying={isTranscribing}
+            onRetry={retryTranscription}
+            onDownload={downloadFailedRecording}
+            onDismiss={dismissTranscriptionError}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
+        {refusedCount > 0 && (
+          <AttachmentCapNotice
+            refusedCount={refusedCount}
+            onDismiss={() => setRefusedCount(0)}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -356,6 +383,7 @@ export function ChatInput({
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              isAtCap={isAtCap}
               className={
                 stacked
                   ? cn(
@@ -500,4 +528,8 @@ export function ChatInput({
       )}
     </form>
   );
+}
+
+function toLocalAttachment(file: File): Attachment {
+  return { kind: "local", file };
 }

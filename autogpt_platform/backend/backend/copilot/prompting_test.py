@@ -2,6 +2,8 @@
 
 import importlib
 
+import pytest
+
 from backend.copilot import prompting
 
 
@@ -246,3 +248,10 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestMathGuidance:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "`$…$` inline, `$$…$$` for display" in result

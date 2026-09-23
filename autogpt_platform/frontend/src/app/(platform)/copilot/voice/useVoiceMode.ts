@@ -8,6 +8,7 @@ import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
 import { primeAudioContext } from "./audioContext";
 import { playClickSound } from "./clickSound";
+import { downloadRecording } from "./downloadRecording";
 import {
   describeVoiceState,
   isMicOpen,
@@ -41,6 +42,11 @@ const REPLY_SILENCE_MS = 90_000;
  * as the tools take — so say it.
  */
 const TEXT_SETTLED_MS = 800;
+
+/** A transcription that failed with its audio still held. */
+export interface VoiceFailure {
+  message: string;
+}
 
 interface Args {
   enabled: boolean;
@@ -97,6 +103,10 @@ export function useVoiceMode({
   // value, which is exactly the double-click that used to leak a session.
   const starting = useRef(false);
   const [isStarting, setIsStarting] = useState(false);
+  // A transcription that failed must not take the audio with it: the user has
+  // already spoken, and nothing else on this page can give that back.
+  const failedUtterance = useRef<Blob | null>(null);
+  const [failure, setFailure] = useState<VoiceFailure | null>(null);
 
   useEffect(() => {
     if (stateRef.current === "thinking" || stateRef.current === "speaking") {
@@ -133,6 +143,9 @@ export function useVoiceMode({
     isStarting,
     statusLabel: describeVoiceState(state),
     toggle,
+    failure,
+    retryFailedUtterance,
+    downloadFailedUtterance,
   };
 
   function toggle() {
@@ -150,7 +163,12 @@ export function useVoiceMode({
     let session: VadSession;
     try {
       session = await startVadSession({
-        onSpeechStart: () => dispatch({ type: "SPEECH_START" }),
+        onSpeechStart: () => {
+          // A new utterance supersedes the failed one; leaving the old error
+          // on screen while the mic is live invites a retry of the wrong audio.
+          clearFailure();
+          dispatch({ type: "SPEECH_START" });
+        },
         onMisfire: () => {
           trackVoiceMode("voice_turn_dropped", { reason: "vad_misfire" });
           dispatch({ type: "SPEECH_MISFIRE" });
@@ -202,6 +220,7 @@ export function useVoiceMode({
     activation.current += 1;
     setVoiceTurnActive(false);
     setStarting(false);
+    clearFailure();
     clearTimers();
     playerRef.current?.stop();
     discardReply();
@@ -222,16 +241,71 @@ export function useVoiceMode({
   }
 
   async function handleUtterance(wav: Blob) {
-    const mine = activation.current;
     utteranceEndedAt.current = Date.now();
     dispatch({ type: "SPEECH_END" });
     playClickSound();
+    await transcribeAndSend(wav);
+  }
+
+  /** Retries the utterance that failed, byte for byte. */
+  async function retryFailedUtterance() {
+    const wav = failedUtterance.current;
+    if (!wav) return;
+    dispatch({ type: "RETRY" });
+    // Refused — the user is already speaking again, or the session has moved
+    // on. The failure stays up, audio and all; dropping it here would lose
+    // the recording to a click that did nothing.
+    if (stateRef.current !== "transcribing") return;
+    clearFailure();
+    trackVoiceMode("voice_transcribe_retried", {
+      turn_index: turnIndex.current,
+    });
+    utteranceEndedAt.current = Date.now();
+    await transcribeAndSend(wav);
+  }
+
+  function downloadFailedUtterance() {
+    const wav = failedUtterance.current;
+    if (!wav) return;
+    trackVoiceMode("voice_recording_downloaded", {
+      turn_index: turnIndex.current,
+    });
+    downloadRecording(wav);
+  }
+
+  function clearFailure() {
+    failedUtterance.current = null;
+    setFailure(null);
+  }
+
+  /** Assumes the state is already `transcribing`. */
+  async function transcribeAndSend(wav: Blob) {
+    const mine = activation.current;
 
     let transcript = "";
     try {
       transcript = await transcribeUtterance(wav);
     } catch (error) {
-      report(error);
+      // A session the user has already left owns none of this: writing the
+      // failure back here would resurrect the old recording under the next
+      // activation, and re-arm a session timer deactivate had just cleared.
+      if (mine !== activation.current || stateRef.current !== "transcribing") {
+        return;
+      }
+      console.error("[Voice mode]", error);
+      // No toast: it takes the only retry affordance off screen with it after
+      // five seconds, and the audio behind it is unrecoverable once dropped.
+      failedUtterance.current = wav;
+      setFailure({
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Transcription failed",
+      });
+      // The mic comes back, but its 8-second silence close must not: that
+      // would take the recording with it before the user has read the error.
+      // The session cap is what ends an abandoned session from here.
+      setTimer("session", MAX_SESSION_MS, () => deactivate("silence_timeout"));
       trackVoiceMode("voice_turn_dropped", { reason: "transcribe_failed" });
       dispatch({ type: "TRANSCRIPT_DROPPED" });
       return;
@@ -375,7 +449,7 @@ export function useVoiceMode({
     if (isMicOpen(next)) vadRef.current?.resume();
     else vadRef.current?.pause();
 
-    if (next === "listening") {
+    if (next === "listening" && !failedUtterance.current) {
       setTimer("silence", inputs.current.silenceTimeoutMs, () =>
         deactivate("silence_timeout"),
       );

@@ -401,6 +401,19 @@ class WorkspaceFileInfoData(BaseModel):
     size_bytes: int
 
 
+class WorkspaceFolderInfoData(BaseModel):
+    """A workspace folder as ``list_workspace_files`` reports it.
+
+    ``file_count`` counts the files directly inside; a subfolder's own files
+    are counted on that subfolder.
+    """
+
+    folder_id: str
+    name: str
+    parent_id: str | None = None
+    file_count: int
+
+
 class DelegatedExpertInfo(BaseModel):
     """Identity of the expert a delegated sub-session runs as.
 
@@ -786,6 +799,9 @@ class ClarifyingQuestion(BaseModel):
     keyword: str
     example: str | None = None
     options: list[str] = Field(default_factory=list)
+    # Several of `options` may be picked. Only ever set alongside options:
+    # there is nothing to multi-select in a free-text question.
+    allow_multiple: bool = False
 
 
 class AgentPreviewResponse(ToolResponseBase):

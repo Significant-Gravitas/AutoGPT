@@ -34,6 +34,18 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
+# Every top-level block this module renders into a prompt. The display strip in
+# ``service.py`` peels these off the front of a stored user message by name, so
+# a new block missing from this tuple renders verbatim as if the user typed it.
+OWNED_BLOCK_TAGS = (
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
+)
+
 
 class ExpertSessionUnavailableError(RuntimeError):
     """The persisted expert scope cannot safely supply its identity."""

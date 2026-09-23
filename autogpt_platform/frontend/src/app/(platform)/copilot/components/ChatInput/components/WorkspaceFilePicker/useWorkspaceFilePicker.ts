@@ -1,6 +1,12 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import {
+  applySelection,
+  orderByList,
+  type Selection,
+  type SelectionModifiers,
+} from "./helpers";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -18,10 +24,12 @@ interface Args {
 export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   const [searchTerm, setSearchTerm] = useState("");
   // Keep the full item (not just id) so a selection survives a search that
-  // pages the file off the currently-loaded list.
-  const [selected, setSelected] = useState<Map<string, WorkspaceFileItem>>(
-    new Map(),
-  );
+  // pages the file off the currently-loaded list. The anchor travels with it
+  // because a range is only meaningful against the list it was taken from.
+  const [selection, setSelection] = useState<Selection>({
+    selected: new Map(),
+    anchor: null,
+  });
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -57,38 +65,38 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
     enabled,
   });
 
-  function toggle(item: WorkspaceFileItem) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(item.id)) {
-        next.delete(item.id);
-      } else {
-        next.set(item.id, item);
-      }
-      return next;
-    });
+  const files = flattenFiles(query.data);
+
+  function select(index: number, modifiers?: SelectionModifiers) {
+    setSelection((prev) => applySelection(prev, files, index, modifiers));
+  }
+
+  function search(term: string) {
+    setSearchTerm(term);
+    // A range across a changed filter would span files never shown together.
+    setSelection((prev) => ({ ...prev, anchor: null }));
   }
 
   function reset() {
-    setSelected(new Map());
+    setSelection({ selected: new Map(), anchor: null });
     setSearchTerm("");
   }
 
   return {
-    files: flattenFiles(query.data),
+    files,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     searchTerm,
-    setSearchTerm,
+    setSearchTerm: search,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {
       query.fetchNextPage();
     },
-    selectedIds: selected,
-    selectedFiles: Array.from(selected.values()),
-    toggle,
+    selectedIds: selection.selected,
+    selectedFiles: orderByList(selection.selected, files),
+    select,
     reset,
   };
 }

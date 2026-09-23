@@ -19,7 +19,6 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { describeSendFailure } from "../ChatInput/helpers";
@@ -179,7 +178,7 @@ export function ExpertChangeCard({
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const panelAvailable = useGetFlag(Flag.ARTIFACTS) && !!artifactId;
+  const panelAvailable = !!artifactId;
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;
 

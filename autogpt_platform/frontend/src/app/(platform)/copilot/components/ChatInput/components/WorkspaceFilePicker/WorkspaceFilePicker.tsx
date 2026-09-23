@@ -70,7 +70,7 @@ export function WorkspaceFilePicker({
           <WorkspaceFileList
             files={picker.files}
             selectedIds={picker.selectedIds}
-            onToggle={picker.toggle}
+            onSelect={picker.select}
             isLoading={picker.isLoading}
             isError={picker.isError}
             error={picker.error}

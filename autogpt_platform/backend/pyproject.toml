@@ -21,7 +21,7 @@ bleach = { extras = ["css"], version = "^6.2.0" }
 cachetools = "^5.5.0"
 claude-agent-sdk = "^0.2.146"  # 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 strips the context-management beta, which OpenRouter rejects. See sdk_compat_test.py.
 click = "^8.2.0"
-cryptography = "^46.0"
+cryptography = ">=46,<51"
 discord-py = "^2.5.2"
 e2b = "^2.15.2"
 e2b-code-interpreter = "^2.0"
@@ -68,7 +68,7 @@ pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
 python-multipart = ">=0.0.22,<0.0.33"
 redis = "^8.1.0"
-regex = "^2025.9.18"
+regex = ">=2025.9.18,<2027.0.0"
 replicate = "^1.0.6"
 sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.44.0"}
 slack-sdk = "^3.41.0"
@@ -82,7 +82,7 @@ typesafe-sdk = "0.6.0"
 uvicorn = { extras = ["standard"], version = ">=0.40,<0.54" }
 websockets = "^15.0"
 youtube-transcript-api = "^1.2.1"
-yt-dlp = "2025.12.08"
+yt-dlp = "2026.8.19"
 zerobouncesdk = "^1.1.2"
 # NOTE: please insert new dependencies in their alphabetical location
 pytest-snapshot = "^0.9.0"
