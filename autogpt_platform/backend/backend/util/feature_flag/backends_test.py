@@ -679,6 +679,60 @@ class TestSentryFlagContext:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_non_boolean_answer_to_a_boolean_read_records_the_default(
+        self, ld_client, user_context, sentry_flags
+    ):
+        ld_client.variation.return_value = "on"
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1", True) == (
+            True,
+            False,
+        )
+        assert sentry_flags.get() == [
+            {"flag": Flag.HIRE_EXPERTS.value, "result": True},
+            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "gate, configured, initialized, answer",
+        [
+            ("decorator", True, False, True),
+            ("decorator", True, True, "on"),
+            ("dependency", False, True, True),
+            ("dependency", True, False, True),
+        ],
+    )
+    async def test_a_gate_serving_its_default_records_it(
+        self,
+        mocker,
+        ld_client,
+        user_context,
+        sentry_flags,
+        gate,
+        configured,
+        initialized,
+        answer,
+    ):
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=configured)
+        ld_client.is_initialized.return_value = initialized
+        ld_client.variation.return_value = answer
+        # A stale earlier answer must not be what an error from this route carries.
+        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
+
+        with pytest.raises(HTTPException):
+            if gate == "decorator":
+                await _gated_route()(user_id="u-1")
+            else:
+                await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+
+        assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
+            Flag.HIRE_EXPERTS.value: False,
+            f"{Flag.HIRE_EXPERTS.value}.fallback": True,
+        }
+
+    @pytest.mark.asyncio
     async def test_a_real_answer_clears_an_earlier_fallback(
         self, ld_client, user_context, sentry_flags
     ):

@@ -848,6 +848,7 @@ async def evaluate_feature_flag(
 
     # A misconfigured flag is not an answer either: fall back to the default,
     # but never let a caller take an irreversible action on it.
+    _record_flag_for_sentry(flag_key.value, default, False)
     return default, False
 
 
@@ -890,6 +891,7 @@ def feature_flag(
                         f"using default {flag_key}={repr(default)}"
                     )
                     is_enabled = default
+                    _record_flag_for_sentry(flag_key, default, False)
                 else:
                     # Use the internal function directly since we have a raw string flag_key
                     flag_value = await get_feature_flag_value(
@@ -906,6 +908,7 @@ def feature_flag(
                             f"Using default value {repr(default)}"
                         )
                         is_enabled = default
+                        _record_flag_for_sentry(flag_key, default, False)
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
@@ -976,6 +979,7 @@ def create_feature_flag_dependency(
                 "Feature flag backend not configured, using default "
                 f"{flag_key.value}={default}"
             )
+            _record_flag_for_sentry(flag_key.value, default, False)
             if not default:
                 raise HTTPException(status_code=404, detail="Feature not available")
             return
@@ -986,6 +990,7 @@ def create_feature_flag_dependency(
                     "Feature flag backend not initialized, using default "
                     f"{flag_key.value}={default}"
                 )
+                _record_flag_for_sentry(flag_key.value, default, False)
                 if not default:
                     raise HTTPException(status_code=404, detail="Feature not available")
                 return
