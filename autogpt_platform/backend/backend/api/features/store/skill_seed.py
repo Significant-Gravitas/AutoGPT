@@ -417,7 +417,7 @@ STARTER_SKILLS: list[CatalogEntry] = [
         ],
     },
     {
-        "slug": "blake-getting-started",
+        "slug": "max-getting-started",
         "categories": ["sales"],
         "required_providers": [
             "google",
@@ -1300,6 +1300,37 @@ async def seed_starter_skills() -> list[str]:
     return await _seed_loaded(loaded)
 
 
+# Starter slugs that shipped and were then renamed or folded away. The seed
+# never deletes a listing, so a retired slug is delisted: hidden from the hub
+# and unavailable to new installs, while copies already installed stay put.
+RETIRED_STARTER_SLUGS: list[str] = [
+    # Renamed to max-getting-started when the senior sales package was folded
+    # into Max.
+    "blake-getting-started",
+]
+
+
+async def _delist_retired_starters(tx: prisma.Prisma) -> int:
+    listings = await prisma.models.SkillListing.prisma(tx).find_many(
+        where={
+            "slug": {"in": RETIRED_STARTER_SLUGS},
+            "isDeleted": False,
+            "owningUserId": None,
+            "owningOrgId": None,
+        }
+    )
+    for listing in listings:
+        await prisma.models.SkillListing.prisma(tx).update(
+            where={"id": listing.id}, data={"isDeleted": True}
+        )
+        if listing.activeVersionId is not None:
+            await prisma.models.SkillListingVersion.prisma(tx).update(
+                where={"id": listing.activeVersionId},
+                data={"isAvailable": False},
+            )
+    return len(listings)
+
+
 async def _seed_loaded(
     loaded: list[tuple[CatalogEntry, ParsedSkill, list[SkillFile]]],
 ) -> list[str]:
@@ -1312,6 +1343,11 @@ async def _seed_loaded(
             logger.info(
                 f"Seeded skill '{entry['slug']}' (#{listing.id})"
                 + (f" with {len(files)} package files" if files else "")
+            )
+        delisted = await _delist_retired_starters(tx)
+        if delisted:
+            logger.info(
+                f"Delisted {delisted} retired starter(s): {RETIRED_STARTER_SLUGS}"
             )
     return listing_ids
 

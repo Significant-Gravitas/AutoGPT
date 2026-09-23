@@ -66,13 +66,6 @@ class AcceptedTrialOffer(TrialOffer):
         return sha256(self.model_dump_json().encode()).hexdigest()
 
 
-# What the flag serves to someone who should not see a trial:
-# ``{"enabled": false}`` is the off variation the LaunchDarkly flag was
-# created with, and ``null`` the other natural way to say it. Both are
-# deliberate answers, not misconfiguration, so neither is logged.
-_NO_OFFER: tuple[object, ...] = (None, {"enabled": False})
-
-
 async def get_trial_offer(
     user_id: str, *, country: str | None = None
 ) -> TrialOffer | None:
@@ -97,7 +90,10 @@ async def get_trial_offer(
             None,
             attributes={"country": code} if code else None,
         )
-        if raw in _NO_OFFER:
+        # The flag's disabled variation is an object ({"enabled": false}), not
+        # null, so only a payload claiming to be an offer is worth an error.
+        if not isinstance(raw, dict) or "version" not in raw:
+            logger.debug("No card-required trial offer configured")
             return None
         return TrialOffer.model_validate(raw)
     except (ValidationError, ValueError, TypeError):
