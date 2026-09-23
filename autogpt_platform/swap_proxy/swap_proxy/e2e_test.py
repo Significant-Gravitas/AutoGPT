@@ -362,7 +362,7 @@ async def test_a_placeholder_for_an_unbound_host_goes_out_literally(stack, caplo
         )
     assert upstream.seen[0]["headers"]["authorization"] == "Bearer hsurr:github"
     assert source.asked == []
-    (line,) = [json.loads(r.message) for r in caplog.records]
+    (line,) = audit_lines(caplog)
     assert (line["event"], line["reason"]) == ("refused", "unbound-host")
     assert line["owner"] == "session:s-a" and line["placeholder"] == "hsurr:github"
 

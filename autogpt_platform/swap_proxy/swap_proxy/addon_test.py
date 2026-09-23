@@ -51,7 +51,11 @@ def addon_for(flow: http.HTTPFlow, swaps: bool = True) -> SwapProxyAddon:
 def audit(caplog) -> list[tuple]:
     return [
         (line["event"], line.get("placeholder") or line.get("reason"))
-        for line in (json.loads(r.message) for r in caplog.records)
+        for line in (
+            json.loads(r.message)
+            for r in caplog.records
+            if r.name == "swap_proxy.audit"
+        )
     ]
 
 
