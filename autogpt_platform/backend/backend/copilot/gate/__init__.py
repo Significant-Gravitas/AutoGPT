@@ -113,7 +113,9 @@ async def check_action(
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
-        await chat_rules.set_ask(session_id, review_store.rule_key(review, tool_name))
+        await chat_rules.set_ask(
+            session_id, await held.rule_key(session_id, review_id, tool_name)
+        )
         return Decision(allowed=False, reason=_REJECTED)
 
     subject = await subject_of() if subject_of is not None else None

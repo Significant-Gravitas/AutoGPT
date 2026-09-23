@@ -73,8 +73,8 @@ def review_payload(
 ) -> dict[str, Any]:
     """Nest the arguments one level down, and redact secret-shaped keys.
 
-    The subject is kept as decided when the card opened, so its answer acts on
-    what the user saw rather than on a tree that has moved since.
+    The subject is kept as decided when the card opened: what the user saw,
+    not a recomputation over a tree that may have moved since.
     """
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
@@ -83,16 +83,8 @@ def review_payload(
     shown = {key: _clip(value, per_value) for key, value in redacted.items()}
     payload: dict[str, Any] = {"tool": tool_name, "arguments": shown}
     if subject is not None:
-        payload["subject"] = subject.model_dump(mode="json", exclude={"reason"})
+        payload["subject"] = subject.model_dump(mode="json", include={"name", "effect"})
     return payload
-
-
-def rule_key(review: PendingHumanReviewModel, tool_name: str) -> str:
-    """What a rejection of this row sets to ask: its subject, else its tool."""
-    payload = review.payload if isinstance(review.payload, dict) else {}
-    subject = payload.get("subject")
-    key = subject.get("key") if isinstance(subject, dict) else None
-    return key if isinstance(key, str) and key else tool_name
 
 
 def instructions_for(tool_name: str, reason: str, label: str | None = None) -> str:
