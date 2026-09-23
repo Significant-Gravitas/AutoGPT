@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -472,7 +471,6 @@ class GmailReadBlock(GmailBase):
                 ],
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -625,7 +623,6 @@ class GmailSendBlock(GmailBase):
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -814,7 +811,6 @@ class GmailListLabelsBlock(GmailBase):
                     {"id": "Label_2", "name": "Work"},
                 ],
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1079,7 +1075,6 @@ class GmailGetThreadBlock(GmailBase):
                     "historyId": "645006",
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1356,7 +1351,6 @@ class GmailReplyBlock(GmailBase):
                 }
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -1573,7 +1567,6 @@ class GmailGetProfileBlock(GmailBase):
                     "historyId": "12345",
                 },
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1672,6 +1665,7 @@ class GmailForwardBlock(GmailBase):
                     "threadId": "t1",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(

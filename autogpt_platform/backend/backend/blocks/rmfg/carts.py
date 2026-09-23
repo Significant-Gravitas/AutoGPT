@@ -9,7 +9,6 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -209,7 +208,6 @@ class RMFGGetCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"get_cart": lambda *args, **kwargs: TEST_CART},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

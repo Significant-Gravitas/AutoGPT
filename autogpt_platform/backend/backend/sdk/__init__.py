@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
@@ -124,7 +123,6 @@ __all__ = [
     # Core Block System
     "Block",
     "BlockCategory",
-    "BlockEffect",
     "BlockOutput",
     "BlockSchema",
     "BlockSchemaInput",

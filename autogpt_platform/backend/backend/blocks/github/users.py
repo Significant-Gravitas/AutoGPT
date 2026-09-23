@@ -1,7 +1,6 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -70,7 +69,6 @@ class GithubGetUserInfoBlock(Block):
                 ("user", TEST_USER_PAYLOAD),
             ],
             test_mock={"get_user": lambda *args, **kwargs: TEST_USER_PAYLOAD},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

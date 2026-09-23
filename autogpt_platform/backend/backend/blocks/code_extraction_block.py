@@ -3,7 +3,6 @@ import re
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -54,7 +53,6 @@ class CodeExtractionBlock(Block):
                 ("python", "print('Hello World')"),
                 ("remaining_text", "Here's a Python example:\nAnd some HTML:"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

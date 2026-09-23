@@ -2,7 +2,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -73,7 +72,6 @@ class LinearSearchProjectsBlock(Block):
                     )
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

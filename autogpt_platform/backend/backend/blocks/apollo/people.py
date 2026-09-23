@@ -3,7 +3,6 @@ import asyncio
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -301,7 +300,6 @@ class SearchPeopleBlock(Block):
                     ),
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

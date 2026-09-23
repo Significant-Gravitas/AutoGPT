@@ -92,7 +92,10 @@ def test_get_home_dashboard_returns_single_payload(
     assert body["timezone"] == "UTC"
     assert body["attention"][0]["kind"] == "approval"
     assert set(body) >= {"attention", "briefing", "active_tasks", "team", "week"}
-    build.assert_awaited_once_with(user_id=test_user_id, organization_id="test-org")
+    build.assert_awaited_once()
+    kwargs = build.await_args.kwargs
+    assert kwargs["user_id"] == test_user_id
+    assert kwargs["ctx"].org_id == "test-org"
 
 
 def test_personal_context_passes_no_organization(
@@ -118,4 +121,7 @@ def test_personal_context_passes_no_organization(
     )
 
     assert client.get("/home").status_code == 200
-    build.assert_awaited_once_with(user_id=test_user_id, organization_id=None)
+    build.assert_awaited_once()
+    kwargs = build.await_args.kwargs
+    assert kwargs["user_id"] == test_user_id
+    assert kwargs["ctx"].org_id is None

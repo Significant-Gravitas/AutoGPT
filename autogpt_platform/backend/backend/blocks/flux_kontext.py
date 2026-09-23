@@ -8,7 +8,6 @@ from replicate.helpers import FileOutput
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -145,7 +144,6 @@ class AIImageEditorBlock(Block):
                 ),
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -4,7 +4,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -74,7 +73,6 @@ class AllQuietListTeamsBlock(Block):
                 ("has_more", False),
             ],
             test_mock={"list_teams": lambda *args, **kwargs: ([TEST_TEAM], False)},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

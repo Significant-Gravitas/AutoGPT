@@ -8,11 +8,13 @@ from typing import (
     Callable,
     ClassVar,
     Generic,
+    Literal,
     Optional,
     Type,
     TypeAlias,
     TypeVar,
     cast,
+    get_args,
     get_origin,
 )
 
@@ -56,17 +58,11 @@ app_config = Config()
 BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
 
 
-class BlockEffect(Enum):
-    """What running this block does to the world outside the caller.
-
-    Declared per block, never derived: neither the credentials field nor the
-    category is a proxy for I/O. Undeclared (``None``) means unclassified, and
-    every consumer must treat that as WRITE.
-    """
-
-    NONE = "none"  # pure computation: no network, no disk, no database
-    READ = "read"  # fetches or computes; changes nothing outside the platform
-    WRITE = "write"  # changes state somewhere outside the platform
+# How the copilot ranks a block when it is offered as a capability.  A
+# ``service`` block acts on one named integration (Gmail, Linear, ...); a
+# ``primitive`` is a generic building block (HTTP, SQL, code, LLM calls) that
+# can reach many services and so ranks below a matching service capability.
+CapabilityKind = Literal["service", "primitive"]
 
 
 class BlockType(Enum):
@@ -383,17 +379,29 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def get_credentials_fields(cls) -> dict[str, type[CredentialsMetaInput]]:
-        return {
-            field_name: info.annotation
-            for field_name, info in cls.model_fields.items()
-            if (
-                inspect.isclass(info.annotation)
-                and issubclass(
-                    get_origin(info.annotation) or info.annotation,
-                    CredentialsMetaInput,
-                )
+        result = {}
+        for field_name, info in cls.model_fields.items():
+            annotation = info.annotation
+            # Conditional credentials can be nullable at runtime while their
+            # JSON schema remains the credential object shape. Inspect union
+            # members so those fields are still discovered and validated.
+            candidates = [annotation, *get_args(annotation)]
+
+            credentials_model = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if inspect.isclass(candidate)
+                    and issubclass(
+                        get_origin(candidate) or candidate,
+                        CredentialsMetaInput,
+                    )
+                ),
+                None,
             )
-        }
+            if credentials_model is not None:
+                result[field_name] = credentials_model
+        return result
 
     @classmethod
     def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
@@ -582,7 +590,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
         is_irreversible_action: bool = False,
-        effect: BlockEffect | None = None,
+        capability_kind: CapabilityKind | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -600,17 +608,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
-            is_irreversible_action: True when the effect has already reached someone
-                outside the platform by the time the block returns, so undoing the
-                state does not undo the act: sends, public posts, payments and
-                orders, moderation, permanent deletes, and grants of access to
-                outsiders. An ordinary external write the user can edit back —
-                a spreadsheet cell, a draft, a label — is not one; declare that
-                ``effect=BlockEffect.WRITE`` instead. Pauses the run for human
-                review when the graph has ``sensitive_action_safe_mode`` on, and
-                makes ``GraphModel.has_sensitive_action`` true.
-            effect: What running the block does outside the caller; see BlockEffect.
-                Undeclared means unclassified, which every consumer reads as WRITE.
+            is_irreversible_action: The effect has reached someone outside the platform
+                by the time the block returns (a send, public post, payment or order,
+                external permanent delete, access grant, on-call page); an external
+                write the user can edit back is not one.
+            capability_kind: How the copilot ranks this block as a capability.
+                Defaults to ``service`` when the block's credentials name exactly
+                one provider and ``primitive`` otherwise; set it explicitly on
+                provider-backed generic blocks (code sandboxes, SQL, HTTP).
         """
         self.id = id
         self.input_schema = input_schema
@@ -627,7 +632,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_irreversible_action = is_irreversible_action
-        self.effect = effect
+        self._capability_kind: CapabilityKind | None = capability_kind
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -717,6 +722,38 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     @property
     def name(self):
         return self.__class__.__name__
+
+    @property
+    def capability_kind(self) -> CapabilityKind:
+        """``service`` for a block bound to one integration, else ``primitive``.
+
+        Explicit ``capability_kind`` wins.  Otherwise a block whose credential
+        inputs name exactly one provider is a service; blocks with no
+        credentials, or with a choice of providers (the LLM blocks), are
+        primitives.
+        """
+        if self._capability_kind is not None:
+            return self._capability_kind
+        try:
+            providers = {
+                provider
+                for info in self.input_schema.get_credentials_fields_info().values()
+                for provider in info.provider
+            }
+        except Exception:
+            # This runs while the block registry is being built, so one block
+            # with a malformed credentials schema would otherwise take the
+            # whole platform down at startup. "primitive" is the safe read:
+            # it only costs this block some ranking weight.
+            logger.warning(
+                "Could not read credentials for %s; treating it as a primitive",
+                self.name,
+                exc_info=True,
+            )
+            return "primitive"
+        if len(providers) == 1:
+            return "service"
+        return "primitive"
 
     def to_dict(self):
         return {

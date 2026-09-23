@@ -11,7 +11,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -153,7 +152,6 @@ class BannerbearTextOverlayBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def _make_api_request(self, payload: dict, api_key: str) -> dict:

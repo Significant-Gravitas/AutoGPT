@@ -22,7 +22,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -173,7 +172,6 @@ class ExaGetWebsetItemBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetItemBlock.Input,
             output_schema=ExaGetWebsetItemBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -257,7 +255,6 @@ class ExaListWebsetItemsBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetItemsBlock.Input,
             output_schema=ExaListWebsetItemsBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -340,7 +337,6 @@ class ExaDeleteWebsetItemBlock(Block):
             input_schema=ExaDeleteWebsetItemBlock.Input,
             output_schema=ExaDeleteWebsetItemBlock.Output,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -572,7 +568,6 @@ class ExaGetNewItemsBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.DATA},
             input_schema=ExaGetNewItemsBlock.Input,
             output_schema=ExaGetNewItemsBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

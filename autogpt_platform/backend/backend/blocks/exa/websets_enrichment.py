@@ -16,7 +16,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -326,7 +325,6 @@ class ExaGetEnrichmentBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetEnrichmentBlock.Input,
             output_schema=ExaGetEnrichmentBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -475,7 +473,6 @@ class ExaDeleteEnrichmentBlock(Block):
             input_schema=ExaDeleteEnrichmentBlock.Input,
             output_schema=ExaDeleteEnrichmentBlock.Output,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(

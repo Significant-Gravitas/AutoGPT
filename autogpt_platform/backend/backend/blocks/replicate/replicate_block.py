@@ -8,7 +8,6 @@ from replicate.client import Client as ReplicateClient
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -109,6 +108,7 @@ class ReplicateModelBlock(Block):
     def __init__(self):
         super().__init__(
             id="c40d75a2-d0ea-44c9-a4f6-634bb3bdab1a",
+            capability_kind="primitive",
             description="Run Replicate models synchronously",
             categories={BlockCategory.AI},
             input_schema=ReplicateModelBlock.Input,
@@ -134,7 +134,6 @@ class ReplicateModelBlock(Block):
                     "Mock response from Replicate model"
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(

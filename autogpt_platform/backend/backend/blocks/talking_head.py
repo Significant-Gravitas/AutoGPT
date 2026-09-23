@@ -6,7 +6,6 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -121,7 +120,6 @@ class CreateTalkingAvatarVideoBlock(Block):
                 },
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def create_clip(self, api_key: SecretStr, payload: dict) -> dict:

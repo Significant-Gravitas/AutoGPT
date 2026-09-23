@@ -1,7 +1,6 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -45,7 +44,6 @@ class NvidiaDeepfakeDetectBlock(Block):
             categories={BlockCategory.SAFETY},
             input_schema=NvidiaDeepfakeDetectBlock.Input,
             output_schema=NvidiaDeepfakeDetectBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

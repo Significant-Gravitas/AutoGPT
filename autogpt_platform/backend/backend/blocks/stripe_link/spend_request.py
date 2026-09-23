@@ -16,7 +16,6 @@ from pydantic import field_validator, model_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -198,7 +197,6 @@ class StripeLinkListPaymentMethodsBlock(Block):
                     ]
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -680,7 +678,6 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             test_mock={
                 "_link_api_request": lambda *args, **kwargs: {"status": "approved"}
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(

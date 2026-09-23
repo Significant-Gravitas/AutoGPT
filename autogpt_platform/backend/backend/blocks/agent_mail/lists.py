@@ -17,7 +17,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,7 +107,6 @@ class AgentMailListEntriesBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -204,7 +202,6 @@ class AgentMailCreateListEntryBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -290,7 +287,6 @@ class AgentMailGetListEntryBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -364,7 +360,6 @@ class AgentMailDeleteListEntryBlock(Block):
             test_mock={
                 "delete_entry": lambda *a, **kw: None,
             },
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod

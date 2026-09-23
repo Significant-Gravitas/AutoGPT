@@ -11,7 +11,6 @@ from typing import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -140,7 +139,6 @@ class GetLinkedinProfileBlock(Block):
                     ],
                 ),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -293,7 +291,6 @@ class LinkedinPersonLookupBlock(Block):
                     location_similarity_score=0.20,
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -408,7 +405,6 @@ class LinkedinRoleLookupBlock(Block):
                     linkedin_profile_url="https://www.linkedin.com/in/williamhgates/",
                 ),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -496,7 +492,6 @@ class GetLinkedinProfilePictureBlock(Block):
             test_mock={
                 "_get_profile_picture": lambda *args, **kwargs: "https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk",
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -6,7 +6,6 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -89,7 +88,6 @@ class GithubListTagsBlock(Block):
                     }
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -217,7 +215,6 @@ class GithubListDiscussionsBlock(Block):
                     }
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -438,7 +435,6 @@ class GithubListReleasesBlock(Block):
                     }
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -682,7 +678,6 @@ class GithubListStargazersBlock(Block):
                     }
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -779,7 +774,6 @@ class GithubGetRepositoryInfoBlock(Block):
                     "open_issues_count": 3,
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

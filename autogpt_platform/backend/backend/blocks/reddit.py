@@ -9,7 +9,6 @@ from pydantic import BaseModel, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -326,7 +325,6 @@ class PostRedditCommentBlock(Block):
                 "reply_post": lambda creds, post_id, comment: "dummy_comment_id"
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -413,7 +411,6 @@ class CreateRedditPostBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -1797,7 +1794,6 @@ class ReplyToRedditCommentBlock(Block):
                 "reply_to_comment": lambda creds, comment_id, reply_text: "new_reply_id"
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -2043,7 +2039,6 @@ class SendRedditMessageBlock(Block):
             ],
             test_mock={"send_message": lambda creds, username, subject, message: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -2272,7 +2267,6 @@ class DeleteRedditPostBlock(Block):
             ],
             test_mock={"delete_post": lambda creds, post_id: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -2332,7 +2326,6 @@ class DeleteRedditCommentBlock(Block):
             ],
             test_mock={"delete_comment": lambda creds, comment_id: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod

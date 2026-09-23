@@ -8,7 +8,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -130,7 +129,6 @@ class ExaSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaSearchBlock.Input,
             output_schema=ExaSearchBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

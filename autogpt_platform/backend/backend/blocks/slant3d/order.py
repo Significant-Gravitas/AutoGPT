@@ -1,4 +1,4 @@
-from backend.blocks._base import BlockEffect, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import BlockOutput, BlockSchemaOutput
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 
@@ -35,7 +35,6 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                 },
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(

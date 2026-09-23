@@ -8,7 +8,6 @@ from typing import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -102,7 +101,6 @@ class SendSlackMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(

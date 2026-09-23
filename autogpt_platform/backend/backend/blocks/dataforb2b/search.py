@@ -13,7 +13,6 @@ from backend.blocks.dataforb2b._filters import build_slot_condition, finalize_fi
 from backend.sdk import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -396,7 +395,6 @@ class PeopleSearchBlock(Block):
                     "results": [{"id": "1"}],
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -469,7 +467,6 @@ class CompanySearchBlock(Block):
                     "results": [{"id": "1"}],
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

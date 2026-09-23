@@ -5,7 +5,6 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -57,7 +56,6 @@ class CalculatorBlock(Block):
             test_output=[
                 ("result", 15.0),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -113,7 +111,6 @@ class CountItemsBlock(Block):
             test_output=[
                 ("count", 5),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

@@ -1,7 +1,6 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -125,7 +124,6 @@ class GetPersonDetailBlock(Block):
                     linkedin_url="https://www.linkedin.com/in/johndoe",
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

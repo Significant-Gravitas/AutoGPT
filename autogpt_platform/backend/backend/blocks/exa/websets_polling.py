@@ -17,7 +17,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -336,7 +335,6 @@ class ExaWaitForSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForSearchBlock.Input,
             output_schema=ExaWaitForSearchBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

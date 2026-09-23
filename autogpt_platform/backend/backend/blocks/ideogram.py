@@ -6,7 +6,6 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -200,7 +199,6 @@ class IdeogramModelBlock(Block):
                 "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def run(

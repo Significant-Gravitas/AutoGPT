@@ -3,7 +3,6 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -58,7 +57,6 @@ class StepThroughItemsBlock(Block):
                 ("key", 3),
             ],
             test_mock={},
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

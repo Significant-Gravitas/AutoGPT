@@ -11,7 +11,6 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -102,7 +101,6 @@ class ReadDiscordMessagesBlock(Block):
                     "username": "test_user",
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def run_bot(self, token: SecretStr):
@@ -236,7 +234,6 @@ class SendDiscordMessageBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def send_message(
@@ -372,7 +369,6 @@ class SendDiscordDMBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def send_dm(self, token: str, user_id: str, message_content: str) -> dict:
@@ -493,7 +489,6 @@ class SendDiscordEmbedBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def send_embed(
@@ -666,7 +661,6 @@ class SendDiscordFileBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def send_file(
@@ -856,7 +850,6 @@ class ReplyToDiscordMessageBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def send_reply(
@@ -996,7 +989,6 @@ class DiscordUserInfoBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def get_user_info(self, token: str, user_id: str) -> dict:
@@ -1108,7 +1100,6 @@ class DiscordChannelInfoBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def get_channel_info(
@@ -1253,7 +1244,6 @@ class CreateDiscordThreadBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def create_thread(

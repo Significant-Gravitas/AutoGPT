@@ -8,7 +8,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -89,7 +88,6 @@ class TavilyExtractBlock(Block):
                     "usage": {"credits": 1},
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def _extract(

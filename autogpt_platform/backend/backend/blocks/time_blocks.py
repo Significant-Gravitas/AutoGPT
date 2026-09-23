@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -186,7 +185,6 @@ class GetCurrentTimeBlock(Block):
                     lambda t: "T" in t and ("+" in t or "Z" in t),
                 ),  # Check for ISO format with timezone
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(
@@ -297,7 +295,6 @@ class GetCurrentDateBlock(Block):
                     and t[7] == "-",  # ISO date format YYYY-MM-DD
                 ),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(
@@ -404,7 +401,6 @@ class GetCurrentDateAndTimeBlock(Block):
                     < timedelta(seconds=10),  # 10 seconds error margin for ISO format.
                 ),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(
@@ -480,7 +476,6 @@ class CountdownTimerBlock(Block):
                 ("output_message", "timer finished"),
                 ("output_message", "Custom message"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     @staticmethod

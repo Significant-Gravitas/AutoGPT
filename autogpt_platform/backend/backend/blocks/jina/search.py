@@ -3,7 +3,6 @@ from urllib.parse import quote
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -45,7 +44,6 @@ class SearchTheWebBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("results", "search content"),
             test_mock={"get_request": lambda *args, **kwargs: "search content"},
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -114,7 +112,6 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
             test_output=("content", "scraped content"),
             test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
-            effect=BlockEffect.READ,
         )
 
     async def run(

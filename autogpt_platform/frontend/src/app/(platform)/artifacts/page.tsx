@@ -52,6 +52,12 @@ export default function ArtifactsPage() {
   const { showNewLayout } = usePlatformChrome();
   const reduceMotion = useReducedMotion();
   const {
+    folders,
+    isLoading: isFoldersLoading,
+    isError: isFoldersError,
+    error: foldersError,
+  } = useArtifactsFolders();
+  const {
     files,
     isLoading,
     isError,
@@ -62,7 +68,8 @@ export default function ArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
-    setSelectedFolderId,
+    openFolder,
+    closeFolder,
     expertFilter,
     setExpertFilter,
     view,
@@ -70,13 +77,7 @@ export default function ArtifactsPage() {
     hasMore,
     isLoadingMore,
     loadMore,
-  } = useArtifactsPage();
-  const {
-    folders,
-    isLoading: isFoldersLoading,
-    isError: isFoldersError,
-    error: foldersError,
-  } = useArtifactsFolders();
+  } = useArtifactsPage({ folders, isFoldersLoading, isFoldersError });
   const { activeExperts, expertsById } = useExpertMap();
 
   const isSearching = searchTerm.length > 0;
@@ -95,7 +96,7 @@ export default function ArtifactsPage() {
 
   function handleExpertFilterChange(expertId: string | null) {
     setExpertFilter(expertId);
-    if (expertId) setSelectedFolderId(null);
+    if (expertId) closeFolder();
   }
 
   if (!flagReady) {
@@ -184,7 +185,7 @@ export default function ArtifactsPage() {
         >
           <FolderBreadcrumb
             folderName={selectedFolder?.name ?? "Folder"}
-            onBack={() => setSelectedFolderId(null)}
+            onBack={closeFolder}
           />
         </motion.div>
       ) : null}
@@ -218,7 +219,7 @@ export default function ArtifactsPage() {
           listKey={`${originFilter}|${expertFilter ?? "everyone"}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
           view={view}
           showFolders={showFolders}
-          onSelectFolder={setSelectedFolderId}
+          onSelectFolder={openFolder}
         />
       </motion.div>
     </main>

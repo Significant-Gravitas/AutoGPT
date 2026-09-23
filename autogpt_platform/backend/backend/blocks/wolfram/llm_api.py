@@ -3,7 +3,6 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockCostType,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -44,7 +43,6 @@ class AskWolframBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

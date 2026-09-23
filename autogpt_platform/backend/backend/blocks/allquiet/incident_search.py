@@ -7,7 +7,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -83,7 +82,6 @@ class AllQuietGetIncidentBlock(Block):
             test_mock={
                 "get_incident": lambda *args, **kwargs: (TEST_INCIDENT, ""),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -222,7 +220,6 @@ class AllQuietListIncidentsBlock(Block):
             test_mock={
                 "list_incidents": lambda *args, **kwargs: ([TEST_INCIDENT], False),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

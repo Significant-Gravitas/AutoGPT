@@ -3,7 +3,6 @@ from typing import Any, List
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -58,7 +57,6 @@ class CreateDictionaryBlock(Block):
                     {"numbers": [1, 2, 3], "active": True, "score": 95.5},
                 ),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -133,7 +131,6 @@ class AddToDictionaryBlock(Block):
                     },
                 ),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -182,7 +179,6 @@ class FindInDictionaryBlock(Block):
                 ("output", ["v1", "v3"]),
             ],
             categories={BlockCategory.BASIC},
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -245,7 +241,6 @@ class RemoveFromDictionaryBlock(Block):
                 ("removed_value", 2),
                 ("updated_dictionary", {"y": "world"}),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -294,7 +289,6 @@ class ReplaceDictionaryValueBlock(Block):
                 ("updated_dictionary", {"x": "hello", "y": "universe"}),
                 ("old_value", "world"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -324,7 +318,6 @@ class DictionaryIsEmptyBlock(Block):
             output_schema=DictionaryIsEmptyBlock.Output,
             test_input=[{"dictionary": {}}, {"dictionary": {"a": 1}}],
             test_output=[("is_empty", True), ("is_empty", False)],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -383,7 +376,6 @@ class CreateListBlock(Block):
                     [1, 2, 3, "four", {"key": "value"}],
                 ),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -476,7 +468,6 @@ class AddToListBlock(Block):
                 ("updated_list", ["a", "b", "c", "d"]),
                 ("updated_list", ["a", "f", "g", "e", "b"]),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -524,7 +515,6 @@ class FindInListBlock(Block):
                 ("found", False),
                 ("not_found_value", 6),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -561,7 +551,6 @@ class GetListItemBlock(Block):
                 ("item", 2),
                 ("item", 3),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -605,7 +594,6 @@ class RemoveFromListBlock(Block):
                 ("removed_item", 2),
                 ("updated_list", ["a", "c"]),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -657,7 +645,6 @@ class ReplaceListItemBlock(Block):
                 ("updated_list", ["a", "c"]),
                 ("old_item", "b"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -689,7 +676,6 @@ class ListIsEmptyBlock(Block):
             output_schema=ListIsEmptyBlock.Output,
             test_input=[{"list": []}, {"list": [1]}],
             test_output=[("is_empty", True), ("is_empty", False)],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -942,7 +928,6 @@ class ConcatenateListsBlock(Block):
                 ("concatenated_list", [1, 2, 3]),
                 ("length", 3),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
@@ -1051,7 +1036,6 @@ class FlattenListBlock(Block):
                 ("length", 3),
                 ("original_depth", 1),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _compute_depth(self, items: List[Any]) -> int:
@@ -1131,7 +1115,6 @@ class InterleaveListsBlock(Block):
                 ("interleaved_list", []),
                 ("length", 0),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
@@ -1213,7 +1196,6 @@ class ZipListsBlock(Block):
                 ("zipped_list", []),
                 ("length", 0),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _validate_inputs(self, lists: List[Any]) -> str | None:
@@ -1326,7 +1308,6 @@ class ListDifferenceBlock(Block):
                 ("difference", []),
                 ("length", 0),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _compute_difference(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
@@ -1406,7 +1387,6 @@ class ListIntersectionBlock(Block):
                 ("intersection", []),
                 ("length", 0),
             ],
-            effect=BlockEffect.NONE,
         )
 
     def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:

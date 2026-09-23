@@ -7,7 +7,6 @@ import regex  # Has built-in timeout support
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -54,7 +53,6 @@ class MatchTextPatternBlock(Block):
                 ("positive", "Z"),
                 ("negative", "Z"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -145,7 +143,6 @@ class ExtractTextInformationBlock(Block):
                 ("matched_results", ["World!!", "Earth!!"]),
                 ("matched_count", 2),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -289,7 +286,6 @@ class FillTextTemplateBlock(Block):
                 ("output", "Hello World!"),
                 ("output", "Hello, World! Alice"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -324,7 +320,6 @@ class CombineTextsBlock(Block):
                 ("output", "Hello world I like cake and to go for walks"),
                 ("output", "This is a test! Hi!"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -360,7 +355,6 @@ class TextSplitBlock(Block):
                 ("texts", ["Hello", "World!"]),
                 ("texts", ["Hello", " World!"]),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -395,7 +389,6 @@ class TextReplaceBlock(Block):
             test_output=[
                 ("output", "Hi, World!"),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -451,7 +444,6 @@ class FileReadBlock(Block):
             test_output=[
                 ("content", "Hello World"),
             ],
-            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -16,7 +16,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -438,7 +437,6 @@ class ExaGetWebsetSearchBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetSearchBlock.Input,
             output_schema=ExaGetWebsetSearchBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

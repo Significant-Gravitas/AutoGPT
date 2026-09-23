@@ -7,7 +7,6 @@ import orjson
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -43,7 +42,6 @@ class JSONEncoderBlock(Block):
             test_output=[
                 ("json_str", '{"name":"AutoGPT","active":true}'),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -81,7 +79,6 @@ class JSONDecoderBlock(Block):
             test_output=[
                 ("data", {"name": "AutoGPT", "active": True}),
             ],
-            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

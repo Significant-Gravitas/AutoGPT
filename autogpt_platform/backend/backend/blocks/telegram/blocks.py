@@ -12,7 +12,6 @@ from typing import Any, Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -102,7 +101,6 @@ class SendTelegramMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -198,7 +196,6 @@ class SendTelegramPhotoBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -358,7 +355,6 @@ class SendTelegramVoiceBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -504,7 +500,6 @@ class ReplyToTelegramMessageBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -576,7 +571,6 @@ class GetTelegramFileBlock(Block):
                 ("status", "File downloaded"),
             ],
             test_mock={"_download_file": lambda *args, **kwargs: b"test"},
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -651,7 +645,6 @@ class DeleteTelegramMessageBlock(Block):
             ],
             test_mock={"_delete_message": lambda *args, **kwargs: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -826,7 +819,6 @@ class SendTelegramAudioBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -1002,7 +994,6 @@ class SendTelegramDocumentBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -1163,7 +1154,6 @@ class SendTelegramVideoBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(

@@ -10,7 +10,6 @@ from gravitas_md2gdocs import to_requests
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -229,7 +228,6 @@ class GoogleDocsReadBlock(Block):
                     "title": "Test Document",
                 },
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -793,7 +791,6 @@ class GoogleDocsGetMetadataBlock(Block):
                     "revision_id": "rev_123",
                 },
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1712,7 +1709,6 @@ class GoogleDocsShareBlock(Block):
                 },
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -1847,7 +1843,6 @@ class GoogleDocsSetPublicAccessBlock(Block):
                 },
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(
@@ -2716,7 +2711,6 @@ class GoogleDocsGetStructureBlock(Block):
                     "structure": {},
                 },
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(

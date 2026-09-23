@@ -3,7 +3,6 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -121,7 +120,6 @@ class GithubListNotificationsBlock(Block):
             test_mock={
                 "list_notifications": lambda *args, **kwargs: [TEST_NOTIFICATION_ITEM]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -224,7 +222,6 @@ class GithubGetNotificationThreadBlock(Block):
             test_mock={
                 "get_thread": lambda *args, **kwargs: TEST_NOTIFICATION_ITEM,
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

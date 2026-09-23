@@ -7,7 +7,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -51,7 +50,6 @@ class FirecrawlExtractBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

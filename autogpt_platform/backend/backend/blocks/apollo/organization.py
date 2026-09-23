@@ -1,7 +1,6 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -205,7 +204,6 @@ To find IDs, identify the values for organization_id when you call this endpoint
                     )
                 ]
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

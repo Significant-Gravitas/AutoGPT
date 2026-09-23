@@ -6,7 +6,6 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -44,7 +43,6 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
             test_mock={
                 "get_request": lambda url, headers, json: {"extract": "summary content"}
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -136,7 +134,6 @@ class GetWeatherInformationBlock(Block, GetRequest):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def run(

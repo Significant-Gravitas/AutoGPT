@@ -7,7 +7,6 @@ from typing_extensions import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -418,7 +417,6 @@ class TodoistDeleteCommentBlock(Block):
             test_output=[("success", True)],
             test_mock={"delete_comment": lambda credentials, comment_id: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod

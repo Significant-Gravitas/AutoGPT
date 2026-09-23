@@ -10,7 +10,6 @@ from backend.blocks.dataforb2b._enums import TypeaheadType
 from backend.sdk import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -77,7 +76,6 @@ class SearchFilterTypeaheadBlock(Block):
                     "results": [{"value": "Google"}]
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -671,7 +671,7 @@ class ReadWorkspaceFileTool(BaseTool):
 
 # Paths under ``/skills/`` and ``/experts/<id>/skills/`` are managed by the
 # skills registry — the ``store_skill`` / ``delete_skill`` tools enforce
-# frontmatter validation, the per-user cap, name regex, and content
+# frontmatter validation, the per-expert cap, name regex, and content
 # sanitisation. Allowing plain write_workspace_file / delete_workspace_file
 # there would bypass all of that and let the model accidentally (or
 # maliciously) corrupt the registry. Reads stay open so the model can still
@@ -679,8 +679,8 @@ class ReadWorkspaceFileTool(BaseTool):
 _SKILLS_REGISTRY_PREFIX = "skills/"
 _EXPERTS_PREFIX = "experts/"
 _SKILLS_REGISTRY_ERROR = (
-    "Path is managed by the skills registry; use store_skill / "
-    "delete_skill instead. (read_workspace_file can still read "
+    "Path is managed by the skills registry; use tool:store_skill / "
+    "tool:delete_skill instead. (read_workspace_file can still read "
     "sibling files inside a skill bundle.)"
 )
 
@@ -933,8 +933,8 @@ class WriteWorkspaceFileTool(BaseTool):
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
                 msg += (
-                    " Use list_workspace_files to find candidates, then "
-                    "delete_workspace_file to free space and retry — or ask "
+                    " Use tool:list_workspace_files to find candidates, then "
+                    "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
             return ErrorResponse(message=msg, session_id=session_id)

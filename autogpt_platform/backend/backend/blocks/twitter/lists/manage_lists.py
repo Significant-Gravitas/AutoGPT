@@ -6,7 +6,6 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -54,7 +53,6 @@ class TwitterDeleteListBlock(Block):
             test_output=[("success", True)],
             test_mock={"delete_list": lambda *args, **kwargs: True},
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod

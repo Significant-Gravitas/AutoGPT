@@ -10,7 +10,6 @@ from typing import Any
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -77,7 +76,6 @@ class StripeLinkGetUserInfoBlock(Block):
                     "phone": "+15551234567",
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -152,7 +150,6 @@ class StripeLinkGetShippingAddressBlock(Block):
                     "shipping_addresses": [example]
                 }
             },
-            effect=BlockEffect.READ,
         )
 
     async def run(

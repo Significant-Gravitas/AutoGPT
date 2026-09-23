@@ -5,7 +5,6 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -226,7 +225,6 @@ class RMFGGetQuoteBlock(Block):
                 ("dfm_issues", [TEST_DFM_ISSUE]),
             ],
             test_mock={"get_quote": lambda *args, **kwargs: TEST_QUOTE},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

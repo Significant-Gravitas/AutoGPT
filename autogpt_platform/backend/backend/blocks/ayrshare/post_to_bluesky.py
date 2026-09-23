@@ -3,7 +3,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -57,7 +56,6 @@ class PostToBlueskyBlock(Block):
             input_schema=PostToBlueskyBlock.Input,
             output_schema=PostToBlueskyBlock.Output,
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     async def run(

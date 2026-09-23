@@ -27,6 +27,7 @@ from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -42,13 +43,18 @@ from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from . import choice_ui, commands, config
-from .api_client import TelegramClient
+from .api_client import TelegramAPIError, TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
 
+# A resolved mention, held behind private-use markers while the text is
+# HTML-escaped.
+_MENTION_OPEN = "\ue000"
+_MENTION_CLOSE = "\ue001"
+_MENTION_STASH_RE = re.compile("\ue000([^\ue000\ue001]+)\ue001")
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
 _NOT_YOUR_QUESTION = (
     "This question was for someone else — they still need to answer it."
@@ -354,15 +360,25 @@ class TelegramAdapter(WebhookAdapter):
     # -- Outbound --
 
     def _render(self, text: str, mentionable_users: tuple[tuple[str, str], ...]) -> str:
-        # Localize (which HTML-escapes) FIRST, then inject mention anchors —
-        # the anchors are HTML and must survive escaping. The allowlist IS the
-        # ping safety: non-allowlisted names stay plain text.
-        rendered, _pinged = resolve_mentions(
-            self.localize_markup(text),
+        # Resolve on the raw text, where names and "<@id>" look as the model
+        # wrote them, and hold each hit behind private-use markers that survive
+        # the HTML escaping (to_html strips NUL, so NUL can't be the marker).
+        # Then localize, then swap in the mention anchors, which are HTML and
+        # must not be escaped. The allowlist IS the ping safety: anything not
+        # on it stays plain, escaped text.
+        names = {uid: name for name, uid in mentionable_users}
+        resolved, _pinged = resolve_mentions(
+            text.replace(_MENTION_OPEN, "").replace(_MENTION_CLOSE, ""),
             mentionable_users,
-            lambda name, uid: f'<a href="tg://user?id={uid}">@{html.escape(name)}</a>',
+            lambda _name, uid: f"{_MENTION_OPEN}{uid}{_MENTION_CLOSE}",
         )
-        return rendered
+        return _MENTION_STASH_RE.sub(
+            lambda m: (
+                f'<a href="tg://user?id={m.group(1)}">'
+                f"@{html.escape(names.get(m.group(1), m.group(1)))}</a>"
+            ),
+            self.localize_markup(resolved),
+        )
 
     async def send_message(
         self,
@@ -589,6 +605,7 @@ class TelegramAdapter(WebhookAdapter):
         # caller's retry would repost the chunks already delivered (mirrors
         # Discord's ``_send_chunked``).
         posted = False
+        sent = 0
         for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             try:
                 result = await self._client.call(
@@ -606,11 +623,12 @@ class TelegramAdapter(WebhookAdapter):
                 logger.exception("Dropping trailing Telegram chunk after partial send")
                 break
             posted = True
+            sent += 1
             if first_id is None:
                 first_id = str(result.get("message_id", ""))
         if first_id is None:
             return None
-        return PostedRef(id=first_id, url=None)
+        return PostedRef(id=first_id, url=None, chunk_count=sent)
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
@@ -620,7 +638,49 @@ class TelegramAdapter(WebhookAdapter):
         posted = await self.post_channel_message(channel_id, f"**{name}**\n\n{text}")
         if posted is None:
             return None
-        return PostedRef(id=channel_id, url=posted.url)
+        # `id` stays the posted message so it can be edited; `channel_id`
+        # carries the chat/topic target that keeps follow-up sends in place.
+        return PostedRef(
+            id=posted.id,
+            url=posted.url,
+            channel_id=channel_id,
+            chunk_count=posted.chunk_count,
+        )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        chat_id, _ = _decode_target(channel_id)
+        try:
+            message_id = int(ref_id)
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        try:
+            await self._client.call(
+                "editMessageText",
+                chat_id=chat_id,
+                message_id=message_id,
+                text=self.localize_markup(text),
+                parse_mode="HTML",
+            )
+        except TelegramAPIError as e:
+            detail = str(e).lower()
+            # Telegram answers "message is not modified" when the new text is
+            # byte-identical. The edit is already in the requested state, so
+            # reporting failure only makes the model retry forever.
+            if "not modified" in detail:
+                return EditOutcome.OK
+            # "message to edit not found" and "message can't be edited" (past
+            # the 48h window) are both NOT_FOUND's documented meaning: gone or
+            # too old to touch.
+            if "not found" in detail or "can't be edited" in detail:
+                return EditOutcome.NOT_FOUND
+            logger.warning("Telegram editMessageText rejected edit: %s", e)
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Telegram message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     # -- Helpers --
 
@@ -671,10 +731,16 @@ def _context_from_callback_query(
 
 
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    # text_mention entities carry full user objects (users without a public
-    # @username); those are the only inbound mentions with a numeric id we
-    # can ping safely on the way back out.
+    # The author, under their @username and first name, since either is what
+    # a reply to them would write. Then text_mention entities: they carry full
+    # user objects (users without a public @username), the only other inbound
+    # mentions with a numeric id we can ping safely on the way back out.
     pairs: list[tuple[str, str]] = []
+    sender = message.get("from") or {}
+    if sender.get("id") and not sender.get("is_bot"):
+        for name in (sender.get("username"), sender.get("first_name")):
+            if name and (name, str(sender["id"])) not in pairs:
+                pairs.append((name, str(sender["id"])))
     for entity in message.get("entities") or []:
         user = entity.get("user")
         if entity.get("type") == "text_mention" and user and not user.get("is_bot"):

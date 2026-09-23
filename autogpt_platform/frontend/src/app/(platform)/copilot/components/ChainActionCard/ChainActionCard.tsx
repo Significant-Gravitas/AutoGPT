@@ -4,6 +4,7 @@ import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integra
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PlugSocketIcon } from "@hugeicons/core-free-icons";
+import { isAnswered } from "../../tools/clarifying-questions";
 import { useCopilotModal } from "../../useCopilotModal";
 import { ConnectorRow } from "./ConnectorRow";
 import { InputsSection } from "./InputsSection";
@@ -74,9 +75,7 @@ export function ChainActionCard({
   const questionsReady =
     hasQuestions &&
     questions.every((request) =>
-      request.questions.every(
-        (q) => (request.answers[q.keyword] ?? "").trim().length > 0,
-      ),
+      request.questions.every((q) => isAnswered(request.answers[q.keyword])),
     );
   if (rows.length === 0 && mcp.length === 0 && !hasInputs && !hasQuestions)
     return null;

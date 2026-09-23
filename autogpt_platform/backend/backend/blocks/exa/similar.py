@@ -7,7 +7,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -102,7 +101,6 @@ class ExaFindSimilarBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaFindSimilarBlock.Input,
             output_schema=ExaFindSimilarBlock.Output,
-            effect=BlockEffect.READ,
         )
 
     async def run(

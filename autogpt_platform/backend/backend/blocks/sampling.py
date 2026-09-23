@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Union
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -97,7 +96,6 @@ class DataSamplingBlock(Block):
                 ),
                 ("sample_indices", [0, 1, 8]),
             ],
-            effect=BlockEffect.NONE,
         )
         self.accumulated_data = []
 

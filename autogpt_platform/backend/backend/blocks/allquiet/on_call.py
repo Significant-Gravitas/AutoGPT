@@ -4,7 +4,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -93,7 +92,6 @@ class AllQuietGetOnCallBlock(Block):
                 ("has_coverage", True),
             ],
             test_mock={"get_on_call": lambda *args, **kwargs: [TEST_SHIFT]},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

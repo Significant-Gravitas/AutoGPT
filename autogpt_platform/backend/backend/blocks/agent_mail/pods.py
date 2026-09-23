@@ -11,7 +11,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -134,7 +133,6 @@ class AgentMailGetPodBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -214,7 +212,6 @@ class AgentMailListPodsBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -276,7 +273,6 @@ class AgentMailDeletePodBlock(Block):
             test_mock={
                 "delete_pod": lambda *a, **kw: None,
             },
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -354,7 +350,6 @@ class AgentMailListPodInboxesBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -448,7 +443,6 @@ class AgentMailListPodThreadsBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -538,7 +532,6 @@ class AgentMailListPodDraftsBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -6,7 +6,6 @@ from pydantic import BaseModel, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -108,7 +107,6 @@ class GoogleMapsSearchBlock(Block):
                 ]
             },
             test_credentials=TEST_CREDENTIALS,
-            effect=BlockEffect.READ,
         )
 
     async def run(

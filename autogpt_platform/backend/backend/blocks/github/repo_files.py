@@ -6,7 +6,6 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
-    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -70,7 +69,6 @@ class GithubReadFileBlock(Block):
                 ("size", 13),
             ],
             test_mock={"read_file": lambda *args, **kwargs: ("RmlsZSBjb250ZW50", 13)},
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -187,7 +185,6 @@ class GithubReadFolderBlock(Block):
                     [{"name": "dir2", "path": "path/to/folder/dir2"}],
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -306,7 +303,6 @@ class GithubCreateFileBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -407,7 +403,6 @@ class GithubUpdateFileBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.WRITE,
         )
 
     @staticmethod
@@ -548,7 +543,6 @@ class GithubSearchCodeBlock(Block):
                     ],
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -681,7 +675,6 @@ class GithubGetRepositoryTreeBlock(Block):
                     ],
                 )
             },
-            effect=BlockEffect.READ,
         )
 
     @staticmethod

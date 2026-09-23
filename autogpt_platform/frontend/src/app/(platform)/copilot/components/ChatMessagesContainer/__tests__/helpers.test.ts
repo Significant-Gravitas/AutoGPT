@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
+  extractGraphExecId,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
   getLatestCompactionPhase,
@@ -467,5 +468,50 @@ describe("getLatestCompactionStats", () => {
       textPart("hi"),
     ];
     expect(getLatestCompactionStats(parts)).toEqual({});
+  });
+});
+
+describe("extractGraphExecId", () => {
+  function toolOutput(output: unknown) {
+    return {
+      id: `m-${Math.random()}`,
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-run_agent",
+          toolCallId: "c1",
+          state: "output-available",
+          input: {},
+          output,
+        },
+      ],
+    } as unknown as UIMessage<unknown, UIDataTypes, UITools>;
+  }
+
+  it("returns a run that is still in flight, so a later pause shows in the chat", () => {
+    expect(
+      extractGraphExecId([
+        toolOutput({ execution_id: "exec-running", status: "RUNNING" }),
+      ]),
+    ).toBe("exec-running");
+  });
+
+  it("ignores a run that already finished", () => {
+    expect(
+      extractGraphExecId([
+        toolOutput({ execution_id: "exec-done", status: "COMPLETED" }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("keeps an earlier run already waiting on review over a later in-flight one", () => {
+    expect(
+      extractGraphExecId([
+        toolOutput({ execution_id: "exec-review", status: "REVIEW" }),
+        toolOutput(
+          JSON.stringify({ execution_id: "exec-2", status: "QUEUED" }),
+        ),
+      ]),
+    ).toBe("exec-review");
   });
 });
