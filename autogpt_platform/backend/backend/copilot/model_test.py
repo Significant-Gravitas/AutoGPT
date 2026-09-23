@@ -27,6 +27,7 @@ from .model import (
     create_chat_session,
     get_chat_session,
     get_or_create_builder_session,
+    invalidate_session_cache,
     is_message_duplicate,
     maybe_append_user_message,
     update_session_llm_route,
@@ -190,6 +191,58 @@ async def test_upsert_preserves_pinned_set_concurrently(setup_test_user, test_us
     reloaded = await get_chat_session(s.session_id, test_user_id)
     assert reloaded is not None
     assert reloaded.is_pinned is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_keeps_an_approval_mode_changed_mid_turn(
+    setup_test_user, test_user_id
+):
+    """A turn that started under one mode must not put it back in the cache
+    after the user switched mode while it ran."""
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    assert await update_session_autopilot_mode(s.session_id, test_user_id, "ask_first")
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+    await invalidate_session_cache(s.session_id)
+    from_db = await get_chat_session(s.session_id, test_user_id)
+    assert from_db is not None
+    assert from_db.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_mode_whose_cache_write_failed_is_not_undone_by_a_stale_turn(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    with patch(
+        "backend.copilot.model.cache_chat_session",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        assert await update_session_autopilot_mode(
+            s.session_id, test_user_id, "ask_first"
+        )
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
 
 
 @pytest.mark.asyncio(loop_scope="session")

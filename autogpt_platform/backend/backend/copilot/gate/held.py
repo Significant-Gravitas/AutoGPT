@@ -111,10 +111,10 @@ async def resolve_answered(
 ) -> list[PendingMessage]:
     """Run every answered held call once and return its result as a user row.
 
-    Call only once the turn's execution context is set. ``cap`` is the engine's
-    own last step on a direct tool result, so a late one reads the same. The HDEL claims the
-    call, so two turns racing over one card cannot both run it; the gate's
-    own consume stays the second lock behind it.
+    Call only once the turn's execution context is set. ``cap`` is the
+    engine's own last step on a direct tool result, so a late one reads the
+    same. The HDEL claims the call, so two turns racing over one card cannot
+    both run it; the gate's own consume stays the second lock behind it.
     """
     if not user_id:
         return []
@@ -122,7 +122,13 @@ async def resolve_answered(
     for call in await answered(user_id, session.session_id):
         if not await _claim(session.session_id, call.review_id):
             continue
-        delivered.append(await _deliver(user_id, session, call, cap))
+        try:
+            delivered.append(await _deliver(user_id, session, call, cap))
+        except Exception:
+            # Put it back for the next turn; the gate's consume still stops a
+            # second run if the call got as far as running.
+            logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
+            await remember(session.session_id, call)
     return delivered
 
 
