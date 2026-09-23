@@ -52,8 +52,8 @@ PLANNED_EVENT_NAMES = {
     "onboarding_completed",
     "checkout_started",
     "subscription_ended",
-    "marketplace_agent_added",
-    "marketplace_agent_downloaded",
+    "listing_added_to_library",
+    "listing_downloaded",
 }
 
 
