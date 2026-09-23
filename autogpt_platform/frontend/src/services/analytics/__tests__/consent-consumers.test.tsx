@@ -160,6 +160,38 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
   });
 });
 
+describe("DataFast loaded under the tour exemption", () => {
+  const reload = vi.fn<() => void>();
+
+  beforeEach(() => {
+    configureCookiebot();
+    reload.mockReset();
+    vi.spyOn(window.location, "reload").mockImplementation(() => reload());
+    window.datafast = vi.fn();
+  });
+
+  afterEach(() => {
+    delete window.datafast;
+    vi.restoreAllMocks();
+  });
+
+  it("reloads to shed the script once the visitor leaves the tour without consent", () => {
+    installCookiebot();
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the script when the visitor has consented", () => {
+    installCookiebot({ statistics: true });
+
+    render(<SetupAnalytics host="platform.agpt.co" ga={GA} />);
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
+
 describe("ConsentWithdrawalReload", () => {
   const reload = vi.fn<() => void>();
 

@@ -19,6 +19,14 @@ export function useSetupAnalytics(host: string) {
   });
 
   useEffect(() => {
+    // DataFast's script tracks client-side navigation on its own and can't be
+    // unloaded, so once the tour's exemption no longer covers it (the visitor
+    // navigated into the app without consenting) the page reloads to shed it.
+    if (dataFast || !window.datafast) return;
+    window.location.reload();
+  }, [dataFast]);
+
+  useEffect(() => {
     if (!googleTag) return;
 
     // Google Analytics: feature usage signal (same as original implementation)
