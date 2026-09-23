@@ -71,3 +71,25 @@ test("does not grant Otto's identity exception from a specialist title", () => {
   expect(screen.getByText("AI Expert")).toBeDefined();
   expect(screen.queryByText("Your personal Head of AI")).toBeNull();
 });
+
+test.each(["compact", "card", "page"] as const)(
+  "discloses AI for an Expert without a role or title in %s size",
+  (size) => {
+    render(
+      <ExpertIdentityDetails
+        name="My Expert"
+        role={null}
+        jobTitle={null}
+        size={size}
+      />,
+    );
+    expect(screen.getByText("AI Expert")).toBeDefined();
+    expect(screen.queryByText("Your personal Head of AI")).toBeNull();
+  },
+);
+
+test("keeps Otto's disclosure without a role or title", () => {
+  render(<ExpertIdentityDetails name="Otto" isOtto />);
+  expect(screen.getByText("Your personal Head of AI")).toBeDefined();
+  expect(screen.queryByText("AI Expert")).toBeNull();
+});

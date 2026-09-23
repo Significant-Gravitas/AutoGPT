@@ -50,11 +50,9 @@ export function ExpertIdentityDetails({
         </Text>
         {nameAccessory}
       </Container>
-      {area || isOtto ? (
-        <Text as="span" variant="small" tone="muted">
-          {isOtto ? "Your personal Head of AI" : "AI Expert"}
-        </Text>
-      ) : null}
+      <Text as="span" variant="small" tone="muted">
+        {isOtto ? "Your personal Head of AI" : "AI Expert"}
+      </Text>
       {!compact && area ? (
         <ExpertAreaChip role={role ?? ""} label={area} />
       ) : area ? (
