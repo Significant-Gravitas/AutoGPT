@@ -1,4 +1,5 @@
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Tooltip,
@@ -48,11 +49,19 @@ export function ExpertCard({ expert, isHired }: Props) {
         aria-label={`View ${expert.name}`}
         className="absolute inset-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
       />
-      {isHired ? null : (
-        <div className="absolute right-5 top-5 z-10">
+      <div className="absolute right-5 top-5 z-10">
+        {isHired ? (
+          <Badge
+            variant="success"
+            className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
+          >
+            <Icon icon={CheckmarkCircle02Icon} size={14} />
+            On your team
+          </Badge>
+        ) : (
           <ExpertHireButton expert={expert} />
-        </div>
-      )}
+        )}
+      </div>
       {/* Inert, so a click anywhere lands on the link underneath; the pieces
           that answer to a pointer take their events back. */}
       <div className="pointer-events-none relative flex flex-1 flex-col gap-4 p-6">
@@ -104,21 +113,14 @@ export function ExpertCard({ expert, isHired }: Props) {
         ) : null}
 
         <div className="mt-auto flex items-center justify-end pt-2">
-          {isHired ? (
-            <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
-              <Icon icon={CheckmarkCircle02Icon} size={18} />
-              On your team
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
-              View
-              <Icon
-                icon={ArrowRight02Icon}
-                size={16}
-                className="transition-transform duration-200 group-hover:translate-x-0.5"
-              />
-            </span>
-          )}
+          <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+            View
+            <Icon
+              icon={ArrowRight02Icon}
+              size={16}
+              className="transition-transform duration-200 group-hover:translate-x-0.5"
+            />
+          </span>
         </div>
       </div>
     </div>

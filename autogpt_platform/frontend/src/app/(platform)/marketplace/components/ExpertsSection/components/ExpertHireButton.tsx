@@ -8,6 +8,10 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
+import { AddTeamIcon } from "@hugeicons/core-free-icons";
+
+// The atom sizes a lone action; on a card it is a label with a glyph.
+const TEXT_BUTTON = "min-w-0 px-2";
 
 interface Props {
   expert: ExpertTemplate;
@@ -32,7 +36,14 @@ export function ExpertHireButton({ expert }: Props) {
   if (!isLoggedIn) {
     const next = encodeURIComponent(`/marketplace/experts/${expert.id}`);
     return (
-      <Button as="NextLink" href={`/signup?next=${next}`} size="small">
+      <Button
+        as="NextLink"
+        href={`/signup?next=${next}`}
+        variant="ghost"
+        size="small"
+        leadingIcon={AddTeamIcon}
+        className={TEXT_BUTTON}
+      >
         Hire
       </Button>
     );
@@ -48,7 +59,14 @@ export function ExpertHireButton({ expert }: Props) {
 
   return (
     <>
-      <Button size="small" loading={isHiring} onClick={handleHire}>
+      <Button
+        variant="ghost"
+        size="small"
+        loading={isHiring}
+        leadingIcon={AddTeamIcon}
+        onClick={handleHire}
+        className={TEXT_BUTTON}
+      >
         Hire
       </Button>
       <Dialog
