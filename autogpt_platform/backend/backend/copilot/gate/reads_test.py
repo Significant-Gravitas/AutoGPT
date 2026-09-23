@@ -233,7 +233,7 @@ async def test_a_binary_result_the_model_cannot_read_is_not_judged(rows):
             return _WorkspaceFile(
                 message="file",
                 mime_type="application/zip",
-                content_base64=base64.b64encode(b"PK\x03\x04" * 50).decode(),
+                content_base64=base64.b64encode(b"PK\x03\x04\xff\xfe" * 50).decode(),
             )
 
     judge = _judge(_HELD)
@@ -245,12 +245,23 @@ async def test_a_binary_result_the_model_cannot_read_is_not_judged(rows):
     assert result.success and rows.rows == {}
 
 
-async def test_a_workspace_text_file_is_judged_decoded(rows):
+@pytest.mark.parametrize(
+    "mime",
+    [
+        "text/plain",
+        "application/x-sh",
+        "application/javascript",
+        "application/x-python",
+    ],
+)
+async def test_a_workspace_text_file_is_judged_decoded(rows, mime):
+    """The reader inlines these as text, whatever the MIME type says."""
+
     class _Text(_Fetch):
         async def _execute(self, user_id, session, **kwargs):
             return _WorkspaceFile(
                 message="file",
-                mime_type="text/plain",
+                mime_type=mime,
                 content_base64=base64.b64encode(_MARKER.encode()).decode(),
             )
 
@@ -330,7 +341,7 @@ async def test_mcp_images_reach_the_judge_as_images(rows):
 
     session = _session()
     set_execution_context("user-1", session)
-    wrapper = _make_truncating_wrapper(screenshot, "Read", required_args=["path"])
+    wrapper = _make_truncating_wrapper(screenshot, "read_file", required_args=["path"])
     judge = _judge(_CLEAN)
     with patch(f"{_READS}.judge_content", judge):
         await wrapper({"path": "/tmp/shot.png"})
@@ -423,3 +434,18 @@ async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
     body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
     assert body == direct
     assert len(body) > 30_000
+
+
+async def test_mcp_file_read_is_judged_on_the_text_the_model_receives(rows):
+    async def read_file(args):
+        return {"content": [{"type": "text", "text": "z" * 75_000}], "isError": False}
+
+    session = _session()
+    set_execution_context("user-1", session)
+    wrapper = _make_truncating_wrapper(read_file, "read_file", required_args=["path"])
+    judge = _judge(_CLEAN)
+    with patch(f"{_READS}.judge_content", judge):
+        to_model = _text_from_mcp_result(await wrapper({"path": "/tmp/big"}))
+
+    assert len(to_model) < 75_000
+    assert judge.await_args.kwargs["text"] == to_model
