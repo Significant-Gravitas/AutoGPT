@@ -11,7 +11,7 @@ from listing slugs and
 all are validated before any template is mutated, so
 ``backend.api.features.store.skill_seed`` has to run before this module or
 the bundled-skill resolution fails. Each upsert also refreshes the
-presentation fields (avatar, job title, tagline, bio, categories) on experts already
+presentation fields (job title, tagline, bio, categories) on experts already
 hired from that template, so roster changes reach existing users and not just
 new hires.
 """
@@ -2497,10 +2497,10 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/job title/tagline/bio/categories forever. ``name`` is deliberately excluded —
+    job title/tagline/bio/categories forever. ``name`` is deliberately excluded —
     users may have renamed their hire — as are ``role``/``identity``, which
-    drive live persona behaviour, and ``skills``, which the owner edits after
-    hire.
+    drive live persona behaviour, and ``skills`` and ``avatarUrl``, which the
+    owner edits after hire (``update_avatar``).
 
     A rescoped template (see ``RESCOPED_TEMPLATES``) is the exception: there
     the persona moves with the presentation, in one write, so a hire can never
@@ -2515,7 +2515,6 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
         "isTemplate": False,
     }
     data: prisma.types.ExpertUpdateManyMutationInput = {
-        "avatarUrl": template.avatarUrl,
         "jobTitle": template.jobTitle,
         "tagline": template.tagline,
         "bio": template.bio,
