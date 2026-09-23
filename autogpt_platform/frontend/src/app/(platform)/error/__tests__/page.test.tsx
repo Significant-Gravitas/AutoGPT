@@ -93,15 +93,22 @@ describe("ErrorPage", () => {
     "auth-failed",
     "auth-token-invalid",
     "user-creation-failed",
-  ])("sends the %s retry action to login", (message) => {
-    searchMessage = message;
-    authState = { isUserLoading: false, isLoggedIn: true };
-    render(<ErrorPage />);
+  ])(
+    "restarts authentication for %s when cached auth still says logged in",
+    (message) => {
+      const navigate = vi
+        .spyOn(window.location, "replace")
+        .mockImplementation(() => {});
+      searchMessage = message;
+      authState = { isUserLoading: false, isLoggedIn: true };
+      render(<ErrorPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+      fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
 
-    expect(replaceMock).toHaveBeenCalledExactlyOnceWith("/login");
-  });
+      expect(navigate).toHaveBeenCalledExactlyOnceWith("/login");
+      expect(replaceMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns home when retrying a general server error", () => {
     searchMessage = "server-error";

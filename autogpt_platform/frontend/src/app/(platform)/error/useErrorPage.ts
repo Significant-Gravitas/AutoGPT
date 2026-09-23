@@ -22,7 +22,7 @@ export function useErrorPage() {
       errorMessage === "auth-token-invalid" ||
       expiredSession
     ) {
-      router.replace("/login");
+      window.location.replace("/login");
     } else if (errorMessage === "rate-limited") {
       setTimeout(() => window.location.reload(), 2000);
     } else {
