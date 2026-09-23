@@ -246,6 +246,31 @@ async def test_a_mode_whose_cache_write_failed_is_not_undone_by_a_stale_turn(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_unreadable_stored_mode_leaves_the_cache_empty(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from backend.copilot import db as chat_db_module
+
+    from .model import _get_session_from_cache
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    await invalidate_session_cache(s.session_id)
+
+    with patch.object(
+        chat_db_module,
+        "get_chat_session_metadata",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ):
+        await upsert_chat_session(s)
+
+    assert await _get_session_from_cache(s.session_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage_user_id_mismatch(
     setup_test_user, test_user_id
 ):
