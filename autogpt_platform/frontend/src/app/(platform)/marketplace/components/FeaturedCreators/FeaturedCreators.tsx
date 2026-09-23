@@ -4,15 +4,11 @@ import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 import { CreatorCard } from "../CreatorCard/CreatorCard";
 import { useFeaturedCreators } from "./useFeaturedCreators";
 
-interface FeaturedCreatorsProps {
-  title?: string;
+interface Props {
   featuredCreators: CreatorDetails[];
 }
 
-export const FeaturedCreators = ({
-  featuredCreators,
-  title = "Featured Creators",
-}: FeaturedCreatorsProps) => {
+export function FeaturedCreators({ featuredCreators }: Props) {
   const { handleCardClick, displayedCreators } = useFeaturedCreators({
     featuredCreators,
   });
@@ -36,4 +32,4 @@ export const FeaturedCreators = ({
       </div>
     </div>
   );
-};
+}

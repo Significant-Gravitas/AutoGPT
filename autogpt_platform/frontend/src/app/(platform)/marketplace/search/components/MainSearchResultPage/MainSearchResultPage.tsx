@@ -161,10 +161,7 @@ export const MainSearchResultPage = ({
               ) : null}
               <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
-                <FeaturedCreators
-                  featuredCreators={creators}
-                  title="Creators"
-                />
+                <FeaturedCreators featuredCreators={creators} />
               )}
             </div>
           </>

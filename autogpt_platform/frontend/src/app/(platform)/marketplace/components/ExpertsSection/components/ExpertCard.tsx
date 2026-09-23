@@ -10,6 +10,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
+import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
@@ -35,13 +36,13 @@ export function ExpertCard({ expert, isHired }: Props) {
   const restSkills = skills.slice(NAMED_SKILLS);
   // The area an expert works in, in the same chip the filters use — the row
   // above the shelf and the card below it name the same thing.
-  const area = expert.categories?.[0];
+  const area =
+    expert.categories?.[0] ??
+    (expert.job_title ? undefined : getExpertRoleLabel(expert.role));
   const areaAccent = getCategoryAccent(area);
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
-      {/* A flat cover in the area's tint, which the avatar straddles the way
-          a profile picture straddles its banner. */}
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]",
@@ -50,15 +51,8 @@ export function ExpertCard({ expert, isHired }: Props) {
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
-        aria-label={`View ${expert.name}`}
-        className="absolute inset-0 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
-      />
-      <div className="absolute right-5 top-5 z-10">
-        <ExpertHireControl expert={expert} isHired={isHired} />
-      </div>
-      {/* Inert, so a click anywhere lands on the link underneath; the pieces
-          that answer to a pointer take their events back. */}
-      <div className="pointer-events-none relative flex flex-1 flex-col gap-4 p-6">
+        className="relative flex flex-1 flex-col gap-4 rounded-2xl p-6 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
@@ -67,8 +61,6 @@ export function ExpertCard({ expert, isHired }: Props) {
         />
 
         <div>
-          {/* The job title trails the name rather than taking the chip, which
-              the expert's area has earned. */}
           <ExpertIdentityDetails
             name={expert.name}
             nameAlign="baseline"
@@ -87,8 +79,6 @@ export function ExpertCard({ expert, isHired }: Props) {
         {skills.length > 0 ? (
           <div>
             <div className="mb-1 text-sm text-zinc-500">Skills:</div>
-            {/* One skill per line, whatever their length, and the count for
-                the rest on a line of its own. */}
             <div className="flex flex-col items-start">
               {named.map((skill) => (
                 <span
@@ -99,8 +89,6 @@ export function ExpertCard({ expert, isHired }: Props) {
                     "h-6 max-w-full border-transparent px-0",
                   )}
                 >
-                  {/* The area's own glyph, so the skills read as that area's
-                      work rather than as a second, unrelated list. */}
                   <Icon
                     icon={areaAccent.icon ?? Book04Icon}
                     size={12}
@@ -117,13 +105,12 @@ export function ExpertCard({ expert, isHired }: Props) {
                       className={cn(
                         CHIP_SHAPE,
                         CHIP_SIZE.small,
-                        "pointer-events-auto h-6 cursor-default border-transparent px-0 text-zinc-500",
+                        "h-6 cursor-default border-transparent px-0 text-zinc-500",
                       )}
                     >
                       +{restSkills.length} skills
                     </span>
                   </TooltipTrigger>
-                  {/* Portalled: the card clips its own overflow. */}
                   <TooltipPortal>
                     <TooltipContent side="top">
                       <ul className="space-y-0.5">
@@ -149,6 +136,9 @@ export function ExpertCard({ expert, isHired }: Props) {
             />
           </span>
         </div>
+      </Link>
+      <div className="absolute right-5 top-5 z-10">
+        <ExpertHireControl expert={expert} isHired={isHired} />
       </div>
     </div>
   );

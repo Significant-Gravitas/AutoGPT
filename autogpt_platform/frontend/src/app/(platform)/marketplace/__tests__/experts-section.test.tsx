@@ -143,6 +143,7 @@ describe("Marketplace ExpertsSection", () => {
     );
     expect(screen.queryByText("Raise your own")).toBeNull();
     expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Hire" })).toBeNull();
     expect(rosterRequested).toBe(false);
   });
 

@@ -324,7 +324,7 @@ describe("Marketplace expert page", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("link", { name: "SEO content brief" }),
+      await screen.findByRole("link", { name: /^SEO content brief/ }),
     ).toBeDefined();
     expect(screen.queryByText("Seo content brief")).toBeNull();
   });

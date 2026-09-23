@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // The atom sizes a lone action; on a card it is a label with a glyph.
@@ -29,6 +30,14 @@ interface Props {
  *  hand-off to the expert's first thread — would unmount with it. Here the
  *  flow runs the expert page's own hook and outlives the swap. */
 export function ExpertHireControl({ expert, isHired }: Props) {
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+
+  if (!isHireExpertsEnabled) return null;
+
+  return <EnabledExpertHireControl expert={expert} isHired={isHired} />;
+}
+
+function EnabledExpertHireControl({ expert, isHired }: Props) {
   const { isLoggedIn } = useAuth();
   const {
     hire,
