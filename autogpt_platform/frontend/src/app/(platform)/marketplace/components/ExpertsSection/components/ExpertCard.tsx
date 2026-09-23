@@ -18,7 +18,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
-import { getExpertAccent } from "../helpers";
+import { formatCategoryLabel } from "../../SkillsSection/helpers";
+import { getCategoryAccent, getExpertAccent } from "../helpers";
 import { ExpertHireButton } from "./ExpertHireButton";
 
 /** Two named, then a count for the rest — enough to place the expert without
@@ -37,6 +38,10 @@ export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
   const skills = expert.bundled_skills ?? [];
   const restSkills = skills.slice(NAMED_SKILLS);
+  // The area an expert works in, in the same chip the filters use — the row
+  // above the shelf and the card below it name the same thing.
+  const area = expert.categories?.[0];
+  const areaAccent = getCategoryAccent(area);
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
@@ -74,22 +79,49 @@ export function ExpertCard({ expert, isHired }: Props) {
         />
 
         <div>
+          {/* The job title trails the name rather than taking the chip, which
+              the expert's area has earned. */}
           <ExpertIdentityDetails
             name={expert.name}
-            role={expert.role}
-            jobTitle={expert.job_title}
+            nameAlign="baseline"
+            nameAccessory={
+              expert.job_title ? (
+                <span className="min-w-0 truncate text-sm text-zinc-500">
+                  {expert.job_title}
+                </span>
+              ) : undefined
+            }
           />
+          {area ? (
+            <span
+              className={cn(CHIP_SHAPE, CHIP_SIZE.small, "mt-2 max-w-full")}
+            >
+              {areaAccent.icon ? (
+                <Icon
+                  icon={areaAccent.icon}
+                  size={12}
+                  className={cn("shrink-0", areaAccent.accent.icon)}
+                  aria-hidden
+                />
+              ) : null}
+              <span className="truncate">{formatCategoryLabel(area)}</span>
+            </span>
+          ) : null}
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
         {skills.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {/* The same chip the filters wear, so a skill on a card and a
                 topic in the header read as one family. */}
             {skills.slice(0, NAMED_SKILLS).map((skill) => (
               <span
                 key={skill.id}
-                className={cn(CHIP_SHAPE, CHIP_SIZE.small, "max-w-full")}
+                className={cn(
+                  CHIP_SHAPE,
+                  CHIP_SIZE.small,
+                  "max-w-full border-transparent px-0",
+                )}
               >
                 <Icon
                   icon={Book04Icon}
@@ -107,7 +139,7 @@ export function ExpertCard({ expert, isHired }: Props) {
                     className={cn(
                       CHIP_SHAPE,
                       CHIP_SIZE.small,
-                      "pointer-events-auto cursor-default text-zinc-500",
+                      "pointer-events-auto cursor-default border-transparent px-0 text-zinc-500",
                     )}
                   >
                     +{restSkills.length} skills
