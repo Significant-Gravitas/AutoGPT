@@ -135,8 +135,8 @@ async def consume(review_id: str, user_id: str) -> bool:
         return False
 
 
-async def has_open_review(user_id: str, session_id: str) -> bool:
-    """Whether this session is already waiting on the user.
+async def has_open_review(user_id: str, session_id: str) -> bool | None:
+    """Whether this session is already waiting on the user; None when unreadable.
 
     The gate parks at most one action at a time. ``PendingReviewsList`` has a
     single Approve button that submits every row in the list, and collapses any
@@ -153,7 +153,7 @@ async def has_open_review(user_id: str, session_id: str) -> bool:
             f"Gate could not list pending reviews for session {session_id}",
             exc_info=True,
         )
-        return False
+        return None
     return any(
         r.node_exec_id.startswith(f"{COPILOT_NODE_PREFIX}gate-") for r in pending
     )

@@ -6,12 +6,13 @@ it should break these.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
+from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -23,6 +24,7 @@ from backend.copilot.model import (
 _GATE = "backend.copilot.gate"
 # The fixtures stub the rule lookup; the outage tests need the real one.
 _REAL_ASK_REASON = chat_rules.ask_reason
+_REAL_HAS_OPEN_REVIEW = review_store.has_open_review
 _MODES: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
 
 
@@ -253,6 +255,28 @@ async def test_only_one_action_waits_at_a_time(gate_on, clean_session_state):
         )
     assert not decision.allowed
     assert decision.already_waiting
+    open_review.assert_not_awaited()
+
+
+@pytest.mark.parametrize("mode", _MODES)
+async def test_an_unreadable_review_queue_refuses_without_opening_a_second_card(
+    gate_on, clean_session_state, mode
+):
+    reviews = MagicMock()
+    reviews.get_pending_reviews_for_execution = AsyncMock(
+        side_effect=ConnectionError("db down")
+    )
+    open_review = AsyncMock(return_value=True)
+    with (
+        patch(f"{_GATE}.review_store.has_open_review", _REAL_HAS_OPEN_REVIEW),
+        patch(f"{_GATE}.review_store.review_db", MagicMock(return_value=reviews)),
+        patch(f"{_GATE}.review_store.open_review", open_review),
+        patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value="declined")),
+    ):
+        decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
+    assert not decision.allowed
+    assert not decision.already_waiting
+    assert decision.review_id is None
     open_review.assert_not_awaited()
 
 

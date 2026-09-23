@@ -144,7 +144,10 @@ async def _park(
     args: dict[str, Any],
     reason: str,
 ) -> Decision:
-    if await review_store.has_open_review(user_id, session.session_id):
+    waiting = await review_store.has_open_review(user_id, session.session_id)
+    if waiting is None:
+        return Decision(allowed=False, reason=_UNRECORDABLE)
+    if waiting:
         return Decision(allowed=False, reason=_ALREADY_WAITING, already_waiting=True)
     if not await review_store.open_review(
         review_id, user_id, session, tool_name, args, reason
