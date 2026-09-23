@@ -447,3 +447,13 @@ def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
     )
 
     assert item.description == "Otto is waiting for your approval."
+
+
+def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
+    review = _review(NOW).model_copy(update={"agent_name": None})
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "A workflow is waiting for your approval."
