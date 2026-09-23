@@ -817,7 +817,7 @@ class TestValidateWithJsonschema:
         assert validate_with_jsonschema(second, {"f": 1}) is None
         assert validate_with_jsonschema(second, {"f": "x"}) is not None
 
-    def test_malformed_schema_raises_on_every_call(self):
+    def test_malformed_schema_raises_on_every_call(self, monkeypatch):
         """`required` with duplicate entries fails the meta-schema check, and
         agent graphs do carry such schemas. The SchemaError must keep escaping,
         not just on the first call."""
@@ -826,7 +826,7 @@ class TestValidateWithJsonschema:
             "properties": {"a": {"type": "string"}},
             "required": ["a", "a"],
         }
-        json_util._VALIDATOR_CACHE.clear()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", OrderedDict())
         errors: list[jsonschema.SchemaError] = []
         for _ in range(3):
             with pytest.raises(jsonschema.SchemaError) as exc_info:
@@ -862,7 +862,7 @@ class TestValidateWithJsonschema:
     def test_concurrent_compilation_publishes_one_validator(self, monkeypatch):
         """Concurrent misses may compile in parallel but publish one value."""
         schema = {"type": "object", "properties": {"f": {"type": "integer"}}}
-        json_util._VALIDATOR_CACHE.clear()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", OrderedDict())
         original_deepcopy = json_util.deepcopy
         compile_barrier = threading.Barrier(2)
 
@@ -1039,6 +1039,33 @@ class TestValidateWithJsonschema:
                 schema, data
             )
         assert not cache
+
+    def test_uncached_schema_preserves_validation_without_copy_protocol(self):
+        class Label(str):
+            def __deepcopy__(self, memo):
+                raise RuntimeError("This label does not support copying")
+
+        schema = {"type": "object", "description": Label("display metadata")}
+        assert self._baseline_outcome(schema, {}) is None
+        assert validate_with_jsonschema(schema, {}) is None
+
+    def test_schema_mutation_during_cache_miss_cannot_poison_another_schema(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", OrderedDict())
+        schema = {"type": "object", "properties": {"value": {"type": "string"}}}
+        original_deepcopy = json_util.deepcopy
+
+        def mutate_before_snapshot(value):
+            value["properties"]["value"]["type"] = "integer"
+            return original_deepcopy(value)
+
+        monkeypatch.setattr(json_util, "deepcopy", mutate_before_snapshot)
+        assert validate_with_jsonschema(schema, {"value": 1}) is None
+        monkeypatch.setattr(json_util, "deepcopy", original_deepcopy)
+
+        fresh_schema = {"type": "object", "properties": {"value": {"type": "string"}}}
+        assert validate_with_jsonschema(fresh_schema, {"value": "text"}) is None
 
     def test_concurrent_nested_references_preserve_validation_results(
         self, monkeypatch

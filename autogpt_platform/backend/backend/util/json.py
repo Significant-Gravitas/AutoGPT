@@ -174,7 +174,12 @@ def _compiled_validator(schema: dict[str, Any]):
             _VALIDATOR_CACHE.move_to_end(key)
             return cached
 
-    return _remember(key, _new_validator(schema))
+    schema_copy = deepcopy(schema)
+    snapshot_key = _schema_cache_key(schema_copy)
+    validator = _new_validator(schema_copy)
+    if snapshot_key is None:
+        return validator
+    return _remember(snapshot_key, validator)
 
 
 def _schema_cache_key(schema: dict[str, Any]) -> _SchemaCacheKey | None:
@@ -228,14 +233,9 @@ def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
 
 
 def _new_validator(schema: dict[str, Any]):
-    # Compile against a private copy: a jsonschema validator memoises the
-    # sub-schemas it walks, so a retained one must not alias a dict the caller
-    # still holds and could mutate afterwards. deepcopy also preserves key
-    # order, which the error messages depend on.
-    schema_copy = deepcopy(schema)
-    validator_cls = jsonschema.validators.validator_for(schema_copy)
-    validator_cls.check_schema(schema_copy)
-    return validator_cls(schema_copy)
+    validator_cls = jsonschema.validators.validator_for(schema)
+    validator_cls.check_schema(schema)
+    return validator_cls(schema)
 
 
 def _remember(key: _SchemaCacheKey, value: Any) -> Any:
