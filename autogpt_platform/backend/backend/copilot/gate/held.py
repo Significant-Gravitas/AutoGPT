@@ -13,7 +13,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
@@ -35,10 +35,18 @@ logger = logging.getLogger(__name__)
 # from the click, not from here.
 _TTL_SECONDS = 30 * 24 * 60 * 60
 _KEY = "copilot:gate:held:"
-# PendingMessage caps content at 32,000 characters.
-_MAX_RESULT_CHARS = 30_000
+# Above the largest result either engine hands the model (the baseline's
+# 100,000-character output cap plus the wrapper), so nothing is cut here.
+_MAX_RESULT_CHARS = 120_000
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+
+
+class HeldResult(PendingMessage):
+    """A late result is capped by the engine, as a direct one is, not by the
+    32,000-character limit on a typed follow-up."""
+
+    content: str = Field(min_length=1, max_length=_MAX_RESULT_CHARS)
 
 
 class HeldCall(BaseModel):
@@ -91,11 +99,14 @@ async def answered(user_id: str, session_id: str) -> list[HeldCall]:
 
 
 async def resolve_answered(
-    user_id: str | None, session: ChatSession
+    user_id: str | None,
+    session: ChatSession,
+    cap: Callable[[str], str] = lambda text: text,
 ) -> list[PendingMessage]:
     """Run every answered held call once and return its result as a user row.
 
-    Call only once the turn's execution context is set. The HDEL claims the
+    Call only once the turn's execution context is set. ``cap`` is the engine's
+    own last step on a direct tool result, so a late one reads the same. The HDEL claims the
     call, so two turns racing over one card cannot both run it; the gate's
     own consume stays the second lock behind it.
     """
@@ -105,7 +116,7 @@ async def resolve_answered(
     for call in await answered(user_id, session.session_id):
         if not await _claim(session.session_id, call.review_id):
             continue
-        delivered.append(await _deliver(user_id, session, call))
+        delivered.append(await _deliver(user_id, session, call, cap))
     return delivered
 
 
@@ -182,14 +193,12 @@ async def wake(user_id: str, session_id: str) -> None:
 
 
 async def _deliver(
-    user_id: str, session: ChatSession, call: HeldCall
+    user_id: str, session: ChatSession, call: HeldCall, cap: Callable[[str], str]
 ) -> PendingMessage:
     from backend.copilot.tools import get_tool
 
-    output = await _outcome(user_id, session, call, get_tool(call.tool_name))
-    if len(output) > _MAX_RESULT_CHARS:
-        output = output[:_MAX_RESULT_CHARS] + "… [truncated]"
-    return PendingMessage(
+    output = cap(await _outcome(user_id, session, call, get_tool(call.tool_name)))
+    return HeldResult(
         content=(
             f'<held_call_result tool="{call.tool_name}" '
             f'tool_call_id="{call.tool_call_id}" review_id="{call.review_id}">\n'

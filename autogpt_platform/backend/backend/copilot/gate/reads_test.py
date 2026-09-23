@@ -384,3 +384,42 @@ async def test_several_reads_hold_at_once(rows):
         await _call(_Fetch(_MARKER), _session(), {"url": "a"})
         await _call(_Fetch(_MARKER), _session(), {"url": "b"})
     assert len(rows.rows) == 2 and len(rows.held) == 2
+
+
+@pytest.mark.parametrize("engine", ["sdk", "baseline"])
+async def test_a_large_released_read_arrives_late_exactly_as_a_direct_result(
+    rows, engine
+):
+    """Above 30K, where a plain pending message would cut it, and on the SDK
+    engine above the 70K cap, so the stored bytes are already capped."""
+    from backend.copilot.sdk.tool_adapter import cap_late_tool_result
+
+    content = "y" * (75_000 if engine == "sdk" else 45_000)
+    session = _session()
+    set_execution_context("user-1", session)
+    if engine == "sdk":
+        wrapper = _make_truncating_wrapper(
+            create_tool_handler(_Fetch(content)), "web_fetch"
+        )
+        with patch(
+            "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
+        ):
+            with patch(f"{_READS}.judge_content", _judge(_CLEAN)):
+                direct = _text_from_mcp_result(await wrapper({"url": "other"}))
+            with patch(f"{_READS}.judge_content", _judge(_HELD)):
+                await wrapper({"url": "u"})
+        cap = cap_late_tool_result
+    else:
+        with patch(f"{_READS}.judge_content", _judge(_CLEAN)):
+            direct = (await _call(_Fetch(content), session, {"url": "other"})).output
+        with patch(f"{_READS}.judge_content", _judge(_HELD)):
+            await _call(_Fetch(content), session)
+        cap = str  # the baseline passes no cap: execute already capped
+
+    (call,) = rows.held
+    rows.answer(ReviewStatus.APPROVED)
+    late = await held._deliver("user-1", session, call, cap)
+
+    body = late.content.split(">\n", 1)[1].rsplit("\n</held_call_result>", 1)[0]
+    assert body == direct
+    assert len(body) > 30_000
