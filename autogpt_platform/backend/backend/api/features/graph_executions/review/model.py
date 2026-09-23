@@ -1,9 +1,13 @@
 import json
+import re
 from datetime import datetime
+from functools import cache
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from backend.blocks import get_blocks
 
 if TYPE_CHECKING:
     from prisma.models import PendingHumanReview
@@ -63,6 +67,12 @@ class PendingHumanReviewModel(BaseModel):
     agent_name: str | None = Field(
         default=None, description="Display name of the agent that requested the review"
     )
+    block_id: str | None = Field(
+        default=None, description="The block awaiting approval, when a block asked"
+    )
+    action: str | None = Field(
+        default=None, description="What that block does, e.g. 'Send Discord Message'"
+    )
     library_agent_id: str | None = Field(default=None, description="For run deep links")
     session_id: str | None = Field(
         default=None, description="Chat session id for copilot run_capability reviews"
@@ -98,7 +108,10 @@ class PendingHumanReviewModel(BaseModel):
             review: Database review object
             node_id: Node definition ID (fetched from NodeExecution)
         """
+        block = _block_named(review.instructions)
         return cls(
+            block_id=block.id if block else None,
+            action=_action_label(block.name) if block else None,
             node_exec_id=review.nodeExecId,
             node_id=node_id,
             user_id=review.userId,
@@ -236,3 +249,20 @@ class ReviewResponse(BaseModel):
     rejected_count: int = Field(description="Number of reviews successfully rejected")
     failed_count: int = Field(description="Number of reviews that failed processing")
     error: str | None = Field(None, description="Error message if operation failed")
+
+
+def _block_named(name: str | None):
+    # A block's review stores its class name as the instructions; a
+    # human-in-the-loop block stores the user's own text there instead.
+    return _blocks_by_name().get(name) if name else None
+
+
+@cache
+def _blocks_by_name():
+    return {block.__name__: block() for block in get_blocks().values()}
+
+
+def _action_label(block_name: str) -> str:
+    words = re.sub(r"Block$", "", block_name)
+    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", words)
+    return re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", words)

@@ -671,7 +671,7 @@ export function useCopilotStream({
   const { followBackendTurn } = useFollowBackendTurn({
     status,
     refetchSession,
-    resumeStreamRef,
+    hasResumedRef,
   });
 
   // after being hidden for >30 s. See `useWakeResync` for details.
