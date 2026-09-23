@@ -208,7 +208,13 @@ async def update_triggered_preset(
             raise NotFoundError(
                 f"Graph #{current.graph_id} is not accessible (anymore)"
             )
-        if trigger_node := graph.webhook_input_node:
+        trigger_node = graph.webhook_input_node
+        mask_key = node_input_mask_key(trigger_node.id) if trigger_node else ""
+        # A run-template preset on a trigger-bearing graph has no trigger to
+        # reconfigure; a triggered one is attached or already holds the mask.
+        if trigger_node and (
+            current.webhook_id or mask_key in current.inputs or mask_key in inputs
+        ):
             # Trigger config is nested under a per-node key alongside the regular
             # graph inputs (see setup_triggered_preset).
             trigger_config = inputs.get(node_input_mask_key(trigger_node.id))

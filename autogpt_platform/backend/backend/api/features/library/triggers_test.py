@@ -366,6 +366,7 @@ def _preset(
     preset.expert_id = expert_id
     preset.organization_id = organization_id
     preset.team_id = team_id
+    preset.inputs = {}
     return preset
 
 
@@ -576,6 +577,22 @@ async def test_update_reconfigure_stores_new_credentials_in_mask():
         "_node_input_mask_trigger": {"repo": "owner/repo", "credentials": new_creds},
         "topic": "weather",
     }
+
+
+@pytest.mark.asyncio
+async def test_update_run_template_on_trigger_graph_skips_webhook():
+    """A graph can hold input nodes beside its trigger node, so a run-template
+    preset on it carries no mask and no webhook; its edit is a plain update."""
+    with _update_patches(current=_preset()) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"topic": "weather"},
+            credentials={},
+        )
+    m["setup"].assert_not_awaited()
+    m["set_webhook"].assert_not_awaited()
+    assert m["update"].await_args.kwargs["inputs"] == {"topic": "weather"}
 
 
 @pytest.mark.asyncio
