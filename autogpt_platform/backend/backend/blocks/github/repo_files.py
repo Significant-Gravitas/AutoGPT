@@ -302,7 +302,6 @@ class GithubCreateFileBlock(Block):
                     "abc123",
                 )
             },
-            is_irreversible_action=True,
         )
 
     @staticmethod
@@ -402,7 +401,6 @@ class GithubUpdateFileBlock(Block):
                     "def456",
                 )
             },
-            is_irreversible_action=True,
         )
 
     @staticmethod

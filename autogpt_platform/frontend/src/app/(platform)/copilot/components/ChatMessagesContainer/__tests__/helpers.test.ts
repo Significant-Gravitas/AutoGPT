@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
-  extractGraphExecId,
+  extractReviewTarget,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
   getLatestCompactionPhase,
@@ -471,7 +471,7 @@ describe("getLatestCompactionStats", () => {
   });
 });
 
-describe("extractGraphExecId", () => {
+describe("extractReviewTarget", () => {
   function toolOutput(output: unknown) {
     return {
       id: `m-${Math.random()}`,
@@ -488,30 +488,43 @@ describe("extractGraphExecId", () => {
     } as unknown as UIMessage<unknown, UIDataTypes, UITools>;
   }
 
-  it("returns a run that is still in flight, so a later pause shows in the chat", () => {
+  it("returns a run still in flight with its graph, so a later pause shows in the chat", () => {
     expect(
-      extractGraphExecId([
-        toolOutput({ execution_id: "exec-running", status: "RUNNING" }),
+      extractReviewTarget([
+        toolOutput({
+          execution_id: "exec-running",
+          graph_id: "graph-1",
+          status: "RUNNING",
+        }),
       ]),
-    ).toBe("exec-running");
+    ).toEqual({ graphExecId: "exec-running", graphId: "graph-1" });
   });
 
   it("ignores a run that already finished", () => {
     expect(
-      extractGraphExecId([
+      extractReviewTarget([
         toolOutput({ execution_id: "exec-done", status: "COMPLETED" }),
       ]),
     ).toBeNull();
   });
 
-  it("keeps an earlier run already waiting on review over a later in-flight one", () => {
+  it("prefers a newer in-flight run over an earlier run that paused", () => {
     expect(
-      extractGraphExecId([
-        toolOutput({ execution_id: "exec-review", status: "REVIEW" }),
+      extractReviewTarget([
+        toolOutput({ execution_id: "exec-a", status: "REVIEW" }),
         toolOutput(
-          JSON.stringify({ execution_id: "exec-2", status: "QUEUED" }),
+          JSON.stringify({ execution_id: "exec-b", status: "QUEUED" }),
         ),
-      ]),
-    ).toBe("exec-review");
+      ])?.graphExecId,
+    ).toBe("exec-b");
+  });
+
+  it("prefers a newer in-flight run over an earlier block review", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ graph_exec_id: "copilot-session-x" }),
+        toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
+      ])?.graphExecId,
+    ).toBe("exec-b");
   });
 });

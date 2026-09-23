@@ -1759,7 +1759,8 @@ async def _add_graph_execution(
 async def _started_from_attended_chat(
     graph_exec: GraphExecutionMeta, user_id: str, edb
 ) -> bool:
-    # A sub-graph run was started by its parent run, so it follows that run's chat.
+    # A sub-graph run follows its parent run's chat. A parent or chat that is
+    # gone cannot prove nobody is watching, so the run pauses.
     while (
         graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
         and graph_exec.trigger_ref
@@ -1768,7 +1769,7 @@ async def _started_from_attended_chat(
             user_id=user_id, execution_id=graph_exec.trigger_ref
         )
         if parent is None:
-            return False
+            return True
         graph_exec = parent
     if (
         graph_exec.trigger_source != ExecutionTrigger.COPILOT

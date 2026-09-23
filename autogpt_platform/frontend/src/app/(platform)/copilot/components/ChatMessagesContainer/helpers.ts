@@ -428,50 +428,60 @@ export function resolveWorkspaceUrls(
   return resolved;
 }
 
+export interface ReviewTarget {
+  graphExecId: string;
+  /** Set for a run_agent run, so its status can say when to stop polling. */
+  graphId?: string;
+}
+
 /**
- * Extract the graph_exec_id whose pending reviews the chat should show.
- * - run_block ReviewRequiredResponse (has graph_exec_id directly)
- * - run_agent ExecutionStartedResponse (has execution_id): one already in
- *   REVIEW wins; otherwise the latest run still in flight, since a run
- *   AutoPilot starts can pause at an irreversible block after it started.
+ * The newest tool output that can have pending reviews for the chat to show:
+ * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
+ * that paused or had not finished when the tool returned (a run AutoPilot
+ * starts can pause at an irreversible block after it started).
  */
-export function extractGraphExecId(
+export function extractReviewTarget(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): string | null {
-  let latestInFlight: string | null = null;
-  // Scan backwards — the most recent review output has the ID
+): ReviewTarget | null {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    for (const part of msg.parts) {
-      if ("output" in part && part.output) {
-        const out =
-          typeof part.output === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(part.output);
-                } catch {
-                  return null;
-                }
-              })()
-            : part.output;
-        if (out && typeof out === "object") {
-          // run_block: ReviewRequiredResponse has graph_exec_id
-          if ("graph_exec_id" in out) {
-            return (out as { graph_exec_id: string }).graph_exec_id;
-          }
-          if ("execution_id" in out && "status" in out) {
-            const { execution_id, status } = out as {
-              execution_id: string;
-              status: string;
-            };
-            if (status === "REVIEW") return execution_id;
-            if (IN_FLIGHT_STATUSES.has(status)) latestInFlight ??= execution_id;
-          }
+    const parts = messages[i].parts;
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const part = parts[j];
+      if (!("output" in part) || !part.output) continue;
+      const out =
+        typeof part.output === "string"
+          ? (() => {
+              try {
+                return JSON.parse(part.output);
+              } catch {
+                return null;
+              }
+            })()
+          : part.output;
+      if (!out || typeof out !== "object") continue;
+      if ("graph_exec_id" in out) {
+        return {
+          graphExecId: (out as { graph_exec_id: string }).graph_exec_id,
+        };
+      }
+      if ("execution_id" in out && "status" in out) {
+        const { execution_id, status, graph_id } = out as {
+          execution_id: string;
+          status: string;
+          graph_id?: string;
+        };
+        if (REVIEWABLE_STATUSES.has(status)) {
+          return { graphExecId: execution_id, graphId: graph_id };
         }
       }
     }
   }
-  return latestInFlight;
+  return null;
 }
 
-const IN_FLIGHT_STATUSES = new Set(["QUEUED", "RUNNING", "INCOMPLETE"]);
+const REVIEWABLE_STATUSES = new Set([
+  "REVIEW",
+  "QUEUED",
+  "RUNNING",
+  "INCOMPLETE",
+]);

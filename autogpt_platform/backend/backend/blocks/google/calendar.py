@@ -478,6 +478,7 @@ class GoogleCalendarCreateEventBlock(Block):
                     "htmlLink": "https://calendar.google.com/calendar/event?eid=abc123",
                 }
             },
+            is_irreversible_action=True,
         )
 
     async def run(

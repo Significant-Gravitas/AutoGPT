@@ -22,7 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import {
-  extractGraphExecId,
+  extractReviewTarget,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
@@ -340,7 +340,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
+  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -810,8 +810,11 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && graphExecId && (
-            <CopilotPendingReviews graphExecId={graphExecId} />
+          {!readOnly && reviewTarget && (
+            <CopilotPendingReviews
+              graphExecId={reviewTarget.graphExecId}
+              graphId={reviewTarget.graphId}
+            />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

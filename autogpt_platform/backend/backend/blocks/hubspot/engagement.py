@@ -46,6 +46,7 @@ class HubSpotEngagementBlock(Block):
             categories={BlockCategory.CRM, BlockCategory.COMMUNICATION},
             input_schema=HubSpotEngagementBlock.Input,
             output_schema=HubSpotEngagementBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

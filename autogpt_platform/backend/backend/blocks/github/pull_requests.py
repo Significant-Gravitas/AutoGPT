@@ -219,6 +219,7 @@ class GithubMakePullRequestBlock(Block):
                     "https://github.com/owner/repo/pull/1",
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod

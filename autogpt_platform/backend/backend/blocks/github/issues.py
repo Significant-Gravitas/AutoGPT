@@ -405,6 +405,7 @@ class GithubMakeIssueBlock(Block):
                     "https://github.com/owner/repo/issues/1",
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod

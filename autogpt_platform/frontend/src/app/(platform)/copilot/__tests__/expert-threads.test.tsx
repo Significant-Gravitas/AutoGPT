@@ -150,7 +150,7 @@ vi.mock(
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  extractGraphExecId: () => null,
+  extractReviewTarget: () => null,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,

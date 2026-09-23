@@ -3,11 +3,12 @@
 import { useCallback } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { okData } from "@/app/api/helpers";
+import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
 interface Props {
   graphExecId: string;
+  graphId?: string;
 }
 
 /**
@@ -15,12 +16,12 @@ interface Props {
  * reviews in a session — mirrors the non-copilot review page behavior.
  * Works for both run_capability (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
  */
-export function CopilotPendingReviews({ graphExecId }: Props) {
+export function CopilotPendingReviews({ graphExecId, graphId }: Props) {
   const { onSend } = useCopilotChatActions();
-  const { pendingReviews, refetch } = usePendingReviewsForExecution(
+  const { pendingReviews, refetch } = useCopilotPendingReviews({
     graphExecId,
-    { enabled: !!graphExecId, refetchInterval: 2000 },
-  );
+    graphId,
+  });
 
   // Graph executions auto-resume after approval; capability reviews need resume_capability.
   const isGraphExecution = !graphExecId.startsWith("copilot-session-");

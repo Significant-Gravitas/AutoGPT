@@ -68,6 +68,7 @@ class TwitterRetweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"retweet": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
         )
 
     @staticmethod
