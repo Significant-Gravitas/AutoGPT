@@ -5,6 +5,11 @@ sender and one set of properties. [Activation Metrics & Experiments](activation-
 explains how PostHog fits next to the SQL views, Looker, LaunchDarkly and
 DataFast; this page is the event contract.
 
+Event names follow the product analytics plan, *Every Second Counts* (owner:
+Toran), section "What we will record". Where that plan names an event for an
+action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
+lists what is not aligned yet.
+
 In code the names live in two modules, and nothing outside them spells out an
 event name:
 
@@ -17,14 +22,18 @@ event name:
 
 ### Naming
 
-- **Never rename an event that has been sent in production.** PostHog stores
-  the raw string, so a rename empties every insight, funnel and cohort built
-  on the old name, and past events cannot be backfilled. The pin tests fail
-  on any change to a live name.
-- New events are `object_action`, snake_case, action in the past tense:
-  `signup_completed`, `checkout_started`, `paywall_viewed`.
-- Existing names that break this pattern (`run_agent`, `credit_topup_success`,
-  `brain_dump_retry`, ...) stay as they are.
+- **Use the analytics plan's name.** When the plan names an event for an
+  action, that is the name, even if we used to send something else.
+- Otherwise the name is `object_action`, snake_case, action in the past
+  tense: `signup_completed`, `checkout_started`, `paywall_viewed`.
+- Chat (Autopilot) events start with `chat_`, never `copilot_`. The trial
+  lifecycle is `trial_*`.
+- **Rename once, then never again.** PostHog stores the raw string, so a
+  rename empties every insight, funnel and cohort built on the old name, and
+  past events cannot be backfilled. The live names that differ from the plan
+  (status `rename → X`) are renamed together in SECRT-2722, which lists
+  every old → new pair for the insights to update. After that, the pin tests
+  fail on any change to a live name.
 - Put a new name in `PlannedPostHogEvent` when it is agreed, and move it into
   the live list in the change that starts sending it.
 
@@ -93,7 +102,8 @@ for copilot-started runs (with `trigger: copilot`), because it measures
 human-initiated runs, not tasks. `user_lifecycle.agent_runs_human_total` is
 its SQL twin and includes copilot runs too.
 
-The same definition as a PostHog filter:
+The same definition as a PostHog filter (with today's names; after
+SECRT-2722 it reads `agent_run_started` and `chat_message_sent`):
 
 ```sql
 event IN ('run_agent', 'run_expert', 'run_autopilot')
@@ -113,6 +123,7 @@ Automated work is measured separately: `schedule_fired` and `trigger_fired`.
 | Status | Meaning |
 | --- | --- |
 | `live` | Sent today under this name. Keep it. |
+| `rename → X` | Sent today under an old name. SECRT-2722 renames it to `X`, the analytics plan's name. |
 | `add` | Not sent yet. SECRT-2723 adds it; the name is already in `PlannedPostHogEvent`. |
 
 Events that are no longer sent are listed under [Removed](#removed), with
@@ -174,14 +185,14 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `run_agent` | backend | live | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id` | A person starts a non-expert agent run. |
-| `run_autopilot` | backend | live | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length` | A person sends a message in an Autopilot chat. |
-| `run_expert` | backend | live | `expert_id`, `kind` (`chat_turn` or `workflow_run`); chat: `session_id`, `origin`, `surface`, `message_length`; run: `graph_id`, `graph_exec_id`, `trigger` | A person messages an expert or starts an expert workflow. |
-| `agent_run_completed` | backend | live | `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run` | A run reaches COMPLETED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. |
-| `agent_run_failed` | backend | live | as above plus `failure_reason` | A run reaches FAILED. |
+| `run_agent` | backend | rename → `agent_run_started` | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id` | A person starts a non-expert agent run. |
+| `run_autopilot` | backend | rename → `chat_message_sent` | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length` | A person sends a message in an Autopilot chat. |
+| `run_expert` | backend | rename → `chat_message_sent` (chat turn) / `agent_run_started` (workflow run) | `expert_id`, `kind` (`chat_turn` or `workflow_run`); chat: `session_id`, `origin`, `surface`, `message_length`; run: `graph_id`, `graph_exec_id`, `trigger` | A person messages an expert or starts an expert workflow. |
+| `agent_run_completed` | backend | rename → `agent_run_finished` (`status: completed`) | `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run` | A run reaches COMPLETED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. |
+| `agent_run_failed` | backend | rename → `agent_run_finished` (`status: failed`) | as above plus `failure_reason` | A run reaches FAILED. |
 | `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `session_id` | Any schedule is registered, from any surface. |
-| `copilot_tool_called` | backend | live | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
-| `copilot_library_check_outcome` | backend | live | `session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
+| `copilot_tool_called` | backend | rename → `chat_tool_called` | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
+| `copilot_library_check_outcome` | backend | rename → `chat_library_check_outcome` | `session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
@@ -204,8 +215,8 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
-| `marketplace_agent_added` | backend | add | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. |
-| `marketplace_agent_downloaded` | backend | add | `store_listing_version_id`, `graph_id` | A marketplace agent is downloaded. |
+| `listing_added_to_library` | backend | add | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. |
+| `listing_downloaded` | backend | add | `store_listing_version_id`, `graph_id` | A marketplace agent is downloaded. |
 
 ## Monetization
 
@@ -216,21 +227,21 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `billing_portal_opened` | browser | add | `surface` | The Stripe billing portal is opened. |
 | `checkout_started` | backend | add | `checkout_kind` (`subscription`, `top_up`), `subscription_tier`, `billing_cycle`, `surface` | A Stripe Checkout session is created. |
 | `checkout_abandoned` | browser | add | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL). Browser-sent: Stripe only reports the expiry a day later. |
-| `subscription_trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
+| `subscription_trial_offer_viewed` | browser | rename → `trial_offer_viewed` | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
 | `subscription_trial_checkout_started` | browser | live | `trial_offer_version`, `surface` | Trial checkout is opened. Once `checkout_started` ships, fold this in as `checkout_kind: trial`. |
-| `subscription_trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every `subscription_trial_*` event, it is sent only when its notification email is queued. |
-| `subscription_trial_ending` | backend | live | as above | The reminder window opens. |
-| `subscription_trial_canceled` | backend | live | as above | The trial is set to cancel. |
-| `subscription_trial_resumed` | backend | live | as above | A cancelled trial is resumed. |
-| `subscription_trial_payment_failed` | backend | live | as above | The conversion charge fails. |
-| `subscription_trial_converted` | backend | live | as above | The trial converts to paid. |
-| `subscription_trial_ended` | backend | live | as above | The trial ends without converting. |
-| `subscription_upgraded` | backend | live | `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier change takes effect. |
-| `subscription_payment_success` | backend | live | `subscription_tier`, `billing_cycle`; SECRT-2723 adds `amount_cents`, `currency` | A subscription invoice is paid. |
-| `credit_topup_success` | backend | live | `amount_credits`, `top_up_type`; SECRT-2723 adds `amount_cents`, `currency` | Credits are bought. |
+| `subscription_trial_started` | backend | rename → `trial_started` | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
+| `subscription_trial_ending` | backend | rename → `trial_ending` | as above | The reminder window opens. |
+| `subscription_trial_canceled` | backend | rename → `trial_canceled` | as above | The trial is set to cancel. |
+| `subscription_trial_resumed` | backend | rename → `trial_resumed` | as above | A cancelled trial is resumed. |
+| `subscription_trial_payment_failed` | backend | rename → `payment_failed` | as above | The conversion charge fails. |
+| `subscription_trial_converted` | backend | rename → `trial_converted` | as above | The trial converts to paid. |
+| `subscription_trial_ended` | backend | rename → `trial_ended` | as above | The trial ends without converting. |
+| `subscription_upgraded` | backend | rename → `subscription_changed` (`change_type: upgrade`) | `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier change takes effect. |
+| `subscription_payment_success` | backend | rename → `payment_succeeded` | `subscription_tier`, `billing_cycle`; SECRT-2723 adds `amount_cents`, `currency` | A subscription invoice is paid. |
+| `credit_topup_success` | backend | rename → `topup_completed` | `amount_credits`, `top_up_type`; SECRT-2723 adds `amount_cents`, `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
 | `subscription_ended` | backend | add | `subscription_tier`, `billing_cycle`, `reason` | A paid subscription ends (Stripe `customer.subscription.deleted`). |
-| `subscription_tier_reconciliation_discrepancy` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
+| `subscription_tier_reconciliation_discrepancy` | backend | rename → `subscription_tier_reconciled` | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
 
 The onboarding paywall's `paywall_view`, `paywall_checkout_cancelled` and
 `hire_completed` goals go to DataFast only, which is why the paywall has no
@@ -244,7 +255,7 @@ PostHog funnel yet.
 | `trigger_fired` | backend | live | `webhook_id`, `graph_id`, `graph_exec_id`, `expert_id`, `preset_id`, `target` | A webhook produces a run. |
 | `briefing_generated` | backend | live | `run_count`, `decision_count`, `has_content` | A morning briefing is composed (or found empty). |
 | `briefing_delivered` | backend | live | `briefing_id` | It is posted to the user's thread. |
-| `briefing_opened` | browser | live | — | The briefing renders on home. |
+| `briefing_opened` | browser | live | — | The briefing renders on home. Not the plan's `briefing_opened_in_chat`, which is opening it in the chat thread. |
 | `briefing_outcome_clicked` | browser | live | `status` | An outcome row in the briefing is clicked. |
 | `expert_fired` | backend | live | `expert_id` | An expert is fired. |
 
@@ -282,6 +293,35 @@ history PostHog already holds.
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+
+## Differences from the analytics plan
+
+Left for follow-up changes, so this list and the plan can be compared line by
+line:
+
+- **Events the plan folds into others keep their names until that change.**
+  The brain-dump events (`brain_dump_*`, `transcription_failed`,
+  `later_dump_completed`) and the wizard's `intro_path` and
+  `hire_step_continued` become properties of `onboarding_step_viewed` /
+  `_completed` / `_skipped` / `_back`. Spoken turns (`voice_turn_sent`)
+  become `chat_message_sent` with `input_mode: voice`.
+- **Property names.** The plan's envelope says `chat_session_id` and `via`;
+  chat events still send `session_id` and run events `trigger`.
+- **`subscription_changed` covers upgrades only.** The plan also counts
+  cancellations and downgrades there; `subscription_cancellation_scheduled`
+  and `subscription_ended` stay separate events.
+- **`chat_outcome` has two outcome types.** Only `agent_run_success` and
+  `schedule_created` have an emitter. `agent_created`, `trigger_setup`,
+  `artifact_created`, `file_produced` and `answer_only` do not.
+- **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
+  `chat_response_completed`, `chat_blocked`, `screen_viewed`,
+  `screen_engaged`, `milestone_reached`, the builder, library and email
+  families, ...) come with the plan's phases, not with this list.
+- **Events the plan has no name for keep their own**, e.g.
+  `integration_connected`, `schedule_created`, `hire_started`,
+  `billing_portal_opened`, `tour_*`, `tab_intro_*`, `voice_*` and
+  `credential_*`. `briefing_opened` is the briefing shown on home, a
+  different action from the plan's `briefing_opened_in_chat`.
 
 ## Events not in the constants modules
 
