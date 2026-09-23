@@ -147,6 +147,19 @@ describe("appendWithinCap", () => {
 
     expect(prev).toHaveLength(1);
   });
+
+  it("keeps the first free slots of a workspace batch and counts the rest", () => {
+    const prev = makeLocals(MAX_ATTACHMENTS - 4);
+    const picked = Array.from({ length: 9 }, (_, i) =>
+      workspaceItemToAttachment(makeWorkspaceItem({ id: `ws-${i}` })),
+    );
+
+    const { next, refused } = appendWithinCap(prev, picked);
+
+    expect(next).toHaveLength(MAX_ATTACHMENTS);
+    expect(refused).toBe(5);
+    expect(next.slice(MAX_ATTACHMENTS - 4)).toEqual(picked.slice(0, 4));
+  });
 });
 
 describe("the composer cap against the backend's own", () => {
