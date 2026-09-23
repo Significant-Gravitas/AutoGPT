@@ -1,8 +1,9 @@
 import type { ExpertBundledSkill } from "@/app/api/__generated__/models/expertBundledSkill";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { getCategoryAccent } from "../../../components/ExpertsSection/helpers";
-import { ExpertPill } from "./ExpertPill";
+import { ShelfTile } from "../../../components/Shelf/ShelfTile";
 import { ExpertSection } from "./ExpertSection";
 
 interface Props {
@@ -11,6 +12,9 @@ interface Props {
   category?: string;
 }
 
+/** The same tile the marketplace's Skills shelf uses, so a skill here and a
+ *  skill there are one object — and the description a pill had no room for
+ *  gets its line. */
 export function ExpertSkills({ skills, category }: Props) {
   const { accent, icon } = getCategoryAccent(category);
 
@@ -18,19 +22,22 @@ export function ExpertSkills({ skills, category }: Props) {
 
   return (
     <ExpertSection title="Skills">
-      <ul className="flex flex-wrap gap-2">
+      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {skills.map((skill) => (
-          <ExpertPill
+          <ShelfTile
             key={skill.id}
-            icon={
+            href={`/marketplace/skills/${skill.slug}`}
+            mediaClassName={cn("h-10 w-10", accent.pill)}
+            media={
               <Icon
                 icon={icon ?? BookOpen01Icon}
-                size={16}
+                size={18}
                 className={accent.icon}
+                aria-hidden
               />
             }
-            label={skill.title}
-            href={`/marketplace/skills/${skill.slug}`}
+            title={skill.title}
+            subtitle={skill.description}
           />
         ))}
       </ul>

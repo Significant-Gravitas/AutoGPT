@@ -292,7 +292,9 @@ describe("Marketplace expert page", () => {
 
     renderPage();
 
-    const link = await screen.findByRole("link", { name: "Brand voice guide" });
+    const link = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
     expect(link.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
     );
