@@ -130,7 +130,12 @@ async def reserve_subscription_trial(
         row = await tx.subscriptiontrial.create(
             data={
                 "userId": user_id,
-                "offer": SafeJson(offer.model_dump(mode="json")),
+                # The cap is live capacity config, read from the flag each
+                # time, never from here. Leaving it out keeps these rows
+                # readable by code that predates it, so a revert is safe.
+                "offer": SafeJson(
+                    offer.model_dump(mode="json", exclude={"max_active_trials"})
+                ),
                 "stripeCustomerId": customer_id,
                 "checkoutSuccessUrl": success_url,
                 "checkoutCancelUrl": cancel_url,
