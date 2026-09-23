@@ -22,9 +22,9 @@ import { formatCategoryLabel } from "../../SkillsSection/helpers";
 import { getCategoryAccent, getExpertAccent } from "../helpers";
 import { ExpertHireButton } from "./ExpertHireButton";
 
-/** Two named, then a count for the rest — enough to place the expert without
- *  turning the card into a list. */
-const NAMED_SKILLS = 2;
+/** Three named, then a count for the rest — enough to place the expert
+ *  without turning the card into a list. */
+const NAMED_SKILLS = 3;
 
 interface Props {
   expert: ExpertTemplate;
@@ -111,7 +111,7 @@ export function ExpertCard({ expert, isHired }: Props) {
         </div>
 
         {skills.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="flex flex-wrap items-center gap-x-4">
             {/* The same chip the filters wear, so a skill on a card and a
                 topic in the header read as one family. */}
             {skills.slice(0, NAMED_SKILLS).map((skill) => (
@@ -120,7 +120,7 @@ export function ExpertCard({ expert, isHired }: Props) {
                 className={cn(
                   CHIP_SHAPE,
                   CHIP_SIZE.small,
-                  "max-w-full border-transparent px-0",
+                  "h-6 max-w-full border-transparent px-0",
                 )}
               >
                 <Icon
@@ -139,7 +139,7 @@ export function ExpertCard({ expert, isHired }: Props) {
                     className={cn(
                       CHIP_SHAPE,
                       CHIP_SIZE.small,
-                      "pointer-events-auto cursor-default border-transparent px-0 text-zinc-500",
+                      "pointer-events-auto h-6 cursor-default border-transparent px-0 text-zinc-500",
                     )}
                   >
                     +{restSkills.length} skills
