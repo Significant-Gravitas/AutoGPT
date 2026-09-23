@@ -94,6 +94,16 @@ describe("escapeCurrencyAmounts", () => {
     expect(escapeCurrencyAmounts(markdown)).toBe(markdown);
   });
 
+  it.each([
+    ["- a\n  - b\n\n  back in a\n\n    more $5 and $10"],
+    ["1. a\n   - b\n\n   back in a\n\n     more $5 and $10"],
+    ["- a\n  - b\n    - c\n\n    back in b\n\n      more $5 and $10"],
+  ])("returns to the parent list item after a nested one: %j", (markdown) => {
+    expect(escapeCurrencyAmounts(markdown)).toBe(
+      markdown.replace("$5 and $10", "\\$5 and \\$10"),
+    );
+  });
+
   it("escapes indented lines that are not code", () => {
     expect(
       escapeCurrencyAmounts(

@@ -12,19 +12,20 @@ const SETEXT_UNDERLINE_RE = /^(?:=+|-+)[ \t]*$/;
 export function escapeCurrencyAmounts(markdown: string): string {
   let openFence: string | null = null;
   let codeIndent: number | null = null;
-  let listIndent = 0;
+  // Content column of each open list item, innermost last.
+  const listIndents: number[] = [];
   let inParagraph = false;
+  const listIndent = () => listIndents.at(-1) ?? 0;
 
   return markdown
     .split("\n")
     .map((line) => {
       const indent = indentWidth(line);
       const content = line.trimStart();
-      // Block markers may be indented up to three columns past the list item's content.
-      const startsBlock = indent < listIndent + 4;
-      const fence = startsBlock ? FENCE_RE.exec(content)?.[1] : undefined;
 
       if (openFence) {
+        const fence =
+          indent < listIndent() + 4 ? FENCE_RE.exec(content)?.[1] : undefined;
         if (
           fence &&
           fence[0] === openFence[0] &&
@@ -43,6 +44,18 @@ export function escapeCurrencyAmounts(markdown: string): string {
       if (codeIndent !== null && indent >= codeIndent) return line;
       codeIndent = null;
 
+      const marker = LIST_MARKER_RE.exec(line);
+      const startsItem = marker !== null && indent < listIndent() + 4;
+      // A lazy paragraph line stays in its list item; anything else closes the
+      // items it is not indented into.
+      if (startsItem || !inParagraph) {
+        while (listIndents.length && listIndent() > indent) listIndents.pop();
+      }
+
+      // Block markers may be indented up to three columns past the list item's content.
+      const startsBlock = indent < listIndent() + 4;
+      const fence = startsBlock ? FENCE_RE.exec(content)?.[1] : undefined;
+
       if (fence) {
         openFence = fence;
         inParagraph = false;
@@ -58,17 +71,12 @@ export function escapeCurrencyAmounts(markdown: string): string {
         return line;
       }
 
-      const marker = LIST_MARKER_RE.exec(line);
-      if (marker && indent < listIndent + 4) {
-        listIndent = columns(marker[0]);
-      } else if (indent < listIndent && !inParagraph) {
-        listIndent = 0;
-      }
+      if (startsItem) listIndents.push(columns(marker[0]));
 
       // Indented code cannot interrupt a paragraph, and CommonMark renders a
       // backslash escape inside it literally.
-      if (!inParagraph && indent >= listIndent + 4) {
-        codeIndent = listIndent + 4;
+      if (!inParagraph && indent >= listIndent() + 4) {
+        codeIndent = listIndent() + 4;
         return line;
       }
 
