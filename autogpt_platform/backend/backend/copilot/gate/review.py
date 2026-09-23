@@ -87,7 +87,8 @@ def instructions_for(tool_name: str, reason: str) -> str:
     lower-cased rather than stripped, which would mangle the sentence.
     """
     cleaned = " ".join(reason.split())[:200].strip(" :—-") or "needs your approval"
-    label = tool_name.replace("_", " ").capitalize()
+    label = tool_name.replace("_", " ")
+    label = label[:1].upper() + label[1:]
     return f"{label} — {cleaned}".replace("Block", "block")
 
 

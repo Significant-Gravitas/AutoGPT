@@ -1016,6 +1016,7 @@ async def upsert_chat_session(
         # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
+            cache_it = True
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
@@ -1041,8 +1042,13 @@ async def upsert_chat_session(
             else:
                 # With no cached copy the database holds the mode, which this
                 # upsert never writes, so it cannot be stale there.
-                session = await _with_stored_autopilot_mode(session)
-            await cache_chat_session(session)
+                stored = await _with_stored_autopilot_mode(session)
+                # Without the stored mode this turn's copy could be stale, so
+                # leave the cache empty and let the next read go to the database.
+                cache_it = stored is not None
+                session = stored or session
+            if cache_it:
+                await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
             if db_error is None:
@@ -1800,8 +1806,15 @@ async def update_session_autopilot_mode(
         return True
 
 
-async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession:
-    stored = await chat_db().get_chat_session_metadata(session.session_id)
+async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession | None:
+    """``session`` with the database's mode, or None if that could not be read."""
+    try:
+        stored = await chat_db().get_chat_session_metadata(session.session_id)
+    except Exception as e:
+        logger.warning(
+            f"Could not read the stored mode for session {session.session_id}: {e}"
+        )
+        return None
     if stored is None or stored.metadata.autopilot_mode == (
         session.metadata.autopilot_mode
     ):
