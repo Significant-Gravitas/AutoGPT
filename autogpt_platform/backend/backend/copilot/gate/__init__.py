@@ -132,6 +132,8 @@ async def check_action(
         await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
     )
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    if verdict is Verdict.JUDGE and subject is not None and subject.irreversible:
+        verdict = Verdict.ASK
     if rule == "ask":
         reason = "You declined this action earlier in this chat."
     elif verdict is Verdict.RUN:

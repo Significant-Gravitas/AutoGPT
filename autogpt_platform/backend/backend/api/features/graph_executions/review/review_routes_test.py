@@ -1295,20 +1295,24 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
         args={},
         rule_key="mcp:h/t",
     )
+    # The turn the answer wakes claims the held call, so it is gone afterwards.
+    held_calls = {"test_node_123": held_call}
     mocker.patch(
-        "backend.copilot.gate.held._held",
-        return_value={"test_node_123": held_call},
+        "backend.copilot.gate.held._held", side_effect=lambda _: dict(held_calls)
     )
     routes = "backend.api.features.graph_executions.review.routes"
     mocker.patch(
         f"{routes}.get_reviews_by_node_exec_ids",
         return_value={"test_node_123": review},
     )
+    approved = review.model_copy(update={"status": ReviewStatus.APPROVED})
+
+    async def process_and_claim(**_):
+        held_calls.clear()
+        return {"test_node_123": approved}
+
     mocker.patch(
-        f"{routes}.process_all_reviews_for_execution",
-        return_value={
-            "test_node_123": review.model_copy(update={"status": ReviewStatus.APPROVED})
-        },
+        f"{routes}.process_all_reviews_for_execution", side_effect=process_and_claim
     )
     mocker.patch(f"{routes}.wake_for_held_calls")
     set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
