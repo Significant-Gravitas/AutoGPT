@@ -5,7 +5,10 @@ import uuid
 import fastapi
 from gcloud.aio import storage as async_storage
 
-from backend.api.features.experts.avatar_moderation import moderate_avatar_image
+from backend.api.features.experts.avatar_moderation import (
+    moderate_avatar_image,
+    record_approved_avatar,
+)
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 
@@ -170,7 +173,7 @@ async def upload_media(
         # Generate unique filename
         filename = file.filename or ""
         file_ext = os.path.splitext(filename)[1].lower()
-        if use_file_name:
+        if use_file_name and not review_avatar:
             unique_filename = filename
         else:
             unique_filename = f"{uuid.uuid4()}{file_ext}"
@@ -180,10 +183,14 @@ async def upload_media(
 
         if use_local_storage:
             unique_filename = local_media.stored_filename(
-                unique_filename, content_type, use_file_name
+                unique_filename, content_type, use_file_name and not review_avatar
             )
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
+            if review_avatar:
+                await record_approved_avatar(
+                    user_id, local_media.media_url(user_id, media_type, unique_filename)
+                )
             return await local_media.store_media(
                 user_id, media_type, unique_filename, file_bytes
             )
@@ -197,19 +204,22 @@ async def upload_media(
                 file_bytes = await file.read()
                 await scan_content_safe(file_bytes, filename=unique_filename)
 
+                public_url = (
+                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
+                )
+                if review_avatar:
+                    await record_approved_avatar(user_id, public_url)
+
                 # Upload using pure async client
                 await async_client.upload(
                     bucket_name, storage_path, file_bytes, content_type=content_type
                 )
 
-                # Construct public URL
-                public_url = (
-                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
-                )
-
                 logger.info(f"Successfully uploaded file to: {storage_path}")
                 return public_url
 
+        except fastapi.HTTPException:
+            raise
         except Exception as e:
             logger.error(f"GCS storage error: {str(e)}")
             raise store_exceptions.StorageUploadError(

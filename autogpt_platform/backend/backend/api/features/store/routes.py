@@ -12,7 +12,6 @@ from starlette.datastructures import Headers
 
 import backend.data.graph
 import backend.util.json
-from backend.api.features.experts.avatar_moderation import record_approved_avatar
 from backend.api.features.search import hybrid_search as search_engine
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -567,12 +566,9 @@ async def upload_submission_media(
 ) -> str:
     """Upload media for a marketplace listing submission or reviewed appearance."""
 
-    media_url = await store_media.upload_media(
+    return await store_media.upload_media(
         user_id=user_id, file=file, review_avatar=purpose == "expert-avatar"
     )
-    if purpose == "expert-avatar":
-        await record_approved_avatar(user_id, media_url)
-    return media_url
 
 
 class ImageURLResponse(BaseModel):

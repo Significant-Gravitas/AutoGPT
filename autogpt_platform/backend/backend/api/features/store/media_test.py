@@ -324,3 +324,48 @@ async def test_submission_upload_does_not_require_avatar_review(
     await store_media.upload_media("owner", upload)
     review.assert_not_awaited()
     mock_storage_client.upload.assert_awaited_once()
+
+
+@pytest.mark.parametrize("local", [False, True])
+@pytest.mark.parametrize("receipt_fails", [False, True])
+async def test_avatar_receipt_precedes_publication(
+    mock_settings, mock_storage_client, mocker, local, receipt_fails
+):
+    if local:
+        mock_settings.config.media_gcs_bucket_name = ""
+    mocker.patch(
+        "backend.api.features.store.media.moderate_avatar_image", new_callable=AsyncMock
+    )
+    receipt = mocker.patch(
+        "backend.api.features.store.media.record_approved_avatar",
+        new_callable=AsyncMock,
+    )
+    if receipt_fails:
+        receipt.side_effect = fastapi.HTTPException(503, "Please try again later.")
+
+    async def publish(*args, **kwargs):
+        receipt.assert_awaited_once()
+        return receipt.await_args.args[1]
+
+    local_upload = mocker.patch.object(
+        local_media, "store_media", new=AsyncMock(side_effect=publish)
+    )
+    mock_storage_client.upload.side_effect = publish
+    upload = fastapi.UploadFile(
+        filename="existing-avatar.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\nimage"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+    if receipt_fails:
+        with pytest.raises(fastapi.HTTPException) as error:
+            await store_media.upload_media("owner", upload, review_avatar=True)
+        assert error.value.status_code == 503
+        local_upload.assert_not_awaited()
+        mock_storage_client.upload.assert_not_awaited()
+    else:
+        url = await store_media.upload_media(
+            "owner", upload, use_file_name=True, review_avatar=True
+        )
+        receipt.assert_awaited_once_with("owner", url)
+        assert "existing-avatar" not in url
+        (local_upload if local else mock_storage_client.upload).assert_awaited_once()

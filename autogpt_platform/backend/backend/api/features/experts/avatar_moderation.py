@@ -54,8 +54,13 @@ async def moderate_avatar_image(
 
 
 async def record_approved_avatar(user_id: str, url: str) -> None:
-    redis = await get_redis_async()
-    await redis.setex(_receipt_key(user_id, url), 86400, "approved")
+    try:
+        redis = await get_redis_async()
+        await redis.setex(_receipt_key(user_id, url), 86400, "approved")
+    except Exception as error:
+        raise HTTPException(
+            503, "Appearance review is unavailable. Please try again later."
+        ) from error
 
 
 async def require_approved_avatar(user_id: str, url: str | None) -> None:
