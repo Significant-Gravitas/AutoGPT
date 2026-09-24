@@ -1758,7 +1758,7 @@ class TestRunBlockOptionalCredentials:
         creds_manager = MagicMock()
         creds_manager.get = AsyncMock(side_effect=lambda _u, cid, **_: available[0])
         reviews = MagicMock()
-        reviews.get_pending_reviews_for_execution = AsyncMock(return_value=[])
+        reviews.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
         users = MagicMock()
         users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
         with (
