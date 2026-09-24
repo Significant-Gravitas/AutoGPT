@@ -377,6 +377,29 @@ async def test_only_an_approved_run_skips_the_irreversible_pause(gate, approved)
     assert run.await_args.kwargs["gate_approved"] is approved
 
 
+@pytest.mark.parametrize("gate_on", [True, False])
+async def test_a_run_looks_its_graph_up_once(gate, gate_on):
+    """Kills: ``_execute`` ignoring the graph the gate already resolved."""
+    graph = _graph([_node("send", GmailSendBlock(), {})])
+    lookup = AsyncMock(return_value=(graph, MagicMock(id="lib-1")))
+    with (
+        patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=gate_on)),
+        patch(_AGENT_GRAPH, lookup),
+        patch.object(RunAgentTool, "_run_agent", AsyncMock(return_value=_answer())),
+        patch.object(
+            RunAgentTool, "_check_prerequisites", AsyncMock(return_value=({}, None))
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.require_installed_workflow",
+            AsyncMock(return_value=None),
+        ),
+    ):
+        await RunAgentTool().execute(
+            "user-1", _session("unsupervised"), "call-1", library_agent_id="lib-1"
+        )
+    assert lookup.await_count == 1
+
+
 @pytest.mark.parametrize("unreadable_first", [True, False])
 @pytest.mark.parametrize("kind", ["undeclared block", "linked web request"])
 def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, kind):

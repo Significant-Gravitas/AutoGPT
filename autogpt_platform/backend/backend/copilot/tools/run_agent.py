@@ -1,6 +1,7 @@
 """Unified tool for agent operations with automatic state detection."""
 
 import logging
+from contextvars import ContextVar
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -85,6 +86,11 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# The graph the gate resolved for this call, so ``_execute`` fetches it only once.
+_GATE_RESOLVED: ContextVar[
+    tuple[tuple[str, str, str], str, GraphModel | None, LibraryAgent | None] | None
+] = ContextVar("run_agent_gate_resolved", default=None)
 
 
 async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
@@ -198,10 +204,12 @@ class RunAgentTool(BaseTool):
             if preset is None:
                 return NO_OP
         else:
+            key = _call_key(user_id, params)
             await _bind_builder_graph(user_id, session, params)
             if not _names_an_agent(params):
                 return NO_OP
-            graph, _ = await _agent_graph(user_id, params)
+            graph, library_agent = await _agent_graph(user_id, params)
+            _GATE_RESOLVED.set((key, params.library_agent_id, graph, library_agent))
         if graph is None:
             # A miss must not run ungated; the tool's own effect asks.
             return None
@@ -320,8 +328,14 @@ class RunAgentTool(BaseTool):
         if params.preset_id:
             return await self._handle_preset_run(user_id, session, params, approved)
 
-        if user_id:
-            await _bind_builder_graph(user_id, session, params)
+        resolved = _GATE_RESOLVED.get()
+        _GATE_RESOLVED.set(None)
+        if resolved is None or resolved[0] != _call_key(user_id or "", params):
+            resolved = None
+            if user_id:
+                await _bind_builder_graph(user_id, session, params)
+        elif resolved[1]:
+            params.library_agent_id = resolved[1]
         builder_graph_id = session.metadata.builder_graph_id
         has_library_id = bool(params.library_agent_id)
 
@@ -358,7 +372,9 @@ class RunAgentTool(BaseTool):
 
         try:
             # Step 1: Fetch agent details
-            graph, library_agent = await _agent_graph(user_id, params)
+            graph, library_agent = (
+                resolved[2:] if resolved else await _agent_graph(user_id, params)
+            )
             if has_library_id and library_agent is None:
                 return ErrorResponse(
                     message=f"Library agent '{params.library_agent_id}' not found",
@@ -1424,6 +1440,10 @@ async def _bind_builder_graph(
     )
     if library_agent:
         params.library_agent_id = library_agent.id
+
+
+def _call_key(user_id: str, params: RunAgentInput) -> tuple[str, str, str]:
+    return (user_id, params.library_agent_id or "", params.username_agent_slug)
 
 
 def _names_an_agent(params: RunAgentInput) -> bool:
