@@ -249,6 +249,9 @@ class ExpertRoutine(BaseModel):
         return bool(self.crons)
 
 
+ExpertSetupStatus = Literal["installing", "ready", "failed"]
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -293,6 +296,10 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+    # A hire's workflows, skills and routines land after it is returned.
+    setup_status: ExpertSetupStatus = "ready"
+    # What setup could not install; re-hiring the template retries it.
+    setup_failures: list[str] = []
 
     @field_validator("avatar_url")
     @classmethod
@@ -376,7 +383,6 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
-    failed_preloads: list[str]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]

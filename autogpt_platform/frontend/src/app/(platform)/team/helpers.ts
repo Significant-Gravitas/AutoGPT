@@ -383,3 +383,9 @@ export function filterExpertSchedules(
     return untilNext > 7 * DAY_MS;
   });
 }
+
+export const SETUP_POLL_MS = 2_000;
+
+export function isSettingUp(experts: Expert[]) {
+  return experts.some((expert) => expert.setup_status === "installing");
+}

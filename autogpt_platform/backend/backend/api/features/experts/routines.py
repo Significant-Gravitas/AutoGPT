@@ -104,13 +104,15 @@ class RoutineUnansweredAsksError(Exception):
 
 async def install_routines(
     expert_id: str, template_routines: list[prisma.models.ExpertRoutine]
-) -> None:
+) -> list[str]:
     """Copy a template's routine proposals onto a new hire, all switched off.
 
     Deliberately creates no scheduler jobs: a cadence that fires unattended
     from the day of hire is a much bigger promise than a skill, and nobody has
     made it yet. The rows exist so the expert can offer them on its first turn.
+    Returns the titles that failed to install.
     """
+    failed: list[str] = []
     for routine in template_routines:
         data: prisma.types.ExpertRoutineCreateInput = {
             "expertId": expert_id,
@@ -133,6 +135,8 @@ async def install_routines(
             logger.exception(
                 f"Failed to install routine {routine.key!r} on expert #{expert_id}"
             )
+            failed.append(routine.title)
+    return failed
 
 
 async def list_routines(

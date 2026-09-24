@@ -19,6 +19,7 @@ import { MouseEvent } from "react";
 
 import { ExpertCover } from "./components/ExpertCover";
 import { IntegrationIcons } from "./components/IntegrationIcons";
+import { SetupStatus } from "./components/SetupStatus";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
@@ -49,8 +50,15 @@ export function ExpertTeamCard({
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
-  const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
-    useExpertTeamCard(expert.id);
+  const {
+    handleResume,
+    isResuming,
+    retrySetup,
+    isRetryingSetup,
+    isFireOpen,
+    openFire,
+    closeFire,
+  } = useExpertTeamCard(expert);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   function handleInstallClick() {
@@ -165,6 +173,12 @@ export function ExpertTeamCard({
           </CardStats>
         </div>
       </Link>
+
+      <SetupStatus
+        expert={expert}
+        isRetrying={isRetryingSetup}
+        onRetry={retrySetup}
+      />
 
       {isPaused ? (
         <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
