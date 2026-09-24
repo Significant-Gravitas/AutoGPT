@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import sys
@@ -9,7 +8,6 @@ from pydantic import SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
-from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
@@ -19,18 +17,11 @@ try:
 except ImportError:
     AnthropicIntegration = None  # type: ignore[assignment,misc]
 
-try:
-    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-except ImportError:
-    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
-
-from backend.util import feature_flag
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 
 settings = Settings()
-logger = logging.getLogger(__name__)
 
 
 class DiscordChannel(str, Enum):
@@ -266,12 +257,6 @@ def sentry_init():
         return
 
     sentry_dsn = settings.secrets.sentry_dsn
-    integrations = []
-    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
-        try:
-            integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
-        except DidNotEnable as e:
-            logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
     optional_integrations = (
         [AnthropicIntegration(include_prompts=False)]
         if AnthropicIntegration is not None
@@ -287,8 +272,7 @@ def sentry_init():
             AsyncioIntegration(),
             LoggingIntegration(),
         ]
-        + optional_integrations
-        + integrations,
+        + optional_integrations,
     )
 
 
