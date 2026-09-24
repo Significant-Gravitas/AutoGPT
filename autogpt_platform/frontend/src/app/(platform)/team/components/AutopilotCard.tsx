@@ -10,14 +10,17 @@ import {
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
 import {
-  AUTOPILOT_BLURB,
-  AUTOPILOT_PILL_CLASS,
-  AUTOPILOT_ROLE,
-} from "../helpers";
+  CHIP_SHAPE,
+  CHIP_SIZE,
+} from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
+
+/** Otto's reserved lavender, the one colour no category can take. */
+const AUTOPILOT_COVER_COLOR = "#B6A4C8";
 
 interface Props {
   skillCount: number;
@@ -42,13 +45,13 @@ export function AutopilotCard({
         aria-label={`View ${AUTOPILOT_NAME}`}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
-        <ExpertCover color="#B6A4C8" status="built-in" />
+        <ExpertCover color={AUTOPILOT_COVER_COLOR} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
           <AutopilotAvatar
             size={88}
-            backgroundColor="#B6A4C8"
-            className="relative z-10 -mt-12 ml-1 rounded-full"
+            backgroundColor={AUTOPILOT_COVER_COLOR}
+            className="relative z-10 -mt-12 ml-1 rounded-full ring-4 ring-background"
           />
         </div>
 
@@ -60,17 +63,15 @@ export function AutopilotCard({
           >
             {AUTOPILOT_NAME}
           </Text>
-          <Text
-            variant="small-medium"
-            as="span"
-            className={cn(
-              "inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
-              AUTOPILOT_PILL_CLASS,
-            )}
+          {/* Not a category, but it sits in the same row as the experts'
+              topic tags and should not read as a different kind of thing. */}
+          <span
+            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "max-w-full")}
+            style={{ color: AUTOPILOT_COVER_COLOR }}
           >
-            <Icon icon={SparklesIcon} size={12} />
-            {AUTOPILOT_ROLE}
-          </Text>
+            <Icon icon={SparklesIcon} size={12} className="shrink-0" />
+            <span className="truncate">{AUTOPILOT_ROLE}</span>
+          </span>
           <Text
             variant="body"
             tone="muted"

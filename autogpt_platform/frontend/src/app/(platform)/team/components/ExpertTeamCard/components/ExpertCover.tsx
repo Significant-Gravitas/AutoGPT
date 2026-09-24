@@ -49,7 +49,7 @@ export function ExpertCover({ className, color, status, art }: Props) {
           : undefined
       }
       className={cn(
-        "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
+        "relative h-24 w-full overflow-hidden rounded-lg bg-zinc-100",
         coverClassFor(color ?? null),
         className,
       )}
