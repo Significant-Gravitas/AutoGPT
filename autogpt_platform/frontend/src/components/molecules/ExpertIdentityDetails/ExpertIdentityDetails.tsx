@@ -2,7 +2,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import { ExpertAreaChip } from "./components/ExpertAreaChip";
 
 interface Props {
   name: string;
@@ -30,6 +29,11 @@ export function ExpertIdentityDetails({
   const compact = size === "compact";
   const Container = compact ? "span" : "div";
   const area = jobTitle || (role ? getExpertRoleLabel(role) : null);
+  // What someone does says more than "AI Expert" does, so on a card or a page
+  // it rides the name line and takes that line's place. Compact sizes have no
+  // room for it and keep it on the line below. The category pill belongs to
+  // the card, not here, so the two never say the same thing twice.
+  const titleOnNameLine = compact ? null : area;
 
   return (
     <Container
@@ -57,22 +61,32 @@ export function ExpertIdentityDetails({
         >
           {name}
         </Text>
+        {titleOnNameLine ? (
+          <Text
+            as="span"
+            variant="small"
+            tone="secondary"
+            unmask={false}
+            className={cn("min-w-0 truncate", areaClassName)}
+            title={titleOnNameLine}
+          >
+            {"•"} {titleOnNameLine}
+          </Text>
+        ) : null}
         {nameAccessory}
       </Container>
-      {!area || (!isOtto && !compact) ? (
+      {!area ? (
         <Text as="span" variant="small" tone="muted">
           {isOtto ? "Your personal Head of AI" : "AI Expert"}
         </Text>
       ) : null}
-      {!compact && area ? (
-        <ExpertAreaChip role={role ?? ""} label={area} />
-      ) : area ? (
+      {compact && area ? (
         <Text
           as="span"
           variant="small"
           tone="secondary"
           unmask={false}
-          className={cn("truncate", compact && "leading-4", areaClassName)}
+          className={cn("truncate leading-4", areaClassName)}
           title={area}
         >
           {area}

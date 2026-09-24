@@ -17,26 +17,29 @@ interface Props {
   className?: string;
 }
 
-/** A category worn as a label rather than a filter: same chip, no click. */
+/** A category worn as a label rather than a filter: same chip, no click.
+ *  The glyph carries the category's colour and the label takes it from
+ *  `currentColor`, so the tag needs no separate swatch. */
 export function CategoryTag({ category, size = "small", className }: Props) {
   const color = getCategoryHex(category);
   const { accent, icon } = getCategoryAccent(category);
 
   return (
-    <span className={cn(CHIP_SHAPE, CHIP_SIZE[size], "max-w-full", className)}>
-      {color && (
-        <span
-          aria-hidden="true"
-          className="size-2 shrink-0 rounded-full ring-1 ring-black/10"
-          style={{ backgroundColor: color }}
-        />
+    <span
+      className={cn(
+        CHIP_SHAPE,
+        CHIP_SIZE[size],
+        "max-w-full",
+        accent.icon,
+        className,
       )}
+      style={color ? { color } : undefined}
+    >
       {icon ? (
         <Icon
           icon={icon}
           size={TAG_ICON_SIZE[size]}
-          style={color ? { color } : undefined}
-          className={cn("shrink-0", accent.icon)}
+          className="shrink-0"
           aria-hidden
         />
       ) : null}

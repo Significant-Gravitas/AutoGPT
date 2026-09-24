@@ -319,7 +319,7 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
-    expect(screen.getByText("Marketing Manager")).toBeDefined();
+    expect(screen.getByText(/Marketing Manager/)).toBeDefined();
     expect(screen.queryByText("Marketing Strategist")).toBeNull();
     expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
     expect(
