@@ -48,6 +48,21 @@ describe("useCopilotPendingReviews", () => {
     expect(calls).toEqual(settled);
   }, 10_000);
 
+  test("polls a run that has not paused yet slowly", async () => {
+    const calls = countRequests("RUNNING");
+    renderHook(
+      () =>
+        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+      { wrapper },
+    );
+    await waitFor(() => expect(calls.execution).toBeGreaterThan(0));
+    const settled = calls.execution;
+
+    await sleep(4000);
+
+    expect(calls.execution).toBe(settled);
+  }, 10_000);
+
   test("keeps polling reviews while the run is paused for one", async () => {
     const calls = countRequests("REVIEW");
     renderHook(
