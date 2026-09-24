@@ -827,5 +827,10 @@ class TestFindOrphanedAuthIdentities:
         # A migrated identity may differ from its platform row only by case;
         # a case-sensitive owner match would heal a duplicate account.
         assert "LOWER(owner.email) = LOWER(a.email)" in sql
+        # ... and the owner must be a scalar subquery, not a join: several
+        # case-variant platform rows would otherwise return the identity once
+        # per variant and let duplicates consume the batch limit.
+        assert "LIMIT 1) AS email_owner_id" in sql
+        assert "JOIN" not in sql.split("AS email_owner_id")[0]
         assert older_than == cutoff.isoformat()
         assert limit == 7

@@ -307,13 +307,19 @@ async def find_orphaned_auth_identities(
     worth both healing and reporting.
     """
     rows = await query_raw_with_schema(
-        'SELECT a.id, a.email, a.name, a."createdAt", owner.id AS email_owner_id '
+        # The owner lookup is case-insensitive on purpose: the auth migration
+        # copied emails as stored, so a migrated identity can differ from its
+        # platform row only by case, and missing that owner would heal a
+        # duplicate account. It is a scalar subquery rather than a join so an
+        # identity yields exactly one row even when several platform rows
+        # carry case-variants of its email -- a join would return the identity
+        # once per variant and let duplicates eat into the batch limit.
+        'SELECT a.id, a.email, a.name, a."createdAt", '
+        '(SELECT owner.id FROM {schema_prefix}"User" owner '
+        "WHERE LOWER(owner.email) = LOWER(a.email) "
+        'ORDER BY owner."createdAt" ASC LIMIT 1) AS email_owner_id '
         'FROM {schema_prefix}"UserAuthIdentity" a '
         'LEFT JOIN {schema_prefix}"User" u ON u.id = a.id '
-        # Case-insensitive on purpose: the auth migration copied emails as
-        # stored, so a migrated identity can differ from its platform row only
-        # by case. Missing that owner here would heal a duplicate account.
-        'LEFT JOIN {schema_prefix}"User" owner ON LOWER(owner.email) = LOWER(a.email) '
         'WHERE u.id IS NULL AND a."createdAt" < $1::timestamptz '
         'ORDER BY a."createdAt" ASC '
         "LIMIT $2::int",
