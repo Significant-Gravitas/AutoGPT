@@ -138,7 +138,10 @@ test("rejects oversized uploads before making a request", async () => {
   expect(upload).not.toHaveBeenCalled();
 });
 
-test("editing a catalog avatar uses its color for generation", async () => {
+test.each([
+  "/experts/clay/v1/finance.png",
+  "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+])("editing %s uses its color for generation", async (avatarUrl) => {
   const requests: unknown[] = [];
   server.use(
     http.post("*/api/experts/avatars/generations", async ({ request }) => {
@@ -153,7 +156,7 @@ test("editing a catalog avatar uses its color for generation", async () => {
     <ExpertAvatarPicker
       name="Nova"
       color="green-300"
-      avatarUrl="/experts/clay/v1/finance.png"
+      avatarUrl={avatarUrl}
       onPick={vi.fn()}
     />,
   );
@@ -165,8 +168,10 @@ test("editing a catalog avatar uses its color for generation", async () => {
     { category: "finance", shape: "pebble", expression: "friendly" },
   ]);
   expect(
-    screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
-  ).toContain("finance.png");
+    screen.getByRole("img", { name: /^Nova/ }).getAttribute("src"),
+  ).toContain(
+    avatarUrl.includes("expert-mina") ? "expert-mina" : "finance.png",
+  );
 });
 
 test("a pending generation disables uploads and confirmation", async () => {
@@ -197,3 +202,8 @@ test("a pending generation disables uploads and confirmation", async () => {
     ).disabled,
   ).toBe(true);
 });
+
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getWebSocketToken: async () => ({ token: "test-token" }),
+}));

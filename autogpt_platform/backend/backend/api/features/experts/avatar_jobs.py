@@ -96,7 +96,7 @@ async def run_generation(
             )
             try:
                 job.avatar_url = await upload_media(
-                    user_id=user_id, file=file, use_file_name=True
+                    user_id=user_id, file=file, is_avatar=True
                 )
             finally:
                 await file.close()

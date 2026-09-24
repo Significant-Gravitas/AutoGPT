@@ -76,7 +76,7 @@ def avatar_prompt(request: ExpertAvatarRequest) -> str:
 
 
 def validate_png(content: bytes) -> io.BytesIO:
-    if len(content) > 10 * 1024 * 1024:
+    if len(content) > 5 * 1024 * 1024:
         raise ValueError("Generated image is too large")
     with Image.open(io.BytesIO(content)) as image:
         if image.format != "PNG" or image.size != (1024, 1024):

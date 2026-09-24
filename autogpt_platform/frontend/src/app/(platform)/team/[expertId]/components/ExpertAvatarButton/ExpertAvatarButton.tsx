@@ -19,7 +19,7 @@ export function ExpertAvatarButton({ expert }: Props) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        aria-label={`Change ${expert.name}'s photo`}
+        aria-label={`Change ${expert.name}'s appearance`}
         className="size-24 shrink-0 rounded-xl focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ExpertAvatar

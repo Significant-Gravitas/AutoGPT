@@ -6,7 +6,9 @@ import {
 import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { cn } from "@/lib/utils";
-import { resolveExpertAvatarUrl } from "./helpers";
+import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
+
+import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
 interface Props {
   name: string | null;
@@ -25,6 +27,20 @@ export function ExpertAvatar({
   className,
 }: Props) {
   const src = resolveExpertAvatarUrl(avatarUrl);
+  const managed = getManagedAvatar(src, size);
+  if (managed) {
+    return (
+      <ManagedExpertImage
+        key={`${managed.base}:${size}`}
+        name={name ?? "Expert"}
+        base={managed.base}
+        pixels={managed.pixels}
+        size={size}
+        isOtto={managed.assetID === "otto"}
+        className={className}
+      />
+    );
+  }
   return (
     <span
       style={{ width: size, height: size }}

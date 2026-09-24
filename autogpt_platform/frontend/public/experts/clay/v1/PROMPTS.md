@@ -2,7 +2,7 @@
 
 Generated with Codex image generation (model version not exposed). Source references: Significant-Gravitas/expert-design-system edition 6, commit 0e4001a. Reference JPEGs were supplied to image generation. PNGs were then resized to 512px with sharp, preserving alpha.
 
-These are starter concepts pending art review, not approved replacements for every roster identity. Marketing uses the Jules concept; finance uses Mina; sales uses Max; development uses Devon. The remaining assets use the category prompts below. Otto edits the source guide's Otto reference.
+These are starter concepts pending art review, not approved replacements for every roster identity. Marketing uses the Jules concept; finance uses Mina; sales uses Max; development uses Devon. The remaining assets use the category prompts below. Otto keeps the asset already shipped on dev.
 
 ## mina-curious
 
@@ -58,10 +58,6 @@ Create ONE AutoGPT Clay & Rock specialist avatar PNG. Follow the reference mater
 ## content
 
 Create ONE AutoGPT Clay & Rock specialist avatar PNG. Follow the reference material and small charcoal facial construction, but obey the new silhouette/color below. Exactly two irregular smooth matte clay masses: head 60% of height, touching a compact base, no limbs/neck/gap/black collar. Main mineral color on both forms, no cream on head. One small broad FLOWING cream inlay entirely on lower base, narrow recessed material join, no sharp wedge or pointed tips. Neutral friendly face: oval charcoal eyes, relaxed brows, tiny closed smile. No accessories/props/text. Soft upper-left studio light, minimal grain, genuine transparent alpha background. Square, full silhouette centered, 80% canvas height with all margins clear. Warm stone #B5ADA0. Rounded triangular pebble head with a soft centered peak, broad flat bottom. Compact broad base. Warm neutral gray stone color.
-
-## otto
-
-Prepare a transparent PNG avatar from the supplied approved Otto image. Preserve this exact lavender clay octopus identity, silhouette, proportions, facial construction, eight-arm anatomy and cream flowing inlay through mantle and arm base. Neutral gentle smile, no new features. Remove the off-white backdrop to genuine transparent alpha, keep only a quiet close contact shadow. Center full figure on square canvas occupying 80% canvas height with safe margins. Do not crop arms. No text/labels/border. This image is the edit target.
 
 
 ## marketing

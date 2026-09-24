@@ -2,7 +2,10 @@ from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 
 
 def test_existing_roster_avatar_maps_without_using_the_name():
-    assert resolve_avatar_url("/experts/maria.svg") == "/experts/clay/v1/marketing.png"
+    assert (
+        resolve_avatar_url("/experts/maria.svg")
+        == "/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
+    )
 
 
 def test_uploaded_and_saved_generated_avatars_are_preserved():
@@ -35,7 +38,7 @@ def test_frontend_catalog_and_png_assets_match_backend():
         (frontend / "src/components/molecules/ExpertAvatar/catalog.json").read_text()
     )
     assert len(catalog["legacy"]) == 32
-    for url in [a["url"] for a in catalog["avatars"]] + ["/experts/clay/v1/otto.png"]:
+    for url in [a["url"] for a in catalog["avatars"]]:
         with Image.open(frontend / "public" / url.lstrip("/")) as image:
             assert image.format == "PNG"
             assert image.size == (512, 512)

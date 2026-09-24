@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.api.features.experts.avatar_catalog import PRESETS
+from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -90,7 +91,10 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling tool:confirm_expert_change with that id."
+        return (
+            EXPERT_CREATION_COPY_POLICY
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -99,28 +103,26 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "Personal first name, not a job title (use job_title for that)."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short name for the area they own, e.g. 'SEO & Content'.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
                 },
                 "job_title": {
                     "type": "string",
-                    "description": "What they would be called on a team, e.g. 'SEO Content Manager'.",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": ("Accent token for the avatar and chat theme."),
+                    "description": "Avatar/chat accent token.",
                 },
                 "avatar_category": {
                     "type": "string",
@@ -130,7 +132,7 @@ class RaiseExpertTool(BaseTool):
                 "about": {
                     "type": "string",
                     "description": (
-                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {

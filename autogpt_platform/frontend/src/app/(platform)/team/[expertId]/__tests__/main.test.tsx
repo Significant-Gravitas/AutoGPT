@@ -1060,7 +1060,7 @@ describe("ExpertDetailPage", () => {
     );
     render(<ExpertDetailPage />);
     await userEvent.click(
-      await screen.findByRole("button", { name: "Change Maria's photo" }),
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
     );
     const file = new File(["x"], "maria.png", { type: "image/png" });
     await userEvent.upload(await screen.findByLabelText("Upload avatar"), file);
@@ -1093,7 +1093,7 @@ describe("ExpertDetailPage", () => {
     );
     render(<ExpertDetailPage />);
     await userEvent.click(
-      await screen.findByRole("button", { name: "Change Maria's photo" }),
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
     );
     await userEvent.upload(
       await screen.findByLabelText("Upload avatar"),
@@ -1555,3 +1555,8 @@ describe("ExpertDetailPage", () => {
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 });
+
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getWebSocketToken: async () => ({ token: "test-token" }),
+}));

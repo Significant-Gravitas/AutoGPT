@@ -8,7 +8,7 @@ import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { useExpertsSection } from "./useExpertsSection";
 
-const RAISE_LABEL = "Raise your own";
+const RAISE_LABEL = "Create an Expert";
 const RAISE_HREF = "/raise";
 
 interface Props {
