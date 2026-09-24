@@ -1150,6 +1150,13 @@ model Expert {
   // identical to a fresh expert and re-seed the grant straight back.
   credentialsSeededAt DateTime?
 
+  // A hire returns once its row exists; its preloads, skills and routines are
+  // installed after the response. setupStartedAt is the running job's lease.
+  setupStatus    ExpertSetupStatus @default(READY)
+  setupStartedAt DateTime?
+  // What the last setup run could not install, by display name.
+  setupFailures  String[]          @default([])
+
   Workflows       ExpertWorkflow[]
   Credentials     ExpertCredential[]
   ChatSessions    ChatSession[]
@@ -1207,6 +1214,12 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId, createdAt, id])
+}
+
+enum ExpertSetupStatus {
+  INSTALLING
+  READY
+  FAILED
 }
 
 // Where a routine's turn lands each time it fires.

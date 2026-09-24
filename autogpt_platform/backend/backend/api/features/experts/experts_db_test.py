@@ -331,6 +331,35 @@ def mock_embedding_functions():
 _seeded_template_ids: list[str] = []
 _seeded_user_ids: list[str] = []
 
+# The hire as production calls it: returns before its setup job has run.
+_hire_without_waiting = experts_db.hire_expert
+
+
+@pytest.fixture(autouse=True)
+def hire_waits_for_setup(monkeypatch):
+    """Most tests assert on what a hire installs, so let them read it back
+    once the background setup has finished."""
+
+    async def hire_and_finish_setup(user_id, template_id, name):
+        result = await _hire_without_waiting(user_id, template_id, name)
+        await _finish_hire_setup()
+        row = await prisma.models.Expert.prisma().find_unique(
+            where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
+        )
+        assert row is not None
+        return HireResult(expert=experts_db._to_model(row))
+
+    monkeypatch.setattr(experts_db, "hire_expert", hire_and_finish_setup)
+    monkeypatch.setattr(experts_db, "_SETUP_RETRY_DELAY_SECONDS", 0)
+
+
+async def _finish_hire_setup() -> None:
+    from backend.util.background import _background_tasks
+
+    await asyncio.gather(
+        *(t for t in _background_tasks if t.get_name().startswith("hire-setup-"))
+    )
+
 
 @pytest.fixture(autouse=True)
 async def delete_rows_this_test_seeded():
@@ -648,7 +677,7 @@ async def _hire_roster_and_assert_preloads(
             result = await experts_db.hire_expert(
                 hire_user.id, templates[entry["name"]].id, None
             )
-            assert result.failed_preloads == []
+            assert result.expert.setup_status == "ready"
             assert {w.store_listing_version_id for w in result.expert.workflows} == {
                 expected[p["slug"]] for p in entry["preloads"]
             }
@@ -812,8 +841,10 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
 
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
-    install.assert_awaited_once()
+    assert install.await_count == experts_db._SETUP_ATTEMPTS
     assert hired.expert.skills == []
+    assert hired.expert.setup_status == "failed"
+    assert len(hired.expert.setup_failures) == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -845,6 +876,167 @@ def _patch_install(monkeypatch, install: AsyncMock) -> None:
         return outcomes
 
     monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skills", batch)
+
+
+def _recording_install(**kwargs):
+    """A skill install that records the name the way the real one does."""
+
+    async def install(user_id, slug, *, expert_id):
+        await experts_db.add_expert_skill_name(user_id, expert_id, slug)
+
+    return AsyncMock(side_effect=install, **kwargs)
+
+
+async def _template_with_setup(server, hub_listing) -> prisma.models.Expert:
+    """A template that ships a preload, a bundled skill and a routine."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Maria", preload_listings=[slv_id], bundled=[hub_listing.id]
+    )
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": template.id,
+            "key": "queue-sweep",
+            "title": "Sweep the queue",
+            "prompt": "Read the queue.",
+            "crons": ["H 9 * * 1-5"],
+        }
+    )
+    return template
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_returns_before_any_skill_is_installed(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+):
+    release = asyncio.Event()
+    record = _recording_install()
+
+    async def slow_install(user_id, slug, *, expert_id):
+        await release.wait()
+        await record(user_id, slug, expert_id=expert_id)
+
+    _patch_install(monkeypatch, AsyncMock(side_effect=slow_install))
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+
+    # Kills: awaiting the setup inside the request (the hire never returns).
+    hired = await asyncio.wait_for(
+        _hire_without_waiting(test_user.id, template.id, None), timeout=10
+    )
+    assert hired.expert.setup_status == "installing"
+    assert hired.expert.skills == []
+    assert (
+        await experts_db.expert_setup_status(test_user.id, hired.expert.id)
+        == "installing"
+    )
+
+    release.set()
+    await _finish_hire_setup()
+    done = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert done is not None
+    assert done.setup_status == "ready"
+    assert done.skills == [hub_listing.slug]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+):
+    install = _recording_install()
+    _patch_install(monkeypatch, install)
+    template = await _template_with_setup(server, hub_listing)
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert hired.expert.setup_status == "ready"
+    assert hired.expert.skills == [hub_listing.slug]
+    assert len(hired.expert.workflows) == 1
+    install.reset_mock()
+
+    # Kills: dropping any of the three "already installed" filters.
+    with patch.object(
+        experts_db.library_db, "add_store_agent_to_library", new_callable=AsyncMock
+    ) as add_agent:
+        await experts_db._run_hire_setup(test_user.id, hired.expert.id, template.id)
+    install.assert_not_awaited()
+    add_agent.assert_not_awaited()
+    routines = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    assert [r.key for r in routines] == ["queue-sweep"]
+    assert (
+        await experts_db.expert_setup_status(test_user.id, hired.expert.id) == "ready"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rehire_retries_a_failed_setup(
+    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+):
+    _patch_install(monkeypatch, AsyncMock(side_effect=RuntimeError("storage down")))
+    template = await _seed_template(
+        name="Maria", preload_listings=[], bundled=[hub_listing.id]
+    )
+    failed = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert failed.expert.setup_status == "failed"
+
+    _patch_install(monkeypatch, _recording_install())
+    # Kills: an "existing" re-hire that does not re-claim the setup.
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        retried = await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_not_called()
+    assert retried.expert.id == failed.expert.id
+    assert retried.expert.setup_status == "ready"
+    assert retried.expert.setup_failures == []
+    assert retried.expert.skills == [hub_listing.slug]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_rehires_start_one_setup(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"setupStatus": prisma.enums.ExpertSetupStatus.FAILED},
+    )
+    spawn = MagicMock(side_effect=lambda coro, name: coro.close())
+    monkeypatch.setattr(experts_db, "spawn_background_task", spawn)
+
+    # Kills: a claim that is not one conditional update.
+    await asyncio.gather(
+        _hire_without_waiting(test_user.id, template.id, None),
+        _hire_without_waiting(test_user.id, template.id, None),
+    )
+    assert spawn.call_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_setup_whose_lease_ran_out_reads_failed_and_can_be_reclaimed(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    fresh = datetime.now(timezone.utc)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={
+            "setupStatus": prisma.enums.ExpertSetupStatus.INSTALLING,
+            "setupStartedAt": fresh,
+        },
+    )
+    assert not await experts_db._claim_setup(hired.expert.id)
+
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id},
+        data={"setupStartedAt": fresh - experts_db.SETUP_LEASE - timedelta(seconds=1)},
+    )
+    # Kills: trusting INSTALLING forever after the job's process died.
+    assert (
+        await experts_db.expert_setup_status(test_user.id, hired.expert.id) == "failed"
+    )
+    assert await experts_db._claim_setup(hired.expert.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1978,7 +2170,7 @@ async def test_hire_installs_preloads_into_library(server: SpinTestServer, test_
     wf = result.expert.workflows[0]
     assert wf.library_agent_id is not None
     assert wf.store_listing_version_id == slv_id
-    assert result.failed_preloads == []
+    assert result.expert.setup_status == "ready"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1996,7 +2188,8 @@ async def test_hire_reports_failed_preload_without_sinking_hire(
         result = await experts_db.hire_expert(test_user.id, template.id, None)
     assert not result.expert.is_template
     assert result.expert.workflows == []
-    assert len(result.failed_preloads) == 1
+    assert result.expert.setup_status == "failed"
+    assert len(result.expert.setup_failures) == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3045,7 +3238,7 @@ async def test_hire_creates_schedule_from_template_cadence(
     wf = result.expert.workflows[0]
     assert wf.schedule_cron == "40 7 * * *"
     assert wf.schedule_id == "sched-1"
-    assert result.failed_preloads == []
+    assert result.expert.setup_status == "ready"
     call_kwargs = mock_scheduler.add_execution_schedule.call_args.kwargs
     assert call_kwargs["cron"] == "40 7 * * *"
     assert call_kwargs["expert_id"] == result.expert.id
@@ -3102,7 +3295,7 @@ async def test_hire_skips_the_schedule_when_the_graph_needs_user_input(
     wf = result.expert.workflows[0]
     assert wf.schedule_cron == "40 7 * * *"
     assert wf.schedule_id is None
-    assert result.failed_preloads == []
+    assert result.expert.setup_status == "ready"
     mock_scheduler.add_execution_schedule.assert_not_awaited()
 
 
@@ -3157,7 +3350,7 @@ async def test_hire_schedule_failure_marks_needs_setup(
     assert wf.library_agent_id is not None
     assert wf.schedule_cron == "40 7 * * *"
     assert wf.schedule_id is None
-    assert result.failed_preloads == []
+    assert result.expert.setup_status == "ready"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -5900,6 +6093,77 @@ async def test_hire_completed_reports_failed_preloads_count(
     ):
         with patch.object(experts_db, "emit_funnel_event") as emit:
             await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_raising_retry_keeps_the_failures_an_earlier_attempt_named(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    monkeypatch.setattr(
+        experts_db,
+        "_install_hire_contents",
+        AsyncMock(
+            side_effect=[
+                (["Agent X"], ["skill-a"]),
+                RuntimeError("db"),
+                RuntimeError("db"),
+            ]
+        ),
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db._run_hire_setup(
+            test_user.id, hired.expert.id, template.id, count_hire=True
+        )
+
+    # Kills: resetting the failures when a later attempt raises.
+    done = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert done is not None
+    assert done.setup_status == "failed"
+    assert done.setup_failures == ["Agent X", "skill-a"]
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_setup_that_only_raised_reports_the_preloads_it_lacks(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    named = hired.expert.setup_failures
+    assert len(named) == 1
+    monkeypatch.setattr(
+        experts_db, "_install_hire_contents", AsyncMock(side_effect=RuntimeError("db"))
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db._run_hire_setup(
+            test_user.id, hired.expert.id, template.id, count_hire=True
+        )
+
+    # Kills: settling a total failure with no failures and a zero count.
+    done = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert done is not None
+    assert done.setup_status == "failed"
+    assert done.setup_failures == named
     emit.assert_called_once_with(
         test_user.id,
         "hire_completed",

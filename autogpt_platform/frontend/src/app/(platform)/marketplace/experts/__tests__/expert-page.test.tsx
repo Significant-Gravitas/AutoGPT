@@ -186,7 +186,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();
@@ -218,7 +218,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaTemplate]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();
@@ -502,7 +502,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(async (info) => {
         const body = (await info.request.json()) as {
           voice_preferences: string;
@@ -534,7 +534,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(() => {
         soulPatched = true;
         return hiredMaria;
@@ -560,7 +560,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       http.patch("/api/proxy/api/experts/:expertId/soul", () => {
         patchAttempts += 1;
         return patchAttempts === 1
@@ -598,7 +598,7 @@ describe("Marketplace expert page", () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaWithSamples]),
       getListExpertsMockHandler([]),
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
     );
 
     renderPage();
