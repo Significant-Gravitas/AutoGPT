@@ -980,17 +980,58 @@ async def test_past_the_quota_the_box_is_answered_and_nothing_is_sent(
     assert TOKEN not in caplog.text
 
 
-async def test_past_the_quota_a_request_with_an_unmeasured_body_is_killed(caplog):
-    """Its head is swapped before the body is read; mitmproxy may yet stream
-    that body, so it cannot be answered, only stopped."""
-    flow = tflow.tflow()
-    flow.live = True
-    addon = addon_for(flow, quota=Quota(OVER))
+def h2_get(flow: http.HTTPFlow) -> None:
+    """An HTTP/2 GET as ``gh`` or curl sends it: no length, no body."""
     flow.request.http_version = "HTTP/2.0"
     flow.request.headers.pop("content-length", None)
     flow.request.headers["authorization"] = "Bearer hsurr:github"
     flow.request.raw_content = None
+
+
+async def test_past_the_quota_an_http2_get_is_answered_not_reset(caplog):
+    """No length, so ``requestheaders`` swaps its head; it has no body to
+    stream, so ``request`` still fires and answers it with the 429."""
+    flow = tflow.tflow()
+    flow.live = True
+    quota = Quota(OVER)
+    addon = addon_for(flow, quota=quota)
+    h2_get(flow)
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
         await addon.requestheaders(flow)
-    assert flow.error is not None and not flow.killable
+        # Nothing with a value in it, whatever happens next.
+        assert flow.request.headers["authorization"] == "Bearer hsurr:github"
+        flow.request.raw_content = b""  # the end of the (empty) body
+        await addon.request(flow)
+    assert flow.error is None
+    assert flow.response is not None and flow.response.status_code == 429
+    assert flow.response.headers["retry-after"] == "42"
+    assert "Do not retry in a loop" in (flow.response.text or "")
+    assert quota.taken == [("session:s-a", "user-a")]  # counted once
     assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
+async def test_past_the_quota_a_streaming_body_goes_out_with_no_value(caplog):
+    """A body that does stream cannot be answered; its head goes out with the
+    placeholder it came with, and the provider refuses it."""
+    flow = tflow.tflow()
+    addon = addon_for(flow, quota=Quota(OVER))
+    h2_get(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+    flow.request.stream = True  # mitmproxy found the body too large to hold
+    await addon.request(flow)
+    assert flow.request.headers["authorization"] == "Bearer hsurr:github"
+    assert flow.response is None and flow.error is None
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
+async def test_a_request_counted_in_requestheaders_is_not_counted_again():
+    flow = tflow.tflow()
+    quota = Quota(QuotaVerdict())
+    addon = addon_for(flow, quota=quota)
+    h2_get(flow)
+    await addon.requestheaders(flow)
+    flow.request.raw_content = b""
+    await addon.request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert quota.taken == [("session:s-a", "user-a")]

@@ -122,6 +122,10 @@ MAX_BODY_BYTES = 5 * 1024 * 1024
 MAX_DECODED_BYTES = 4 * MAX_BODY_BYTES
 
 _HEAD_SWAPPED = "swap_proxy_head_swapped"
+# Set by ``requestheaders`` when its swap was over quota: the verdict, which
+# ``request`` answers with.  And whether this flow's request was counted.
+_OVER_QUOTA = "swap_proxy_over_quota"
+_COUNTED = "swap_proxy_counted"
 # The credentials whose values went into this flow, by name, and the swapped
 # Basic pairs (``RequestSwap.encoded``).
 _SWAPPED = "swap_proxy_swapped"
@@ -437,8 +441,17 @@ class SwapProxyAddon:
         if names:
             lookup = await self._lookup(flow, owner, host, names)
             swap = RequestSwap(lookup.credentials, host, request.method, request.path)
+            headers, path = request.headers.copy(), request.path
             swap.head(request)
-            if not await self._within_quota(flow, owner, host, swap, answer=False):
+            verdict = await self._quota_verdict(flow, owner, host, swap)
+            if verdict is not None:
+                # Put the placeholders back and let the request carry on.  If
+                # its body turns out not to stream (an HTTP/2 GET, most of all,
+                # has no length and no body), ``request`` answers it with why;
+                # if it streams, it goes out with no value in it and fails at
+                # the provider.  Either way nothing is sent with a credential.
+                request.headers, request.path = headers, path
+                flow.metadata[_OVER_QUOTA] = verdict
                 return
             self._record_swap(flow, owner, host, lookup, names, swap)
         if not is_scrubbable(request.headers.get("content-type", "")):
@@ -489,6 +502,9 @@ class SwapProxyAddon:
             # Streamed: its bytes have left.  ``requestheaders`` swapped what
             # could be swapped; a swap now would reach no wire, only the audit.
             return
+        if (over := flow.metadata.get(_OVER_QUOTA)) is not None:
+            self._answer_over_quota(flow, over)
+            return
         head = not flow.metadata.get(_HEAD_SWAPPED)
         host = request.pretty_host
         names = placeholder_names(request, head=head, body=False)
@@ -515,7 +531,9 @@ class SwapProxyAddon:
             swap.body(plain)
             if plain.raw_content != before:
                 put_back(request, plain)
-        if not await self._within_quota(flow, owner, host, swap, answer=True):
+        verdict = await self._quota_verdict(flow, owner, host, swap)
+        if verdict is not None:
+            self._answer_over_quota(flow, verdict)
             return
         self._record_swap(flow, owner, host, lookup, names, swap)
 
@@ -682,52 +700,35 @@ class SwapProxyAddon:
         swapped: dict[str, Credential] = flow.metadata.get(_SWAPPED, {})
         return [*credentials, *swapped.values()]
 
-    async def _within_quota(
-        self,
-        flow: http.HTTPFlow,
-        owner: Owner,
-        host: str,
-        swap: RequestSwap,
-        *,
-        answer: bool,
-    ) -> bool:
-        """Count a request that got a value; ``False`` if it must not be sent,
-        in which case it has been answered (or killed) and audited.
+    async def _quota_verdict(
+        self, flow: http.HTTPFlow, owner: Owner, host: str, swap: RequestSwap
+    ) -> Optional[QuotaVerdict]:
+        """Count a request that got a value, once per flow; the refusal
+        (audited) if it must not be sent with it, else ``None``.
 
         Called after the swap and before anything leaves.  A body swapped
         later, while it streams (``swap_anywhere`` only), is not counted.
         """
-        if self._quota is None or not any(e.kind == "swapped" for e in swap.events):
-            return True
+        if (
+            self._quota is None
+            or flow.metadata.get(_COUNTED)
+            or not any(e.kind == "swapped" for e in swap.events)
+        ):
+            return None
         verdict = await self._quota.take(owner.label, owner.user_id)
         if verdict.allowed:
-            return True
-        self._refuse_over_quota(flow, owner, host, verdict, answer=answer)
-        return False
-
-    def _refuse_over_quota(
-        self,
-        flow: http.HTTPFlow,
-        owner: Owner,
-        host: str,
-        verdict: QuotaVerdict,
-        *,
-        answer: bool,
-    ) -> None:
-        """Answer instead of the provider, so the box reads why.
-
-        Only from ``request``, where the whole body is in hand.  From
-        ``requestheaders`` (a large or unmeasured body) the flow is killed:
-        mitmproxy may yet start streaming that body, and a flow that both
-        streams and has an answer set is one it cannot handle.
-        """
+            flow.metadata[_COUNTED] = True
+            return None
         self._audit(
             owner, host, "refused-request", reason=verdict.reason, scope=verdict.scope
         )
-        if not answer or flow.request.stream:
-            if flow.killable:
-                flow.kill()
-            return
+        return verdict
+
+    @staticmethod
+    def _answer_over_quota(flow: http.HTTPFlow, verdict: QuotaVerdict) -> None:
+        """Answer instead of the provider, so the box reads why: set in
+        ``request``, the answer is what mitmproxy sends and the request is
+        not."""
         headers = {"content-type": "text/plain; charset=utf-8"}
         if verdict.retry_after:
             headers["retry-after"] = str(verdict.retry_after)

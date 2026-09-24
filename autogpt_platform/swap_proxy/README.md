@@ -350,10 +350,11 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   nothing is swapped into it, and its text responses from bound hosts are
   refused as while the backend is down, until the client opens a new one.
 - The quota counts requests that get a value swapped in, nothing else. A
-  request over it whose body is large or of unknown length (a big `git push`)
-  is cut off rather than answered, since its body may already be streaming;
-  the audit still says why. A body swapped while it streams (`swap_anywhere`
-  only) is not counted.
+  request over it whose body turns out to stream (a large `git push`) cannot
+  be answered with the `429`: it goes out with its placeholder, no value in
+  it, and the provider refuses it; the audit still says why. A request with no
+  body to stream (an HTTP/2 `GET` has no length either) is answered. A body
+  swapped while it streams (`swap_anywhere` only) is not counted.
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.
