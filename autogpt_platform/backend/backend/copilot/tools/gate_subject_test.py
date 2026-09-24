@@ -4,6 +4,7 @@ Driven through ``BaseTool.execute`` so the subject hook, the gate and the
 approval handed to the run are the ones the engines call.
 """
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -152,7 +153,18 @@ async def test_an_external_block_asks_and_the_card_names_it(gate, ran):
     reason, subject = args[5], args[6]
     assert subject.name == "Send Discord Message"
     assert subject.key == f"block:{SendDiscordMessageBlock().id}"
-    assert reason == "cannot be taken back"
+    assert reason == "Runs Send Discord Message, which reaches outside the platform."
+    assert subject.irreversible
+
+
+async def test_the_chain_row_names_the_block_the_card_names(gate, ran):
+    result = await _run_capability(
+        _session(),
+        SendDiscordMessageBlock().id,
+        {"channel_name": "general", "message_content": "hi"},
+    )
+    output = json.loads(result.output)
+    assert (output["ask"], output["object"]) == ("Run", "Send Discord Message")
 
 
 async def test_an_unclassified_block_asks(gate, ran):
@@ -162,7 +174,10 @@ async def test_an_unclassified_block_asks(gate, ran):
         {"issue_url": "https://github.com/o/r/issues/1", "label": "bug"},
     )
     assert _is_held(result)
-    assert gate.open_review.await_args.args[5] == "effect unknown"
+    assert (
+        gate.open_review.await_args.args[5]
+        == "Its effect is unknown: Github Add Label."
+    )
 
 
 async def test_an_approved_irreversible_block_asks_once(gate):
@@ -266,7 +281,10 @@ def test_a_write_inside_a_sub_graph_names_it():
     )
     subject = workflow_subject(graph)
     assert subject.effect is Effect.EXTERNAL
-    assert subject.reason == "cannot be taken back: Gmail Send"
+    assert (
+        subject.reason
+        == "Runs Morning digest; its step Gmail Send reaches outside the platform."
+    )
     assert subject.name == "Morning digest"
 
 
@@ -289,7 +307,9 @@ def test_a_linked_method_makes_a_web_request_unreadable(linked, effect):
     )
     subject = workflow_subject(graph)
     assert subject.effect is effect
-    assert subject.reason == ("effect unknown: Send Web Request" if linked else "")
+    assert subject.reason == (
+        "Its effect is unknown: Send Web Request." if linked else ""
+    )
 
 
 def test_a_schedule_of_a_read_workflow_is_a_platform_edit():
@@ -372,7 +392,10 @@ def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, ki
         _graph([_node("in", AgentInputBlock(), {"name": "m"}), *nodes], links=links)
     )
     assert subject.effect is Effect.EXTERNAL
-    assert subject.reason == "cannot be taken back: Gmail Send"
+    assert (
+        subject.reason
+        == "Runs Morning digest; its step Gmail Send reaches outside the platform."
+    )
 
 
 @pytest.mark.parametrize("send_first", [True, False])
@@ -382,7 +405,10 @@ def test_an_irreversible_node_names_an_external_workflow(send_first):
         _node("file", GithubCreateFileBlock(), {}),
     ]
     subject = workflow_subject(_graph(nodes if send_first else nodes[::-1]))
-    assert subject.reason == "cannot be taken back: Gmail Send"
+    assert (
+        subject.reason
+        == "Runs Morning digest; its step Gmail Send reaches outside the platform."
+    )
 
 
 @pytest.mark.parametrize(
@@ -430,7 +456,9 @@ async def test_saving_a_preset_of_a_read_workflow_is_a_platform_edit(gate):
             preset_name="otters",
         )
     assert _is_held(result)
-    assert gate.open_review.await_args.args[5] == "saves a preset"
+    assert (
+        gate.open_review.await_args.args[5] == "Runs Morning digest and saves a preset."
+    )
 
 
 async def test_a_graph_only_block_is_never_carded(gate, ran):

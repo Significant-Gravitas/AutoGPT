@@ -16,6 +16,7 @@ import {
   heldReview,
   mail,
   shell,
+  workflow,
 } from "./__tests__/fixtures";
 
 function answerAfter(ms: number, status = 200) {
@@ -59,7 +60,56 @@ export const TwoOnTheSameSubject: Story = {
   args: queueOf([folder("a", "Q3 reports", 6), folder("b", "Invoices", 5)]),
 };
 
-export const IrreversibleWithInputs: Story = { args: queueOf([mail()]) };
+const GMAIL_SCHEMA = http.get("*/api/builder/blocks/batch", () =>
+  HttpResponse.json([
+    {
+      id: "b-gmail",
+      name: "GmailSendBlock",
+      inputSchema: {
+        type: "object",
+        required: ["to", "subject"],
+        properties: {
+          to: { type: "array", title: "To" },
+          subject: { type: "string", title: "Subject" },
+          body: { type: "string", title: "Body" },
+        },
+      },
+    },
+  ]),
+);
+
+export const IrreversibleWithInputs: Story = {
+  args: queueOf([mail()]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+// As the server sends it: no chat rule is offered for a block yet.
+export const BlockCard: Story = {
+  args: queueOf([mail("mail", [])]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+export const BlockChainRow: StoryObj = {
+  render: () => {
+    const part = {
+      type: "tool-run_capability",
+      state: "output-available",
+      toolCallId: "call-gmail",
+      input: { id: "b-gmail", input: { to: ["dana@acme.com"] } },
+      output: {
+        type: "approval_required",
+        tool_name: "run_capability",
+        review_id: "copilot-node-gate-run_capability:gmail",
+        ask: "Run",
+        object: "Gmail Send",
+      },
+    } as MessagePart;
+    const row = applyHeldOutcome(toChainRow(part, 0)!, new Map());
+    return <ChainRowView row={row} isLast />;
+  },
+};
 
 export const SupervisorCouldNotVouch: Story = { args: queueOf([shell()]) };
 
