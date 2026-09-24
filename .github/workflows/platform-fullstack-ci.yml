@@ -385,6 +385,8 @@ jobs:
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
           PLAYWRIGHT_RETRIES: "0"
+          # One worker per vCPU on the 4-vCPU standard runner; the CI default of 8 starves the stack.
+          PLAYWRIGHT_WORKERS: "4"
 
       - name: Validate Playwright JSON report
         if: ${{ always() }}
