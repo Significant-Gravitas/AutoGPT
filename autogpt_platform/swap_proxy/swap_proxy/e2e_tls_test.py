@@ -298,3 +298,17 @@ async def test_tls_without_sni_from_a_box_that_does_not_swap_passes_through(
     proxy, upstream, upstream_ca, _ = tls_stack
     raw = await tls_request_without_sni(proxy.port, BOX_D, upstream.port, upstream_ca)
     assert b"200 OK" in raw
+
+
+async def test_not_http_inside_an_opened_connection_is_not_relayed(tls_stack, caplog):
+    """mitmproxy would relay it as raw TCP, which nothing scrubs.  Refused by
+    closing at once, so the box is not left waiting."""
+    proxy, upstream, _, mitm_ca = tls_stack
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        raw, issuer = await tls_request(
+            proxy.port, BOX_A, upstream.port, BOUND, b"\x00\x01\x02 binary\n", mitm_ca
+        )
+    assert issuer == "mitmproxy"
+    assert upstream.seen == [] and TOKEN_A.encode() not in raw
+    events = [(line["event"], line.get("reason")) for line in audit_lines(caplog)]
+    assert events == [("refused-connection", "not-http")]

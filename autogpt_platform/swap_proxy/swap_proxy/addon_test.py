@@ -10,6 +10,10 @@ from typing import Any
 
 import pytest
 from mitmproxy import http
+from mitmproxy.options import Options
+from mitmproxy.proxy import layers
+from mitmproxy.proxy.context import Context
+from mitmproxy.proxy.layers.http import HTTPMode
 from mitmproxy.test import tflow
 from OpenSSL import SSL
 from wsproto.frame_protocol import Opcode
@@ -18,6 +22,7 @@ from swap_proxy.addon import (
     MAX_BODY_BYTES,
     MAX_DECODED_BYTES,
     BufferedBody,
+    ClosingLayer,
     SwapProxyAddon,
     known_size,
 )
@@ -805,3 +810,64 @@ async def test_an_absolute_form_target_must_name_the_verified_host(
             if r.name == "swap_proxy.audit"
         ]
         assert [x.get("reason") for x in lines] == ["unverified-destination"]
+
+
+# ------------------------------------------------------------ raw relays
+
+
+def next_layer_for(flow: http.HTTPFlow, chosen: str, intercepted: bool) -> Any:
+    context = Context(flow.client_conn, Options())
+    flow.client_conn.tls = intercepted
+    layer: Any = {
+        "tcp": layers.TCPLayer(context),
+        "ignored": layers.TCPLayer(context, ignore=True),
+        "http": layers.HttpLayer(context, HTTPMode.transparent),
+    }[chosen]
+    return SimpleNamespace(layer=layer, context=context)
+
+
+@pytest.mark.parametrize(
+    "chosen, intercepted, swaps, closed",
+    [
+        # Not HTTP inside TLS the proxy terminated: no raw relay for a box that
+        # gets swaps, since nothing on a raw relay is scrubbed.
+        ("tcp", True, True, True),
+        ("tcp", True, False, False),
+        # Never opened (ssh in the clear, say): left as it is.
+        ("tcp", False, True, False),
+        ("ignored", True, True, False),
+        ("http", True, True, False),
+    ],
+)
+async def test_a_raw_relay_inside_an_opened_connection_is_not_allowed(
+    caplog, chosen, intercepted, swaps, closed
+):
+    flow = tflow.tflow()
+    addon = addon_for(flow, swaps=swaps)
+    nextlayer = next_layer_for(flow, chosen, intercepted)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        addon.next_layer(nextlayer)
+    assert isinstance(nextlayer.layer, ClosingLayer) is closed
+    assert audit(caplog) == ([("refused-connection", "not-http")] if closed else [])
+
+
+@pytest.mark.parametrize("swaps, refused", [(True, True), (False, False)])
+async def test_an_upgrade_that_is_not_a_websocket_is_refused(caplog, swaps, refused):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    flow.live = True
+    flow.response.status_code = 101
+    flow.response.headers["upgrade"] = "something-else"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow, swaps=swaps).response(flow)
+    assert (flow.error is not None) is refused
+    expected = [("refused-response", "unscrubbable-upgrade")] if refused else []
+    assert audit(caplog) == expected
+
+
+async def test_a_websocket_upgrade_is_not_refused():
+    flow = websocket_flow("hello", from_client=False)
+    assert flow.response is not None
+    flow.live = True
+    await addon_for(flow).response(flow)
+    assert flow.error is None

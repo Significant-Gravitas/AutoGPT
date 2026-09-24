@@ -80,7 +80,7 @@ from typing import Optional, Union
 from mitmproxy import connection, http, tls
 from mitmproxy.net.http.http1.read import expected_http_body_size
 from mitmproxy.net.http.url import parse_authority
-from mitmproxy.proxy import server_hooks
+from mitmproxy.proxy import commands, events, layer, layers, server_hooks
 from mitmproxy.proxy.layers import modes
 from OpenSSL import SSL
 
@@ -263,6 +263,21 @@ def known_size(
     return size
 
 
+class ClosingLayer(layer.Layer):
+    """Closes the connection on its first event: a refusal the box sees at
+    once, rather than a layer that waits for data that never makes sense."""
+
+    _closed = False
+
+    def _handle_event(self, event: events.Event) -> layer.CommandGenerator[None]:
+        if self._closed:
+            return
+        self._closed = True
+        yield commands.CloseConnection(self.context.client)
+        if self.context.server.connected:
+            yield commands.CloseConnection(self.context.server)
+
+
 class SwapProxyAddon:
     def __init__(
         self,
@@ -346,6 +361,27 @@ class SwapProxyAddon:
             bound = swaps
         if not bound:
             data.ignore_connection = True
+
+    def next_layer(self, nextlayer: layer.NextLayer) -> None:
+        """Inside a connection the proxy opened, only HTTP.
+
+        mitmproxy relays anything that does not look like HTTP as raw TCP
+        (``rawtcp``), and a raw relay has no hook that scrubs.  Turning
+        ``rawtcp`` off everywhere would also break plain-text protocols that
+        were never opened (ssh, say), so this is narrower: for an owner who
+        gets swaps, inside TLS the proxy terminated, the raw relay is replaced
+        by one that closes the connection at once.
+        (A ``101`` that is not a websocket is refused in ``response``.)
+        """
+        chosen = nextlayer.layer
+        if not isinstance(chosen, layers.TCPLayer) or chosen.flow is None:
+            return
+        client = nextlayer.context.client
+        owner = self._owners.get(client)
+        if owner is None or owner.swap_user_id is None or not client.tls:
+            return
+        self._audit(owner, client.sni or "-", "refused-connection", reason="not-http")
+        nextlayer.layer = ClosingLayer(nextlayer.context)
 
     def tls_start_client(self, data: tls.TlsData) -> None:
         """Runs after mitmproxy's own ``tlsconfig`` has built the connection,
@@ -554,6 +590,15 @@ class SwapProxyAddon:
         owner = self._owners.get(flow.client_conn)
         response = flow.response
         if owner is None or response is None:
+            return
+        if (
+            response.status_code == 101
+            and flow.websocket is None
+            and owner.swap_user_id is not None
+        ):
+            # An upgrade mitmproxy does not take for a websocket goes on as a
+            # raw relay, which nothing scrubs.  Refused before it switches.
+            self._refuse_response(flow, owner, "unscrubbable-upgrade")
             return
         if response.stream:
             return  # binary, or already handled by ``responseheaders``
