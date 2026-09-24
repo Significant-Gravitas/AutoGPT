@@ -340,8 +340,8 @@ def hire_waits_for_setup(monkeypatch):
     """Most tests assert on what a hire installs, so let them read it back
     once the background setup has finished."""
 
-    async def hire_and_finish_setup(user_id, template_id, name):
-        result = await _hire_without_waiting(user_id, template_id, name)
+    async def hire_and_finish_setup(user_id, template_id, name, surface=None):
+        result = await _hire_without_waiting(user_id, template_id, name, surface)
         await _finish_hire_setup()
         row = await prisma.models.Expert.prisma().find_unique(
             where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
