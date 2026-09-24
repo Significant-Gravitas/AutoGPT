@@ -47,6 +47,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
       <input
         ref={picker.fileInputRef}
         type="file"
+        disabled={picker.isBusy}
         accept={ACCEPTED_AVATAR_TYPES}
         aria-label="Upload avatar"
         className="sr-only"

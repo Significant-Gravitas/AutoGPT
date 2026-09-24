@@ -64,6 +64,7 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
       (value) => value === id,
     );
     if (!preset || !category) return;
+    generation.reset();
     setCategory(category);
     setSelectedUrl(preset.url);
     setSelectedColor(preset.color);
@@ -84,6 +85,7 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
       const response = await upload.mutateAsync({ data: { file } });
       if (typeof response.data !== "string" || !response.data.trim())
         throw new Error("No image URL");
+      generation.reset();
       setSelectedUrl(response.data.trim());
     } catch {
       setUploadError(

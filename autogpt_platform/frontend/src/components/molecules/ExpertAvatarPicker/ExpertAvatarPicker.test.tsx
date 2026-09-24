@@ -85,6 +85,7 @@ test("a failed job keeps the current avatar and the catalog remains usable", asy
   ).toContain("existing.png");
   expect(onPick).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "Ochre" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
@@ -166,4 +167,33 @@ test("editing a catalog avatar uses its color for generation", async () => {
   expect(
     screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
   ).toContain("finance.png");
+});
+
+test("a pending generation disables uploads and confirmation", async () => {
+  server.use(
+    http.post("*/api/experts/avatars/generations", () =>
+      HttpResponse.json(
+        { id: "pending-job", status: "pending" },
+        { status: 202 },
+      ),
+    ),
+    http.get("*/api/experts/avatars/generations/pending-job", () =>
+      HttpResponse.json({ id: "pending-job", status: "pending" }),
+    ),
+  );
+  render(<ExpertAvatarPicker name="Nova" color={null} onPick={vi.fn()} />);
+  await userEvent.click(
+    screen.getByRole("button", { name: "Generate with AI" }),
+  );
+  await screen.findByRole("status");
+  expect(
+    (screen.getByLabelText("Upload avatar") as HTMLInputElement).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Use this avatar",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });

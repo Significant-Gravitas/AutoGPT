@@ -47,5 +47,10 @@ export function useAvatarGeneration() {
     );
   }
 
-  return { generate, isGenerating, error, job };
+  function reset() {
+    setJobID("");
+    mutation.reset();
+  }
+
+  return { generate, reset, isGenerating, error, job };
 }
