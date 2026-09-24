@@ -63,11 +63,14 @@ class AnySearchClient:
     """
 
     def __init__(self, credentials: APIKeyCredentials):
+        # An empty key means the anonymous tier: omit the Authorization
+        # header entirely rather than sending an empty Bearer token.
+        api_key = credentials.api_key.get_secret_value()
         self.requests = Requests(
             trusted_origins=[ANYSEARCH_API_URL],
-            extra_headers={
-                "Authorization": f"Bearer {credentials.api_key.get_secret_value()}"
-            },
+            extra_headers=(
+                {"Authorization": f"Bearer {api_key}"} if api_key.strip() else None
+            ),
         )
 
     async def search(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -108,3 +111,18 @@ def result_from_dict(r: dict[str, Any]) -> AnySearchResult:
         snippet=r.get("snippet") or "",
         content=r.get("content"),
     )
+
+def check_vertical_inputs(
+    domain: AnySearchDomain | None, sub_domain: str | None
+) -> None:
+    """Shared domain/sub_domain consistency check for the search blocks.
+
+    domain is validated locally only - it is never sent to the API.
+    """
+    if domain and not sub_domain:
+        raise ValueError("sub_domain is required when domain is set")
+    if domain and sub_domain and not sub_domain.startswith(f"{domain.value}."):
+        raise ValueError(
+            "sub_domain must belong to the selected domain "
+            f"({domain.value}.*)"
+        )

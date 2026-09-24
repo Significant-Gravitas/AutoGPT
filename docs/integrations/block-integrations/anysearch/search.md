@@ -52,7 +52,7 @@ AnySearch issues API keys in the as_sk_... format. Sign up at https://anysearch.
 
 ## Anonymous tier
 
-The AnySearch API accepts unauthenticated requests at a lower rate limit. AutoGPT still requires a stored credential because the platform wires credentials per block; when the host sets a default `ANYSEARCH_API_KEY` in .env, users can pick the pre-seeded "AnySearch API Key" credential instead of creating their own.
+The AnySearch API accepts unauthenticated requests at a lower rate limit. AutoGPT still requires a stored credential because the platform wires credentials per block; when the host sets a default `ANYSEARCH_API_KEY` in .env, users can pick the pre-seeded "AnySearch API Key" credential instead of creating their own. A credential whose API key value is left empty is sent without an `Authorization` header, i.e. as an anonymous request.
 
 ## Billing and cost tracking
 
@@ -71,9 +71,4 @@ AnySearch publishes no per-call price list (Free tier: 1,000 requests/day; the P
 ## Zero-code alternative: the MCP endpoint
 
 AnySearch also exposes a Model Context Protocol server at `https://api.anysearch.com/mcp` (Bearer auth) with the tools search, batch_search, get_sub_domains and extract. For one-off workflows you can wire a generic MCP block to that endpoint instead of these blocks; the REST blocks documented here are the recommended path for production graphs.
-
-## Maintenance notes
-
-- Verified live against the API: POST /v1/search and POST /v1/extract (JSON body, Bearer auth). The REST surface has no batch-search endpoint; the Parallel Search block fans out client-side.
-- If AnySearch publishes per-call pricing, add .with_base_cost(...) in _config.py and merge_stats(provider_cost=...) in the blocks.
 <!-- END MANUAL -->

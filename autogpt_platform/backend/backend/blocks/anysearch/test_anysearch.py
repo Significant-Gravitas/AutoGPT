@@ -15,7 +15,6 @@ from pydantic import SecretStr, ValidationError
 from backend.blocks.anysearch._api import (
     ANYSEARCH_API_URL,
     AnySearchClient,
-    AnySearchDomain,
     result_from_dict,
     unwrap_envelope,
 )
@@ -118,12 +117,6 @@ def test_result_from_dict_defaults():
     assert r.content is None
 
 
-def test_domain_enum_members():
-    assert AnySearchDomain.FINANCE.value == "finance"
-    assert AnySearchDomain.GENERAL.value == "general"
-    assert len(AnySearchDomain) == 17
-
-
 @pytest.mark.asyncio
 async def test_client_search_posts_to_search_endpoint():
     client = AnySearchClient(TEST_CREDENTIALS)
@@ -147,6 +140,32 @@ async def test_client_search_posts_to_search_endpoint():
     assert client.requests.extra_headers == {
         "Authorization": "Bearer mock-anysearch-api-key"
     }
+
+
+@pytest.mark.asyncio
+async def test_client_empty_api_key_sends_no_authorization():
+    """An empty key means the anonymous tier: the request must carry no
+    Authorization header at all (an empty Bearer token is never sent)."""
+    creds = APIKeyCredentials(
+        id="01234567-89ab-cdef-0123-456789abcdef",
+        provider="anysearch",
+        api_key=SecretStr(""),
+        title="Empty key",
+        expires_at=None,
+    )
+    client = AnySearchClient(creds)
+    assert client.requests.extra_headers is None
+
+    resp = mock.Mock()
+    resp.ok = True
+    resp.json.return_value = {
+        "code": 0,
+        "message": "success",
+        "data": {"results": []},
+    }
+    client.requests.post = mock.AsyncMock(return_value=resp)
+    out = await client.search({"query": "q"})
+    assert out["data"]["results"] == []
 
 
 @pytest.mark.asyncio

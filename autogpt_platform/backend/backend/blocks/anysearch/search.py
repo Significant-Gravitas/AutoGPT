@@ -18,6 +18,7 @@ from ._api import (
     AnySearchClient,
     AnySearchDomain,
     AnySearchResult,
+    check_vertical_inputs,
     result_from_dict,
     unwrap_envelope,
 )
@@ -57,17 +58,7 @@ class AnySearchBlock(Block):
 
         @model_validator(mode="after")
         def _check_vertical_inputs(self):
-            if self.domain and not self.sub_domain:
-                raise ValueError("sub_domain is required when domain is set")
-            if (
-                self.domain
-                and self.sub_domain
-                and not self.sub_domain.startswith(f"{self.domain.value}.")
-            ):
-                raise ValueError(
-                    "sub_domain must belong to the selected domain "
-                    f"({self.domain.value}.*)"
-                )
+            check_vertical_inputs(self.domain, self.sub_domain)
             return self
 
     class Output(BlockSchemaOutput):
