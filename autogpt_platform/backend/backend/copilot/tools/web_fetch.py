@@ -2,7 +2,8 @@
 
 import logging
 import re
-from html import unescape
+from html import escape, unescape
+from html.parser import HTMLParser
 from typing import Any
 
 import aiohttp
@@ -39,19 +40,68 @@ _TEXT_CONTENT_TYPES = {
     "application/ld+json",
 }
 
-# Regex to strip non-content tags before text extraction
-_NON_CONTENT_TAGS_RE = re.compile(
-    r"<(?:script|style|noscript|svg)[^>]*>.*?</(?:script|style|noscript|svg)>",
-    re.IGNORECASE | re.DOTALL,
+# SPA container and fallback signals
+_SPA_SHELL_PATTERNS = re.compile(
+    r"""id\s*=\s*['"]?(?:root|__next|app)['"]?""",
+    re.IGNORECASE,
 )
+_SPA_FALLBACK_TEXT = "you need to enable javascript to run this app"
 
-# Common indicators of a client-side rendered Single Page Application (SPA)
-_SPA_SHELL_MARKERS = (
-    'id="root"',
-    'id="__next"',
-    'id="app"',
-    "you need to enable javascript to run this app",
-)
+
+class _HTMLCleaner(HTMLParser):
+    """Filter out script, style, noscript, and svg elements from HTML before text extraction."""
+
+    _DROP_TAGS = {"script", "style", "noscript", "svg"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self._skip_depth = 0
+        self._pieces: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in self._DROP_TAGS:
+            self._skip_depth += 1
+        elif self._skip_depth == 0:
+            attr_str = "".join(
+                f' {k}="{escape(v, quote=True)}"' if v is not None else f" {k}"
+                for k, v in attrs
+            )
+            self._pieces.append(f"<{tag}{attr_str}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._DROP_TAGS:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+                if self._skip_depth == 0:
+                    self._pieces.append(" ")
+        elif self._skip_depth == 0:
+            self._pieces.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in self._DROP_TAGS:
+            if self._skip_depth == 0:
+                self._pieces.append(" ")
+        elif self._skip_depth == 0:
+            attr_str = "".join(
+                f' {k}="{escape(v, quote=True)}"' if v is not None else f" {k}"
+                for k, v in attrs
+            )
+            self._pieces.append(f"<{tag}{attr_str} />")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._pieces.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        if self._skip_depth == 0:
+            self._pieces.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        if self._skip_depth == 0:
+            self._pieces.append(f"&#{name};")
+
+    def get_cleaned_html(self) -> str:
+        return "".join(self._pieces)
 
 
 def _is_text_content(content_type: str) -> bool:
@@ -60,7 +110,12 @@ def _is_text_content(content_type: str) -> bool:
 
 
 def _html_to_text(html: str) -> str:
-    cleaned_html = _NON_CONTENT_TAGS_RE.sub(" ", html)
+    cleaner = _HTMLCleaner()
+    try:
+        cleaner.feed(html)
+        cleaned_html = cleaner.get_cleaned_html()
+    except Exception:
+        cleaned_html = html
     h = html2text.HTML2Text()
     h.ignore_links = False
     h.ignore_images = True
@@ -84,15 +139,15 @@ def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:
     if len(extracted_text.strip()) >= 600:
         return False
     html_lower = raw_html.lower()
-    if any(marker in html_lower for marker in _SPA_SHELL_MARKERS):
-        return True
-    if (
+    has_spa_marker = bool(_SPA_SHELL_PATTERNS.search(raw_html)) or (
+        _SPA_FALLBACK_TEXT in html_lower
+    )
+    has_script_payload = (
         len(raw_html) > 2048
         and len(extracted_text.strip()) < 300
         and "<script" in html_lower
-    ):
-        return True
-    return False
+    )
+    return has_spa_marker or has_script_payload
 
 
 class WebFetchTool(BaseTool):
@@ -177,7 +232,8 @@ class WebFetchTool(BaseTool):
 
         title = None
         is_html = "html" in content_type.lower()
-        truncated = len(response.content) > _MAX_DOWNLOAD_BYTES
+        raw_truncated = len(response.content) > _MAX_DOWNLOAD_BYTES
+        text_truncated = False
 
         if is_html:
             title = _extract_title(raw_text)
@@ -191,7 +247,9 @@ class WebFetchTool(BaseTool):
         # Enforce character budget on the extracted text
         if len(text) > _MAX_TEXT_CHARS:
             text = text[:_MAX_TEXT_CHARS]
-            truncated = True
+            text_truncated = True
+
+        truncated = raw_truncated or text_truncated
 
         message = f"Fetched {url}"
 
@@ -206,9 +264,18 @@ class WebFetchTool(BaseTool):
                 f"Fetched {url} — warning: content not rendered (use browser_navigate)"
             )
 
-        if truncated:
+        if text_truncated and raw_truncated:
+            message += f" (download capped at {_MAX_DOWNLOAD_BYTES:,} bytes, text truncated to {_MAX_TEXT_CHARS:,} chars)"
+            text += (
+                f"\n\n[Content truncated — response exceeded {_MAX_DOWNLOAD_BYTES:,} bytes "
+                f"and text was capped at {_MAX_TEXT_CHARS:,} characters]"
+            )
+        elif text_truncated:
             message += f" (truncated to {_MAX_TEXT_CHARS:,} chars)"
             text += f"\n\n[Content truncated — limit of {_MAX_TEXT_CHARS:,} characters reached]"
+        elif raw_truncated:
+            message += f" (raw content truncated at {_MAX_DOWNLOAD_BYTES:,} bytes)"
+            text += f"\n\n[Content truncated — response body exceeded network cap of {_MAX_DOWNLOAD_BYTES:,} bytes]"
 
         return WebFetchResponse(
             message=message,

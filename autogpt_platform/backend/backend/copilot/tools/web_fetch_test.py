@@ -6,8 +6,10 @@ from ._test_data import make_session
 from .models import WebFetchResponse
 from .web_fetch import (
     _MAX_DOWNLOAD_BYTES,
+    _MAX_TEXT_CHARS,
     WebFetchTool,
     _extract_title,
+    _html_to_text,
     _is_client_rendered_shell,
 )
 
@@ -26,6 +28,27 @@ def test_extract_title_returns_none_when_missing():
 def test_is_client_rendered_shell_detects_root_div():
     html = '<html><head><script src="/app.js"></script></head><body><div id="root"></div></body></html>'
     assert _is_client_rendered_shell(html, "Home Menu Contact") is True
+
+
+def test_is_client_rendered_shell_detects_single_quoted_root():
+    html = "<html><head><script src='/app.js'></script></head><body><div id='root'></div></body></html>"
+    assert _is_client_rendered_shell(html, "Home Menu Contact") is True
+
+
+def test_html_cleaner_filters_scripts_and_styles_safely():
+    dirty_html = (
+        "<html><head><script type='text/javascript'>const a = '<p>code</p>';</script>"
+        "<style>body { color: red; }</style></head>"
+        "<body><h1>Hello</h1><svg><path d='M0 0' /></svg>"
+        "<noscript><p>Please enable JS</p></noscript>"
+        "<p>World &amp; Universe</p></body></html>"
+    )
+    cleaned = _html_to_text(dirty_html)
+    assert "Hello" in cleaned
+    assert "World & Universe" in cleaned
+    assert "color: red" not in cleaned
+    assert "const a" not in cleaned
+    assert "Please enable JS" not in cleaned
 
 
 def test_is_client_rendered_shell_false_for_normal_content():
@@ -154,3 +177,63 @@ async def test_execute_reports_small_original_body_size_after_text_extraction():
     assert "<body>" not in result.content
     assert result.content_length == len(response.content)
     assert result.truncated is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_execute_handles_raw_truncation_only():
+    large_html = (
+        "<html><head><script>"
+        + ("var x = 1;\n" * 250_000)
+        + "</script></head><body><p>Short content</p></body></html>"
+    )
+    content_bytes = large_html.encode("utf-8")
+    assert len(content_bytes) > _MAX_DOWNLOAD_BYTES
+
+    response = MagicMock()
+    response.headers = {"content-type": "text/html; charset=utf-8"}
+    response.content = content_bytes
+    response.url = "https://example.com/bloat"
+    response.status = 200
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+
+    with patch("backend.copilot.tools.web_fetch.Requests", return_value=client):
+        result = await WebFetchTool()._execute(
+            user_id="test-user",
+            session=make_session(user_id="test-user"),
+            url="https://example.com/bloat",
+            extract_text=True,
+        )
+
+    assert isinstance(result, WebFetchResponse)
+    assert result.truncated is True
+    assert "raw content truncated at" in result.message
+    assert "exceeded network cap" in result.content
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_execute_handles_text_truncation_only():
+    content_str = "Word " * 25_000
+    content_bytes = content_str.encode("utf-8")
+    assert len(content_bytes) < _MAX_DOWNLOAD_BYTES
+    assert len(content_str) > _MAX_TEXT_CHARS
+
+    response = MagicMock()
+    response.headers = {"content-type": "text/plain; charset=utf-8"}
+    response.content = content_bytes
+    response.url = "https://example.com/long.txt"
+    response.status = 200
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+
+    with patch("backend.copilot.tools.web_fetch.Requests", return_value=client):
+        result = await WebFetchTool()._execute(
+            user_id="test-user",
+            session=make_session(user_id="test-user"),
+            url="https://example.com/long.txt",
+        )
+
+    assert isinstance(result, WebFetchResponse)
+    assert result.truncated is True
+    assert f"truncated to {_MAX_TEXT_CHARS:,} chars" in result.message
+    assert f"limit of {_MAX_TEXT_CHARS:,} characters reached" in result.content
