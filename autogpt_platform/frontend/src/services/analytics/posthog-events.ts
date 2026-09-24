@@ -42,8 +42,8 @@ export const HireFlowEvent = {
 export const BrainDumpEvent = {
   BRAIN_DUMP_STARTED: "brain_dump_started",
   // `finalize_latency_ms` on this and on `transcription_failed` is the
-  // wall-clock of the whole finalize round trip: upload flush, virus scan,
-  // storage, transcription and extraction.
+  // wall-clock of the `finalizeBrainDump()` round trip: virus scan, storage,
+  // transcription and extraction. The upload flush finishes before it starts.
   BRAIN_DUMP_COMPLETED: "brain_dump_completed",
   BRAIN_DUMP_CANCELED: "brain_dump_canceled",
   BRAIN_DUMP_SKIPPED: "brain_dump_skipped",

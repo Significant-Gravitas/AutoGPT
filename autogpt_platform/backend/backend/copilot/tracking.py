@@ -1,8 +1,10 @@
 """PostHog analytics tracking for the chat system.
 
-Event names are the product analytics plan's ``chat_*`` family. Events carry
-``source: chat_copilot`` and are only sent for a known user: a synthetic
-distinct id would create a PostHog person nobody can merge.
+Event names are the product analytics plan's ``chat_*`` family. The events
+captured here carry ``source: chat_copilot``; ``chat_message_sent`` goes
+through ``product_analytics`` and carries ``source: platform``. Events are only
+sent for a known user: a synthetic distinct id would create a PostHog person
+nobody can merge.
 """
 
 from typing import Any, Literal
