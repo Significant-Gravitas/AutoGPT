@@ -64,11 +64,15 @@ async def resolve_swap_credential(
 
     ``None`` for an unknown name, an unbound host, or a user who has not
     connected the provider: in each case the placeholder goes out as it is.
+    A failure to look the token up or refresh it raises
+    (``ProviderTokenUnavailable``) rather than answering ``None``: the proxy
+    scrubs responses against this answer, so a failure has to reach it as an
+    outage (it refuses what it cannot scrub), not as "nothing to scrub".
     """
     entry = SUPPORTED_PROVIDERS.get(name)
     if entry is None or not _host_is_bound(host, entry["swap_hosts"]):
         return None
-    token = await get_provider_token(user_id, name)
+    token = await get_provider_token(user_id, name, strict=True)
     if not token:
         return None
     return SwapCredential(

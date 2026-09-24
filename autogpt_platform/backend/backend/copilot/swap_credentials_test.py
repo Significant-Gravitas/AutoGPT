@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.integration_creds import ProviderTokenUnavailable
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.swap_credentials import (
     SwapCredential,
@@ -39,7 +40,7 @@ async def test_a_bound_host_gets_the_users_token(host):
         values={"access_token": "ghp_real"},
         allowed_hosts=_GITHUB_HOSTS,
     )
-    lookup.assert_awaited_once_with("user-1", "github")
+    lookup.assert_awaited_once_with("user-1", "github", strict=True)
 
 
 @pytest.mark.asyncio
@@ -70,6 +71,16 @@ async def test_an_unknown_name_gets_nothing():
 async def test_a_user_who_has_not_connected_the_provider_gets_nothing():
     with _token(None):
         assert await resolve_swap_credential("user-1", "github", "github.com") is None
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_that_fails_is_an_error_not_a_user_without_a_token():
+    """The proxy scrubs responses against this answer, and refuses what it
+    cannot scrub only when the backend says it cannot answer."""
+    failing = AsyncMock(side_effect=ProviderTokenUnavailable("github"))
+    with patch(f"{_M}.get_provider_token", failing):
+        with pytest.raises(ProviderTokenUnavailable):
+            await resolve_swap_credential("user-1", "github", "github.com")
 
 
 def test_every_provider_says_where_its_token_may_go():
