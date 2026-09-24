@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { UIDataTypes, UIMessage, UITools } from "ai";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -714,5 +715,111 @@ describe("useCopilotPendingChips", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("restoring the buffer on session load", () => {
+    /** Hold every peek GET open and answer each with the same one-message
+     *  buffer, the way the backend does while a follow-up is still queued. */
+    function deferBufferPeeks(text: string) {
+      const resolvers: Array<() => void> = [];
+      mockGetPending.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvers.push(() =>
+              resolve({
+                status: 200,
+                data: { count: 1, messages: [text] },
+                headers: new Headers(),
+              } as Awaited<ReturnType<typeof getV2GetPendingMessages>>),
+            );
+          }),
+      );
+      return {
+        count: () => resolvers.length,
+        resolveAll: () =>
+          act(async () => {
+            resolvers.splice(0).forEach((resolve) => resolve());
+          }),
+      };
+    }
+
+    it("shows the queued follow-up once when two peeks overlap on load", async () => {
+      const peeks = deferBufferPeeks("follow up");
+      const setMessages = vi.fn();
+      const view = renderHook(
+        ({ status }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: [],
+            setMessages,
+          }),
+        { initialProps: { status: "ready" as "ready" | "error" } },
+      );
+      // A second idle edge lands before the first peek has answered.
+      view.rerender({ status: "error" });
+      expect(peeks.count()).toBe(2);
+
+      await peeks.resolveAll();
+
+      // Both peeks report the same buffer: the strip must show that one
+      // message, not one copy per peek. A doubled strip is what made the
+      // next new-assistant reconciliation promote the extra copy above the
+      // running tool chain while the backend still held the message.
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual(["follow up"]),
+      );
+      expect(setMessages).not.toHaveBeenCalled();
+    });
+
+    it("shows the queued follow-up once under a Strict Mode mount", async () => {
+      const peeks = deferBufferPeeks("follow up");
+      const setMessages = vi.fn();
+      // The dev server mounts every effect twice, so the load peek fires
+      // twice with the same empty snapshot.
+      const view = renderHook(
+        () =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status: "ready",
+            messages: [],
+            setMessages,
+          }),
+        { wrapper: StrictMode },
+      );
+      expect(peeks.count()).toBe(2);
+
+      await peeks.resolveAll();
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual(["follow up"]),
+      );
+    });
+
+    it("keeps a message typed during the peek window", async () => {
+      const peeks = deferBufferPeeks("from server");
+      const setMessages = vi.fn();
+      const view = renderHook(() =>
+        useCopilotPendingChips({
+          sessionId: "s1",
+          status: "ready",
+          messages: [],
+          setMessages,
+        }),
+      );
+      expect(peeks.count()).toBe(1);
+      act(() => {
+        view.result.current.queueMessage("typed meanwhile");
+      });
+
+      await peeks.resolveAll();
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual([
+          "from server",
+          "typed meanwhile",
+        ]),
+      );
+    });
   });
 });

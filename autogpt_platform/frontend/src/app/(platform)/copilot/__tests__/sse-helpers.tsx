@@ -16,7 +16,7 @@ import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { ReactNode, useState } from "react";
+import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 
@@ -114,6 +114,9 @@ export function renderHost(
     searchParams?: string;
     /** Follow-ups the backend still holds in the session's pending buffer. */
     pendingMessages?: string[];
+    /** Mount under React Strict Mode, as the dev server does: every effect
+     *  runs twice on mount, so load-time requests fire twice. */
+    strictMode?: boolean;
   } = {},
 ) {
   server.use(
@@ -144,18 +147,18 @@ export function renderHost(
       reason: null,
     }),
   );
-  return render(
-    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />,
-    {
-      wrapper: ({ children }) => (
-        <Wrapper
-          searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
-        >
-          {children}
-        </Wrapper>
-      ),
-    },
+  const host = (
+    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
   );
+  return render(opts.strictMode ? <StrictMode>{host}</StrictMode> : host, {
+    wrapper: ({ children }) => (
+      <Wrapper
+        searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+      >
+        {children}
+      </Wrapper>
+    ),
+  });
 }
 
 /**

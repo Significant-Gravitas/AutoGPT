@@ -251,6 +251,7 @@ function renderResumedSession(
   activeStreamStartedAt = "2026-05-13T00:04:00Z",
   replayChunks: UIMessageChunk[] = RESUME_REPLAY_CHUNKS,
   pendingMessages: string[] = [],
+  strictMode = false,
 ) {
   let resumeRequests = 0;
   server.use(
@@ -272,6 +273,7 @@ function renderResumedSession(
       },
     },
     pendingMessages,
+    strictMode,
   });
   return { getResumeRequests: () => resumeRequests };
 }
@@ -444,15 +446,22 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
     },
   );
 
-  it(
-    "keeps a follow-up the backend still holds as a queued bubble under the live turn",
+  // The dev server mounts under Strict Mode, so the load-time buffer peek
+  // fires twice; the reload the user sees must draw the follow-up once
+  // either way.
+  it.each([
+    ["a plain mount", false],
+    ["a Strict Mode mount", true],
+  ])(
+    "keeps a follow-up the backend still holds as a queued bubble under the live turn on %s",
     { timeout: 20000 },
-    async () => {
+    async (_label, strictMode) => {
       renderResumedSession(
         HYDRATED_SESSION_MESSAGES,
         "2026-05-13T00:04:00Z",
         RESUME_REPLAY_STILL_RUNNING,
         [QUEUED_FOLLOWUP],
+        strictMode,
       );
 
       expect(

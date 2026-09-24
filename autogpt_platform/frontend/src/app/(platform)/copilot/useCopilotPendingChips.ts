@@ -16,6 +16,10 @@ type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 interface QueuedMessage {
   id: string;
   text: string;
+  /** Restored from the backend buffer by a peek rather than typed here.
+   *  The next peek's rebase replaces these; only entries typed during its
+   *  GET window are carried over. */
+  fromServer?: boolean;
 }
 
 type QueueUpdater = (prev: QueuedMessage[]) => QueuedMessage[];
@@ -197,13 +201,22 @@ function usePeekOnBoundary({
       // GET fire time).  Without this re-attach, an entry queued after
       // an "idle" transition but before the peek resolves silently
       // disappears.
+      //
+      // Entries an *earlier* peek restored are not "queued during the
+      // window" even when they post-date this GET's snapshot: two peeks
+      // overlap on load (Strict Mode mounts the effect twice; two idle
+      // edges can land within one round trip), and each carrying the
+      // other's copy forward doubled the strip. The next new-assistant
+      // reconciliation then saw more chips than the backend held and
+      // promoted the surplus above the running tool chain.
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
           id: uuidv4({}),
           text,
+          fromServer: true,
         }));
         const queuedDuringWindow = current.filter(
-          (entry) => !inFlightIds.has(entry.id),
+          (entry) => !inFlightIds.has(entry.id) && !entry.fromServer,
         );
         return [...fromServer, ...queuedDuringWindow];
       });
