@@ -14,6 +14,7 @@ from pydantic import SecretStr, ValidationError
 
 from backend.blocks.anysearch._api import (
     ANYSEARCH_API_URL,
+    AnySearchAuth,
     AnySearchClient,
     result_from_dict,
     unwrap_envelope,
@@ -36,7 +37,7 @@ TEST_CREDENTIALS_INPUT = {
     "provider": TEST_CREDENTIALS.provider,
     "id": TEST_CREDENTIALS.id,
     "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
 }
 
 
@@ -63,12 +64,14 @@ def _raise(exc: Exception):
     return _raiser
 
 
-async def _collect(block, input_data: dict) -> dict:
+async def _collect(
+    block, input_data: dict, credentials: APIKeyCredentials | None = TEST_CREDENTIALS
+) -> dict:
     """Run ``block.execute`` and gather its yielded outputs into a dict."""
     outputs = {}
     async for name, value in block.execute(
         input_data,
-        credentials=TEST_CREDENTIALS,
+        credentials=credentials,
         execution_context=ExecutionContext(),
     ):
         outputs[name] = value
@@ -485,3 +488,142 @@ async def test_extract_malformed_fields_rejected_atomically():
             emitted.append(name)
 
     assert emitted == []
+
+
+@pytest.mark.asyncio
+async def test_client_missing_credentials_send_no_authorization():
+    """The anonymous tier: no credential at all must still carry no
+    Authorization header."""
+    client = AnySearchClient(None)
+    assert client.requests.extra_headers is None
+
+    resp = mock.Mock()
+    resp.ok = True
+    resp.json.return_value = {
+        "code": 0,
+        "message": "success",
+        "data": {"results": []},
+    }
+    client.requests.post = mock.AsyncMock(return_value=resp)
+    out = await client.search({"query": "q"})
+    assert out["data"]["results"] == []
+
+
+def test_anonymous_auth_makes_credentials_optional():
+    """auth=anonymous marks the credentials field credential-free - the
+    same discriminator mechanism AutoPilot uses for its platform transport."""
+    cases = [
+        (AnySearchBlock, {"query": "q"}),
+        (AnySearchParallelSearchBlock, {"queries": ["q"]}),
+        (AnySearchExtractBlock, {"url": "https://x.test"}),
+    ]
+    for block_cls, minimal_input in cases:
+        input_data = block_cls.Input.model_validate(
+            {**minimal_input, "auth": "anonymous"}
+        )
+        assert input_data.auth == AnySearchAuth.ANONYMOUS
+        assert input_data.credentials is None
+        info = block_cls.Input.get_credentials_fields_info()["credentials"]
+        assert "anonymous" in info.credential_free_discriminator_values
+
+
+@pytest.mark.asyncio
+async def test_search_runs_anonymously_without_credentials():
+    """Normal entry path: auth=anonymous and no credential - the block
+    still executes and the request carries no Authorization header."""
+    captured = {}
+
+    def spy(creds, payload):
+        captured["creds"] = creds
+        return _search_response([_row()])
+
+    block = AnySearchBlock()
+    _mock_block(block, {"_search": spy})
+    outputs = await _collect(
+        block, {"query": "q", "auth": "anonymous"}, credentials=None
+    )
+    assert captured["creds"] is None
+    assert len(outputs["results"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_runs_anonymously_without_credentials():
+    block = AnySearchExtractBlock()
+    captured = {}
+
+    def spy(creds, url):
+        captured["creds"] = creds
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {"url": url, "title": "t", "content": "c"},
+        }
+
+    _mock_block(block, {"_extract": spy})
+    outputs = await _collect(
+        block,
+        {"url": "https://x.test", "auth": "anonymous"},
+        credentials=None,
+    )
+    assert captured["creds"] is None
+    assert outputs["url"] == "https://x.test"
+
+
+@pytest.mark.asyncio
+async def test_parallel_runs_anonymously_without_credentials():
+    block = AnySearchParallelSearchBlock()
+    captured = {}
+
+    def spy(creds, payload):
+        captured.setdefault("creds", []).append(creds)
+        return _search_response([])
+
+    _mock_block(block, {"_search": spy})
+    outputs = await _collect(
+        block,
+        {"queries": ["a", "b"], "auth": "anonymous"},
+        credentials=None,
+    )
+    assert captured["creds"] == [None, None]
+    assert len(outputs["results"]) == 2
+
+
+def test_api_key_auth_still_requires_credentials():
+    """auth=api_key (the default) keeps the credentials field required -
+    unchanged for existing graphs."""
+    info = AnySearchBlock.Input.get_credentials_fields_info()["credentials"]
+    mapping = info.discriminator_mapping or {}
+    assert "api_key" in mapping
+    assert "anonymous" not in mapping
+    assert info.requires_credentials("api_key")
+    assert not info.requires_credentials("anonymous")
+
+
+@pytest.mark.asyncio
+async def test_api_key_auth_without_credentials_errors():
+    """api_key auth with no credential resolved must not silently run
+    anonymous - same runtime guard the LLM block applies for non-Ollama
+    providers."""
+    block = AnySearchBlock()
+    _mock_block(block, {"_search": lambda c, p: _search_response([])})
+    with pytest.raises(Exception, match="credentials are required"):
+        await _collect(block, {"query": "q"}, credentials=None)
+
+
+@pytest.mark.asyncio
+async def test_anonymous_auth_ignores_selected_credential():
+    """A stale credential left attached when auth flips to anonymous is
+    not sent - mirrors AutoPilot honouring an explicit credential-free
+    transport."""
+    captured = {}
+
+    def spy(creds, payload):
+        captured["creds"] = creds
+        return _search_response([])
+
+    block = AnySearchBlock()
+    _mock_block(block, {"_search": spy})
+    await _collect(
+        block, {"query": "q", "auth": "anonymous"}, credentials=TEST_CREDENTIALS
+    )
+    assert captured["creds"] is None

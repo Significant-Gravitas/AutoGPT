@@ -28,6 +28,25 @@ class AnySearchDomain(Enum):
     TRAVEL = "travel"
 
 
+class AnySearchAuth(str, Enum):
+    """How an AnySearch block authenticates.
+
+    API_KEY uses a stored AnySearch credential; ANONYMOUS sends
+    unauthenticated requests at the vendor's lower rate limit and makes the
+    credentials field optional - the same discriminator mechanism the
+    AutoPilot block uses for its credential-free transport.
+    """
+
+    API_KEY = "api_key"
+    ANONYMOUS = "anonymous"
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        json_schema["enumNames"] = ["API key", "Anonymous (rate-limited)"]
+        return json_schema
+
+
 class AnySearchResult(BaseModel):
     """Schema for a single AnySearch search result."""
 
@@ -62,10 +81,10 @@ class AnySearchClient:
     published, so callers record no provider_cost.
     """
 
-    def __init__(self, credentials: APIKeyCredentials):
-        # An empty key means the anonymous tier: omit the Authorization
-        # header entirely rather than sending an empty Bearer token.
-        api_key = credentials.api_key.get_secret_value()
+    def __init__(self, credentials: APIKeyCredentials | None):
+        # No credential selected (anonymous tier) or an empty key value:
+        # omit the Authorization header rather than sending an empty Bearer.
+        api_key = credentials.api_key.get_secret_value() if credentials else ""
         self.requests = Requests(
             trusted_origins=[ANYSEARCH_API_URL],
             extra_headers=(

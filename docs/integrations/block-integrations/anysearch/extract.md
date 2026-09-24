@@ -1,6 +1,6 @@
 # AnySearch Extract
 <!-- MANUAL: file_description -->
-Extracts readable page content from a URL via AnySearch. Requires an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
+Extracts readable page content from a URL via AnySearch. Runs anonymously or with an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
 <!-- END MANUAL -->
 
 ## AnySearch Extract
@@ -17,6 +17,7 @@ The block posts the single URL to `POST https://api.anysearch.com/v1/extract` an
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
+| auth | Anonymous tier (lower rate limit, no key) or an AnySearch API key credential | "api_key" \| "anonymous" | No |
 | url | The URL to extract content from | str | Yes |
 
 ### Outputs

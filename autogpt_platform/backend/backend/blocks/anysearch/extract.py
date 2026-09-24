@@ -12,14 +12,26 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError
 
-from ._api import AnySearchClient, unwrap_envelope
+from ._api import AnySearchAuth, AnySearchClient, unwrap_envelope
 from ._config import anysearch
 
 
 class AnySearchExtractBlock(Block):
     class Input(BlockSchemaInput):
+        auth: AnySearchAuth = SchemaField(
+            title="Authentication",
+            description="Anonymous tier (lower rate limit, no key) or an "
+            "AnySearch API key credential",
+            default=AnySearchAuth.API_KEY,
+            advanced=False,
+        )
         credentials: CredentialsMetaInput = anysearch.credentials_field(
-            description="The AnySearch integration requires an API Key."
+            title="AnySearch API key",
+            description="The AnySearch integration requires an API Key.",
+            discriminator="auth",
+            discriminator_mapping={AnySearchAuth.API_KEY.value: "anysearch"},
+            credential_free_discriminator_values={AnySearchAuth.ANONYMOUS.value},
+            default=None,
         )
         url: str = SchemaField(description="The URL to extract content from")
 
@@ -62,14 +74,27 @@ class AnySearchExtractBlock(Block):
         )
 
     async def _extract(
-        self, credentials: APIKeyCredentials, url: str
+        self, credentials: APIKeyCredentials | None, url: str
     ) -> dict[str, Any]:
         """POST /v1/extract and return the raw response envelope (mockable)."""
         return await AnySearchClient(credentials).extract(url)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        if input_data.auth == AnySearchAuth.ANONYMOUS:
+            # Anonymous wins over a still-selected credential, the same way
+            # AutoPilot honours an explicit credential-free transport.
+            credentials = None
+        elif credentials is None:
+            raise ValueError(
+                "AnySearch API key credentials are required when auth is api_key."
+            )
+
         try:
             data = unwrap_envelope(await self._extract(credentials, input_data.url))
             url = data.get("url") or input_data.url

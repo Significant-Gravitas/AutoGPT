@@ -1,6 +1,6 @@
 # AnySearch Parallel Search
 <!-- MANUAL: file_description -->
-Runs multiple AnySearch queries in a single block (client-side concurrency, max 5 queries). Requires an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
+Runs multiple AnySearch queries in a single block (client-side concurrency, max 5 queries). Runs anonymously or with an `ANYSEARCH_API_KEY` credential - see the AnySearch Search page for setup.
 <!-- END MANUAL -->
 
 ## AnySearch Parallel Search
@@ -17,6 +17,7 @@ The block fans out up to 5 queries client-side with asyncio.gather - each query 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
+| auth | Anonymous tier (lower rate limit, no key) or an AnySearch API key credential | "api_key" \| "anonymous" | No |
 | queries | The search queries to run in parallel (max 5) | List[str] | Yes |
 | max_results | Maximum number of results per query | int | No |
 | domain | Restrict every query to a vertical domain | "academic" \| "agriculture" \| "business" \| "code" \| "energy" \| "environment" \| "film" \| "finance" \| "gaming" \| "general" \| "health" \| "ip" \| "legal" \| "resource" \| "security" \| "social_media" \| "travel" | No |

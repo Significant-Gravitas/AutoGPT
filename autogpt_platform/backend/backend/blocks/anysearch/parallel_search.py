@@ -15,6 +15,7 @@ from backend.sdk import (
 )
 
 from ._api import (
+    AnySearchAuth,
     AnySearchClient,
     AnySearchDomain,
     AnySearchQueryResults,
@@ -29,8 +30,20 @@ class AnySearchParallelSearchBlock(Block):
     """Runs up to 5 AnySearch queries concurrently (client-side fan-out)."""
 
     class Input(BlockSchemaInput):
+        auth: AnySearchAuth = SchemaField(
+            title="Authentication",
+            description="Anonymous tier (lower rate limit, no key) or an "
+            "AnySearch API key credential",
+            default=AnySearchAuth.API_KEY,
+            advanced=False,
+        )
         credentials: CredentialsMetaInput = anysearch.credentials_field(
-            description="The AnySearch integration requires an API Key."
+            title="AnySearch API key",
+            description="The AnySearch integration requires an API Key.",
+            discriminator="auth",
+            discriminator_mapping={AnySearchAuth.API_KEY.value: "anysearch"},
+            credential_free_discriminator_values={AnySearchAuth.ANONYMOUS.value},
+            default=None,
         )
         queries: list[str] = SchemaField(
             description="The search queries to run in parallel (max 5)",
@@ -114,13 +127,13 @@ class AnySearchParallelSearchBlock(Block):
         )
 
     async def _search(
-        self, credentials: APIKeyCredentials, payload: dict[str, Any]
+        self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """POST /v1/search and return the raw response envelope (mockable)."""
         return await AnySearchClient(credentials).search(payload)
 
     async def _search_one(
-        self, credentials: APIKeyCredentials, payload: dict[str, Any]
+        self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
     ) -> AnySearchQueryResults:
         query = payload["query"]
         try:
@@ -131,8 +144,21 @@ class AnySearchParallelSearchBlock(Block):
         return AnySearchQueryResults(query=query, results=results)
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs
     ) -> BlockOutput:
+        if input_data.auth == AnySearchAuth.ANONYMOUS:
+            # Anonymous wins over a still-selected credential, the same way
+            # AutoPilot honours an explicit credential-free transport.
+            credentials = None
+        elif credentials is None:
+            raise ValueError(
+                "AnySearch API key credentials are required when auth is api_key."
+            )
+
         shared: dict[str, Any] = {"max_results": input_data.max_results}
         if input_data.sub_domain:
             shared["tag"] = input_data.sub_domain

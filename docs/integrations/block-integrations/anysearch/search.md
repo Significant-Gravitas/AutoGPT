@@ -1,6 +1,6 @@
 # AnySearch Search
 <!-- MANUAL: file_description -->
-Blocks for web search with AnySearch, an AI-native search API covering general queries and 16 vertical domains. All blocks require an `ANYSEARCH_API_KEY` credential.
+Blocks for web search with AnySearch, an AI-native search API covering general queries and 16 vertical domains. All blocks can call AnySearch anonymously (lower rate limit) or with an `ANYSEARCH_API_KEY` credential.
 <!-- END MANUAL -->
 
 ## AnySearch
@@ -19,6 +19,7 @@ Leaving `sub_domain` empty runs a general search. Setting `sub_domain` picks a c
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
+| auth | Anonymous tier (lower rate limit, no key) or an AnySearch API key credential | "api_key" \| "anonymous" | No |
 | query | The search query | str | Yes |
 | max_results | Maximum number of results to return | int | No |
 | domain | Restrict the search to a vertical domain | "academic" \| "agriculture" \| "business" \| "code" \| "energy" \| "environment" \| "film" \| "finance" \| "gaming" \| "general" \| "health" \| "ip" \| "legal" \| "resource" \| "security" \| "social_media" \| "travel" | No |
@@ -52,7 +53,7 @@ AnySearch issues API keys in the as_sk_... format. Sign up at https://anysearch.
 
 ## Anonymous tier
 
-The AnySearch API accepts unauthenticated requests at a lower rate limit. AutoGPT still requires a stored credential because the platform wires credentials per block; when the host sets a default `ANYSEARCH_API_KEY` in .env, users can pick the pre-seeded "AnySearch API Key" credential instead of creating their own. A credential whose API key value is left empty is sent without an `Authorization` header, i.e. as an anonymous request.
+The AnySearch API accepts unauthenticated requests at a lower rate limit. Set a block's Authentication input to Anonymous to run with no credential at all - the API-key field hides and requests are sent without an `Authorization` header. Hosts can also set a default `ANYSEARCH_API_KEY` in .env so users pick the pre-seeded "AnySearch API Key" credential instead of creating their own; a credential whose key value is left empty likewise sends no `Authorization` header.
 
 ## Billing and cost tracking
 
