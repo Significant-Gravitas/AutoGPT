@@ -1668,9 +1668,12 @@ enum ReviewStatus {
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
-  graphExecId   String
-  graphId       String
-  graphVersion  Int
+  // A review belongs to a graph execution (the three graph columns) or to a
+  // chat (chatSessionId); a check constraint enforces exactly one.
+  graphExecId   String?
+  graphId       String?
+  graphVersion  Int?
+  chatSessionId String?
   payload       Json // The actual payload data to be reviewed
   instructions  String? // Instructions/message for the reviewer
   editable      Boolean      @default(true) // Whether the reviewer can edit the data
@@ -1691,6 +1694,7 @@ model PendingHumanReview {
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
+  @@index([chatSessionId, status])
   @@index([organizationId])
 }
 
