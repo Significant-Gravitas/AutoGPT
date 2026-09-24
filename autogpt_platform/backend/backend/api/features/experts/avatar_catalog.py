@@ -90,6 +90,9 @@ CATALOG = AvatarCatalog.model_validate_json(
 PRESETS = {avatar.id: avatar for avatar in CATALOG.avatars}
 COLORS = {color.id: color for color in CATALOG.colors}
 DEFAULT_AVATAR_URL = PRESETS["content"].url
+# What the picker can put on an expert. Five of these are also an old shared
+# default, so a stored URL in this set may be a choice rather than a leftover.
+PRESET_AVATAR_URLS = frozenset(avatar.url for avatar in CATALOG.avatars)
 
 
 def resolve_avatar_url(url: str | None) -> str | None:

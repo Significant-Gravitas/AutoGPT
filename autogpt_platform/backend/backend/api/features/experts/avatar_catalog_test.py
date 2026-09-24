@@ -119,3 +119,26 @@ def test_every_builtin_category_has_distinct_transparent_artwork():
                     assert image.size == (512, 512)
                     assert image.mode == "RGBA"
                     assert image.getchannel("A").getextrema() == (0, 255)
+
+
+def test_a_picker_preset_doubles_as_an_old_default_so_hires_must_keep_it():
+    """Five presets are also some expert's `previous_url`, so a hire sitting
+    on one cannot be told apart from a hire whose owner chose it. `seed.py`
+    skips the migration for these; this records why that guard is there."""
+    from backend.api.features.experts.avatar_catalog import (
+        CATALOG,
+        PRESET_AVATAR_URLS,
+        resolve_builtin_avatar_url,
+    )
+
+    assert PRESET_AVATAR_URLS == {avatar.url for avatar in CATALOG.avatars}
+    shared = [
+        (avatar.name, url)
+        for avatar in CATALOG.identities
+        for url in [avatar.previous_url, *avatar.previous_urls]
+        if url in PRESET_AVATAR_URLS
+    ]
+    assert shared, "no overlap left — seed's PRESET_AVATAR_URLS guard can go"
+    for name, url in shared:
+        # Unguarded, the backfill rewrites a preset its owner picked.
+        assert resolve_builtin_avatar_url(name, url) != url

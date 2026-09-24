@@ -73,7 +73,9 @@ export function ExpertAvatar({
           height={size}
           className="object-contain"
         />
-        <AvatarFallback>
+        <AvatarFallback
+          accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
+        >
           <span className="text-sm">
             {name?.slice(0, 1).toUpperCase() ?? "?"}
           </span>
