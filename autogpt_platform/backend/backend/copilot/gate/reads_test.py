@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import held
+from backend.copilot.gate import held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
@@ -483,3 +483,38 @@ async def test_a_held_read_with_no_named_source_says_what_returned_it(rows):
     stub = json.loads(result.output)
     assert stub["ask"] == "Read what memory search returned"
     assert stub["object"] is None
+
+
+async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(rows):
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+    await rows.consume(review.node_exec_id, "user-1")
+
+    outcome, late = await reads.answered_read("user-1", review)
+
+    assert outcome == "closed"
+    assert "declined" not in late and _MARKER not in late
+
+
+async def test_a_re_read_that_loses_the_race_is_not_told_the_user_declined(rows):
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+
+    with patch.object(review_store, "consume", AsyncMock(return_value=False)):
+        again = await _call(tool, _session())
+
+    stub = json.loads(again.output)
+    assert "declined" not in stub["message"]
+    assert "already delivered" in stub["message"]
+
+
+async def test_a_held_read_card_records_the_default_mode(rows):
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await _call(_Fetch(_MARKER), _session(mode=None))
+    (row,) = rows.rows.values()
+    assert row.payload["mode"] == "auto"

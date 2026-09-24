@@ -11,6 +11,7 @@ because the caller here is the raw handler wrapper, not the tool layer.
 
 import json
 import logging
+import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -95,6 +96,9 @@ async def screen_non_registry_read(
         success=not result.get("isError"),
         text=text,
         images=images,
+        # The MCP handler never sees the SDK's tool_use_id; registry tools
+        # on this engine use the same stand-in.
+        tool_call_id=f"sdk-{uuid.uuid4().hex[:12]}",
     )
     if stub is None:
         return result
