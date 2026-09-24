@@ -13,7 +13,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
@@ -38,6 +38,8 @@ _KEY = "copilot:gate:held:"
 # Above the largest result either engine hands the model (the baseline's
 # 100,000-character output cap plus the wrapper), so nothing is cut here.
 _MAX_RESULT_CHARS = 120_000
+
+Outcome = Literal["approved", "rejected", "expired", "closed"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 
@@ -212,14 +214,14 @@ async def _deliver(
 ) -> PendingMessage:
     from backend.copilot.tools import get_tool
 
-    output = await _outcome(user_id, session, call, get_tool(call.tool_name))
+    outcome, output = await _outcome(user_id, session, call, get_tool(call.tool_name))
     try:
-        return _result_row(call, cap(output))
+        return _result_row(call, cap(output), outcome)
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
-        return _result_row(call, output[: _MAX_RESULT_CHARS // 2])
+        return _result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome)
 
 
 async def _recover(
@@ -241,11 +243,12 @@ async def _recover(
             "The approved action may have run, but its result was lost before it "
             "reached you. Tell the user, and check the outcome before relying "
             "on it.",
+            "approved",
         )
     ]
 
 
-def _result_row(call: HeldCall, output: str) -> PendingMessage:
+def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage:
     return HeldResult(
         content=(
             f'<held_call_result tool="{call.tool_name}" '
@@ -257,6 +260,8 @@ def _result_row(call: HeldCall, output: str) -> PendingMessage:
                 "review_id": call.review_id,
                 "tool_name": call.tool_name,
                 "tool_call_id": call.tool_call_id,
+                # The chain row shows the answer without parsing the text.
+                "outcome": outcome,
             }
         },
     )
@@ -264,36 +269,36 @@ def _result_row(call: HeldCall, output: str) -> PendingMessage:
 
 async def _outcome(
     user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool | None"
-) -> str:
+) -> tuple[Outcome, str]:
     rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
     row = rows.get(call.review_id)
     if row is None or row.status == ReviewStatus.WAITING:
-        return "Nothing ran: this card is no longer open."
+        return "closed", "Nothing ran: this card is no longer open."
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
         await chat_rules.set_ask(session.session_id, call.tool_name)
-        return (
+        return "rejected", (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."
         )
     approved_at = row.reviewed_at or row.updated_at or row.created_at
     if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
         await review_store.consume(call.review_id, user_id)
-        return (
+        return "expired", (
             "Nothing ran: the approval expired an hour after it was given. "
             "Propose the call again if it is still needed."
         )
     if tool is None:
         await review_store.consume(call.review_id, user_id)
-        return "Nothing ran: this tool no longer exists."
+        return "closed", "Nothing ran: this tool no longer exists."
     # The gate finds the approval for exactly these arguments and spends it.
     result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
     if isinstance(result.output, str):
-        return result.output
-    return json.dumps(result.output, default=str)
+        return "approved", result.output
+    return "approved", json.dumps(result.output, default=str)
 
 
 async def _held(session_id: str) -> dict[str, HeldCall]:

@@ -120,13 +120,16 @@ async def check_action(
 
     mode = resolve_mode(session)
     verdict = verdict_for(mode, tool_name)
+    reason_kind: review_store.ReasonKind
     if rule_reason := await chat_rules.ask_reason(session_id, tool_name):
-        reason = rule_reason
+        reason, reason_kind = rule_reason, "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK:
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
+        reason_kind = "mode"
     else:
+        reason_kind = "supervisor"
         allowed, reason = await classify(
             tool_name=tool_name,
             args=args,
@@ -137,17 +140,28 @@ async def check_action(
     call = held.HeldCall(
         review_id=review_id, tool_name=tool_name, tool_call_id=tool_call_id, args=args
     )
-    return await _park(call, user_id, session, reason)
+    return await _park(call, user_id, session, reason, reason_kind)
 
 
 async def _park(
-    call: held.HeldCall, user_id: str, session: ChatSession, reason: str
+    call: held.HeldCall,
+    user_id: str,
+    session: ChatSession,
+    reason: str,
+    reason_kind: review_store.ReasonKind,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     if not await review_store.open_review(
-        call.review_id, user_id, session, call.tool_name, call.args, reason
+        call.review_id,
+        user_id,
+        session,
+        call.tool_name,
+        call.args,
+        reason,
+        reason_kind=reason_kind,
+        tool_call_id=call.tool_call_id,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(allowed=False, reason=reason, review_id=call.review_id)

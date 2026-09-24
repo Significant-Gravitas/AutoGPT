@@ -169,6 +169,7 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     assert len(delivered) == 1
     assert "posted hello team" in delivered[0].content
     assert 'tool_call_id="call-1"' in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "approved"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -311,6 +312,7 @@ async def test_a_stale_approval_delivers_a_refusal_not_a_run(
 
     assert post_tool.runs == []
     assert "expired" in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "expired"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -330,6 +332,7 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
 
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "rejected"
     assert await chat_rules.ask_reason(session.session_id, _TOOL) == chat_rules.DECLINED
 
 
