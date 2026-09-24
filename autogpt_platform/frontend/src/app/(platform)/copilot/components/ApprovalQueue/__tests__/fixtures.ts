@@ -1,4 +1,6 @@
+import { http, HttpResponse } from "msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import realCardsJson from "./realCards.json";
 
 export const SESSION_EXEC = "copilot-session-s1";
 
@@ -179,4 +181,40 @@ export function heldRead(id: string, url: string) {
   });
   const node = "copilot-node-gate-read-web_fetch";
   return { ...review, node_id: node, node_exec_id: `${node}:${id}` };
+}
+
+export interface RealCard {
+  story: string;
+  review: PendingHumanReviewModel;
+  schema: Record<string, unknown> | null;
+}
+
+// Built by the backend's payload builder from real registry blocks (card_fixture_test.py).
+export function realCards(): RealCard[] {
+  return (realCardsJson as unknown as Omit<RealCard, "review">[]).map(
+    (card) => ({
+      ...card,
+      review: {
+        ...(card as unknown as { review: PendingHumanReviewModel }).review,
+        created_at: new Date(Date.now() - 5 * 60_000),
+      },
+    }),
+  );
+}
+
+export function realCardSchemaHandler(cards: RealCard[]) {
+  return http.get("*/api/builder/blocks/batch", ({ request }) => {
+    const ids = new URL(request.url).searchParams.getAll("block_ids");
+    return HttpResponse.json(
+      cards
+        .filter((card) => card.schema)
+        .map((card) => ({
+          id: (card.review.payload as { subject: { block_id: string } }).subject
+            .block_id,
+          name: card.story,
+          inputSchema: card.schema,
+        }))
+        .filter((block) => ids.includes(block.id)),
+    );
+  });
 }

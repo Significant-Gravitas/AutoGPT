@@ -16,6 +16,8 @@ import {
   heldRead,
   heldReview,
   mail,
+  realCardSchemaHandler,
+  realCards,
   shell,
   workflow,
 } from "./__tests__/fixtures";
@@ -299,3 +301,23 @@ export const HomeRowAfter: StoryObj = {
       "Open chat",
     ),
 };
+
+// Real registry blocks, their payloads built by the server's own builder and
+// their real input schemas served as the API serves them.
+function realStory(name: string): Story {
+  const cards = realCards();
+  const card = cards.find((c) => c.story === name)!;
+  return {
+    args: queueOf([card.review]),
+    parameters: {
+      msw: { handlers: [realCardSchemaHandler(cards), answerAfter(600_000)] },
+    },
+  };
+}
+
+export const RealGmailSend = realStory("Gmail Send");
+export const RealGoogleSheetsUpdateRow = realStory("Google Sheets Update Row");
+export const RealExecuteCode = realStory("Execute Code");
+export const RealSendWebRequest = realStory("Send Web Request");
+export const RealPostToX = realStory("Post To X");
+export const RealWorkflow = realStory("Workflow");
