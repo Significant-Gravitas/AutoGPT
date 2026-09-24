@@ -877,7 +877,7 @@ async def test_a_websocket_upgrade_is_not_refused():
 
 # ------------------------------------------------------------ content hosts
 
-CONTENT_HOST = "raw.githubusercontent.com"
+CONTENT_HOST = "objects.githubusercontent.com"
 
 
 class ContentHostSource(Source):

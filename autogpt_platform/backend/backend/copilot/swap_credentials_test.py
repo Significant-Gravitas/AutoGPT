@@ -20,8 +20,14 @@ from backend.copilot.swap_credentials import (
 from backend.util import e2b_network
 
 _M = "backend.copilot.swap_credentials"
-_GITHUB_HOSTS = ["github.com", "api.github.com", "uploads.github.com"]
-_GITHUB_CONTENT = [".githubusercontent.com", "gist.github.com"]
+_GITHUB_HOSTS = [
+    "github.com",
+    "api.github.com",
+    "uploads.github.com",
+    "raw.githubusercontent.com",
+    "gist.github.com",
+]
+_GITHUB_CONTENT = [".githubusercontent.com"]
 
 
 _BOX = "box-0123456789abcdef"
@@ -204,10 +210,9 @@ async def test_only_a_live_box_of_the_users_that_swaps_gets_a_value(record):
 @pytest.mark.parametrize(
     "host",
     [
-        "raw.githubusercontent.com",
         "objects.githubusercontent.com",
         "gist.githubusercontent.com",
-        "gist.github.com",
+        "media.githubusercontent.com",
     ],
 )
 async def test_a_content_host_gets_the_values_to_scrub_but_may_not_be_sent_them(
@@ -304,3 +309,17 @@ def test_the_proxys_own_copy_agrees_on_every_host():
     spec.loader.exec_module(swap)
     for host, entries, _ in HOST_BINDING_TABLE:
         assert swap.host_in_list(host, entries) is _host_is_bound(host, entries), host
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host",
+    # A private repo's raw file with ``Authorization: token``; git over HTTPS
+    # to a gist with Basic.
+    ["raw.githubusercontent.com", "gist.github.com"],
+)
+async def test_the_github_content_hosts_that_take_the_token_may_be_sent_it(host):
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential("user-1", "github", host, _BOX)
+    assert credential is not None
+    assert _host_is_bound(host, credential.allowed_hosts)

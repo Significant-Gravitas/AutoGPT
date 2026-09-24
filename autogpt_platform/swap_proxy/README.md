@@ -25,8 +25,11 @@ users at once.
    Everything else is passed through as opaque bytes, never decrypted. A
    provider binds two kinds of host (`SUPPORTED_PROVIDERS` in
    `backend/copilot/providers.py`): `swap_hosts`, which take its token, and
-   `content_hosts`, which serve back what was stored with it (for GitHub,
-   `*.githubusercontent.com` and `gist.github.com`). Both are intercepted and
+   `content_hosts`, which serve back what was stored with it and never need
+   the token (for GitHub, the rest of `*.githubusercontent.com`: objects,
+   gists' raw files, LFS media; `raw.githubusercontent.com` and
+   `gist.github.com` do take the token, for private raw files and git over
+   HTTPS to a gist, so they are swap hosts). Both are intercepted and
    scrubbed; only a `swap_hosts` one is ever sent a value, because the
    credential the backend returns names only those as the hosts it may go to.
 4. **Swap.** A placeholder in the `Authorization` header becomes the owner's
