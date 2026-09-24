@@ -25,7 +25,10 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.api.features.experts.avatar_catalog import (
+    resolve_avatar_url,
+    resolve_builtin_avatar_url,
+)
 from backend.api.features.experts.models import (
     ExpertDayOneItem,
     VoiceSample,
@@ -2557,6 +2560,9 @@ async def _backfill_hired_copies(
                     continue
                 baseline = legacy
             data = presentation_changes(hire, baseline, template)
+            avatar_url = resolve_builtin_avatar_url(template.name, hire.avatarUrl)
+            if avatar_url != hire.avatarUrl:
+                data["avatarUrl"] = avatar_url
             if rescope and (hire.role, hire.identity) != (
                 template.role,
                 template.identity,

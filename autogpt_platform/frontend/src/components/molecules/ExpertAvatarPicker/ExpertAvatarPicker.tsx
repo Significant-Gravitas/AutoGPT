@@ -30,6 +30,14 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         onSelect={picker.selectPreset}
       />
       <GenerationOptions
+        mineralColor={picker.mineralColor}
+        setMineralColor={picker.setMineralColor}
+        base={picker.base}
+        setBase={picker.setBase}
+        tilt={picker.tilt}
+        setTilt={picker.setTilt}
+        inlay={picker.inlay}
+        setInlay={picker.setInlay}
         shape={picker.shape}
         expression={picker.expression}
         isBusy={picker.isBusy}
@@ -37,7 +45,7 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         setExpression={picker.setExpression}
       />
       <p className="text-sm text-muted-foreground">
-        Choose a look above, or generate one with its color. Up to five
+        Choose a look above, or generate your own color and shape. Up to five
         generations a day, four minutes apart.
       </p>
       {picker.isGenerating && (

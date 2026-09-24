@@ -8,30 +8,40 @@ from openai import AsyncOpenAI
 from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
-from backend.api.features.experts.avatar_catalog import PRESETS, AvatarCategory
+from backend.api.features.experts.avatar_catalog import (
+    COLORS,
+    PRESETS,
+    AvatarCategory,
+    AvatarColor,
+)
+from backend.api.features.experts.avatar_design import (
+    BASES,
+    INLAYS,
+    SHAPES,
+    TILTS,
+    AvatarShape,
+)
 from backend.util.settings import Settings
 
 
 class ExpertAvatarRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     category: AvatarCategory = "content"
-    shape: Literal["pebble", "slab", "wedge", "dome"] = "pebble"
+    color: AvatarColor | None = None
+    shape: AvatarShape = "pebble"
+    base: Literal["compact", "wide", "tall"] = "compact"
+    tilt: Literal["level", "left", "right"] = "level"
+    inlay: Literal["sweep", "pool", "curl"] = "sweep"
     expression: Literal["friendly", "curious", "focused", "pleased"] = "friendly"
 
 
-SHAPES = {
-    "pebble": "broad irregular rounded pebble head with uneven gentle slopes",
-    "slab": "upright softly rounded slab head with a curved right shoulder",
-    "wedge": "wide sloping wedge head with very blunt rounded corners",
-    "dome": "low asymmetric dome head above a slightly taller stable base",
-}
 EXPRESSIONS = {
     "friendly": "open oval eyes, relaxed curved brows, tiny closed smile",
     "curious": "open oval eyes, one raised brow, tiny round mouth",
     "focused": "compact oval eyes, low gently angled brows, short diagonal mouth; not angry",
     "pleased": "small upward-curved closed eyes, relaxed brows, small closed smile",
 }
-REFERENCE = Path(__file__).parent / "avatar_reference.png"
+REFERENCE_FOLDER = Path(__file__).parent / "avatar_references"
 
 
 async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
@@ -41,7 +51,11 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
     ) as client:
         result = await client.images.edit(
             model=settings.config.expert_avatar_model,
-            image=("reference.png", REFERENCE.read_bytes(), "image/png"),
+            image=(
+                "reference.png",
+                (REFERENCE_FOLDER / f"{request.shape}.png").read_bytes(),
+                "image/png",
+            ),
             prompt=avatar_prompt(request),
             size="1024x1024",
             quality="medium",
@@ -56,13 +70,16 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
 
 
 def avatar_prompt(request: ExpertAvatarRequest) -> str:
-    preset = PRESETS[request.category]
+    color = COLORS[request.color or PRESETS[request.category].color_id]
     return (
         "Create ONE new AutoGPT Clay & Rock specialist avatar. Use the attached image "
-        "as a material, lighting and face reference; vary the silhouette as specified. "
-        f"Main mineral hue: {preset.label} {preset.hex} across head and base. "
-        f"Shape: {SHAPES[request.shape]}. Face: {EXPRESSIONS[request.expression]}. "
-        "Exactly two irregular masses: head 55–65% of total height, touching a compact "
+        "as a material, lighting and head outline reference. Render only ONE figure. "
+        "Replace its color, base, tilt and inlay with the choices below. "
+        f"Main mineral hue: {color.label} {color.hex} across head and base. "
+        f"Head outline: {SHAPES[request.shape]}. Base: {BASES[request.base]}. "
+        f"Tilt: {TILTS[request.tilt]}. Cream path: {INLAYS[request.inlay]}. "
+        f"Face: {EXPRESSIONS[request.expression]}. "
+        "Exactly two irregular masses: head 55–65% of total height, touching one "
         "stable base. Smooth matte clay, very fine grain, rounded corners. "
         "One small broad flowing cream #EAE2D5 inlay entirely on the LOWER BASE, "
         "8–20% of visible area, rounded boundaries with a narrow recessed material groove. "

@@ -45,3 +45,35 @@ def test_frontend_catalog_and_png_assets_match_backend():
             assert image.size == (512, 512)
             assert image.mode == "RGBA"
             assert image.getchannel("A").getextrema() == (0, 255)
+
+
+def test_each_builtin_has_its_own_avatar():
+    from backend.api.features.experts.seed import ROSTER
+
+    urls = [resolve_avatar_url(entry["avatar_url"]) for entry in ROSTER]
+    assert len(urls) == len(set(urls))
+
+
+def test_builtin_assets_are_distinct_and_palette_matches_request_schema():
+    import hashlib
+    from pathlib import Path
+    from typing import get_args
+
+    from PIL import Image
+
+    from backend.api.features.experts.avatar_catalog import CATALOG, AvatarColor
+
+    public = Path(__file__).parent.parents[4] / "frontend/public"
+    assert {c.id for c in CATALOG.colors} == set(get_args(AvatarColor))
+    assert len(CATALOG.identities) == 32
+    hashes = set()
+    for avatar in CATALOG.identities:
+        path = public / avatar.url.lstrip("/")
+        hashes.add(hashlib.sha256(path.read_bytes()).hexdigest())
+        assert avatar.color_id in get_args(AvatarColor)
+        with Image.open(path) as image:
+            if avatar.url.endswith(".png"):
+                assert image.mode == "RGBA"
+                assert image.getchannel("A").getextrema() == (0, 255)
+                assert image.size == (512, 512)
+    assert len(hashes) == len(CATALOG.identities)

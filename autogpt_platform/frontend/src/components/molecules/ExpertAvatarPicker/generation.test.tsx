@@ -33,7 +33,15 @@ test("sends shape and expression choices, then polls until the preview is ready"
   render(<ExpertAvatarPicker name="Nova" color={null} onPick={onPick} />);
   await userEvent.click(screen.getByRole("button", { name: "Charcoal" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Shape" }));
-  await userEvent.click(screen.getByRole("option", { name: "Dome" }));
+  await userEvent.click(screen.getByRole("option", { name: "Bean" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Color" }));
+  await userEvent.click(screen.getByRole("option", { name: "Pine" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Base" }));
+  await userEvent.click(screen.getByRole("option", { name: "Wide" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Tilt" }));
+  await userEvent.click(screen.getByRole("option", { name: "Left" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Cream inlay" }));
+  await userEvent.click(screen.getByRole("option", { name: "Curl" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Expression" }));
   await userEvent.click(screen.getByRole("option", { name: "Focused" }));
   await userEvent.click(
@@ -42,7 +50,15 @@ test("sends shape and expression choices, then polls until the preview is ready"
   await waitFor(() => expect(polls).toBe(1));
   expect(screen.queryByRole("status")).not.toBeNull();
   expect(requests).toEqual([
-    { category: "development", shape: "dome", expression: "focused" },
+    {
+      category: "development",
+      color: "pine",
+      shape: "bean",
+      base: "wide",
+      tilt: "left",
+      inlay: "curl",
+      expression: "focused",
+    },
   ]);
   await waitFor(
     () =>

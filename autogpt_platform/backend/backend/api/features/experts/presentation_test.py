@@ -199,3 +199,70 @@ async def test_backfill_reads_bounded_batches_without_offset_skips():
     assert [
         call.kwargs["where"]["updatedAt"] for call in db.update_many.await_args_list
     ] == ["0", "1", "2"]
+
+
+def test_template_projection_replaces_shared_draft_avatars_only():
+    from backend.api.features.experts.presentation import template_presentation
+
+    row = SimpleNamespace(
+        name="Noor",
+        isTemplate=True,
+        avatarUrl="/experts/clay/v1/marketing.png",
+        bio=None,
+        identity="",
+        tagline=None,
+    )
+    assert template_presentation(row)["avatarUrl"] == "/experts/clay/v2/noor.png"
+    row.avatarUrl = "https://custom.example/image.png"
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+    row.avatarUrl = "/experts/clay/v1/finance.png"
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+    row.avatarUrl = "/experts/clay/v1/marketing.png"
+    row.isTemplate = False
+    assert template_presentation(row)["avatarUrl"] == row.avatarUrl
+
+
+async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default():
+    from unittest.mock import AsyncMock, patch
+
+    from backend.api.features.experts.seed import _backfill_hired_copies
+
+    template = SimpleNamespace(
+        id="template",
+        name="Noor",
+        avatarUrl="/experts/clay/v2/noor.png",
+        jobTitle="Writer",
+        tagline="Hi",
+        bio=None,
+        categories=[],
+        role="Communications",
+        identity="Instructions",
+    )
+    hires = [
+        SimpleNamespace(
+            **{**vars(template), "id": str(i), "updatedAt": str(i), "avatarUrl": url}
+        )
+        for i, url in enumerate(
+            [
+                "/experts/clay/v1/marketing.png",
+                "https://custom.example/image.png",
+                "/experts/clay/v1/finance.png",
+            ]
+        )
+    ]
+    db = AsyncMock()
+    db.find_many.return_value = hires
+    db.update_many.return_value = 1
+    with patch(
+        "backend.api.features.experts.seed.prisma.models.Expert.prisma", return_value=db
+    ):
+        assert await _backfill_hired_copies(template, template) == 1
+    db.update_many.assert_awaited_once_with(
+        where={
+            "id": "0",
+            "sourceTemplateId": "template",
+            "isTemplate": False,
+            "updatedAt": "0",
+        },
+        data={"avatarUrl": "/experts/clay/v2/noor.png"},
+    )

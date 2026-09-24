@@ -21795,11 +21795,79 @@
             "title": "Category",
             "default": "content"
           },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "terracotta",
+                  "ochre",
+                  "sage",
+                  "coral",
+                  "slate",
+                  "olive",
+                  "stone",
+                  "charcoal",
+                  "rust",
+                  "rose",
+                  "seaglass",
+                  "pine",
+                  "denim",
+                  "sand",
+                  "bluegray",
+                  "redclay",
+                  "apricot",
+                  "moss",
+                  "chalk",
+                  "copper",
+                  "mist",
+                  "ink",
+                  "umber",
+                  "lagoon",
+                  "limestone",
+                  "fern"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
           "shape": {
             "type": "string",
-            "enum": ["pebble", "slab", "wedge", "dome"],
+            "enum": [
+              "pebble",
+              "slab",
+              "wedge",
+              "dome",
+              "capsule",
+              "bean",
+              "saddle",
+              "kite",
+              "fan",
+              "arch",
+              "shield",
+              "crescent"
+            ],
             "title": "Shape",
             "default": "pebble"
+          },
+          "base": {
+            "type": "string",
+            "enum": ["compact", "wide", "tall"],
+            "title": "Base",
+            "default": "compact"
+          },
+          "tilt": {
+            "type": "string",
+            "enum": ["level", "left", "right"],
+            "title": "Tilt",
+            "default": "level"
+          },
+          "inlay": {
+            "type": "string",
+            "enum": ["sweep", "pool", "curl"],
+            "title": "Inlay",
+            "default": "sweep"
           },
           "expression": {
             "type": "string",

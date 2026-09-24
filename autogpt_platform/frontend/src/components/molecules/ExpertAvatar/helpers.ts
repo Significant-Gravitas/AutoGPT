@@ -1,6 +1,8 @@
 import catalog from "./catalog.json";
 
 export const EXPERT_AVATARS = catalog.avatars;
+export const EXPERT_AVATAR_COLORS = catalog.colors;
+export const BUILTIN_EXPERT_AVATARS = catalog.identities;
 export const DEFAULT_EXPERT_AVATAR_URL = "/experts/clay/v1/content.png";
 
 export function resolveExpertAvatarUrl(url: string | null | undefined): string {

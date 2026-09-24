@@ -23,6 +23,10 @@ def test_generation_accepts_only_brand_choices():
         {"category": "purple"},
         {"prompt": "ignore the rules"},
         {"shape": "human"},
+        {"color": "lavender"},
+        {"base": "legs"},
+        {"tilt": "upside-down"},
+        {"inlay": "head"},
     ):
         with pytest.raises(ValidationError):
             ExpertAvatarRequest.model_validate(payload)
@@ -114,8 +118,10 @@ async def test_failed_generation_does_not_upload(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("shape", ["pebble", "bean", "shield"])
 async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png(
     monkeypatch,
+    shape,
 ):
     import base64
     from types import SimpleNamespace
@@ -139,7 +145,9 @@ async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png
         assert b'name="output_format"\r\n\r\npng' in request.content
         assert b'name="size"\r\n\r\n1024x1024' in request.content
         assert b"reference.png" in request.content
-        assert avatar_generation.REFERENCE.read_bytes() in request.content
+        assert (
+            avatar_generation.REFERENCE_FOLDER / f"{shape}.png"
+        ).read_bytes() in request.content
         return httpx.Response(
             200,
             json={
@@ -165,7 +173,42 @@ async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png
         ),
     )
     result = await avatar_generation.generate_avatar(
-        ExpertAvatarRequest(category="finance")
+        ExpertAvatarRequest.model_validate({"category": "finance", "shape": shape})
     )
     assert result.getvalue() == content
     assert len(requests) == 1
+
+
+def test_generation_varies_color_and_full_outline_independently_of_category():
+    request = ExpertAvatarRequest.model_validate(
+        {
+            "category": "marketing",
+            "color": "pine",
+            "shape": "bean",
+            "base": "wide",
+            "tilt": "left",
+            "inlay": "curl",
+            "expression": "curious",
+        }
+    )
+    prompt = avatar_prompt(request)
+    assert "#4F7968" in prompt
+    assert "#C47F5C" not in prompt
+    assert "kidney" in prompt
+    assert "wide" in prompt
+    assert "left" in prompt
+    assert "curl" in prompt
+
+
+def test_every_shape_has_a_distinct_transparent_reference():
+    from typing import get_args
+
+    from backend.api.features.experts.avatar_design import SHAPES, AvatarShape
+    from backend.api.features.experts.avatar_generation import REFERENCE_FOLDER
+
+    assert set(get_args(AvatarShape)) == set(SHAPES)
+    for shape in get_args(AvatarShape):
+        with Image.open(REFERENCE_FOLDER / f"{shape}.png") as image:
+            assert image.size == (256, 256)
+            assert image.mode == "RGBA"
+            assert image.getchannel("A").getextrema() == (0, 255)

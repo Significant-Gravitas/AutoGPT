@@ -36,7 +36,15 @@ test("generates a preview and only saves the selected PNG after confirmation", a
     ).toContain("generated.png"),
   );
   expect(requests).toEqual([
-    { category: "finance", shape: "pebble", expression: "friendly" },
+    {
+      category: "finance",
+      color: "sage",
+      shape: "pebble",
+      base: "compact",
+      tilt: "level",
+      inlay: "sweep",
+      expression: "friendly",
+    },
   ]);
   expect(onPick).not.toHaveBeenCalled();
   await userEvent.click(
@@ -165,7 +173,15 @@ test.each([
   );
   await screen.findByRole("alert");
   expect(requests).toEqual([
-    { category: "finance", shape: "pebble", expression: "friendly" },
+    {
+      category: "finance",
+      color: "sage",
+      shape: "pebble",
+      base: "compact",
+      tilt: "level",
+      inlay: "sweep",
+      expression: "friendly",
+    },
   ]);
   expect(
     screen.getByRole("img", { name: /^Nova/ }).getAttribute("src"),
