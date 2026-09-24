@@ -88,12 +88,14 @@ from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
+from backend.copilot.integration_creds import get_default_placeholder_env
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
     create_sandbox,
     forget_sandbox,
+    proxy_address,
 )
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
@@ -604,6 +606,28 @@ async def _release_turn(owner: SandboxOwner) -> bool:
         return False
 
 
+async def _placeholder_env(egress_owner: EgressOwner) -> dict[str, str]:
+    """The box's own environment at creation: a placeholder for each account
+    its user has connected, when the box egresses through the swap proxy.
+
+    Commands get their variables per call as well (``bash_exec``); these are
+    for what does not start through a command, the desktop's browser and
+    terminal among them.  They name the user's default credential, which
+    follows the account across the box's life; a command's own variables name
+    the one its chat picked.  Nothing without the proxy: the real token is
+    never put in the box's environment.
+    """
+    if proxy_address() is None or not egress_owner.swaps:
+        return {}
+    assert egress_owner.user_id is not None  # ``swaps`` requires one
+    try:
+        return await get_default_placeholder_env(egress_owner.user_id)
+    except Exception as exc:
+        # Commands still get theirs; a box without them is no less safe.
+        logger.warning("[E2B] No placeholder env for %s: %s", egress_owner, exc)
+        return {}
+
+
 async def get_or_create_owner_sandbox(
     owner: SandboxOwner,
     api_key: str,
@@ -728,6 +752,7 @@ async def get_or_create_owner_sandbox(
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
+            box_env = await _placeholder_env(owner.egress_owner(user_id))
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
@@ -746,6 +771,7 @@ async def get_or_create_owner_sandbox(
                                 template=template,
                                 mounts="attached" if mounts else "none",
                             ),
+                            **({"envs": box_env} if box_env else {}),
                         ),
                         timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
                     )
