@@ -23,6 +23,7 @@ from backend.util.gcs_utils import (
     download_range,
     download_with_fresh_session,
     generate_signed_url,
+    is_not_found_error,
     parse_gcs_path,
 )
 from backend.util.settings import Config
@@ -204,7 +205,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         try:
             await client.delete(bucket_name, blob_name)
         except Exception as e:
-            if "404" not in str(e) and "Not Found" not in str(e):
+            if not is_not_found_error(e):
                 raise
             # File already deleted, that's fine
 

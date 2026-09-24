@@ -40,7 +40,7 @@ def parse_gcs_path(path: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def _is_not_found(error: Exception) -> bool:
+def is_not_found_error(error: Exception) -> bool:
     """True only for a real GCS 404.
 
     Matching "404" in the message is not enough: the message carries the object
@@ -76,7 +76,7 @@ async def download_with_fresh_session(bucket: str, blob: str) -> bytes:
         content = await client.download(bucket, blob)
         return content
     except Exception as e:
-        if _is_not_found(e):
+        if is_not_found_error(e):
             raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
         raise
     finally:
@@ -122,7 +122,7 @@ async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
             content = await client.download(bucket, blob)
         return content[:max_bytes]
     except Exception as e:
-        if _is_not_found(e):
+        if is_not_found_error(e):
             raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
         raise
     finally:
