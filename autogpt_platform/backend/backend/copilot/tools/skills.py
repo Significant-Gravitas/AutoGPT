@@ -31,7 +31,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import yaml
 from pydantic import BaseModel
@@ -645,16 +645,143 @@ async def store_user_skill(
     model's own ``store_skill`` from wiping a package it only rewrote the
     body of.
     """
-    name = name.strip().lower()
+    [outcome] = await store_user_skills(
+        user_id,
+        [SkillWrite(name, description, body, triggers, version, extra, files)],
+        expert_id=expert_id,
+        scope=scope,
+    )
+    if isinstance(outcome, Exception):
+        raise outcome
+    return outcome.skill
+
+
+class SkillWrite(NamedTuple):
+    """One skill for :func:`store_user_skills`; fields as ``store_user_skill``."""
+
+    name: str
+    description: str
+    body: str
+    triggers: list[str] | None = None
+    version: str | None = None
+    extra: Mapping[str, Any] | None = None
+    files: list[SkillFile] | None = None
+
+
+class StoredSkill(NamedTuple):
+    skill: ParsedSkill
+    # False when the write replaced a copy the owner already had.
+    is_new: bool
+
+
+async def store_user_skills(
+    user_id: str,
+    writes: list[SkillWrite],
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[StoredSkill | Exception]:
+    """:func:`store_user_skill` for several skills under one write lock and
+    one listing of the owner's folder; returns each write's outcome in order,
+    so one bad skill fails alone."""
+    outcomes: list[StoredSkill | Exception | None] = []
+    prepared: list[tuple[int, _PreparedSkill]] = []
+    for write in writes:
+        try:
+            prepared.append((len(outcomes), _prepare_skill(write)))
+            outcomes.append(None)
+        except Exception as e:
+            outcomes.append(e)
+    if not prepared:
+        return cast(list[StoredSkill | Exception], outcomes)
+
+    # Serialise the count-then-write critical section per-user so two
+    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
+    # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
+    # ~1s before falling back to the strict-cap unlocked path below — without
+    # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
+    # both see N<MAX, and both write (cap overruns by 1).  Lock failure
+    # (Redis unavailable) still falls back to the unlocked write but the
+    # cap-enforcement branch below refuses any at-cap write in that case.
+    lock: AsyncClusterLock | None = None
+    lock_held = False
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        for _ in range(10):
+            if (await lock.try_acquire()) == lock.owner_id:
+                lock_held = True
+                break
+            await asyncio.sleep(0.1)
+    except Exception:
+        logger.warning(
+            "[skills] failed to acquire write lock for user %s — "
+            "falling back to unlocked best-effort write",
+            user_id,
+            exc_info=True,
+        )
+    try:
+        manager = await _get_user_skill_manager(user_id, scope)
+        # No healing here: this call runs inside the per-owner write lock that
+        # the copy would need, so it would stall on itself for every name.
+        existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
+        existing_slugs = {s.name for s in existing}
+        stored: list[tuple[int, str]] = []
+        for index, skill in prepared:
+            try:
+                is_new = skill.parsed.name not in existing_slugs
+                await _write_skill(
+                    manager, skill, user_id, expert_id, existing_slugs, lock_held
+                )
+            except Exception as e:
+                outcomes[index] = e
+                continue
+            existing_slugs.add(skill.parsed.name)
+            stored.append((index, skill.parsed.name))
+            outcomes[index] = StoredSkill(skill.parsed, is_new)
+        if stored:
+            await invalidate_skills_index_cache(user_id, expert_id)
+        if expert_id is not None:
+            for index, name in stored:
+                try:
+                    await experts_db().add_expert_skill_name(user_id, expert_id, name)
+                except Exception as e:
+                    outcomes[index] = e
+        return cast(list[StoredSkill | Exception], outcomes)
+    finally:
+        if lock is not None and lock_held:
+            try:
+                await lock.release()
+            except Exception:
+                logger.warning(
+                    "[skills] failed to release write lock for user %s",
+                    user_id,
+                    exc_info=True,
+                )
+
+
+class _PreparedSkill(NamedTuple):
+    parsed: ParsedSkill
+    rendered: str
+    files: list[SkillFile] | None
+
+
+def _prepare_skill(write: SkillWrite) -> _PreparedSkill:
+    """Normalise and validate one write before anything is locked or stored."""
+    name = write.name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
     # ``<env_context>``, etc.) from the persisted fields *before* storage —
     # when the skill is later loaded that text lands in conversation history
     # and could otherwise appear alongside the real server-injected versions.
-    description = strip_server_injected_tags(description.strip())
-    body = strip_server_injected_tags(body.strip())
+    description = strip_server_injected_tags(write.description.strip())
+    body = strip_server_injected_tags(write.body.strip())
     triggers = [
         strip_server_injected_tags(t.strip())
-        for t in (triggers or [])
+        for t in (write.triggers or [])
         if str(t).strip()
     ]
     triggers = [t for t in triggers if t]
@@ -690,135 +817,94 @@ async def store_user_skill(
         description=description,
         body=body,
         triggers=tuple(triggers),
-        version=version,
-        extra=dict(extra or {}),
+        version=write.version,
+        extra=dict(write.extra or {}),
     )
     rendered = render_skill_markdown(parsed)
-    if files is not None:
+    if write.files is not None:
         # Whole-package validation before the first write, so a package that
         # breaks a cap leaves the stored skill exactly as it was.
-        validate_package(SkillPackage(skill_md=rendered, files=files))
+        validate_package(SkillPackage(skill_md=rendered, files=write.files))
+    return _PreparedSkill(parsed, rendered, write.files)
 
-    # Serialise the count-then-write critical section per-user so two
-    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
-    # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
-    # ~1s before falling back to the strict-cap unlocked path below — without
-    # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
-    # both see N<MAX, and both write (cap overruns by 1).  Lock failure
-    # (Redis unavailable) still falls back to the unlocked write but the
-    # cap-enforcement branch below refuses any at-cap write in that case.
-    lock: AsyncClusterLock | None = None
-    lock_held = False
-    try:
-        lock = AsyncClusterLock(
-            redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
-            owner_id=uuid.uuid4().hex,
-            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-        )
-        for _ in range(10):
-            if (await lock.try_acquire()) == lock.owner_id:
-                lock_held = True
-                break
-            await asyncio.sleep(0.1)
-    except Exception:
-        logger.warning(
-            "[skills] failed to acquire write lock for user %s — "
-            "falling back to unlocked best-effort write",
-            user_id,
-            exc_info=True,
-        )
-    try:
-        manager = await _get_user_skill_manager(user_id, scope)
-        # Enforce the per-owner cap *before* we write.  When the lock IS held
-        # this is a true atomic check-then-write — an upsert at-cap is safe
-        # because no new slot is consumed.  When the lock FAILED to acquire,
-        # the check is no longer atomic, so refuse any write at-or-above the
-        # cap defensively (the caller can retry; a Redis blip is rare).
-        # No healing here: this call runs inside the per-owner write lock that
-        # the copy would need, so it would stall on itself for every name.
-        existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
-        existing_slugs = {s.name for s in existing}
-        at_cap = len(existing_slugs) >= MAX_USER_SKILLS
-        is_new = name not in existing_slugs
-        if at_cap and (is_new or not lock_held):
-            if not lock_held:
-                logger.warning(
-                    "[skills] refusing at-cap unlocked write for user %s "
-                    "(is_new=%s) — concurrent write could otherwise overrun "
-                    "the cap",
-                    user_id,
-                    is_new,
-                )
-            raise SkillLimitError(
-                f"Skill limit reached ({MAX_USER_SKILLS}). "
-                "Delete an unused skill first."
+
+async def _write_skill(
+    manager: WorkspaceManager,
+    skill: _PreparedSkill,
+    user_id: str,
+    expert_id: str | None,
+    existing_slugs: set[str],
+    lock_held: bool,
+) -> None:
+    name = skill.parsed.name
+    # Enforce the per-owner cap *before* we write.  When the lock IS held
+    # this is a true atomic check-then-write — an upsert at-cap is safe
+    # because no new slot is consumed.  When the lock FAILED to acquire,
+    # the check is no longer atomic, so refuse any write at-or-above the
+    # cap defensively (the caller can retry; a Redis blip is rare).
+    at_cap = len(existing_slugs) >= MAX_USER_SKILLS
+    is_new = name not in existing_slugs
+    if at_cap and (is_new or not lock_held):
+        if not lock_held:
+            logger.warning(
+                "[skills] refusing at-cap unlocked write for user %s "
+                "(is_new=%s) — concurrent write could otherwise overrun "
+                "the cap",
+                user_id,
+                is_new,
             )
+        raise SkillLimitError(
+            f"Skill limit reached ({MAX_USER_SKILLS}). " "Delete an unused skill first."
+        )
 
-        metadata: dict[str, Any] = {
-            _META_KIND: _META_KIND_VALUE,
-            _META_DESCRIPTION: description,
-            _META_TRIGGERS: list(triggers),
-        }
-        if version:
-            metadata[_META_VERSION] = version
-        folder = skill_folder(expert_id)
-        stale = (
-            await _list_package_files(manager, folder, name, cap=None)
-            if files is not None
-            else []
-        )
-        # The root is what indexes the skill, so it goes last: a new skill
-        # that fails part-way is never indexed.  An upsert cannot be made
-        # atomic here — the old bytes are gone once overwritten.  Serial
-        # because ``write_file``'s quota check is read-then-write.
-        existing_paths = {f.path for f in stale}
-        written: set[str] = set()
-        try:
-            for entry in files or []:
-                path = f"{folder}/{name}/{entry.relative_path}"
-                written.add(path)
-                await manager.write_file(
-                    content=entry.content,
-                    filename=entry.relative_path.rsplit("/", 1)[-1],
-                    path=path,
-                    mime_type=None,
-                    overwrite=True,
-                    metadata=(
-                        {_META_EXECUTABLE: True} if entry.is_executable else None
-                    ),
-                )
-        except Exception:
-            # Not a rollback: a file already here keeps the new bytes, so an
-            # upsert can fail mixed. Undo only what this call created — deleting
-            # the rest would turn a failed write into a lost file.
-            await _delete_paths(manager, written - existing_paths)
-            raise
-        await manager.write_file(
-            content=rendered.encode("utf-8"),
-            filename="SKILL.md",
-            path=_skill_md_path(name, expert_id),
-            mime_type="text/markdown",
-            overwrite=True,
-            metadata=metadata,
-        )
-        await _delete_paths(
-            manager, {f.path for f in stale if f.path not in written}, stale
-        )
-        await invalidate_skills_index_cache(user_id, expert_id)
-        if expert_id is not None:
-            await experts_db().add_expert_skill_name(user_id, expert_id, name)
-        return parsed
-    finally:
-        if lock is not None and lock_held:
-            try:
-                await lock.release()
-            except Exception:
-                logger.warning(
-                    "[skills] failed to release write lock for user %s",
-                    user_id,
-                    exc_info=True,
-                )
+    metadata: dict[str, Any] = {
+        _META_KIND: _META_KIND_VALUE,
+        _META_DESCRIPTION: skill.parsed.description,
+        _META_TRIGGERS: list(skill.parsed.triggers),
+    }
+    if skill.parsed.version:
+        metadata[_META_VERSION] = skill.parsed.version
+    folder = skill_folder(expert_id)
+    stale = (
+        await _list_package_files(manager, folder, name, cap=None)
+        if skill.files is not None
+        else []
+    )
+    # The root is what indexes the skill, so it goes last: a new skill
+    # that fails part-way is never indexed.  An upsert cannot be made
+    # atomic here — the old bytes are gone once overwritten.  Serial
+    # because ``write_file``'s quota check is read-then-write.
+    existing_paths = {f.path for f in stale}
+    written: set[str] = set()
+    try:
+        for entry in skill.files or []:
+            path = f"{folder}/{name}/{entry.relative_path}"
+            written.add(path)
+            await manager.write_file(
+                content=entry.content,
+                filename=entry.relative_path.rsplit("/", 1)[-1],
+                path=path,
+                mime_type=None,
+                overwrite=True,
+                metadata=({_META_EXECUTABLE: True} if entry.is_executable else None),
+            )
+    except Exception:
+        # Not a rollback: a file already here keeps the new bytes, so an
+        # upsert can fail mixed. Undo only what this call created — deleting
+        # the rest would turn a failed write into a lost file.
+        await _delete_paths(manager, written - existing_paths)
+        raise
+    await manager.write_file(
+        content=skill.rendered.encode("utf-8"),
+        filename="SKILL.md",
+        path=_skill_md_path(name, expert_id),
+        mime_type="text/markdown",
+        overwrite=True,
+        metadata=metadata,
+    )
+    await _delete_paths(
+        manager, {f.path for f in stale if f.path not in written}, stale
+    )
 
 
 async def _delete_paths(
