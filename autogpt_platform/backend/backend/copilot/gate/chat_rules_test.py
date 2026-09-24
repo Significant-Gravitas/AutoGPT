@@ -67,7 +67,7 @@ async def test_an_unreadable_store_asks():
     with patch.object(
         chat_rules, "get_redis_async", AsyncMock(side_effect=ConnectionError)
     ):
-        assert await chat_rules.rule_for("s", "mcp:h/t") == "ask"
+        assert await chat_rules.rule_for("s", "mcp:h/t") == "unreadable"
 
 
 async def test_only_a_held_call_with_a_subject_offers_a_key():

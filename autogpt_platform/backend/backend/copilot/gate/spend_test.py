@@ -248,10 +248,12 @@ async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
 
 
 def test_a_money_card_offers_no_chat_rule():
-    """Reads never consult a rule, so the card must not name a subject to rule on."""
+    """Reads never consult a rule, so the card must offer none."""
     spend = {"estimate": "$0.05", "spent": "$0.00", "ceiling": "$0.00"}
-    assert "subject" not in review_payload("t", {}, _PAID, spend)
-    assert "subject" in review_payload("t", {}, _SEND)
+    payload = review_payload("t", {}, _PAID, spend)
+    assert payload["spend"] == spend
+    assert payload["chat_rules_allowed"] == []
+    assert review_payload("t", {}, _SEND)["spend"] is None
 
 
 async def test_flag_on_a_root_turn_opens_its_tree(ledger):

@@ -6,7 +6,7 @@ export function TeamHeaderActions() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button as="NextLink" href="/raise" variant="secondary" size="small">
-        Raise expert
+        Create an Expert
       </Button>
       <Button
         as="NextLink"

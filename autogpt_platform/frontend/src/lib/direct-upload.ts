@@ -143,10 +143,14 @@ export async function uploadFileDirect(
  * Uploads store submission media (agent thumbnails, profile avatars) directly
  * to the backend. Returns the public URL of the stored media.
  */
-export async function uploadSubmissionMediaDirect(file: File): Promise<string> {
+export async function uploadSubmissionMediaDirect(
+  file: File,
+  purpose: "submission" | "expert-avatar" = "submission",
+): Promise<string> {
   const res = await postFileToBackend({
     path: "/api/store/submissions/media",
     file,
+    searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
   if (!res.ok) throw new Error(await readUploadError(res));
   // The endpoint returns the URL as a JSON string.

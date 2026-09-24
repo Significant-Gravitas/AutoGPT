@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from prisma.enums import ReviewStatus
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
@@ -457,3 +460,74 @@ def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
     )
 
     assert item.description == "A workflow is waiting for your approval."
+
+
+def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
+    payload = review_payload(
+        "create_folder",
+        {"name": "Q3 reports", "color": "blue"},
+        reason="Ask First is on for this chat.",
+        reason_kind="mode",
+    )
+    payload.update(payload_overrides)
+    return _review(NOW - timedelta(hours=1), node_exec_id="rid").model_copy(
+        update={
+            "node_exec_id": f"{node_id_for('create_folder')}:abc",
+            "graph_exec_id": "copilot-session-s1",
+            "session_id": "s1",
+            "payload": payload,
+            "instructions": "Create folder “Q3 reports”",
+        }
+    )
+
+
+def _one(review: PendingHumanReviewModel):
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+    return item
+
+
+def test_a_held_call_reads_as_its_card_on_home() -> None:
+    item = _one(_gate_review())
+
+    assert item.title == "Create folder “Q3 reports”"
+    # The mode's own reason is the chat's, not this call's.
+    assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
+    # The headline already names it.
+    assert item.preview == "Color: blue"
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Open chat"
+    assert item.primary_action.href == "/copilot?sessionId=s1"
+
+
+@pytest.mark.parametrize(
+    "kind, expected",
+    [
+        ("supervisor", "Not sure this is safe: it deletes data"),
+        ("rule", "it deletes data"),
+        ("mode", f"{AUTOPILOT_NAME} is waiting for your approval."),
+    ],
+)
+def test_home_shows_a_reason_only_when_it_is_about_the_call(kind, expected) -> None:
+    item = _one(_gate_review(reason="it deletes data", reason_kind=kind))
+    assert item.description == expected
+
+
+def test_a_graph_row_keeps_its_workflow_copy() -> None:
+    item = _one(_review(NOW - timedelta(hours=1)))
+
+    assert item.title == "Send the prepared message"
+    assert item.preview == '{"recipient": "friend@example.com"}'
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
+
+
+def test_a_gate_row_from_before_the_headline_falls_back() -> None:
+    review = _gate_review().model_copy(
+        update={"payload": {"tool": "create_folder", "arguments": {}}}
+    )
+    item = _one(review)
+    assert item.title == "Create folder “Q3 reports”"
+    assert item.primary_action is not None
+    assert item.primary_action.label == "Review"
