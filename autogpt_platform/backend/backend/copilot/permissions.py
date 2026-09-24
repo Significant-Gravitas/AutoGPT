@@ -494,6 +494,19 @@ class CopilotPermissions(BaseModel):
             return self._parent.is_provider_allowed(provider)
         return True
 
+    def flattened_providers(self) -> tuple[list[str], bool]:
+        """``(providers, providers_exclude)`` for the effective ceiling of this
+        instance and its whole parent chain, needing no parent to read.
+
+        An allow-list of the providers left, or, when none are left, a deny
+        list of every one (an empty list means no filter at all)."""
+        if not self.providers and self._parent is None:
+            return [], True
+        allowed = [p for p in SUPPORTED_PROVIDERS if self.is_provider_allowed(p)]
+        if allowed:
+            return allowed, False
+        return list(SUPPORTED_PROVIDERS), True
+
     # ------------------------------------------------------------------
     # Recursion / merging
     # ------------------------------------------------------------------
@@ -518,10 +531,12 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
-            providers=self.providers,
-            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
+        # Unlike blocks, the provider ceiling is written out in full rather
+        # than left to ``_parent``: a private attribute does not survive the
+        # executor queue's JSON, and the child turn must not come back wider.
+        result.providers, result.providers_exclude = result.flattened_providers()
         return result
 
     # ------------------------------------------------------------------

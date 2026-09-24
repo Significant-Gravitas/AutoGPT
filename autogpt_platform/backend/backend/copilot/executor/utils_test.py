@@ -313,3 +313,16 @@ class TestNarrowPermissions:
 
         assert merged is not None
         assert not merged.is_provider_allowed("github")
+
+    def test_a_parents_provider_ceiling_is_kept_through_the_queue(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"bash_exec"})}
+        )
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        caller = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        again = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not again.is_provider_allowed("github")

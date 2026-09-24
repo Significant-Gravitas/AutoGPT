@@ -863,3 +863,19 @@ class TestProviders:
         perms = CopilotPermissions(providers=["github"], providers_exclude=True)
         again = CopilotPermissions.model_validate_json(perms.model_dump_json())
         assert not again.is_provider_allowed("github")
+
+    def test_a_merged_ceiling_survives_the_queue_without_its_parent(self):
+        """``_parent`` is private and does not cross the executor queue."""
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions()
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        again = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not again.is_provider_allowed("github")
+        assert allowed_providers(again) == ()
+
+    def test_flattening_keeps_an_open_ceiling_open(self):
+        assert CopilotPermissions().flattened_providers() == ([], True)
+        merged = CopilotPermissions().merged_with_parent(
+            CopilotPermissions(), ALL_TOOL_NAMES
+        )
+        assert allowed_providers(merged) is None

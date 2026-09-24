@@ -650,6 +650,7 @@ def _narrow_permissions(
         return permissions
     if permissions is None:
         return narrowed
+    providers, providers_exclude = permissions.flattened_providers()
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
     #
@@ -662,8 +663,10 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
-        providers=permissions.providers,
-        providers_exclude=permissions.providers_exclude,
+        # The effective ceiling, parents included: this instance crosses the
+        # queue, where ``_parent`` does not.
+        providers=providers,
+        providers_exclude=providers_exclude,
     )
 
 
