@@ -82,6 +82,7 @@ ENCODED_PLACEHOLDER_RE = re.compile(
     r"hsurr%3A([A-Za-z0-9_-]+)(?:%3A([A-Za-z0-9_-]+))?", re.IGNORECASE
 )
 NEVER_SWAP_HEADERS = frozenset({"referer", "origin"})
+ECHOING_METHODS = frozenset({"TRACE", "TRACK"})
 MIN_SCRUB_LEN = 8
 _SCRUBBABLE_TYPES = (
     "text/",
@@ -232,6 +233,10 @@ class RequestSwap:
         if not host_in_list(self.host, credential.allowed_hosts):
             return False, "unbound-host"
         method = (self.method or "").upper()
+        if method in ECHOING_METHODS:
+            # The response is the request, Authorization and all, as
+            # ``message/http``, which is not a text type the scrub reads.
+            return False, "echoing-method"
         if credential.allowed_methods is not None:
             if method not in {m.upper() for m in credential.allowed_methods}:
                 return False, "method-not-allowed"

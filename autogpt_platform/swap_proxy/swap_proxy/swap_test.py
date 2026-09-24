@@ -479,6 +479,17 @@ class TestAuthorizationOnly:
         assert s.text('{"auth": "hsurr:github"}') == '{"auth": "hsurr:github"}'
         assert [e.reason for e in s.events] == ["outside-authorization"]
 
+    @pytest.mark.parametrize("method", ["TRACE", "TRACK", "trace"])
+    def test_a_method_whose_response_is_the_request_gets_nothing(self, method):
+        """TRACE answers with the request itself as ``message/http``, which
+        the scrub does not read: the header would come straight back."""
+        r = make_request(
+            method=method, headers={"Authorization": "Bearer hsurr:github"}
+        )
+        s = swap(r, self.PLAIN)
+        assert r.headers["Authorization"] == "Bearer hsurr:github"
+        assert [e.reason for e in s.events] == ["echoing-method"]
+
     def test_a_binding_refusal_still_names_the_binding(self):
         r = make_request(headers={"X-Api-Key": "hsurr:github"})
         s = swap(r, self.PLAIN, host="evil.test")
