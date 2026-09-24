@@ -5,13 +5,15 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { mail, CHAT_SESSION } from "./fixtures";
+import { mail, mcpTool, CHAT_SESSION } from "./fixtures";
 
-function serve() {
+function serve(
+  review: ReturnType<typeof mail> = mail("m1", ["allow", "judge"]),
+) {
   const sent: { reviews: Record<string, unknown>[] }[] = [];
   server.use(
     http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
-      HttpResponse.json([mail("m1", ["allow", "judge"])]),
+      HttpResponse.json([review]),
     ),
     http.post("*/api/review/action", async ({ request }) => {
       sent.push(
@@ -36,22 +38,27 @@ function renderQueue() {
 }
 
 test.each([
-  ["Approve for this chat", "allow"],
-  ["Let Otto judge from now on", "judge"],
-])("choosing %s approves the call and sets the %s rule", async (item, rule) => {
-  const sent = serve();
-  renderQueue();
+  ["Approve for this chat", "allow", "a block", mail("m1")],
+  ["Let Otto judge from now on", "judge", "a block", mail("m1")],
+  ["Approve for this chat", "allow", "an MCP tool", mcpTool("m1")],
+  ["Let Otto judge from now on", "judge", "an MCP tool", mcpTool("m1")],
+])(
+  "choosing %s approves the call and sets the %s rule on %s",
+  async (item, rule, _subject, review) => {
+    const sent = serve(review);
+    renderQueue();
 
-  await userEvent.click(
-    await screen.findByRole("button", { name: "More ways to approve" }),
-  );
-  await userEvent.click(await screen.findByText(item));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "More ways to approve" }),
+    );
+    await userEvent.click(await screen.findByText(item));
 
-  await waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0].reviews).toEqual([
-    expect.objectContaining({ approved: true, chat_rule: rule }),
-  ]);
-});
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].reviews).toEqual([
+      expect.objectContaining({ approved: true, chat_rule: rule }),
+    ]);
+  },
+);
 
 test("a plain approve sets no rule", async () => {
   const sent = serve();
