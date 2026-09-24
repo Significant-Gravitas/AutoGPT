@@ -588,3 +588,17 @@ async def test_the_held_card_quotes_the_page_not_the_judges_gloss(rows):
         await _call(_Fetch(_MARKER), _session())
     (row,) = rows.rows.values()
     assert row.payload["passage"] == _MARKER
+
+
+async def test_an_expired_release_already_delivered_reports_it_was_delivered(rows):
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+    review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
+    await rows.consume(review.node_exec_id, "user-1")
+
+    outcome, _ = await reads.answered_read("user-1", review)
+
+    assert outcome == "closed"

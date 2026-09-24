@@ -80,12 +80,7 @@ async def judge_content(
         logger.warning(f"Content judge failed on {source[:80]}", exc_info=True)
         return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
 
-    # A quoted passage with no verdict word can only be a hold.
-    if raw.strip().lower().startswith(
-        "passage:"
-    ) and not raw.strip().lower().startswith("passage: none"):
-        raw = f"hold\n{raw.strip()}"
-    verdict = parse_answer(raw, ("clean", "hold"), "passage")
+    verdict = parse_answer(_normalised(raw), ("clean", "hold"), "passage")
     if verdict is None:
         logger.warning(f"Content judge returned an unusable body for {source[:80]}")
         return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
@@ -95,3 +90,19 @@ async def judge_content(
     if not passage or passage.lower() == "none":
         passage = _NO_PASSAGE
     return ContentVerdict(held=True, passage=passage)
+
+
+def _normalised(raw: str) -> str:
+    """Sonnet 5 often echoes the rubric's ``clean|hold`` line, or answers with
+    the passage line alone; that line is then the finding."""
+    text = raw.strip()
+    first, _, rest = text.partition("\n")
+    if first.strip().strip("*`").lower().replace(" ", "") in (
+        "clean|hold",
+        "hold|clean",
+    ):
+        text = rest.strip()
+    if not text.lower().startswith("passage:"):
+        return text
+    found = text.split(":", 1)[1].strip().strip("\"'").lower()
+    return "clean" if found == "none" else f"hold\n{text}"

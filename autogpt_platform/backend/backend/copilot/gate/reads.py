@@ -167,12 +167,12 @@ async def answered_read(
     consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED:
         return "rejected", _REJECTED
-    approved_at = review.reviewed_at or review.updated_at or review.created_at
-    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
-        return "expired", _EXPIRED
     if not consumed:
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
+        return "expired", _EXPIRED
     return "approved", held_bytes(review).output
 
 
