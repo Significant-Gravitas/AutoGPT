@@ -823,6 +823,7 @@ def _make_prisma_log_row(
     row.createdAt = datetime(2026, 3, 1, tzinfo=timezone.utc)
     row.userId = "u1"
     row.graphExecId = None
+    row.sessionId = None
     row.nodeExecId = None
     row.blockName = "TestBlock"
     row.provider = "openai"

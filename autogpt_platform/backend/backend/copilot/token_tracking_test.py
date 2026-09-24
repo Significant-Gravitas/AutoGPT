@@ -373,7 +373,8 @@ class TestPlatformCostLogging:
         assert entry.metadata["tracking_type"] == "cost_usd"
         assert entry.metadata["tracking_amount"] == 0.005
         assert entry.block_name == "copilot:SDK"
-        assert entry.graph_exec_id == "sess-test"
+        assert entry.session_id == "sess-test"
+        assert entry.graph_exec_id is None
 
     @pytest.mark.asyncio
     async def test_logs_cost_entry_without_cost_usd(self):

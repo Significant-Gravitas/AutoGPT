@@ -286,7 +286,7 @@ async def persist_and_record_usage(
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
-                graph_exec_id=session_id,
+                session_id=session_id,
                 block_id=COPILOT_BLOCK_ID,
                 block_name=(
                     block_name_override

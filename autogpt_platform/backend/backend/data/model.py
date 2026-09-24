@@ -900,6 +900,9 @@ class CreditTransactionItem(BaseModel):
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
+    usage_session_id: str | None = Field(
+        default=None, description="The AutoPilot chat the usage came from"
+    )
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str

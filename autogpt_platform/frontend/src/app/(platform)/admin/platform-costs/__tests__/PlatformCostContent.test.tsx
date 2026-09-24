@@ -621,4 +621,33 @@ describe("PlatformCostContent", () => {
     // getAllByText to avoid the single-match constraint.
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
   });
+
+  it("labels a chat's cost row as a chat, and a graph run's by its id", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: {
+        ...logsWithData,
+        logs: [
+          logsWithData.logs[0],
+          {
+            ...logsWithData.logs[0],
+            id: "log-chat",
+            graph_exec_id: null,
+            session_id: "5e551011-aaaa-bbbb-cccc-000000000000",
+            block_name: "copilot:SDK",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    renderComponent({ tab: "logs" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    expect(screen.getByText("Chat 5e551011")).toBeDefined();
+    expect(screen.getByText("gx-123")).toBeDefined();
+  });
 });

@@ -14,7 +14,9 @@ export function ReceiptEntries({ transaction }: Props) {
   const entriesID = useId();
   const referenceID = useId();
   const reference =
-    transaction.usage_execution_id || transaction.transaction_key;
+    transaction.usage_execution_id ||
+    transaction.usage_session_id ||
+    transaction.transaction_key;
   return (
     <div className="mt-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
@@ -57,7 +59,7 @@ export function ReceiptEntries({ transaction }: Props) {
       {referenceOpen && (
         <div id={referenceID} className="mt-2">
           <Text variant="small" className="text-zinc-600">
-            {transaction.activity_type === "agent_run" ? "Run ID" : "Reference"}
+            {referenceLabel(transaction)}
           </Text>
           <Text
             variant="small"
@@ -71,6 +73,12 @@ export function ReceiptEntries({ transaction }: Props) {
       )}
     </div>
   );
+}
+
+function referenceLabel(transaction: Transaction) {
+  if (transaction.usage_execution_id) return "Run ID";
+  if (transaction.usage_session_id) return "Chat ID";
+  return "Reference";
 }
 
 function ChargeEntries({ transaction }: Props) {

@@ -76,6 +76,8 @@ BillingCycle = Literal["monthly", "yearly"]
 class UsageTransactionMetadata(BaseModel):
     graph_exec_id: str | None = None
     graph_id: str | None = None
+    # Set instead of the graph fields when the usage came from an AutoPilot chat.
+    session_id: str | None = None
     node_id: str | None = None
     node_exec_id: str | None = None
     block_id: str | None = None

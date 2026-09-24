@@ -35,6 +35,7 @@ def usd_to_microdollars(cost_usd: float | None) -> int | None:
 class PlatformCostEntry(BaseModel):
     user_id: str
     graph_exec_id: str | None = None
+    session_id: str | None = None
     node_exec_id: str | None = None
     graph_id: str | None = None
     node_id: str | None = None
@@ -60,6 +61,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
         data=PlatformCostLogCreateInput(
             userId=entry.user_id,
             graphExecId=entry.graph_exec_id,
+            sessionId=entry.session_id,
             nodeExecId=entry.node_exec_id,
             graphId=entry.graph_id,
             nodeId=entry.node_id,
@@ -167,6 +169,7 @@ class CostLogRow(BaseModel):
     user_id: str | None = None
     email: str | None = None
     graph_exec_id: str | None = None
+    session_id: str | None = None
     node_exec_id: str | None = None
     block_name: str
     provider: str
@@ -859,6 +862,7 @@ async def get_platform_cost_logs(
             user_id=r.userId,
             email=_mask_email(r.User.email if r.User else None),
             graph_exec_id=r.graphExecId,
+            session_id=r.sessionId,
             node_exec_id=r.nodeExecId,
             block_name=r.blockName or "",
             provider=r.provider,
@@ -1080,6 +1084,7 @@ async def get_platform_cost_logs_for_export(
             user_id=r.userId,
             email=_mask_email(r.User.email if r.User else None),
             graph_exec_id=r.graphExecId,
+            session_id=r.sessionId,
             node_exec_id=r.nodeExecId,
             block_name=r.blockName or "",
             provider=r.provider,

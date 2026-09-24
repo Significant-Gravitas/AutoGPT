@@ -53,11 +53,12 @@ def _library(graph=None, *, title=None, archived=False, library_id="library"):
     return library
 
 
-def _item(execution_id="run", graph_id="graph"):
+def _item(execution_id="run", graph_id="graph", session_id=None):
     return CreditTransactionItem(
         user_id="user",
         usage_graph_id=graph_id,
         usage_execution_id=execution_id,
+        usage_session_id=session_id,
         amount=-12,
     )
 
@@ -246,7 +247,12 @@ async def test_copilot_links_only_existing_owned_conversations(mocker):
     session = MagicMock(spec=ChatSession, id="chat", title="Research leads")
     actions = _database(mocker, sessions=[session])
     existing, unavailable = await history.enrich_credit_history(
-        [_item("copilot-session-chat"), _item("copilot-session-missing")], "user", "org"
+        [
+            _item(None, None, session_id="chat"),
+            _item(None, None, session_id="missing"),
+        ],
+        "user",
+        "org",
     )
     assert existing.conversation_id == "chat"
     assert existing.conversation_title == "Research leads"

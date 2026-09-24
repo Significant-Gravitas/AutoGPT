@@ -161,8 +161,7 @@ async def _charge_block_credits(
     node_exec_id: str,
     cost: int,
     cost_filter: dict[str, Any],
-    synthetic_graph_id: str,
-    synthetic_node_id: str,
+    session_id: str,
     expert_id: str | None = None,
 ) -> None:
     """Charge credits for a block execution and log any billing leak.
@@ -177,9 +176,7 @@ async def _charge_block_credits(
             user_id=user_id,
             cost=cost,
             metadata=UsageTransactionMetadata(
-                graph_exec_id=synthetic_graph_id,
-                graph_id=synthetic_graph_id,
-                node_id=synthetic_node_id,
+                session_id=session_id,
                 node_exec_id=node_exec_id,
                 block_id=block_id,
                 block=block_name,
@@ -522,8 +519,7 @@ async def execute_block(
                             node_exec_id=node_exec_id,
                             cost=cost,
                             cost_filter=cost_filter,
-                            synthetic_graph_id=synthetic_graph_id,
-                            synthetic_node_id=synthetic_node_id,
+                            session_id=session_id,
                             expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
@@ -582,8 +578,7 @@ async def execute_block(
                             node_exec_id=node_exec_id,
                             cost=cost,
                             cost_filter=cost_filter,
-                            synthetic_graph_id=synthetic_graph_id,
-                            synthetic_node_id=synthetic_node_id,
+                            session_id=session_id,
                             expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )

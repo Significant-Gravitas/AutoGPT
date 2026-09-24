@@ -16,7 +16,6 @@ from prisma.types import (
 )
 from pydantic import BaseModel
 
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.data.model import CreditHistoryRelatedExecution, CreditTransactionItem
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 
@@ -32,7 +31,10 @@ async def enrich_credit_history(
     user_id: str,
     organization_id: str | None = None,
 ) -> list[CreditTransactionItem]:
-    if not any(item.usage_execution_id or item.usage_graph_id for item in items):
+    if not any(
+        item.usage_execution_id or item.usage_graph_id or item.usage_session_id
+        for item in items
+    ):
         return items
     team_ids = (
         await get_user_team_ids(user_id, organization_id) if organization_id else []
@@ -58,14 +60,7 @@ async def _load_executions(
     user_id: str,
     scope: AgentGraphExecutionWhereInput,
 ) -> tuple[list[AgentGraphExecution], dict[str, int]]:
-    ids = sorted(
-        {
-            item.usage_execution_id
-            for item in items
-            if item.usage_execution_id
-            and not item.usage_execution_id.startswith(COPILOT_SESSION_PREFIX)
-        }
-    )
+    ids = sorted({item.usage_execution_id for item in items if item.usage_execution_id})
     if not ids:
         return [], {}
     # Match execution detail's expert guard as well as its org/team predicate.
@@ -122,14 +117,7 @@ async def _load_related_executions(
 async def _load_sessions(
     items: list[CreditTransactionItem], user_id: str, organization_id: str | None
 ) -> dict[str, ChatSession]:
-    ids = sorted(
-        {
-            item.usage_execution_id.removeprefix(COPILOT_SESSION_PREFIX)
-            for item in items
-            if item.usage_execution_id
-            and item.usage_execution_id.startswith(COPILOT_SESSION_PREFIX)
-        }
-    )
+    ids = sorted({item.usage_session_id for item in items if item.usage_session_id})
     if not ids:
         return {}
     where: ChatSessionWhereInput = {"id": {"in": ids}, "userId": user_id}
@@ -156,12 +144,7 @@ async def _load_agent_refs(
 ) -> tuple[dict[tuple[str, int], _AgentRef], dict[str, _AgentRef]]:
     graph_ids = sorted(
         {e.agentGraphId for e in executions}
-        | {
-            item.usage_graph_id
-            for item in items
-            if item.usage_graph_id
-            and not (item.usage_execution_id or "").startswith(COPILOT_SESSION_PREFIX)
-        }
+        | {item.usage_graph_id for item in items if item.usage_graph_id}
     )
     if not graph_ids:
         return {}, {}
@@ -276,13 +259,12 @@ def _enrich_item(
     child_counts: dict[str, int],
 ) -> CreditTransactionItem:
     item = original.model_copy(deep=True)
-    execution_id = item.usage_execution_id or ""
-    if execution_id.startswith(COPILOT_SESSION_PREFIX):
-        session = sessions.get(execution_id.removeprefix(COPILOT_SESSION_PREFIX))
+    if item.usage_session_id:
+        session = sessions.get(item.usage_session_id)
         item.conversation_id = session.id if session else None
         item.conversation_title = session.title if session else None
         return item
-    execution = executions.get(execution_id)
+    execution = executions.get(item.usage_execution_id or "")
     ref = (
         refs.get((execution.agentGraphId, execution.agentGraphVersion))
         if execution
