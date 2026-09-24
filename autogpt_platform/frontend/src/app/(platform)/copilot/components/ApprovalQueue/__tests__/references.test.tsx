@@ -32,6 +32,8 @@ test("a held delete names its folder in the headline, not as a raw id", async ()
     view.getByRole("heading", { name: /Delete a folder Q3 reports/ }),
   ).toBeDefined();
   expect(view.queryByText("f-q3")).toBeNull();
+  const folder = view.getByRole("link", { name: "Q3 reports" });
+  expect(folder.getAttribute("href")).toBe("/library?folder=f-q3");
 });
 
 test("a list of ids reads as linked names, the unresolved one as its id", async () => {

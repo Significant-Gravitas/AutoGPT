@@ -251,7 +251,10 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
 
 
 def _humanize(key: str) -> str:
-    words = key.removesuffix("_id").replace("_", " ").strip()
+    # agent_ids -> "Agents": the card shows names there, not ids.
+    plural = key.endswith("_ids")
+    words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words += "s" if plural else ""
     return words[:1].upper() + words[1:]
 
 

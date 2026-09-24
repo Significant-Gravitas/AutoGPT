@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { COPILOT_TOOL_CATALOG } from "../../ToolChain/toolCatalog";
@@ -30,7 +31,7 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
           compact ? "truncate" : "text-pretty",
         )}
       >
-        <HeadlineText item={item} />
+        <HeadlineText item={item} linked={!compact} />
       </Text>
       {item.subject.irreversible && (
         <span className="mt-0.5 shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700">
@@ -41,8 +42,15 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
   );
 }
 
-export function HeadlineText({ item }: Props) {
+interface HeadlineTextProps {
+  item: ApprovalItem;
+  // Off wherever the line is itself a button.
+  linked?: boolean;
+}
+
+export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
   const { ask, object } = item.headline;
+  const href = linked ? objectHref(item) : null;
   return (
     <>
       {ask}
@@ -50,10 +58,27 @@ export function HeadlineText({ item }: Props) {
         <>
           {" "}
           <b className="font-semibold" translate="no">
-            {object}
+            {href ? (
+              <Link
+                href={href}
+                className="underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+              >
+                {object}
+              </Link>
+            ) : (
+              object
+            )}
           </b>
         </>
       )}
     </>
+  );
+}
+
+// The headline names a resolved id's thing, and its field is hidden, so the link lives here.
+function objectHref(item: ApprovalItem) {
+  const [key] = item.headlineKeys;
+  return (
+    item.references.find((ref) => ref.key === key && ref.href)?.href ?? null
   );
 }

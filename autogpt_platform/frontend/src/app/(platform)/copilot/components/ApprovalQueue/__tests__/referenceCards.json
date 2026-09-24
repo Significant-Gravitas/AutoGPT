@@ -82,7 +82,7 @@
         "fields": [
           {
             "key": "agent_ids",
-            "label": "Agent ids"
+            "label": "Agents"
           },
           {
             "key": "folder_id",

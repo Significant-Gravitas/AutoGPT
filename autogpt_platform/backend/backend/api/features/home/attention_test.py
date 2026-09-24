@@ -566,4 +566,4 @@ def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
     item = _one(review)
 
     assert item.title == "Move agents into a folder “Archive”"
-    assert item.preview == "Agent ids: Digest, a1, Triage, Notes, Inbox +2 more"
+    assert item.preview == "Agents: Digest, a1, Triage, Notes, Inbox +2 more"
