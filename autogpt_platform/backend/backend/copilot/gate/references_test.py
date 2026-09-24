@@ -20,6 +20,7 @@ from backend.copilot.gate.references import (
 )
 from backend.copilot.gate.review import open_review, review_payload
 from backend.copilot.model import ChatSession
+from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.util.exceptions import NotFoundError
 
 # The survey's definition of an id-shaped input: its name, or its description.
@@ -303,3 +304,36 @@ async def test_a_resolved_agent_carries_its_description_for_the_hover():
         )
 
     assert (ref.name, ref.summary) == ("Digest", "Sends the morning digest")
+
+
+@pytest.mark.parametrize(
+    "next_run, expected",
+    [
+        ("2026-09-25T07:00:00+00:00", "Runs 0 7 * * * · next 2026-09-25 07:00"),
+        ("", "Runs 0 7 * * * · paused"),
+    ],
+)
+async def test_a_schedule_summary_says_when_it_runs_next_or_that_it_is_paused(
+    next_run, expected
+):
+    job = GraphExecutionJobInfo(
+        id="sch-1",
+        name="Daily digest",
+        next_run_time=next_run,
+        user_id="user-1",
+        graph_id="g-1",
+        graph_version=1,
+        cron="0 7 * * *",
+        input_data={},
+    )
+    scheduler = MagicMock(get_execution_schedules=AsyncMock(return_value=[job]))
+    lib = MagicMock(get_library_agent_by_graph_id=AsyncMock(return_value=None))
+    with (
+        patch.object(references, "get_scheduler_client", return_value=scheduler),
+        patch.object(references, "library_db", return_value=lib),
+    ):
+        [ref] = await resolve_references(
+            "pause_schedule", {"schedule_id": "sch-1"}, "user-1", _session()
+        )
+
+    assert (ref.name, ref.summary) == ("Daily digest", expected)

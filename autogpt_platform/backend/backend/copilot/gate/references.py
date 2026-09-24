@@ -250,7 +250,9 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
     if job is None:
         return None
     cadence = job.cron or "once"
-    summary = f"Runs {cadence} · next {job.next_run_time[:16].replace('T', ' ')}"
+    # include_paused lists schedules with no next run.
+    when = job.next_run_time[:16].replace("T", " ")
+    summary = f"Runs {cadence} · " + (f"next {when}" if when else "paused")
     href = "/library/followups"
     if isinstance(job, GraphExecutionJobInfo):
         agent = await library_db().get_library_agent_by_graph_id(
