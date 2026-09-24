@@ -1,9 +1,15 @@
+import {
+  getGetV2ListChatConnectionsMockHandler200,
+  getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { server } from "@/mocks/mock-server";
 import {
   copilotStreamErrorHandler,
   copilotStreamHandler,
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +55,6 @@ const flagState = vi.hoisted(() => ({ experts: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
-    ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     HIRE_EXPERTS: "HIRE_EXPERTS",
@@ -246,5 +251,187 @@ describe("Otto streaming — error paths", () => {
       expect(input.disabled).toBe(false);
     });
     expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+  });
+});
+
+describe("AutoPilot streaming — our usage cap next to a linked subscription", () => {
+  function platformOffer(): AIConnectionOffer {
+    return {
+      offer_id: "platform:deployment",
+      provider_family: "autogpt",
+      auth_provider: "platform",
+      display_name: "AutoGPT Platform",
+      auth_method: "deployment",
+      credential_id: null,
+      backed_by_label: "Your AutoGPT plan",
+      description: "Runs on your AutoGPT plan.",
+      state: "ready",
+      selectable: true,
+      is_default: true,
+      tiers: [],
+      limitations: [],
+      lock_reason: null,
+      unlock_href: null,
+    };
+  }
+
+  function chatgptOffer(): AIConnectionOffer {
+    return {
+      ...platformOffer(),
+      offer_id: "codex:cred-1",
+      provider_family: "openai",
+      auth_provider: "codex",
+      display_name: "ChatGPT",
+      auth_method: "chatgpt_oauth",
+      credential_id: "cred-1",
+      is_default: false,
+    };
+  }
+
+  // What the backend's admission check sends once it refuses on our own
+  // daily budget: a 429 whose body is the typed envelope, not a bare string.
+  const ourCap = {
+    detail: {
+      kind: "usage_limit",
+      message: "You've reached your daily usage limit. Resets in 1h 0m.",
+      authProvider: "platform",
+      credentialId: null,
+      resetsAt: null,
+      retryable: false,
+      reconnectFixesIt: false,
+    },
+  };
+
+  it("keeps the plan dialog for our cap and offers the linked subscription beside the upgrade", async () => {
+    let switchedTo: unknown = null;
+    server.use(
+      copilotStreamErrorHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        status: 429,
+        body: ourCap,
+      }),
+      getGetV2ListChatConnectionsMockHandler200({
+        offers: [platformOffer(), chatgptOffer()],
+      }),
+      getPutV2ChangeTheConnectionAnExistingChatRunsOnMockHandler200(
+        async ({ request }) => {
+          switchedTo = await request.json();
+          return {};
+        },
+      ),
+    );
+
+    renderHost();
+    await typeAndSend("over the cap");
+
+    // Our own cap, so our own dialog: the upgrade path survives ...
+    expect(
+      await screen.findByText(/daily usage limit reached/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText(/hit this connection's limit/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+    ).toBeDefined();
+
+    // ... and the linked subscription is offered next to it, because the cap
+    // does not apply to a turn billed to the user's own credential.
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole(
+        "button",
+        { name: /continue on chatgpt/i },
+        { timeout: 5000 },
+      ),
+    );
+
+    await waitFor(() =>
+      expect(switchedTo).toEqual({
+        llm_auth_provider: "codex",
+        llm_credential_id: "cred-1",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/daily usage limit reached/i)).toBeNull(),
+    );
+  });
+
+  it("offers nothing to continue on when the platform is the only connection", async () => {
+    server.use(
+      copilotStreamErrorHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        status: 429,
+        body: ourCap,
+      }),
+      getGetV2ListChatConnectionsMockHandler200({
+        offers: [platformOffer()],
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("over the cap");
+
+    expect(
+      await screen.findByText(/daily usage limit reached/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /upgrade plan|contact us/i }),
+    ).toBeDefined();
+    // The connection that just refused is never offered back. Were it not
+    // excluded, "Continue on AutoGPT Platform" would appear once the offers
+    // load, so give that long enough to have happened.
+    await expect(
+      screen.findByRole("button", { name: /continue on/i }, { timeout: 1500 }),
+    ).rejects.toThrow();
+  });
+
+  it("treats a mid-turn limit on the platform route as the provider's, not ours", async () => {
+    // A self-host runs its own OpenRouter or local gateway on the "platform"
+    // route, so its upstream 429 arrives with the same authProvider as our
+    // cap. It came on the stream, mid-turn, which our cap never does -- and
+    // it must not be answered with "upgrade your plan" for an account we
+    // do not bill.
+    const chunks: UIMessageChunk[] = [
+      { type: "start", messageId: "msg-1" },
+      { type: "start-step" },
+      {
+        type: "data-provider-failure",
+        data: {
+          kind: "usage_limit",
+          message: "OpenRouter rate-limited this deployment.",
+          authProvider: "platform",
+          credentialId: null,
+          resetsAt: null,
+          retryable: false,
+          reconnectFixesIt: false,
+        },
+      },
+      { type: "error", errorText: "OpenRouter rate-limited this deployment." },
+    ];
+    server.use(
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks,
+      }),
+      getGetV2ListChatConnectionsMockHandler200({
+        offers: [platformOffer()],
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("hi");
+
+    expect(
+      await screen.findByText(/hit this connection's limit/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText(/daily usage limit reached/i)).toBeNull();
   });
 });

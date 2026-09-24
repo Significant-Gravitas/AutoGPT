@@ -24,6 +24,7 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 import asyncio
 import logging
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
@@ -33,6 +34,18 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
+
+# Every top-level block this module renders into a prompt. The display strip in
+# ``service.py`` peels these off the front of a stored user message by name, so
+# a new block missing from this tuple renders verbatim as if the user typed it.
+OWNED_BLOCK_TAGS = (
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
+)
 
 
 class ExpertSessionUnavailableError(RuntimeError):
@@ -114,7 +127,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
+        f"<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n"
         f"<standing_work>\n"
         f"Part of your job is the work that repeats. A colleague who only "
         f"ever acts when asked is half a colleague: when you notice something "

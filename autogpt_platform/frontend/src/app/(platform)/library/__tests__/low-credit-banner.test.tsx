@@ -22,7 +22,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
-// `Flag` enum so other flags the page reads (e.g. AGENT_BRIEFING) resolve.
+// `Flag` enum so other flags the page reads resolve.
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<

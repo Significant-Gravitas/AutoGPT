@@ -2,6 +2,16 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 import type { SetDefaultTransportRequest } from "@/app/api/__generated__/models/setDefaultTransportRequest";
 import type { SetDefaultTransportRequestAuthProvider } from "@/app/api/__generated__/models/setDefaultTransportRequestAuthProvider";
 
+export function isProviderLinked(
+  offers: AIConnectionOffer[] | undefined,
+  authProvider: string,
+): boolean {
+  return (offers ?? []).some(
+    (offer) =>
+      offer.auth_provider === authProvider && Boolean(offer.credential_id),
+  );
+}
+
 const MICROSOFT_SCOPE_LABELS: Record<string, string> = {
   "User.Read": "Basic account profile",
   "Sites.Read.All": "SharePoint and OneDrive files",

@@ -523,7 +523,10 @@ model UserWorkspaceFile {
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
 
-  @@unique([workspaceId, path])
+  // Paths are unique among LIVE files, which Prisma cannot express: the rule is
+  // a partial unique index created in migrations
+  // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
+  // the path it was deleted at.
   @@index([workspaceId, isDeleted])
   @@index([folderId])
 }
@@ -541,7 +544,7 @@ model UserWorkspaceFolder {
   name String
   icon String?
 
-  // Forward-compat for nesting; unused by the v1 API (always null).
+  // Null = a folder at the workspace root.
   parentId String?
   Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   Children UserWorkspaceFolder[] @relation("WorkspaceFolderHierarchy")
@@ -550,7 +553,9 @@ model UserWorkspaceFolder {
 
   Files UserWorkspaceFile[]
 
-  @@unique([workspaceId, parentId, name])
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migrations
+  // ("..._workspaceId_parentId_name_live_key" and "..._workspaceId_name_root_key").
   @@index([workspaceId, isDeleted])
 }
 
@@ -2287,6 +2292,12 @@ model SkillListingVersion {
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
+
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
 
   isDeleted   Boolean @default(false)
   isAvailable Boolean @default(true)

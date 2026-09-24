@@ -862,7 +862,7 @@ class TestSkillsRegistryACL:
     """Writes and deletes targeting either skills folder — Otto's
     ``/skills/`` or an expert's ``/experts/<id>/skills/`` — must go through
     the skills registry (``store_skill`` / ``delete_skill``) which enforces
-    frontmatter validation, the per-user cap, and content sanitisation.
+    frontmatter validation, the per-expert cap, and content sanitisation.
     A direct workspace write would bypass all of that."""
 
     @pytest.mark.asyncio

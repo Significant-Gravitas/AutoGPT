@@ -1710,6 +1710,7 @@ async def stream_chat_completion_baseline(
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -1758,7 +1759,7 @@ async def stream_chat_completion_baseline(
     if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
-    if maybe_append_user_message(session, message, is_user_message):
+    if maybe_append_user_message(session, message, is_user_message, message_metadata):
         if is_user_message:
             track_user_message(
                 user_id=user_id,
