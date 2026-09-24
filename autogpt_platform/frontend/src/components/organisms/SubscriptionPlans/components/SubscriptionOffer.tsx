@@ -3,9 +3,13 @@ import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOff
 import { Card } from "@/components/atoms/Card/Card";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { PLAN_KEYS, type PlanDef } from "@/components/molecules/PlanCard/plans";
+import type { PlanDef } from "@/components/molecules/PlanCard/plans";
 import { cn } from "@/lib/utils";
-import { getPlanPresentation, type SubscriptionPlansProps } from "../helpers";
+import {
+  getPlanPresentation,
+  isTeamPlan,
+  type SubscriptionPlansProps,
+} from "../helpers";
 import { OfferActions } from "./OfferActions";
 
 interface Props extends SubscriptionPlansProps {
@@ -28,10 +32,7 @@ export function SubscriptionOffer({ plan, onTrialDetails, ...props }: Props) {
         <Text variant="body" tone="primary" className="min-h-11">
           {plan.description}
         </Text>
-        <OfferFeatures
-          features={plan.features}
-          isTeam={plan.key === PLAN_KEYS.TEAM}
-        />
+        <OfferFeatures features={plan.features} isTeam={isTeamPlan(plan.key)} />
         <OfferActions {...props} plan={plan} onTrialDetails={onTrialDetails} />
       </Card>
     </section>

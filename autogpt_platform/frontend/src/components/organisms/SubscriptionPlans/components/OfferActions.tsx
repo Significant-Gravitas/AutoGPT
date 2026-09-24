@@ -1,8 +1,12 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PLAN_KEYS, type PlanDef } from "@/components/molecules/PlanCard/plans";
+import type { PlanDef } from "@/components/molecules/PlanCard/plans";
 import { formatTrialPrice } from "@/components/organisms/TrialCard/helpers";
-import { getPlanPresentation, type SubscriptionPlansProps } from "../helpers";
+import {
+  getPlanPresentation,
+  isTeamPlan,
+  type SubscriptionPlansProps,
+} from "../helpers";
 
 interface Props extends SubscriptionPlansProps {
   plan: PlanDef;
@@ -35,7 +39,7 @@ export function OfferActions(props: Props) {
           <AlternativeTrial {...props} offer={offer} />
         ) : (
           <Text variant="small" tone="muted">
-            {props.plan.key === PLAN_KEYS.TEAM
+            {isTeamPlan(props.plan.key)
               ? "Find the right fit for your team."
               : "Manage your plan and billing anytime."}
           </Text>
@@ -56,6 +60,7 @@ function PaidPlanAction({
   isUpdatingTier,
   selectedPlan,
   onSelectPlan,
+  goalSurface,
   inline = false,
   price,
 }: Props & { inline?: boolean; price?: string | null }) {
@@ -76,7 +81,7 @@ function PaidPlanAction({
       data-fast-goal="plan_cta_click"
       data-fast-goal-plan={plan.key.toLowerCase()}
       data-fast-goal-cycle={billing}
-      data-fast-goal-surface="onboarding_paywall"
+      data-fast-goal-surface={goalSurface}
     >
       {plan.cta}
       {price && ` · ${price}`}
@@ -108,6 +113,7 @@ function AlternativeTrial({
   offer,
   onBillingChange,
   isStartingTrial,
+  goalSurface,
 }: Props & {
   offer: NonNullable<SubscriptionPlansProps["trialOffer"]>;
 }) {
@@ -125,7 +131,7 @@ function AlternativeTrial({
         onClick={handleSwitchCycle}
         data-fast-goal="paywall_billing_toggle"
         data-fast-goal-cycle={offer.billing_cycle}
-        data-fast-goal-surface="onboarding_paywall"
+        data-fast-goal-surface={goalSurface}
       >
         Try {plan.name} for {offer.duration_days} days instead
       </Button>
