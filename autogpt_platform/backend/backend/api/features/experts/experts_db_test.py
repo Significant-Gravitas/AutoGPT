@@ -5270,6 +5270,17 @@ async def test_expert_skill_names_add_and_remove_atomically(
     assert row is not None
     assert "alpha" not in {s.lower() for s in row.skills}
 
+    await experts_db.add_expert_skill_names(
+        test_user.id, expert_id, ["gamma", "Beta", "Gamma", "delta"]
+    )
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert [s for s in row.skills if s.lower() in {"beta", "gamma", "delta"}] == [
+        "beta",
+        "gamma",
+        "delta",
+    ]
+
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("operation", ["add", "remove"])

@@ -230,7 +230,7 @@ async def test_install_writes_into_the_target_owners_folder_and_no_other(
     listing = await _make_listing(f"folder-one-{expert_id or 'library'}")
     workspace = _FakeWorkspaceManager()
     experts = MagicMock()
-    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
     mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
 
     with _patch_skills_path(workspace):
@@ -250,10 +250,10 @@ async def test_install_writes_into_the_target_owners_folder_and_no_other(
     assert refreshed is not None
     assert refreshed.installCount == 1
     if expert_id is None:
-        experts.add_expert_skill_name.assert_not_awaited()
+        experts.add_expert_skill_names.assert_not_awaited()
     else:
-        experts.add_expert_skill_name.assert_awaited_with(
-            "user-1", expert_id, listing.slug
+        experts.add_expert_skill_names.assert_awaited_with(
+            "user-1", expert_id, [listing.slug]
         )
 
 
@@ -261,7 +261,7 @@ async def test_a_batch_install_looks_up_listings_and_the_owners_skills_once(mock
     listings = [await _make_listing(f"batch-one-{i}") for i in range(3)]
     workspace = _FakeWorkspaceManager()
     experts = MagicMock()
-    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
     mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
     listed = mocker.spy(skills_module, "list_user_skills")
     queried = mocker.spy(prisma.actions.SkillListingActions, "find_many")
@@ -279,6 +279,10 @@ async def test_a_batch_install_looks_up_listings_and_the_owners_skills_once(mock
     ]
     # Kills: a batch that stores (lists, locks, looks up) once per skill.
     assert (listed.call_count, locked.call_count, queried.call_count) == (1, 1, 1)
+    # Kills: recording each name on the expert's row in its own write.
+    experts.add_expert_skill_names.assert_awaited_once_with(
+        "user-1", "expert-a", [listing.slug for listing in listings]
+    )
     assert sorted(workspace.files) == sorted(
         f"/experts/expert-a/skills/{listing.slug}/SKILL.md" for listing in listings
     )
