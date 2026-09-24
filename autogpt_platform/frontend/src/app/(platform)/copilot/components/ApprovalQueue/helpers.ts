@@ -1,6 +1,7 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { isShown } from "@/components/organisms/ApprovalFields/helpers";
 import { getAskLabel } from "../ToolChain/toolCatalog.ask";
 
 export type ReasonKind =
@@ -135,8 +136,12 @@ export function modeLine(mode: string | null) {
 }
 
 export function visibleFieldCount(item: ApprovalItem) {
-  return item.fields.filter(
-    (f) => !item.headlineKeys.includes(f.key) && hasValue(item.args[f.key]),
+  const keys = new Set([
+    ...item.fields.map((f) => f.key),
+    ...Object.keys(item.args),
+  ]);
+  return [...keys].filter((key) =>
+    isShown(key, item.args[key], item.headlineKeys),
   ).length;
 }
 
@@ -168,13 +173,6 @@ export function canApproveAll(items: ApprovalItem[], compact: boolean) {
 
 export function approveAllLabel(count: number) {
   return count === 2 ? "Approve both" : `Approve all ${count}`;
-}
-
-export function hasValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object") return Object.keys(value).length > 0;
-  return true;
 }
 
 function serverHeadline(text: string) {
