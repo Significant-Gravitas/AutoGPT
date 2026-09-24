@@ -64,7 +64,7 @@ export function ExpertIdentityDetails({
         {titleOnNameLine ? (
           <Text
             as="span"
-            variant="small"
+            variant="body"
             tone="secondary"
             unmask={false}
             className={cn("min-w-0 truncate", areaClassName)}

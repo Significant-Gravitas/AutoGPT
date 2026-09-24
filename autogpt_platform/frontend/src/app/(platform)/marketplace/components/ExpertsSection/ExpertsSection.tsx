@@ -52,7 +52,7 @@ export function ExpertsSection({ category }: Props) {
   return (
     <section id="experts" className="mb-20 scroll-mt-24">
       <SectionHeader
-        titleIcon={<Icon icon={UserAiIcon} size="2.2rem" aria-hidden />}
+        titleIcon={<Icon icon={UserAiIcon} size="3rem" aria-hidden />}
         title="Meet the AI Experts"
         subtitle="Hire a ready-made specialist — competent on day one, working for you in minutes."
         actions={

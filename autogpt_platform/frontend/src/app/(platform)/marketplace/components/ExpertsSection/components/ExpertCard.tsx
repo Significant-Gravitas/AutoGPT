@@ -14,7 +14,6 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
@@ -47,10 +46,7 @@ export function ExpertCard({ expert, isHired, category }: Props) {
   const restSkills = skills.slice(NAMED_SKILLS);
   // The area an expert works in, in the same chip the filters use — the row
   // above the shelf and the card below it name the same thing.
-  const area =
-    selectedCategory ??
-    expert.categories?.[0] ??
-    (expert.job_title ? undefined : getExpertRoleLabel(expert.role));
+  const area = selectedCategory ?? expert.categories?.[0];
   const areaAccent = getCategoryAccent(area);
 
   return (
@@ -75,14 +71,9 @@ export function ExpertCard({ expert, isHired, category }: Props) {
         <div>
           <ExpertIdentityDetails
             name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
             nameAlign="baseline"
-            nameAccessory={
-              expert.job_title ? (
-                <span className="min-w-0 truncate text-sm text-zinc-500">
-                  {expert.job_title}
-                </span>
-              ) : undefined
-            }
           />
           {area ? <CategoryTag category={area} className="mt-2" /> : null}
           <ExpertTagline tagline={expert.tagline} compact />

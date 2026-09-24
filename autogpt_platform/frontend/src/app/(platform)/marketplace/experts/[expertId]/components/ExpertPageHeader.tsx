@@ -29,16 +29,10 @@ export function ExpertPageHeader({ expert, actions }: Props) {
               the chip below belongs to the area the expert works in. */}
           <ExpertIdentityDetails
             name={expert.name}
-            role={area || expert.job_title ? undefined : expert.role}
+            role={expert.role}
+            jobTitle={expert.job_title}
             size="page"
             nameAlign="baseline"
-            nameAccessory={
-              expert.job_title ? (
-                <span className="min-w-0 truncate text-base text-zinc-500">
-                  {expert.job_title}
-                </span>
-              ) : undefined
-            }
           />
           {area ? (
             <CategoryTag category={area} size="default" className="mt-2" />

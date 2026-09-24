@@ -70,31 +70,24 @@ export function CategoryChip({
       aria-pressed={isSelected}
       onClick={onClick}
       unmask={false}
+      // Selected takes the category's wash; unselected hands the category's
+      // colour to the glyph and the label together, as the cards' tags do.
       style={
-        color && isSelected
-          ? { backgroundColor: expertPastel(color) }
+        color
+          ? isSelected
+            ? { backgroundColor: expertPastel(color) }
+            : { color }
           : undefined
       }
       leftIcon={
-        color || icon ? (
-          <>
-            {color && (
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-full ring-1 ring-black/10"
-                style={{ backgroundColor: color }}
-              />
-            )}
-            {icon && (
-              <Icon
-                icon={icon}
-                size={CHIP_ICON_SIZE[size]}
-                style={color ? { color } : undefined}
-                className={isSelected ? undefined : accent.icon}
-                aria-hidden
-              />
-            )}
-          </>
+        icon ? (
+          <Icon
+            icon={icon}
+            size={CHIP_ICON_SIZE[size]}
+            style={color ? { color } : undefined}
+            className={isSelected ? undefined : accent.icon}
+            aria-hidden
+          />
         ) : undefined
       }
       className={cn(
@@ -103,6 +96,7 @@ export function CategoryChip({
         "min-w-0 hover:border-[#e9e9e9]",
         CHIP_SHAPE,
         CHIP_SIZE[size],
+        !isSelected && icon && accent.icon,
         isSelected &&
           (color
             ? "border-transparent text-zinc-900"
