@@ -1125,6 +1125,9 @@ def _build_catalog() -> CatalogPayload:
                 context_window=500000,
                 max_output_tokens=450000,
                 price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=240.0,
