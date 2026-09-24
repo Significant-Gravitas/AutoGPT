@@ -112,6 +112,7 @@ def result_from_dict(r: dict[str, Any]) -> AnySearchResult:
         content=r.get("content"),
     )
 
+
 def check_vertical_inputs(
     domain: AnySearchDomain | None, sub_domain: str | None
 ) -> None:
@@ -123,6 +124,5 @@ def check_vertical_inputs(
         raise ValueError("sub_domain is required when domain is set")
     if domain and sub_domain and not sub_domain.startswith(f"{domain.value}."):
         raise ValueError(
-            "sub_domain must belong to the selected domain "
-            f"({domain.value}.*)"
+            "sub_domain must belong to the selected domain " f"({domain.value}.*)"
         )
