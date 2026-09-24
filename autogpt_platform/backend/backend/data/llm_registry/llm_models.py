@@ -143,6 +143,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O1_MINI = "o1-mini"
     # GPT-6 models (September 2026)
     GPT6_ASTRA = "gpt-6-astra"
+    GPT6_SOL = "gpt-6-sol"
+    GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
@@ -176,6 +178,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_5_OPUS = "claude-opus-5"
+    CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
@@ -202,6 +205,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"

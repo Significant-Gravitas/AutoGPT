@@ -1,57 +1,28 @@
 "use client";
 
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
-import { environment } from "../environment";
-import { Flag, useGetFlag } from "./use-get-flag";
+import { ReactNode, useEffect } from "react";
+import { Flag, useFlagStatus } from "./use-get-flag";
 
-interface FeatureFlagRedirectProps {
+interface Props {
   flag: Flag;
   whenDisabled: string;
   children: ReactNode;
 }
 
-export function FeatureFlagPage({
-  flag,
-  whenDisabled,
-  children,
-}: FeatureFlagRedirectProps) {
-  const [isLoading, setIsLoading] = useState(true);
+export function FeatureFlagPage({ flag, whenDisabled, children }: Props) {
   const router = useRouter();
-  const flagValue = useGetFlag(flag);
-  const ldClient = useLDClient();
-  const ldEnabled = environment.areFeatureFlagsEnabled();
-  const ldReady = Boolean(ldClient);
-  const flagEnabled = Boolean(flagValue);
+  const { enabled, ready } = useFlagStatus(flag);
+  const flagEnabled = Boolean(enabled);
 
   useEffect(() => {
-    const initialize = async () => {
-      if (!ldEnabled) {
-        router.replace(whenDisabled);
-        setIsLoading(false);
-        return;
-      }
+    if (ready && !flagEnabled) {
+      router.replace(whenDisabled);
+    }
+  }, [ready, flagEnabled, router, whenDisabled]);
 
-      // Wait for LaunchDarkly to initialize when enabled to prevent race conditions
-      if (ldEnabled && !ldReady) return;
-
-      try {
-        await ldClient?.waitForInitialization();
-        if (!flagEnabled) router.replace(whenDisabled);
-      } catch (error) {
-        console.error(error);
-        router.replace(whenDisabled);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initialize();
-  }, [ldReady, flagEnabled]);
-
-  return isLoading || !flagEnabled ? (
+  return !ready || !flagEnabled ? (
     <LoadingSpinner size="large" cover />
   ) : (
     <>{children}</>

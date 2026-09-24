@@ -21,7 +21,7 @@ export function ExpertAbout({ text }: Props) {
     <ExpertSection title="About">
       <p
         className={cn(
-          "whitespace-pre-line text-[15px] leading-6 text-zinc-600",
+          "whitespace-pre-line text-base leading-7 text-zinc-600",
           isClampable && !isExpanded && "line-clamp-6",
         )}
       >
@@ -31,7 +31,7 @@ export function ExpertAbout({ text }: Props) {
         <button
           type="button"
           onClick={() => setIsExpanded((value) => !value)}
-          className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+          className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}
           <Icon

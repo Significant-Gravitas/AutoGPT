@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import re
 import shutil
@@ -1818,13 +1819,19 @@ class OrchestratorBlock(Block):
             # Run SDK client with heartbeat-safe message iteration.
             # We must NOT cancel __anext__() mid-flight — doing so corrupts
             # the SDK's internal anyio memory stream (same pattern as
-            # copilot/sdk/service.py:_iter_sdk_messages).
+            # copilot/sdk/service.py:_iter_sdk_messages).  Every fetch task
+            # runs in one shared context: once configure_claude_agent_sdk()
+            # has wrapped the client, langsmith's tracing wrapper keeps the
+            # conversation run in a ContextVar set during the first fetch,
+            # and a fresh context per task would drop every later reply's
+            # span from the trace.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()
+                fetch_context = contextvars.copy_context()
                 pending_task: asyncio.Task[Any] | None = None
 
                 async def _next_msg() -> Any:
@@ -1833,7 +1840,9 @@ class OrchestratorBlock(Block):
                 try:
                     while True:
                         if pending_task is None:
-                            pending_task = asyncio.create_task(_next_msg())
+                            pending_task = asyncio.create_task(
+                                _next_msg(), context=fetch_context
+                            )
 
                         done, _ = await asyncio.wait(
                             {pending_task}, timeout=_HEARTBEAT_INTERVAL
