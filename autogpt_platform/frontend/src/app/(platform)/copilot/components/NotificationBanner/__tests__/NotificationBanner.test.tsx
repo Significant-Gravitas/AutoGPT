@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -141,5 +142,18 @@ describe("NotificationBanner", () => {
       window.localStorage.getItem("copilot-notification-banner-dismissed"),
     ).toBeNull();
     expect(screen.getByText(/notifications are off/i)).toBeDefined();
+  });
+
+  it("hides once permission is granted from another tab", () => {
+    stubNotification("default");
+    render(<NotificationBanner />);
+    expect(screen.getByText(/notifications are off/i)).toBeDefined();
+
+    stubNotification("granted");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(screen.queryByText(/notifications are off/i)).toBeNull();
   });
 });

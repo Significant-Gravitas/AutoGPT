@@ -3,14 +3,27 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Key, storage } from "@/services/storage/local-storage";
-import { type MouseEvent, useEffect, useState } from "react";
+import {
+  type MouseEvent,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useCopilotUIStore } from "../../store";
+import {
+  readPermission,
+  subscribeToPermission,
+} from "@/components/layout/NotificationSettings/helpers";
 import { isPlainLeftClick } from "./helpers";
 import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
 
 // Alert's `icon` prop takes a component (its defaults come from lucide).
 const BellRing = createIconComponent(BellRingIcon);
+
+function hiddenOnServer() {
+  return "unsupported" as const;
+}
 
 export function NotificationBanner() {
   const isNotificationsEnabled = useCopilotUIStore(
@@ -20,8 +33,12 @@ export function NotificationBanner() {
   const [dismissed, setDismissed] = useState(
     () => storage.get(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED) === "true",
   );
-  const [permission] = useState(() =>
-    typeof Notification !== "undefined" ? Notification.permission : "denied",
+  // Live, so granting permission from settings in another tab hides this one
+  // when the user comes back. Hidden on the server and while hydrating.
+  const permission = useSyncExternalStore(
+    subscribeToPermission,
+    readPermission,
+    hiddenOnServer,
   );
 
   // Re-read dismissed flag when notifications are toggled off (e.g. clearCopilotLocalData)
