@@ -13,6 +13,7 @@ import { toApprovalItem } from "./helpers";
 import {
   deleteFolder,
   folder,
+  heldRead,
   heldReview,
   mail,
   shell,
@@ -192,6 +193,58 @@ export const ChainRows: StoryObj = {
     const rows = parts.map((part, i) =>
       applyHeldOutcome(toChainRow(part, i)!, OUTCOMES),
     );
+    return (
+      <div className="flex flex-col">
+        {rows.map((row, i) => (
+          <ChainRowView
+            key={row.key}
+            row={row}
+            isLast={i === rows.length - 1}
+          />
+        ))}
+      </div>
+    );
+  },
+};
+
+export const HeldRead: Story = {
+  args: queueOf([heldRead("r", "docs.northwind.io/billing")]),
+};
+
+export const HeldReadBesideAnAction: Story = {
+  args: queueOf([
+    folder("a", "Q3 reports", 6),
+    heldRead("r", "docs.northwind.io/billing"),
+  ]),
+};
+
+const READ_PART = (id: string, url: string) =>
+  ({
+    type: "tool-web_fetch",
+    state: "output-available",
+    toolCallId: `read-${id}`,
+    input: { url },
+    output: {
+      type: "approval_required",
+      tool_name: "web_fetch",
+      review_id: `copilot-node-gate-read-web_fetch:${id}`,
+      ask: "Read",
+      object: url,
+    },
+  }) as MessagePart;
+
+const READ_OUTCOMES = new Map<string, HeldOutcome>([
+  ["read-b", { outcome: "approved", output: { message: "fetched" } }],
+  ["read-c", { outcome: "rejected", output: "" }],
+]);
+
+export const HeldReadChainRows: StoryObj = {
+  render: () => {
+    const rows = [
+      READ_PART("a", "docs.northwind.io/billing"),
+      READ_PART("b", "status.acme.dev"),
+      READ_PART("c", "pastebin.example/raw/x1"),
+    ].map((part, i) => applyHeldOutcome(toChainRow(part, i)!, READ_OUTCOMES));
     return (
       <div className="flex flex-col">
         {rows.map((row, i) => (
