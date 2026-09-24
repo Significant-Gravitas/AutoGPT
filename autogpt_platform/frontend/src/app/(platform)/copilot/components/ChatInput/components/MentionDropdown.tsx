@@ -94,7 +94,7 @@ export function MentionDropdown({
       // non-interactive areas (padding, empty/loading/error states) so the
       // textarea's onBlur doesn't close the dropdown before a selection.
       onMouseDown={(e) => e.preventDefault()}
-      className="absolute bottom-full left-0 z-50 mb-2 max-h-60 w-72 overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
+      className="absolute bottom-full left-0 z-50 mb-2 max-h-80 w-80 max-w-full overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
     >
       {showHeadings && <SectionHeading label="Integrations" />}
       {options.map((option, index) =>
@@ -156,14 +156,21 @@ function IntegrationOption({
   return (
     <>
       <IntegrationLogo
-        provider={integration.provider}
+        provider={
+          integration.provider === "codex" ? "openai" : integration.provider
+        }
         alt=""
         size={16}
         className="shrink-0"
       />
-      <span className="min-w-0 flex-1 truncate">{integration.name}</span>
-      <span className="shrink-0 font-mono text-xs text-zinc-400">
-        {integration.token}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium" title={integration.name}>
+          {integration.name}
+        </span>
+        <span className="block truncate text-xs text-zinc-500">
+          {integration.providerName}
+          {integration.username ? ` · ${integration.username}` : ""}
+        </span>
       </span>
     </>
   );
@@ -211,7 +218,7 @@ function SectionHeading({ label }: { label: string }) {
 function mentionOptionKey(option: MentionOption): string {
   if (option.kind === "file") return `file:${option.file.id}`;
   if (option.kind === "folder") return `folder:${option.folder.id}`;
-  return `integration:${option.integration.provider}`;
+  return `integration:${option.integration.credentialId}`;
 }
 
 function emptyMessage(showFiles: boolean, hasIntegrations: boolean): string {

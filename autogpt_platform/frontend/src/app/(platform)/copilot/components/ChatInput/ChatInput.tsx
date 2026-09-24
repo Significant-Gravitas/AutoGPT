@@ -1,7 +1,8 @@
+import { CredentialMentionEditor } from "../CredentialMention/CredentialMentionEditor";
+import type { MentionInput } from "./useChatMentions";
 import {
   PromptInputButton,
   PromptInputSubmit,
-  PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -14,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
   ReactNode,
@@ -140,7 +140,6 @@ export function ChatInput({
   // hide both survivors until someone created them.
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
-  const showIntegrationMentions = useGetFlag(Flag.CHAT_INTEGRATION_MENTIONS);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // How many files the cap turned away on the last attach; 0 hides the notice.
   const [refusedCount, setRefusedCount] = useState(0);
@@ -175,12 +174,7 @@ export function ChatInput({
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
-  const {
-    value,
-    setValue,
-    handleSubmit,
-    handleChange: baseHandleChange,
-  } = useChatInput({
+  const { value, setValue, handleSubmit } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceAttachments } =
         partitionAttachments(attachments);
@@ -206,13 +200,10 @@ export function ChatInput({
     inputId,
   });
 
-  const integrations = useConnectedIntegrations(
-    Boolean(showIntegrationMentions),
-  );
+  const integrations = useConnectedIntegrations(expertId);
 
   const mentions = useChatMentions({
-    enabled:
-      ((showWorkspaceFiles && !isAtCap) || showIntegrationMentions) && !isBusy,
+    enabled: !isBusy,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
@@ -253,18 +244,18 @@ export function ChatInput({
     isTranscribing,
   });
 
-  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
+  function handleChange(nextValue: string, input: MentionInput) {
     if (isRecording) return;
-    baseHandleChange(e);
-    mentions.detect(e.currentTarget);
+    setValue(nextValue);
+    mentions.detect(input);
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (mentions.onKeyDown(e)) return;
     voiceHandleKeyDown(e);
   }
 
-  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+  function handlePaste(e: ClipboardEvent<HTMLElement>) {
     if (isBusy) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
@@ -442,10 +433,10 @@ export function ChatInput({
               stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
-            <PromptInputTextarea
+            <CredentialMentionEditor
               id={inputId}
-              aria-label="Chat message input"
               value={value}
+              onInputReady={mentions.bindInput}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}

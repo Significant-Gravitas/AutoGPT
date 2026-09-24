@@ -24,6 +24,12 @@ const MENTION_RESULT_LIMIT = 8;
 const MENTION_FOLDER_LIMIT = 3;
 const INTEGRATION_RESULT_LIMIT = 6;
 
+export interface MentionInput {
+  value: string;
+  selectionStart: number | null;
+  setSelectionRange: (start: number, end: number) => void;
+}
+
 interface ActiveMention {
   query: string;
   start: number;
@@ -55,8 +61,7 @@ interface Args {
  * autocomplete over connected integrations, workspace folders and workspace
  * files. Selecting a file or folder strips the `@query` from the message and
  * adds it as an attachment chip; selecting an integration replaces the
- * `@query` with the integration's `@Token` so the reference stays in the
- * prompt text. Keyboard nav stays in the textarea (focus never leaves), so
+ * `@query` with a credential reference rendered as an inline badge. Keyboard nav stays in the textarea (focus never leaves), so
  * this owns the highlight cursor and the key handler.
  */
 export function useChatMentions({
@@ -71,7 +76,7 @@ export function useChatMentions({
 }: Args) {
   const [active, setActive] = useState<ActiveMention | null>(null);
   const isOpen = enabled && active !== null;
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = useRef<MentionInput | null>(null);
   const [pendingCaret, setPendingCaret] = useState<number | null>(null);
 
   const query = active?.query ?? "";
@@ -155,11 +160,18 @@ export function useChatMentions({
     setPendingCaret(null);
   }, [pendingCaret, value]);
 
-  function detect(textarea: HTMLTextAreaElement) {
+  function detect(textarea: MentionInput) {
     if (!enabled) return;
     textareaRef.current = textarea;
     const caret = textarea.selectionStart ?? textarea.value.length;
-    const match = textarea.value.slice(0, caret).match(MENTION_RE);
+    const beforeCaret = textarea.value.slice(0, caret);
+    const accountMatch = beforeCaret.match(/(?:^|\s)@([^@\n]*)$/);
+    const match =
+      beforeCaret.match(MENTION_RE) ??
+      (accountMatch &&
+      filterIntegrationMentions(integrations, accountMatch[1]).length > 0
+        ? accountMatch
+        : null);
     if (!match) {
       setActive(null);
       return;
@@ -190,7 +202,7 @@ export function useChatMentions({
     setActive(null);
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): boolean {
+  function onKeyDown(e: KeyboardEvent<HTMLElement>): boolean {
     if (!isOpen) return false;
     if (isKey(e, "Escape")) {
       e.preventDefault();
@@ -226,6 +238,9 @@ export function useChatMentions({
     highlightedIndex,
     highlightedRef,
     setHighlightedIndex,
+    bindInput: (input: MentionInput) => {
+      textareaRef.current = input;
+    },
     detect,
     close,
     accept,

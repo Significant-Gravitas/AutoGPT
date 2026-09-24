@@ -17,7 +17,6 @@ export enum Flag {
   CHAT_SEARCH = "chat-search",
   AUTOGPT_NEW_LAYOUT = "autogpt-new-layout",
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
-  CHAT_INTEGRATION_MENTIONS = "chat-integration-mentions",
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
@@ -71,7 +70,6 @@ const defaultFlags = {
   [Flag.CHAT_SEARCH]: false,
   [Flag.AUTOGPT_NEW_LAYOUT]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
-  [Flag.CHAT_INTEGRATION_MENTIONS]: false,
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
@@ -133,8 +131,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_AUTOGPT_NEW_LAYOUT;
     case Flag.CHAT_WORKSPACE_FILES:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_WORKSPACE_FILES;
-    case Flag.CHAT_INTEGRATION_MENTIONS:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_INTEGRATION_MENTIONS;
     case Flag.CHAT_PINNING:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_PINNING;
     case Flag.TASK_PROGRESS_BAR:

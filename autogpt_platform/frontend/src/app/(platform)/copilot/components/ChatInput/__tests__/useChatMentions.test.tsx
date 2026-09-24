@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import React, { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { connectedIntegrationsFromCredentials } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 
 const mockListWorkspaceFiles = vi.fn();
@@ -54,11 +55,17 @@ function keyEvent(key: string, composing: boolean | "keyCode229" = false) {
 }
 
 const GOOGLE = {
+  credentialId: "google-1",
+  providerName: "Google",
+  username: null,
   provider: "google",
   name: "Google",
   token: "@Google",
 };
 const GITHUB = {
+  credentialId: "github-1",
+  providerName: "GitHub",
+  username: null,
   provider: "github",
   name: "GitHub",
   token: "@GitHub",
@@ -412,6 +419,64 @@ describe("useChatMentions", () => {
     // hook parks it right after the inserted mention instead.
     await waitFor(() =>
       expect(textarea.selectionStart).toBe("check @Google ".length),
+    );
+  });
+
+  it("accepts two named accounts from one provider, including a query with spaces", () => {
+    const integrations = connectedIntegrationsFromCredentials([
+      {
+        id: "work",
+        provider: "google",
+        type: "oauth2",
+        title: "Work Gmail",
+        username: "work@example.com",
+        scopes: null,
+      },
+      {
+        id: "personal",
+        provider: "google",
+        type: "oauth2",
+        title: "Personal Gmail",
+        username: "me@example.com",
+        scopes: null,
+      },
+    ]);
+    function Harness() {
+      const [value, setValue] = useState("");
+      const mentions = useChatMentions({
+        enabled: true,
+        value,
+        setValue,
+        integrations,
+        includeWorkspaceFiles: false,
+        addWorkspaceFile: vi.fn(),
+        addWorkspaceFolder: vi.fn(),
+      });
+      return (
+        <textarea
+          aria-label="accounts"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            mentions.detect(e.currentTarget);
+          }}
+          onKeyDown={(e) => mentions.onKeyDown(e)}
+        />
+      );
+    }
+    render(<Harness />, { wrapper: Wrapper });
+    const input = screen.getByLabelText<HTMLTextAreaElement>("accounts");
+    fireEvent.change(input, { target: { value: "Check my @Work G" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe(
+      "Check my [Work Gmail](credential://google/work) ",
+    );
+    fireEvent.change(input, {
+      target: { value: `${input.value}for new TODOs, and @Personal` },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe(
+      "Check my [Work Gmail](credential://google/work) for new TODOs, and [Personal Gmail](credential://google/personal) ",
     );
   });
 

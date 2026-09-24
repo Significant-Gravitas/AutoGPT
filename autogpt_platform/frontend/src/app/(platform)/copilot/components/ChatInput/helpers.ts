@@ -1,3 +1,4 @@
+import { serializeCredentialMention } from "../CredentialMention/helpers";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
@@ -58,11 +59,12 @@ export function describeSendFailure(error: unknown, recovery: string) {
     : `${recovery.charAt(0).toUpperCase()}${recovery.slice(1)}. Try again.`;
 }
 
-/** A connected integration the composer can @-mention. `token` is the exact
- *  text inserted into the prompt, e.g. `@GoogleMaps` for Google Maps. */
 export interface IntegrationMention {
+  credentialId: string;
   provider: string;
+  providerName: string;
   name: string;
+  username: string | null;
   token: string;
 }
 
@@ -71,30 +73,32 @@ export interface MentionRange {
   end: number;
 }
 
-export function integrationMentionToken(name: string): string {
-  return `@${name.replace(/\s+/g, "")}`;
-}
-
-/** One mention per provider the user has actually connected: platform
- *  "use credits" credentials are not something a prompt can address, and
- *  the codex login is the OpenAI integration under a different slug. */
-export function connectedIntegrationsFromCredentials(
-  credentials: CredentialsMetaResponse[],
-): IntegrationMention[] {
-  const byProvider = new Map<string, IntegrationMention>();
-  for (const credential of filterSystemCredentials(credentials)) {
-    const provider =
-      credential.provider === "codex" ? "openai" : credential.provider;
-    if (!provider || byProvider.has(provider)) continue;
-    const name = formatProviderName(provider);
-    byProvider.set(provider, {
-      provider,
-      name,
-      token: integrationMentionToken(name),
+export function connectedIntegrationsFromCredentials<
+  T extends Pick<
+    CredentialsMetaResponse,
+    "id" | "provider" | "title" | "username"
+  >,
+>(credentials: T[]): IntegrationMention[] {
+  const accounts = filterSystemCredentials(credentials)
+    .filter((credential) => credential.provider)
+    .map((credential) => {
+      const provider = credential.provider;
+      const providerName = formatProviderName(provider);
+      const name =
+        credential.title?.trim() || credential.username?.trim() || providerName;
+      const account = {
+        credentialId: credential.id,
+        provider,
+        providerName,
+        name,
+        username: credential.username,
+      };
+      return { ...account, token: serializeCredentialMention(account) };
     });
-  }
-  return Array.from(byProvider.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
+  return accounts.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) ||
+      a.credentialId.localeCompare(b.credentialId),
   );
 }
 
@@ -111,7 +115,9 @@ export function filterIntegrationMentions(
   return integrations.filter(
     (integration) =>
       normalizeMentionText(integration.name).includes(q) ||
-      normalizeMentionText(integration.provider).includes(q),
+      normalizeMentionText(integration.provider).includes(q) ||
+      normalizeMentionText(integration.providerName).includes(q) ||
+      normalizeMentionText(integration.username ?? "").includes(q),
   );
 }
 

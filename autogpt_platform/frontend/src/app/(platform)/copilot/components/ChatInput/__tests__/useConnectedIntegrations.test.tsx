@@ -17,12 +17,6 @@ const GOOGLE_CREDENTIAL: CredentialsMetaResponse = {
   username: null,
 };
 
-const GOOGLE_MENTION = {
-  provider: "google",
-  name: "Google",
-  token: "@Google",
-};
-
 const listCredentials = vi.fn();
 
 function credentialsHandler() {
@@ -60,36 +54,66 @@ afterEach(() => {
 });
 
 describe("useConnectedIntegrations", () => {
-  it("offers no integrations while disabled even when the credentials query is already cached", () => {
+  it("offers the owner's accounts in Otto", async () => {
     server.use(credentialsHandler());
-    const client = createClient();
-    seedCredentials(client);
-
-    const { result } = renderHook(() => useConnectedIntegrations(false), {
-      wrapper: wrapperFor(client),
+    const { result } = renderHook(() => useConnectedIntegrations(), {
+      wrapper: wrapperFor(createClient()),
     });
-
-    expect(result.current).toEqual([]);
-    expect(listCredentials).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.map((account) => account.credentialId)).toEqual([
+        "google-cred",
+      ]),
+    );
   });
 
-  it("lists connected providers once enabled and drops them again when disabled", async () => {
-    server.use(credentialsHandler());
-    const client = createClient();
-
-    const { result, rerender } = renderHook(
-      ({ enabled }: { enabled: boolean }) => useConnectedIntegrations(enabled),
-      { wrapper: wrapperFor(client), initialProps: { enabled: true } },
+  it("only offers granted credentials for an expert even with owner credentials cached", async () => {
+    server.use(
+      credentialsHandler(),
+      http.get("*/api/experts/:expertId/credentials", ({ params }) =>
+        HttpResponse.json(
+          params.expertId === "expert-a"
+            ? [
+                {
+                  credential_id: "work",
+                  provider: "google",
+                  title: "Work Gmail",
+                  type: "oauth2",
+                },
+              ]
+            : [],
+        ),
+      ),
     );
-
-    await waitFor(() => expect(result.current).toEqual([GOOGLE_MENTION]));
-    expect(listCredentials).toHaveBeenCalledTimes(1);
-
-    rerender({ enabled: false });
-
+    const client = createClient();
+    seedCredentials(client);
+    const { result, rerender } = renderHook(
+      ({ expertId }) => useConnectedIntegrations(expertId),
+      { wrapper: wrapperFor(client), initialProps: { expertId: "expert-a" } },
+    );
+    await waitFor(() =>
+      expect(result.current.map((account) => account.credentialId)).toEqual([
+        "work",
+      ]),
+    );
+    expect(listCredentials).not.toHaveBeenCalled();
+    rerender({ expertId: "expert-b" });
     expect(result.current).toEqual([]);
-    expect(
-      client.getQueryData(getGetV1ListCredentialsQueryKey()),
-    ).toBeDefined();
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(result.current).toEqual([]);
+  });
+
+  it("does not fall back to owner accounts when expert grants fail", async () => {
+    server.use(
+      http.get("*/api/experts/:expertId/credentials", () =>
+        HttpResponse.json({ detail: "unavailable" }, { status: 500 }),
+      ),
+    );
+    const client = createClient();
+    seedCredentials(client);
+    const { result } = renderHook(() => useConnectedIntegrations("expert-a"), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(result.current).toEqual([]);
   });
 });

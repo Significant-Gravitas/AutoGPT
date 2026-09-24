@@ -1,17 +1,32 @@
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { useListExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { connectedIntegrationsFromCredentials } from "./helpers";
 
-/** The integrations a prompt can @-mention: one entry per provider the user
- *  has connected. Empty while disabled, loading, or when nothing is connected.
- *  Disabling only pauses fetching, so the shared credentials cache (filled by
- *  e.g. the Connections page) is ignored explicitly while disabled. */
-export function useConnectedIntegrations(enabled: boolean) {
+export function useConnectedIntegrations(expertId?: string | null) {
   const credentials = useGetV1ListCredentials({
     query: {
-      enabled,
+      enabled: !expertId,
       select: (response) => (response.status === 200 ? response.data : []),
     },
   });
-  if (!enabled) return [];
-  return connectedIntegrationsFromCredentials(credentials.data ?? []);
+  const grants = useListExpertCredentials(expertId ?? "", {
+    query: {
+      enabled: Boolean(expertId),
+      select: (response) => (response.status === 200 ? response.data : []),
+    },
+  });
+  if (expertId) {
+    if (grants.isError) return [];
+    return connectedIntegrationsFromCredentials(
+      (grants.data ?? []).map((credential) => ({
+        id: credential.credential_id,
+        provider: credential.provider,
+        title: credential.title,
+        username: null,
+      })),
+    );
+  }
+  return connectedIntegrationsFromCredentials(
+    credentials.isError ? [] : (credentials.data ?? []),
+  );
 }

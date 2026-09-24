@@ -3,6 +3,7 @@ import type { MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
+import { connectedIntegrationsFromCredentials } from "../../helpers";
 import { MentionDropdown } from "../MentionDropdown";
 import type { MentionOption } from "../../useChatMentions";
 
@@ -18,7 +19,14 @@ const FILE: WorkspaceFileItem = {
 const FILE_ITEM: MentionOption = { kind: "file", file: FILE };
 const GOOGLE_ITEM: MentionOption = {
   kind: "integration",
-  integration: { provider: "google", name: "Google", token: "@Google" },
+  integration: {
+    credentialId: "google-1",
+    providerName: "Google",
+    username: null,
+    provider: "google",
+    name: "Google",
+    token: "@Google",
+  },
 };
 
 function renderDropdown(
@@ -89,7 +97,7 @@ describe("MentionDropdown", () => {
     });
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      "Google@Google",
+      "GoogleGoogle",
       "alpha.txt",
     ]);
     expect(screen.getByText("Integrations")).toBeTruthy();
@@ -97,6 +105,41 @@ describe("MentionDropdown", () => {
 
     fireEvent.mouseDown(options[0]);
     expect(onSelect).toHaveBeenCalledWith(GOOGLE_ITEM);
+  });
+
+  it("shows separate accounts with their names and usernames and selects the chosen credential", () => {
+    const accounts = connectedIntegrationsFromCredentials([
+      {
+        id: "work",
+        provider: "google",
+        type: "oauth2",
+        title: "Work Gmail",
+        username: "work@example.com",
+        scopes: null,
+      },
+      {
+        id: "personal",
+        provider: "google",
+        type: "oauth2",
+        title: "Personal Gmail",
+        username: "me@example.com",
+        scopes: null,
+      },
+    ]);
+    const options: MentionOption[] = accounts.map((integration) => ({
+      kind: "integration",
+      integration,
+    }));
+    const { onSelect } = renderDropdown({ options, hasIntegrations: true });
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    const work = screen.getByRole("option", {
+      name: /Work Gmail.*work@example.com/,
+    });
+    fireEvent.mouseDown(work);
+    expect(onSelect).toHaveBeenCalledWith(options[1]);
+    expect(
+      screen.getByRole("option", { name: /Personal Gmail.*me@example.com/ }),
+    ).toBeTruthy();
   });
 
   it("drops the headings when files are not part of the picker", () => {
@@ -137,7 +180,7 @@ describe("MentionDropdown", () => {
     });
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      "Google@Google",
+      "GoogleGoogle",
       "Reports2 files",
       "alpha.txt",
     ]);

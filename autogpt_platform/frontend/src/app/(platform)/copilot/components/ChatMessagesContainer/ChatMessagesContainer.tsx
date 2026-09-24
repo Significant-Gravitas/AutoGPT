@@ -1,3 +1,4 @@
+import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
@@ -877,7 +878,9 @@ export function ChatMessagesContainer({
                       : "rounded-3xl text-[1rem] leading-relaxed",
                   )}
                 >
-                  <span>{msg}</span>
+                  <span>
+                    <CredentialMentionText text={msg} />
+                  </span>
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued
