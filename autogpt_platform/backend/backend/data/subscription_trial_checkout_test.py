@@ -221,3 +221,115 @@ def test_paid_conversion_requires_paid_post_trial_invoice(
         }
     )
     assert trial_subscription_tier(trial, subscription, now) == expected
+
+
+@pytest.mark.asyncio
+async def test_full_trial_surfaces_as_a_retryable_checkout_failure(
+    trial, checkout_guard
+):
+    """A full trial must reach the client as the 409 the route maps, not a 500."""
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=trial.offer)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=None)),
+        patch.object(
+            checkout, "get_stripe_customer_id", AsyncMock(return_value="cus_1")
+        ),
+        patch.object(checkout, "_verify_eligibility", AsyncMock()),
+        patch.object(
+            checkout, "resolve_trial_price", AsyncMock(return_value=trial.offer)
+        ),
+        patch.object(
+            checkout,
+            "reserve_subscription_trial",
+            AsyncMock(side_effect=checkout.TrialCapacityReached("The trial is full")),
+        ),
+        patch.object(checkout, "_resume_checkout", AsyncMock()) as resume,
+    ):
+        with pytest.raises(checkout.TrialUnavailable, match="full"):
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+            )
+    resume.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_checkout_asks_the_flag_with_the_visitors_country(trial, checkout_guard):
+    with (
+        patch.object(
+            checkout, "get_trial_offer", AsyncMock(return_value=None)
+        ) as offer,
+        patch.object(checkout, "get_stripe_customer_id", AsyncMock()) as customer,
+    ):
+        with pytest.raises(checkout.TrialUnavailable, match="not available"):
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+                country="IN",
+            )
+    assert offer.await_args.kwargs["country"] == "IN"
+    customer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_excluded_visitor_cannot_resume_a_pending_checkout(trial, checkout_guard):
+    """The current flag decides, even for someone who reserved while eligible."""
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=None)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(checkout, "_resume_checkout", AsyncMock()) as resume,
+    ):
+        with pytest.raises(checkout.TrialUnavailable, match="not available"):
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+                country="IN",
+            )
+    resume.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seat,resumed", [(True, True), (False, False)])
+async def test_resume_is_checked_against_the_current_cap(
+    trial, checkout_guard, seat, resumed
+):
+    """The live cap applies, not the one pinned on the enrolment."""
+    capped = trial.offer.model_copy(update={"max_active_trials": 10})
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock(return_value=capped)),
+        patch.object(checkout, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            checkout, "renew_trial_seat", AsyncMock(return_value=seat)
+        ) as check,
+        patch.object(
+            checkout, "_resume_checkout", AsyncMock(return_value="https://x")
+        ) as resume,
+    ):
+        if resumed:
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+            )
+        else:
+            with pytest.raises(checkout.TrialUnavailable, match="full"):
+                await checkout.create_trial_checkout(
+                    trial.user_id,
+                    trial.offer.token,
+                    trial.success_url,
+                    trial.cancel_url,
+                    {},
+                )
+    assert check.await_args.args == (capped, trial.id)
+    assert resume.await_count == int(resumed)

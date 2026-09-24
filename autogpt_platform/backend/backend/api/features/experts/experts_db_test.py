@@ -834,7 +834,7 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
 ):
     install = AsyncMock(side_effect=RuntimeError("storage down"))
-    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    _patch_install(monkeypatch, install)
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
@@ -853,7 +853,7 @@ async def test_hire_installs_nothing_while_the_hub_is_off(
 ):
     monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
     install = AsyncMock()
-    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    _patch_install(monkeypatch, install)
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
@@ -861,6 +861,21 @@ async def test_hire_installs_nothing_while_the_hub_is_off(
     await experts_db.hire_expert(test_user.id, template.id, None)
 
     install.assert_not_awaited()
+
+
+def _patch_install(monkeypatch, install: AsyncMock) -> None:
+    """Serve the hire's batch install from a per-slug *install* double."""
+
+    async def batch(user_id, slugs, *, expert_id):
+        outcomes = []
+        for slug in slugs:
+            try:
+                outcomes.append(await install(user_id, slug, expert_id=expert_id))
+            except Exception as e:
+                outcomes.append(e)
+        return outcomes
+
+    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skills", batch)
 
 
 def _recording_install(**kwargs):
@@ -901,11 +916,7 @@ async def test_hire_returns_before_any_skill_is_installed(
         await release.wait()
         await record(user_id, slug, expert_id=expert_id)
 
-    monkeypatch.setattr(
-        experts_db.skill_db,
-        "install_marketplace_skill",
-        AsyncMock(side_effect=slow_install),
-    )
+    _patch_install(monkeypatch, AsyncMock(side_effect=slow_install))
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
@@ -934,7 +945,7 @@ async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
     server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
 ):
     install = _recording_install()
-    monkeypatch.setattr(experts_db.skill_db, "install_marketplace_skill", install)
+    _patch_install(monkeypatch, install)
     template = await _template_with_setup(server, hub_listing)
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
     assert hired.expert.setup_status == "ready"
@@ -962,20 +973,14 @@ async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
 async def test_rehire_retries_a_failed_setup(
     server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
 ):
-    monkeypatch.setattr(
-        experts_db.skill_db,
-        "install_marketplace_skill",
-        AsyncMock(side_effect=RuntimeError("storage down")),
-    )
+    _patch_install(monkeypatch, AsyncMock(side_effect=RuntimeError("storage down")))
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
     )
     failed = await experts_db.hire_expert(test_user.id, template.id, None)
     assert failed.expert.setup_status == "failed"
 
-    monkeypatch.setattr(
-        experts_db.skill_db, "install_marketplace_skill", _recording_install()
-    )
+    _patch_install(monkeypatch, _recording_install())
     # Kills: an "existing" re-hire that does not re-claim the setup.
     with patch.object(experts_db, "emit_funnel_event") as emit:
         retried = await experts_db.hire_expert(test_user.id, template.id, None)
@@ -5753,6 +5758,17 @@ async def test_expert_skill_names_add_and_remove_atomically(
     row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
     assert row is not None
     assert "alpha" not in {s.lower() for s in row.skills}
+
+    await experts_db.add_expert_skill_names(
+        test_user.id, expert_id, ["gamma", "Beta", "Gamma", "delta"]
+    )
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert [s for s in row.skills if s.lower() in {"beta", "gamma", "delta"}] == [
+        "beta",
+        "gamma",
+        "delta",
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
