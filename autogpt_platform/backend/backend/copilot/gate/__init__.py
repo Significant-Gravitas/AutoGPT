@@ -149,6 +149,7 @@ async def _park(
     if not await review_store.open_review(
         call.review_id, user_id, session, call.tool_name, call.args, reason
     ):
+        await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(allowed=False, reason=reason, review_id=call.review_id)
 
