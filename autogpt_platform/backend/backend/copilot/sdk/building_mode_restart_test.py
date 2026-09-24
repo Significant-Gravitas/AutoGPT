@@ -80,6 +80,7 @@ class TestApplyBuildingModeRestart:
         oversight_supplement: str = "",
         team_building_supplement: str = "",
         role_charter: str = "",
+        auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
     ):
@@ -108,6 +109,7 @@ class TestApplyBuildingModeRestart:
             team_building_supplement=team_building_supplement,
             graphiti_supplement="",
             role_charter=role_charter,
+            auto_mode_supplement=auto_mode_supplement,
             use_e2b=use_e2b,
             session_id="sess-1",
             message_id="msg-1",
@@ -153,6 +155,22 @@ class TestApplyBuildingModeRestart:
         prompt = state.options.system_prompt
         text = prompt if isinstance(prompt, str) else prompt["append"]
         assert marker in text
+
+    @pytest.mark.asyncio
+    async def test_auto_mode_supplement_survives_the_restart(self, mocker):
+        """Same hole as the delegation case, one supplement over.
+
+        The gate stays active across a restart, so a prompt rebuilt without
+        its rules leaves the model asking in prose and retrying refusals for
+        the rest of the turn.
+        """
+        _, state, _, _ = await self._run(
+            mocker, auto_mode_supplement="\n\n<auto_mode>RULES</auto_mode>"
+        )
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert "<auto_mode>RULES</auto_mode>" in text
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -224,6 +242,7 @@ class TestApplyBuildingModeRestart:
             team_building_supplement="",
             graphiti_supplement="",
             role_charter="",
+            auto_mode_supplement="",
             use_e2b=False,
             session_id="sess-1",
             message_id="msg-1",
@@ -282,6 +301,7 @@ class TestApplyBuildingModeRestart:
                 team_building_supplement="",
                 graphiti_supplement="",
                 role_charter="",
+                auto_mode_supplement="",
                 use_e2b=False,
                 session_id="sess-1",
                 message_id="msg-1",

@@ -470,6 +470,43 @@ VOICE_TURN_PREFIX = (
 
 
 # Environment-specific supplement templates
+
+_APPROVAL_RULES = """
+When a tool returns `approval_required` with a review id, the call is held
+for the user and nothing has run. Do not retry it, adjust its arguments, or
+reach the same effect with another tool. Carry on with everything that does
+not depend on it; a call that needs its result waits. When nothing is left
+that does not, tell the user what is waiting on them and stop. If they
+approve, its result reaches you later in a `<held_call_result>` naming the
+call; pick up from there.
+"""
+
+_MODE_SUPPLEMENTS = {
+    "auto": """
+
+## Auto mode
+
+Auto mode is on for this conversation. Act. Do not stop to ask permission in
+prose for reversible, in-scope steps — a gate checks every tool call and will
+stop you when it matters.
+"""
+    + _APPROVAL_RULES,
+    "ask_first": """
+
+## Ask First mode
+
+Ask First is on for this conversation: the user approves every action outside
+your own workspace. Act, and never ask permission in prose — the gate asks.
+"""
+    + _APPROVAL_RULES,
+}
+
+
+def approval_mode_supplement(mode: str | None) -> str:
+    """The prompt for the chat's approval mode; empty when no gate is active."""
+    return _MODE_SUPPLEMENTS.get(mode or "", "")
+
+
 def _build_storage_supplement(
     working_dir: str,
     sandbox_type: str,
@@ -910,6 +947,7 @@ def assemble_system_prompt(
     chat_platform_supplement: str,
     graphiti_supplement: str,
     role_charter: str,
+    auto_mode_supplement: str,
     builder_session_suffix: str,
     expert_session_suffix: str,
 ) -> str:
@@ -930,6 +968,7 @@ def assemble_system_prompt(
         + chat_platform_supplement
         + graphiti_supplement
         + role_charter
+        + auto_mode_supplement
         + builder_session_suffix
         + expert_session_suffix
     )

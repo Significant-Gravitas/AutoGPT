@@ -67,6 +67,8 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -120,6 +122,7 @@ from ..permissions import (
     denied_tool_names,
 )
 from ..prompting import (
+    approval_mode_supplement,
     assemble_system_prompt,
     copilot_role,
     get_chat_platform_supplement,
@@ -213,6 +216,7 @@ from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
+    cap_late_tool_result,
     MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
@@ -1719,6 +1723,7 @@ async def _apply_building_mode_restart(
     team_building_supplement: str,
     graphiti_supplement: str,
     role_charter: str,
+    auto_mode_supplement: str,
     use_e2b: bool,
     session_id: str,
     message_id: str,
@@ -1770,6 +1775,7 @@ async def _apply_building_mode_restart(
         ),
         graphiti_supplement=graphiti_supplement,
         role_charter=role_charter,
+        auto_mode_supplement=auto_mode_supplement,
         builder_session_suffix=building_suffix,
         expert_session_suffix=expert_session_suffix,
     )
@@ -4890,6 +4896,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
+        auto_mode_supplement = approval_mode_supplement(
+            await active_mode(user_id, session)
+        )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -4949,6 +4958,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             chat_platform_supplement=chat_platform_supplement,
             graphiti_supplement=graphiti_supplement,
             role_charter=role_charter,
+            auto_mode_supplement=auto_mode_supplement,
             builder_session_suffix=builder_session_suffix,
             expert_session_suffix=expert_session_suffix,
         )
@@ -5300,7 +5310,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # SDK client spawns.
         yield StreamStatus(message="Preparing conversation context…")
 
-        pending_messages = await drain_pending_safe(session_id, log_prefix)
+        # Answered cards first: their results ride the same fold as pending.
+        pending_messages = await resolve_answered(
+            user_id, session, cap=cap_late_tool_result
+        ) + await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
@@ -5771,6 +5784,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     team_building_supplement=team_building_supplement,
                     role_charter=role_charter,
                     graphiti_supplement=graphiti_supplement,
+                    auto_mode_supplement=auto_mode_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
                     message_id=message_id,

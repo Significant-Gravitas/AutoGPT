@@ -336,6 +336,7 @@ class ExaDeleteWebsetItemBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteWebsetItemBlock.Input,
             output_schema=ExaDeleteWebsetItemBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

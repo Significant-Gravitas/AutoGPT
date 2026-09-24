@@ -1370,3 +1370,52 @@ async def test_process_review_action_per_review_auto_approve_granularity(
     assert "node_def_node_1_auto" in node_ids_with_auto_approval
     assert "node_def_node_3_auto" in node_ids_with_auto_approval
     assert "node_def_node_2_manual" not in node_ids_with_auto_approval
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "graph_exec_id, session_id, woken",
+    [(None, "s1", "s1"), ("test_graph_exec_456", None, None)],
+)
+async def test_an_answer_on_a_chat_card_wakes_that_chat(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+    graph_exec_id: str | None,
+    session_id: str | None,
+    woken: str | None,
+) -> None:
+    """A held call finishes on the chat's next turn; nothing else starts one."""
+    review = sample_pending_review.model_copy(
+        update={"graph_exec_id": graph_exec_id, "session_id": session_id}
+    )
+    routes = "backend.api.features.graph_executions.review.routes"
+    mocker.patch(
+        f"{routes}.get_reviews_by_node_exec_ids",
+        return_value={"test_node_123": review},
+    )
+    meta = mocker.Mock()
+    meta.status = ExecutionStatus.REVIEW
+    mocker.patch(f"{routes}.get_graph_execution_meta", return_value=meta)
+    mocker.patch(
+        f"{routes}.process_all_reviews_for_execution",
+        return_value={
+            "test_node_123": review.model_copy(update={"status": ReviewStatus.APPROVED})
+        },
+    )
+    mocker.patch(f"{routes}.has_pending_reviews_for_graph_exec", return_value=True)
+    wake = mocker.patch(f"{routes}.wake_for_held_calls")
+
+    response = await client.post(
+        "/api/review/action",
+        json={"reviews": [{"node_exec_id": "test_node_123", "approved": True}]},
+    )
+
+    assert response.status_code == 200
+    if woken:
+        wake.assert_awaited_once()
+        assert wake.await_args.args[:2] == (test_user_id, woken)
+        assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
+    else:
+        wake.assert_not_called()

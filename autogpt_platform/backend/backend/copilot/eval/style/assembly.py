@@ -176,6 +176,7 @@ def chat_system_prompt(expert: Expert | None) -> str:
         chat_platform_supplement="",
         graphiti_supplement=get_graphiti_supplement(role),
         role_charter=get_role_charter(role) if ROLE_SPLIT_ENABLED else "",
+        auto_mode_supplement="",
         builder_session_suffix="",
         expert_session_suffix=suffix,
     )

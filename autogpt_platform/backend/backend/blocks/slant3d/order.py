@@ -34,7 +34,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
                     "data": {"publicId": "SLANT_1234567890"}
                 },
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
         )
 
     async def run(

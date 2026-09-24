@@ -396,6 +396,7 @@ class TestAssembleSystemPrompt:
             chat_platform_supplement="PLATFORM",
             graphiti_supplement="MEMORY",
             role_charter="CHARTER",
+            auto_mode_supplement="AUTOMODE",
             builder_session_suffix="BUILDER",
             expert_session_suffix="IDENTITY",
         )
@@ -413,6 +414,7 @@ class TestAssembleSystemPrompt:
             "PLATFORM",
             "MEMORY",
             "CHARTER",
+            "AUTOMODE",
             "BUILDER",
             "IDENTITY",
         ]
@@ -423,7 +425,7 @@ class TestAssembleSystemPrompt:
     def test_dropping_the_charter_reproduces_the_pre_split_order(self):
         # The order this PR inherited, with the charter's slot empty.
         assert self._assemble(role_charter="") == (
-            "BASEENGINEDELEGATIONOVERSIGHTTEAMBUILDPLATFORMMEMORYBUILDERIDENTITY"
+            "BASEENGINEDELEGATIONOVERSIGHTTEAMBUILDPLATFORMMEMORYAUTOMODEBUILDERIDENTITY"
         )
 
 
