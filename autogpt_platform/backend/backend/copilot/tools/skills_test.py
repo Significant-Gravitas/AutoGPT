@@ -785,15 +785,15 @@ async def test_copy_to_expert_keeps_the_installed_origin():
     _seed_skill(fake, "bundled", origin=SKILL_ORIGIN_MARKETPLACE)
     # Storing into an expert's folder records the name on the expert's row.
     experts = MagicMock()
-    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
     with (
         _patch_skills_path(fake),
         patch("backend.copilot.tools.skills.experts_db", return_value=experts),
     ):
         slug = await copy_skill_to_expert("user-1", "expert-1", "bundled")
     assert slug == "bundled"
-    experts.add_expert_skill_name.assert_awaited_once_with(
-        "user-1", "expert-1", "bundled"
+    experts.add_expert_skill_names.assert_awaited_once_with(
+        "user-1", "expert-1", ["bundled"]
     )
     copied = fake.metadata["/experts/expert-1/skills/bundled/SKILL.md"]
     assert copied["skill_origin"] == "marketplace"
