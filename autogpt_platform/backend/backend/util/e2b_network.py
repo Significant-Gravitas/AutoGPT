@@ -267,6 +267,30 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
     return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
 
 
+async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
+    """The provider ceiling on the box's current egress record: what a re-pin
+    that has no ceiling of its own to give keeps, so that it never widens one.
+
+    ``None`` (every provider) only for a box with no record at all, which has
+    no ceiling to keep.  If the record cannot be read, no provider: the safe
+    side, until the next turn pins the box with its own.
+    """
+    try:
+        username = await _bound_username(sandbox_id)
+        record = await credential_record(username) if username else None
+    except Exception:
+        logger.warning(
+            "[E2B] Could not read the ceiling of %.12s; keeping none",
+            sandbox_id,
+            exc_info=True,
+        )
+        return ()
+    if record is None:
+        return None
+    providers = record.get("providers")
+    return None if providers is None else tuple(providers)
+
+
 def _audit_pin(event: str, sandbox_id: str, owner: EgressOwner) -> None:
     """Record whose credentials a box's requests may be given from now on:
     the per-box half of the audit trail, the proxy's lines being the
