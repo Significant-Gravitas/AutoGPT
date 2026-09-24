@@ -4,6 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from e2b import CommandExitException
+from pydantic import SecretStr
+
+from backend.copilot import integration_creds
+from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
 from .bash_exec import BashExecTool
@@ -20,6 +24,13 @@ def picked_credentials():
         "backend.copilot.tools.bash_exec.selected_credentials",
         new=AsyncMock(return_value=_PICKED),
     ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def proxy_off():
+    """No swap proxy unless a test says so: the behaviour before it existed."""
+    with patch("backend.copilot.tools.bash_exec.proxy_address", return_value=None):
         yield
 
 
@@ -328,3 +339,113 @@ class TestBashExecSdkToolResultRedirect:
             )
         assert isinstance(result, BashExecResponse)
         sandbox.commands.run.assert_called_once()
+
+
+class TestBashExecBehindTheSwapProxy:
+    """With the box's egress through the swap proxy, the command gets
+    placeholders: the stored value never reaches the box."""
+
+    _REAL = "ghp_the_real_stored_value"
+
+    @pytest.fixture(autouse=True)
+    def proxy_on(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.proxy_address", return_value="proxy:1080"
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def stored_github_credential(self):
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[
+                APIKeyCredentials(
+                    id="cred-picked",
+                    provider="github",
+                    api_key=SecretStr(self._REAL),
+                    title="GitHub",
+                )
+            ]
+        )
+        with (
+            patch.object(integration_creds, "_manager", manager),
+            patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+        ):
+            integration_creds._token_cache.clear()
+            integration_creds._null_cache.clear()
+            integration_creds._credential_id_cache.clear()
+            yield
+            integration_creds._token_cache.clear()
+            integration_creds._null_cache.clear()
+            integration_creds._credential_id_cache.clear()
+
+    async def _run(self, sandbox: MagicMock) -> BashExecResponse:
+        session = make_session(user_id=_USER)
+        with patch(
+            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+            new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "Ada"}),
+        ) as identity:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        # Commits stay attributed to the picked account.
+        identity.assert_awaited_once_with(_USER, "cred-picked")
+        assert isinstance(result, BashExecResponse)
+        return result
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_command_gets_placeholders_and_no_token(self):
+        sandbox = _make_sandbox(stdout="ok")
+        with patch(
+            "backend.copilot.tools.bash_exec.get_integration_env_vars"
+        ) as real_tokens:
+            await self._run(sandbox)
+        real_tokens.assert_not_called()
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == "hsurr:github:cred-picked"
+        assert envs["GIT_CONFIG_KEY_0"] == "credential.https://github.com.helper"
+        assert envs["GIT_AUTHOR_NAME"] == "Ada"
+        assert all(self._REAL not in value for value in envs.values())
+        # Nothing in the box may drive E2B itself (read its rules, reconnect it).
+        assert not any("E2B" in name for name in envs)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_placeholder_in_the_output_is_not_redacted(self):
+        sandbox = _make_sandbox(stdout="GH_TOKEN=hsurr:github:cred-picked")
+        result = await self._run(sandbox)
+        assert result.stdout == "GH_TOKEN=hsurr:github:cred-picked"
+
+
+class TestBashExecWithoutTheSwapProxy:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_real_token_is_injected_as_before(self):
+        sandbox = _make_sandbox(stdout="ok")
+        session = make_session(user_id=_USER)
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={"GH_TOKEN": "gh-secret"}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_placeholder_env"
+            ) as placeholders,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        placeholders.assert_not_called()
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == "gh-secret"
+        assert "GIT_CONFIG_COUNT" not in envs

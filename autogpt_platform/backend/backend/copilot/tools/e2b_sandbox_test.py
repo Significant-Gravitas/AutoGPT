@@ -1941,3 +1941,55 @@ class TestProxyCredentialIsRevoked:
             mock_cls.connect = AsyncMock(return_value=sb)
             assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
         forget.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# The box's own environment behind the swap proxy
+# ---------------------------------------------------------------------------
+
+
+class TestCreationEnvBehindTheSwapProxy:
+    """A new box behind the proxy starts with placeholders in its own env, for
+    what does not run through a command; without the proxy it starts with no
+    integration env at all, as before."""
+
+    _PLACEHOLDERS = {"GH_TOKEN": "hsurr:github", "GITHUB_TOKEN": "hsurr:github"}
+
+    def _create(self, *, proxy: str | None, user_id: str | None) -> dict:
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.get_default_placeholder_env",
+                AsyncMock(return_value=dict(self._PLACEHOLDERS)),
+            ) as lookup,
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, user_id=user_id
+                )
+            )
+        _, kwargs = mock_cls.create.call_args
+        self.lookup = lookup
+        return kwargs
+
+    def test_behind_the_proxy_the_box_starts_with_placeholders(self):
+        kwargs = self._create(proxy="proxy:1080", user_id="user-a")
+        assert kwargs["envs"] == self._PLACEHOLDERS
+        self.lookup.assert_awaited_once_with("user-a")
+
+    def test_without_the_proxy_the_create_call_is_unchanged(self):
+        kwargs = self._create(proxy=None, user_id="user-a")
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+
+    def test_a_box_with_no_user_gets_none(self):
+        kwargs = self._create(proxy="proxy:1080", user_id=None)
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()

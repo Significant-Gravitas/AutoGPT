@@ -19,7 +19,10 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from backend.copilot.integration_creds import get_provider_token
+from backend.copilot.integration_creds import (
+    get_provider_token,
+    get_provider_tokens_by_credential,
+)
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 
 
@@ -68,15 +71,22 @@ async def resolve_swap_credential(
     (``ProviderTokenUnavailable``) rather than answering ``None``: the proxy
     scrubs responses against this answer, so a failure has to reach it as an
     outage (it refuses what it cannot scrub), not as "nothing to scrub".
+
+    The value ``hsurr:<name>`` stands for is the user's default credential
+    (``access_token``, what ``get_provider_token`` picks with no arguments).
+    Every stored credential is also an entry under its own id, which is what
+    ``hsurr:<name>:<credential id>`` stands for: a box is handed the credential
+    the chat picked (``get_integration_placeholder_env``), and a user with two
+    accounts must get the one they chose.
     """
     entry = SUPPORTED_PROVIDERS.get(name)
     if entry is None or not _host_is_bound(host, entry["swap_hosts"]):
         return None
-    token = await get_provider_token(user_id, name, strict=True)
-    if not token:
+    values = await get_provider_tokens_by_credential(user_id, name)
+    if token := await get_provider_token(user_id, name, strict=True):
+        values["access_token"] = token
+    if not values:
         return None
     return SwapCredential(
-        name=name,
-        values={"access_token": token},
-        allowed_hosts=list(entry["swap_hosts"]),
+        name=name, values=values, allowed_hosts=list(entry["swap_hosts"])
     )

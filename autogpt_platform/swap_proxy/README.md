@@ -112,6 +112,27 @@ mitmproxy verified for the very host the request names. If the backend cannot
 be asked, nothing is swapped: the placeholder goes out literally and the request
 fails at the provider, loudly and with nothing leaked.
 
+## What a box holds
+
+A CoPilot box behind the proxy gets, for each account its user connected, the
+provider's usual variables with a placeholder in them (`GH_TOKEN` and
+`GITHUB_TOKEN` for GitHub; `backend/copilot/integration_creds.py`):
+
+- `hsurr:github` in the box's own environment, set when it is created: the
+  user's default GitHub credential, for what does not start through a command
+  (the desktop's browser and terminal).
+- `hsurr:github:<credential id>` in each command's environment
+  (`bash_exec`): the credential the chat picked, the same one the real token
+  used to come from. The backend lists every stored credential under its id as
+  well as the default, so a user with two accounts gets the one they chose.
+- A git credential helper, set through git's environment-variable config, that
+  answers for `https://github.com` with `x-access-token` and `$GH_TOKEN`: a
+  `git push` over HTTPS sends the placeholder as HTTP Basic, which is swapped
+  here.
+
+Without the proxy (`E2B_EGRESS_PROXY_ADDRESS` empty) commands get the real
+tokens as before, and the box's own environment gets nothing.
+
 ## Why a separate package
 
 mitmproxy pins its dependencies exactly and needs Python 3.12+, and the E2B SDK
@@ -167,6 +188,11 @@ E2B fails closed. Setting that address and provisioning the CA are **one release
 step**: the proxy reachable at that address, the CA mounted into every replica,
 and its certificate in the image the boxes run. Any one of them missing shows up
 as every box losing either its egress or its TLS to bound hosts.
+
+The same address is also what switches boxes from real tokens to placeholders
+(see "What a box holds"): from the moment it is set, a connected account works
+in a box only through the proxy's swap, so the proxy has to be swapping, and
+reaching its backend service, before the address goes out.
 
 The same step sets the network policy around the proxy, and that policy is a
 security boundary, not housekeeping. The proxy calls one backend service
