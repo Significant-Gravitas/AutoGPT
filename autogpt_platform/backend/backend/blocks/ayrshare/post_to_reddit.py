@@ -36,6 +36,7 @@ class PostToRedditBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToRedditBlock.Input,
             output_schema=PostToRedditBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

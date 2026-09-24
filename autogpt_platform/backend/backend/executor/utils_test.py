@@ -955,6 +955,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.graph_version = 1
     mock_graph_exec.nodes_input_masks = {}
     mock_graph_exec.organization_id = "org-row"
+    mock_graph_exec.trigger_source = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-row"
 
@@ -2137,6 +2138,8 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.expert_id = expert_id
     graph_exec.organization_id = organization_id
     graph_exec.team_id = team_id
+    graph_exec.trigger_source = None
+    graph_exec.trigger_ref = None
 
     captured: dict = {}
 
@@ -2945,3 +2948,175 @@ async def test_approved_or_hitl_review_resumes(mocker: MockerFixture, decision):
         ExecutionStatus.QUEUED
     )
     queue.publish_message.assert_awaited_once()
+
+
+# ============================================================================
+# A run started from an attended chat pauses before irreversible blocks,
+# whatever the graph's own sensitive_action_safe_mode setting says.
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pause", [True, False])
+async def test_pause_override_parks_a_marked_block_with_library_setting_off(
+    mocker: MockerFixture, pause: bool
+):
+    from backend.blocks.email_block import SendEmailBlock
+    from backend.blocks.helpers.review import HITLReviewHelper
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    graph_exec = mock_edb.create_graph_execution.return_value
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", pause_irreversible_actions=pause
+    )
+
+    context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
+    assert context.sensitive_action_safe_mode is pause
+
+    park = mocker.patch.object(
+        HITLReviewHelper,
+        "handle_review_decision",
+        new=mocker.AsyncMock(return_value=None),
+    )
+    block = SendEmailBlock()
+    assert block.is_irreversible_action
+    should_pause, _ = await block.is_block_exec_need_review(
+        {"to_email": "someone@example.com"},
+        user_id="u",
+        node_id="n",
+        node_exec_id="ne",
+        graph_exec_id="exec-id",
+        graph_id="g",
+        graph_version=1,
+        execution_context=context,
+    )
+    assert should_pause is pause
+    assert park.await_count == int(pause)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "origin, expected",
+    [("interactive", True), (None, True), ("automation", False)],
+)
+async def test_resume_of_a_chat_started_run_keeps_the_pause(
+    mocker: MockerFixture, origin, expected: bool
+):
+    from backend.copilot.model import ChatSessionMetadata
+    from backend.data.execution import ExecutionContext
+
+    graph_exec, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+    graph_exec.trigger_ref = "session-1"
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(metadata=ChatSessionMetadata(origin=origin))
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    # The review-resume route rebuilds its context from the graph settings.
+    await add_graph_execution(
+        graph_id="g",
+        user_id="u",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(sensitive_action_safe_mode=False),
+    )
+
+    chat_store.get_chat_session_metadata.assert_awaited_once_with("session-1")
+    assert captured["execution_context"].sensitive_action_safe_mode is expected
+
+
+@pytest.mark.asyncio
+async def test_resume_of_a_subgraph_follows_the_chat_of_the_run_that_nested_it(
+    mocker: MockerFixture,
+):
+    from backend.copilot.model import ChatSessionMetadata
+
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+    graph_exec.trigger_ref = "parent-exec"
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            trigger_source=ExecutionTrigger.COPILOT.value, trigger_ref="session-1"
+        )
+    )
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            metadata=ChatSessionMetadata(origin="interactive")
+        )
+    )
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    execution_store.get_graph_execution_meta.assert_awaited_once_with(
+        user_id="u", execution_id="parent-exec"
+    )
+    assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gone", ["chat", "parent"])
+async def test_resume_pauses_when_the_originating_chat_or_parent_is_gone(
+    mocker: MockerFixture, gone: str
+):
+    graph_exec, execution_store, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org", team_id="team"
+    )
+    if gone == "chat":
+        graph_exec.trigger_source = ExecutionTrigger.COPILOT.value
+        graph_exec.trigger_ref = "deleted-session"
+    else:
+        graph_exec.trigger_source = ExecutionTrigger.SUBGRAPH.value
+        graph_exec.trigger_ref = "deleted-parent"
+        execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+    chat_store = mocker.MagicMock()
+    chat_store.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
+    mocker.patch("backend.executor.utils.chat_db", return_value=chat_store)
+
+    await add_graph_execution(
+        graph_id="g", user_id="u", graph_exec_id="existing-execution"
+    )
+
+    assert captured["execution_context"].sensitive_action_safe_mode is True
+
+
+@pytest.mark.asyncio
+async def test_subgraph_inherits_the_pause_through_its_context(
+    mocker: MockerFixture,
+):
+    from backend.blocks.agent import AgentExecutorBlock
+    from backend.data.execution import ExecutionContext
+
+    add = mocker.patch(
+        "backend.executor.utils.add_graph_execution",
+        new=mocker.AsyncMock(side_effect=RuntimeError("stop after the call")),
+    )
+    block = AgentExecutorBlock()
+    parent_context = ExecutionContext(sensitive_action_safe_mode=True)
+    with pytest.raises(RuntimeError, match="stop after the call"):
+        async for _ in block.run(
+            block.input_schema(
+                user_id="u",
+                graph_id="child",
+                graph_version=1,
+                agent_name="child",
+                input_schema={},
+                output_schema={},
+                inputs={},
+            ),
+            graph_exec_id="parent-exec",
+            execution_context=parent_context,
+        ):
+            pass
+
+    child_context = add.await_args.kwargs["execution_context"]
+    assert child_context.sensitive_action_safe_mode is True

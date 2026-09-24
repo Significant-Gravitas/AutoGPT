@@ -133,6 +133,7 @@ from backend.data.human_review import (
     check_approval,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
@@ -370,6 +371,7 @@ class DatabaseManager(AppService):
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_pending_reviews_for_chat_session = _(get_pending_reviews_for_chat_session)
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
@@ -601,6 +603,7 @@ class DatabaseManager(AppService):
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
     update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
+    update_chat_session_autopilot_mode = _(chat_db.update_chat_session_autopilot_mode)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -774,6 +777,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status
@@ -1005,6 +1009,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
     update_chat_session_llm_route = d.update_chat_session_llm_route
+    update_chat_session_autopilot_mode = d.update_chat_session_autopilot_mode
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status
