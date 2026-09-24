@@ -21,4 +21,20 @@ describe("credential badges in messages", () => {
     expect(container.querySelectorAll('img[src*="google"]')).toHaveLength(2);
     expect(container.querySelectorAll("a")).toHaveLength(0);
   });
+
+  it("keeps the scrollable table wrapper from the message renderer", async () => {
+    const { container } = render(
+      <CredentialMentionMarkdown>
+        {
+          "| Account | Status |\n| --- | --- |\n| [Work Gmail](credential://google/work-secret-id) | ok |"
+        }
+      </CredentialMentionMarkdown>,
+    );
+    expect(await screen.findByText("Work Gmail")).toBeTruthy();
+    const table = container.querySelector("table");
+    expect(table).not.toBeNull();
+    expect(table?.parentElement?.className).toBe(
+      "my-4 max-w-full overflow-x-auto",
+    );
+  });
 });

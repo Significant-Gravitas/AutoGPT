@@ -70,8 +70,14 @@ export function CredentialMentionEditor({
   );
   const wasRich = useRef(rich);
   const pendingSelection = useRef<PendingSelection | null>(null);
-  const { editorRef, badges, onCompositionStart, onCompositionEnd } =
-    useCredentialMentionEditor(value, onMultilineChange);
+  const {
+    editorRef,
+    attachEditor,
+    badges,
+    resync,
+    onCompositionStart,
+    onCompositionEnd,
+  } = useCredentialMentionEditor(value, onMultilineChange);
 
   useLayoutEffect(() => {
     const input = document.getElementById(inputId);
@@ -93,6 +99,7 @@ export function CredentialMentionEditor({
     const selection = editorSelectionRange(editor);
     pendingSelection.current = selection && { value: next, ...selection };
     onChange(next, mentionInputFor(editor));
+    resync();
   }
 
   function handleTextareaChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -145,7 +152,7 @@ export function CredentialMentionEditor({
     <>
       <input type="hidden" name="message" value={value} />
       <div
-        ref={editorRef}
+        ref={attachEditor}
         id={inputId}
         role="textbox"
         aria-label="Chat message input"

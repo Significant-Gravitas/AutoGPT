@@ -28,9 +28,13 @@ const PERSONAL = "[Personal](credential://google/personal-credential-id)";
 function Composer({
   onSend,
   initialValue = "",
+  rejectEdits = false,
+  onMultilineChange,
 }: {
   onSend: (message: string) => void;
   initialValue?: string;
+  rejectEdits?: boolean;
+  onMultilineChange?: (multiline: boolean) => void;
 }) {
   const [value, setValue] = useState(initialValue);
   const mentions = useChatMentions({
@@ -53,12 +57,14 @@ function Composer({
         value={value}
         onInputReady={mentions.bindInput}
         onChange={(next, input) => {
+          if (rejectEdits) return;
           setValue(next);
           mentions.detect(input);
         }}
         onKeyDown={(event) => {
           mentions.onKeyDown(event);
         }}
+        onMultilineChange={onMultilineChange}
       />
       <button type="submit">Send</button>
     </form>
@@ -171,6 +177,42 @@ describe("account badge composer", () => {
     expect(range.collapsed).toBe(true);
     expect(range.comparePoint(badgesIn(editor)[0], 0)).toBe(-1);
     expect(range.comparePoint(editor.lastChild!, 1)).toBe(1);
+  });
+
+  it("puts back the previous text when the parent rejects an edit", () => {
+    const onSend = vi.fn();
+    render(
+      <Composer onSend={onSend} initialValue={`Check ${WORK} `} rejectEdits />,
+    );
+    const editor = screen.getByRole("textbox");
+    editor.focus();
+    const trailing = editor.lastChild as Text;
+    trailing.textContent += "typed while recording";
+    placeCaret(trailing, trailing.length);
+    fireEvent.input(editor);
+
+    expect(editor.textContent).toBe("Check Work Gmail ");
+    expect(badgesIn(editor)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSend).toHaveBeenCalledWith(`Check ${WORK} `);
+  });
+
+  it("releases the multiline layout when the last badge goes and the textarea takes over", () => {
+    const onMultilineChange = vi.fn();
+    render(
+      <Composer
+        onSend={vi.fn()}
+        initialValue={`Hi ${WORK}`}
+        onMultilineChange={onMultilineChange}
+      />,
+    );
+    expect(onMultilineChange).toHaveBeenLastCalledWith(true);
+    const editor = screen.getByRole("textbox");
+    badgesIn(editor)[0].remove();
+    fireEvent.input(editor);
+
+    expect(screen.getByRole("textbox").tagName).toBe("TEXTAREA");
+    expect(onMultilineChange).toHaveBeenLastCalledWith(false);
   });
 
   it("turns a reference pasted into a rich editor into a badge without exposing its ID", () => {
