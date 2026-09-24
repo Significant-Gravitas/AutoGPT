@@ -607,6 +607,26 @@ def allowed_providers(
     return allowed
 
 
+def denied_block_providers(
+    permissions: CopilotPermissions | None, block: object
+) -> list[str]:
+    """The providers among *block*'s credential fields that *permissions*
+    keeps from the run, of those the providers ceiling covers
+    (``SUPPORTED_PROVIDERS``).  Empty when nothing restricts them."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    schema = getattr(block, "input_schema", None)
+    fields = schema.get_credentials_fields_info() if schema is not None else {}
+    denied = {
+        str(getattr(p, "value", p)) for info in fields.values() for p in info.provider
+    }
+    return sorted(
+        p
+        for p in denied
+        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
+    )
+
+
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:
     """Short names *permissions* withholds from the turn (empty when none)."""
     if permissions is None or permissions.is_empty():

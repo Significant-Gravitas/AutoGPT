@@ -8,6 +8,8 @@ from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_block_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
@@ -186,6 +188,21 @@ class RunBlockTool(BaseTool):
                     f"Block '{prep.block.name}' ({block_id}) is not permitted "
                     f"by the current execution permissions. {available_hint}"
                     "Use find_capability to discover blocks that are allowed."
+                ),
+                session_id=session_id,
+            )
+
+        # The run's ceiling on connected accounts covers blocks too: a block that
+        # would act with a provider's stored credential the run may not use is
+        # refused here, as the sandbox's placeholders are by the swap service.
+        denied = denied_block_providers(perms, prep.block)
+        if denied:
+            names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+            return ErrorResponse(
+                message=(
+                    f"Block '{prep.block.name}' ({block_id}) acts with the user's "
+                    f"{names} account, which this run is not permitted to use. "
+                    "Tell the user it is outside what this run was allowed to do."
                 ),
                 session_id=session_id,
             )

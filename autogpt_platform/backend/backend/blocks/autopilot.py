@@ -250,8 +250,9 @@ class AutoPilotBlock(Block):
         providers: list[str] = SchemaField(
             description=(
                 "Connected-account providers (e.g. 'github') whose accounts "
-                "code in the sandbox may use. Works with providers_exclude. "
-                "Leave empty to apply no provider filter."
+                "the run may use: from code in the sandbox, and through blocks "
+                "that act with that provider's credentials. Works with "
+                "providers_exclude. Leave empty to apply no provider filter."
             ),
             default=[],
             advanced=True,
