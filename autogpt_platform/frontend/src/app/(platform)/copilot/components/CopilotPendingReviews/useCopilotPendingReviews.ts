@@ -16,25 +16,34 @@ const PRE_REVIEW_POLL_MS = 5000;
 export function useCopilotPendingReviews({ graphExecId, graphId }: Args) {
   const isRun = !!graphId;
   // A run's chat message never changes, so its live status decides polling.
-  const { data: execution } = useGetV1GetExecutionDetails(
+  const { data: execution, isFetched } = useGetV1GetExecutionDetails(
     graphId ?? "",
     graphExecId,
     {
       query: {
         enabled: isRun,
         select: okData,
-        refetchInterval: (q) => pollInterval(readStatus(q.state.data)),
+        refetchInterval: (q) =>
+          q.state.status === "error"
+            ? PRE_REVIEW_POLL_MS
+            : pollInterval(readStatus(q.state.data)),
       },
     },
   );
   const status = execution?.status;
+  // Without the run's status, the reviews themselves are the only signal.
+  const statusUnavailable = isRun && isFetched && !status;
 
   const { pendingReviews, refetch } = usePendingReviewsForExecution(
     graphExecId,
     {
-      enabled: !!graphExecId && (!isRun || !!status),
+      enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
       refetchInterval:
-        !isRun || status === AgentExecutionStatus.REVIEW ? POLL_MS : false,
+        !isRun || status === AgentExecutionStatus.REVIEW
+          ? POLL_MS
+          : statusUnavailable
+            ? PRE_REVIEW_POLL_MS
+            : false,
     },
   );
 
