@@ -3,11 +3,13 @@
 import { useEffect } from "react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { isConsentManagerConfigured } from "@/services/consent/consent";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
 import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
+import { CookieSettingsCard } from "./components/CookieSettingsCard/CookieSettingsCard";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
 import { TimezoneCard } from "./components/TimezoneCard/TimezoneCard";
@@ -76,6 +78,8 @@ export default function SettingsPreferencesPage() {
           index={2}
         />
       ) : null}
+
+      {isConsentManagerConfigured() ? <CookieSettingsCard index={3} /> : null}
 
       <SaveBar
         visible={dirty}

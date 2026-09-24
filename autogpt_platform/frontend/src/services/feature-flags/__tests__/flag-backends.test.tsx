@@ -1,4 +1,5 @@
-import { renderHook } from "@testing-library/react";
+import { render, renderHook } from "@testing-library/react";
+import { Component, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const launchDarkly = vi.hoisted(() => ({
@@ -41,6 +42,17 @@ vi.mock("@posthog/react", () => ({
   useFeatureFlagEnabled: (flag: string) => postHog.enabled(flag),
   useFeatureFlagPayload: (flag: string) => postHog.payload(flag),
   usePostHog: () => postHogClient,
+}));
+
+const sentry = vi.hoisted(() => ({ addFeatureFlag: vi.fn() }));
+
+vi.mock("@sentry/nextjs", () => ({
+  getClient: () => ({
+    getIntegrationByName: (name: string) =>
+      name === "FeatureFlags"
+        ? { addFeatureFlag: sentry.addFeatureFlag }
+        : undefined,
+  }),
 }));
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
@@ -337,6 +349,106 @@ describe("dual backend", () => {
   });
 });
 
+describe("Sentry's flag context", () => {
+  it.each([
+    ["launchdarkly", undefined],
+    ["posthog", "posthog"],
+    ["dual", "dual"],
+  ])("records the served boolean in %s mode", async (_, backend) => {
+    const { Flag, useFlagStatus } = await loadWithBackend(backend);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    postHog.enabled.mockReturnValue(backend === "posthog");
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+
+    expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
+      HIRE_EXPERTS,
+      true,
+    );
+  });
+
+  it("records a flag read by a component that throws in the same render", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+    let recordedAtCatch: unknown[][] = [];
+    function Reader(): ReactNode {
+      useGetFlag(Flag.HIRE_EXPERTS);
+      throw new Error("render failed");
+    }
+    class Boundary extends Component<{ children: ReactNode }> {
+      state = { failed: false };
+      static getDerivedStateFromError() {
+        return { failed: true };
+      }
+      componentDidCatch() {
+        recordedAtCatch = [...sentry.addFeatureFlag.mock.calls];
+      }
+      render() {
+        return this.state.failed ? null : this.props.children;
+      }
+    }
+
+    render(
+      <Boundary>
+        <Reader />
+      </Boundary>,
+    );
+
+    expect(recordedAtCatch).toContainEqual([HIRE_EXPERTS, true]);
+  });
+
+  it("records the default it serves while flags are disabled", async () => {
+    env.launchDarklyEnabled = false;
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toBe(false);
+    expect(sentry.addFeatureFlag).toHaveBeenCalledExactlyOnceWith(
+      HIRE_EXPERTS,
+      false,
+    );
+  });
+
+  it("records nothing for an env-forced flag", async () => {
+    const { Flag, useFlagStatus, useGetFlag } =
+      await loadWithBackend(undefined);
+    process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS = "true";
+
+    renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it("records nothing for a JSON-valued flag", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    launchDarkly.flags = { "copilot-bot-platforms": { slack: false } };
+
+    renderHook(() => useGetFlag(Flag.COPILOT_BOT_PLATFORMS));
+
+    expect(sentry.addFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it("still serves the flag when recording throws", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend(undefined);
+    sentry.addFeatureFlag.mockImplementation(() => {
+      throw new Error("sentry down");
+    });
+    launchDarkly.flags = { [HIRE_EXPERTS]: true };
+
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toBe(true);
+    expect(debug).toHaveBeenCalledOnce();
+  });
+});
+
 describe("posthog flags follow the provider's gate", () => {
   it("falls back to defaults outside cloud, where no PostHogProvider mounts", async () => {
     process.env.NEXT_PUBLIC_BEHAVE_AS = "LOCAL";
@@ -358,6 +470,7 @@ beforeEach(() => {
   postHog.enabled.mockReturnValue(undefined);
   postHog.payload.mockReturnValue(undefined);
   postHog.capture.mockClear();
+  sentry.addFeatureFlag.mockReset();
   postHog.loaded = true;
   postHog.errorsLoading = false;
   Object.keys(process.env)
