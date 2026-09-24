@@ -8,7 +8,7 @@ import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/Cop
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
 import { ToolChain } from "../../ToolChain/ToolChain";
 import { approvalCardId } from "../helpers";
-import { folder, SESSION_EXEC } from "./fixtures";
+import { folder, CHAT_SESSION } from "./fixtures";
 
 // The chain row sits above the queue; its link must reach a card that is in
 // the page however far the queue is scrolled, compact lines included.
@@ -19,7 +19,7 @@ test.each([1, 4])(
       folder(`id${i}`, `Folder ${i}`, 10 - i),
     );
     server.use(
-      http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+      http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
         HttpResponse.json(reviews),
       ),
     );
@@ -40,7 +40,7 @@ test.each([1, 4])(
     render(
       <CopilotChatActionsProvider onSend={vi.fn()}>
         <ToolChain parts={[held]} isStreaming={false} />
-        <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+        <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
       </CopilotChatActionsProvider>,
     );
 

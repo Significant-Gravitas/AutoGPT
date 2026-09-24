@@ -187,7 +187,10 @@ class RunAgentTool(BaseTool):
         if params.dry_run or session.dry_run:
             return NO_OP
         if params.preset_id:
-            _, graph = await _preset_graph(user_id, session, params.preset_id)
+            preset, graph = await _preset_graph(user_id, session, params.preset_id)
+            # No such preset for this chat: the run refuses, so nothing asks.
+            if preset is None:
+                return NO_OP
         else:
             await _bind_builder_graph(user_id, session, params)
             if not _names_an_agent(params):

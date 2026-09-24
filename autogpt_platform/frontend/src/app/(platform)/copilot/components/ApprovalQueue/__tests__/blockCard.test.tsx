@@ -4,11 +4,11 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { mail, SESSION_EXEC } from "./fixtures";
+import { mail, CHAT_SESSION } from "./fixtures";
 
 function serve(schemaCalls: string[]) {
   server.use(
-    http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([mail()]),
     ),
     http.get("*/api/builder/blocks/batch", ({ request }) => {
@@ -37,7 +37,7 @@ test("a block's card names the block and labels its inputs from the block's sche
   serve(schemaCalls);
   render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-      <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
 

@@ -89,7 +89,13 @@ export function lineCount(text: string) {
 }
 
 export function humanize(key: string) {
-  const words = key.replace(/_/g, " ").trim();
+  const words = key
+    .replace(/_/g, " ")
+    .replace(
+      /([a-z])([A-Z])/g,
+      (_, a: string, b: string) => `${a} ${b.toLowerCase()}`,
+    )
+    .trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

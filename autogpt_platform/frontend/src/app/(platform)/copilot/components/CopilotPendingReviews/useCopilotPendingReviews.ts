@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
-import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import {
+  usePendingReviewsForChatSession,
+  usePendingReviewsForExecution,
+} from "@/hooks/usePendingReviews";
 
+// A run the chat started, or the chat's own queue.
 interface Args {
-  graphExecId: string;
+  graphExecId?: string;
   graphId?: string;
-  // Off for a chat's session-level list: it polls only while it holds cards,
-  // and fetches again whenever ``refetchKey`` changes (a new held call).
+  chatSessionId?: string;
+  // Off for the chat's own list: it polls only while it holds cards, and
+  // fetches again whenever ``refetchKey`` changes (a new held call).
   pollWhileEmpty?: boolean;
   refetchKey?: number;
 }
@@ -18,8 +23,9 @@ const POLL_MS = 2000;
 const PRE_REVIEW_POLL_MS = 5000;
 
 export function useCopilotPendingReviews({
-  graphExecId,
+  graphExecId = "",
   graphId,
+  chatSessionId = "",
   pollWhileEmpty = true,
   refetchKey,
 }: Args) {
@@ -44,19 +50,20 @@ export function useCopilotPendingReviews({
   // Without the run's status, the reviews themselves are the only signal.
   const statusUnavailable = isRun && isFetched && !status;
 
-  const { pendingReviews, refetch } = usePendingReviewsForExecution(
-    graphExecId,
-    {
-      enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
-      refetchInterval:
-        (!isRun && (pollWhileEmpty || hasRows)) ||
-        status === AgentExecutionStatus.REVIEW
-          ? POLL_MS
-          : statusUnavailable
-            ? PRE_REVIEW_POLL_MS
-            : false,
-    },
-  );
+  const forChat = usePendingReviewsForChatSession(chatSessionId, {
+    enabled: !!chatSessionId,
+    refetchInterval: pollWhileEmpty || hasRows ? POLL_MS : false,
+  });
+  const forRun = usePendingReviewsForExecution(graphExecId, {
+    enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
+    refetchInterval:
+      !isRun || status === AgentExecutionStatus.REVIEW
+        ? POLL_MS
+        : statusUnavailable
+          ? PRE_REVIEW_POLL_MS
+          : false,
+  });
+  const { pendingReviews, refetch } = chatSessionId ? forChat : forRun;
 
   useEffect(() => {
     setHasRows(pendingReviews.length > 0);

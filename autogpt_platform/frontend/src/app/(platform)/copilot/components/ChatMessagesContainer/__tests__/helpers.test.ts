@@ -497,7 +497,22 @@ describe("extractReviewTarget", () => {
           status: "RUNNING",
         }),
       ]),
-    ).toEqual({ graphExecId: "exec-running", graphId: "graph-1" });
+    ).toEqual({
+      kind: "graph",
+      graphExecId: "exec-running",
+      graphId: "graph-1",
+    });
+  });
+
+  it("returns the chat for an action the gate parked, and not for a refusal", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ type: "approval_required", review_id: "gate-1" }),
+      ]),
+    ).toEqual({ kind: "chat" });
+    expect(
+      extractReviewTarget([toolOutput({ type: "approval_required" })]),
+    ).toBeNull();
   });
 
   it("ignores a run that already finished", () => {
@@ -515,16 +530,16 @@ describe("extractReviewTarget", () => {
         toolOutput(
           JSON.stringify({ execution_id: "exec-b", status: "QUEUED" }),
         ),
-      ])?.graphExecId,
-    ).toBe("exec-b");
+      ]),
+    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
   });
 
   it("prefers a newer in-flight run over an earlier block review", () => {
     expect(
       extractReviewTarget([
-        toolOutput({ graph_exec_id: "copilot-session-x" }),
+        toolOutput({ type: "review_required", review_id: "r1" }),
         toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
-      ])?.graphExecId,
-    ).toBe("exec-b");
+      ]),
+    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
   });
 });

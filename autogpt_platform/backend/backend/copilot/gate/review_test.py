@@ -15,7 +15,6 @@ from backend.copilot.gate.review import (
     node_id_for,
     review_id_for,
     review_payload,
-    session_exec_id,
 )
 from backend.copilot.gate.subject import block_subject, mcp_subject
 
@@ -187,7 +186,7 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     approved_at = datetime.now(UTC) - age
     stored = MagicMock(
         status=status,
-        graph_exec_id=session_exec_id("s1"),
+        session_id="s1",
         reviewed_at=approved_at,
         updated_at=approved_at,
         created_at=approved_at,
@@ -221,3 +220,17 @@ def test_a_block_subject_names_the_card_marks_it_and_labels_its_fields():
     assert payload["headline"]["object"] == "Gmail Send"
     assert payload["reason_kind"] == "subject"
     assert payload["arguments"] == {"to": ["dana@acme.com"]}
+
+
+@pytest.mark.parametrize(
+    "path", ["a" * 100 + ".md", "two  spaces.md", "line\nbreak.md"]
+)
+def test_an_argument_the_headline_shortens_stays_on_the_card(path):
+    """The approval binds the whole value, so a headline that cannot show all
+    of it must not hide the field that does."""
+    headline = headline_for("delete_workspace_file", {"path": path})
+    assert headline.object is not None
+    assert headline.object_key is None
+    assert headline_for("delete_workspace_file", {"path": "q3.md"}).object_key == (
+        "path"
+    )

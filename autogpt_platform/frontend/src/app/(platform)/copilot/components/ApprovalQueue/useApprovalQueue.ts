@@ -63,7 +63,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
           approved,
           chat_rule: approved ? (rule ?? null) : null,
         })),
-        batch.map((item) => item.graphExecId),
+        batch.map((item) => item.scope),
       );
       ok = res.status === 200 && res.data.failed_count === 0;
     } catch {

@@ -79,7 +79,11 @@ def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
             name = " ".join(value.split())
             if len(name) > _MAX_OBJECT_CHARS:
                 name = name[: _MAX_OBJECT_CHARS - 1] + "…"
-            return Headline(ask=ask, object=name, object_key=key)
+            # The card hides the argument only when the headline shows all of it.
+            shown_whole = name == value
+            return Headline(
+                ask=ask, object=name, object_key=key if shown_whole else None
+            )
     return Headline(ask=ask)
 
 

@@ -21,10 +21,24 @@ export function useApprovalFields(item: ApprovalItem) {
   return {
     labels: keys.map((key) => ({
       key,
-      label: String(
-        asObject(properties[key])?.title ?? serverLabel.get(key) ?? key,
+      label: schemaLabel(
+        key,
+        asObject(properties[key])?.title,
+        serverLabel.get(key) ?? key,
       ),
     })),
     values: item.args,
   };
+}
+
+// A title a person wrote wins; pydantic's own (the key in Title Case, or a type's name) does not.
+function schemaLabel(key: string, title: unknown, fallback: string) {
+  if (typeof title !== "string" || !title) return fallback;
+  const automatic = key
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  const typeName = /^[A-Z][A-Za-z0-9]*[a-z][A-Z][A-Za-z0-9]*(\[.*\])?$/;
+  if (title === automatic || typeName.test(title)) return fallback;
+  return title;
 }

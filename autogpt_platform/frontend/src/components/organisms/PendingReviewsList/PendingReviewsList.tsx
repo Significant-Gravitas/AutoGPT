@@ -158,10 +158,7 @@ export function PendingReviewsList({
     }
 
     try {
-      const res = await submitReviewAction(
-        reviewItems,
-        groupReviews.map((review) => review.graph_exec_id),
-      );
+      const res = await submitReviewAction(reviewItems, groupReviews);
 
       if (res.status !== 200) {
         toast({

@@ -85,6 +85,37 @@ describe("useCopilotPendingReviews", () => {
     });
   }, 10_000);
 
+  test("a chat's queue is polled from the chat, never from a run", async () => {
+    const calls = { chat: 0, execution: 0, runReviews: 0 };
+    server.use(
+      http.get("*/api/review/session/chat-1", () => {
+        calls.chat++;
+        return HttpResponse.json([{ node_exec_id: "chat-review" }]);
+      }),
+      http.get("*/api/graphs/*", () => {
+        calls.execution++;
+        return HttpResponse.json({});
+      }),
+      http.get("*/api/review/execution/*", () => {
+        calls.runReviews++;
+        return HttpResponse.json([]);
+      }),
+    );
+    const { result } = renderHook(
+      () => useCopilotPendingReviews({ chatSessionId: "chat-1" }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(calls.chat).toBeGreaterThan(1), {
+      timeout: 5000,
+    });
+    expect(result.current.pendingReviews).toEqual([
+      { node_exec_id: "chat-review" },
+    ]);
+    expect(calls.execution).toBe(0);
+    expect(calls.runReviews).toBe(0);
+  }, 10_000);
+
   test("keeps polling reviews while the run is paused for one", async () => {
     const calls = countRequests("REVIEW");
     renderHook(
@@ -108,7 +139,7 @@ describe("useCopilotPendingReviews", () => {
     async ({ rows, polls }) => {
       let requests = 0;
       server.use(
-        http.get("*/api/review/execution/copilot-session-s1", () => {
+        http.get("*/api/review/session/s1", () => {
           requests++;
           return HttpResponse.json(rows);
         }),
@@ -116,7 +147,7 @@ describe("useCopilotPendingReviews", () => {
       renderHook(
         () =>
           useCopilotPendingReviews({
-            graphExecId: "copilot-session-s1",
+            chatSessionId: "s1",
             pollWhileEmpty: false,
           }),
         { wrapper },
@@ -133,7 +164,7 @@ describe("useCopilotPendingReviews", () => {
   test("a new held call on screen fetches the chat's cards again", async () => {
     let requests = 0;
     server.use(
-      http.get("*/api/review/execution/copilot-session-s1", () => {
+      http.get("*/api/review/session/s1", () => {
         requests++;
         return HttpResponse.json([]);
       }),
@@ -141,7 +172,7 @@ describe("useCopilotPendingReviews", () => {
     const { rerender } = renderHook(
       ({ key }) =>
         useCopilotPendingReviews({
-          graphExecId: "copilot-session-s1",
+          chatSessionId: "s1",
           pollWhileEmpty: false,
           refetchKey: key,
         }),
