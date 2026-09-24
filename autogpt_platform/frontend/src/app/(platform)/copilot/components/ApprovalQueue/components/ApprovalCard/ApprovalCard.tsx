@@ -88,6 +88,7 @@ export function ApprovalCard({
           hiddenKeys={item.headlineKeys}
           idsWhenAlone={!item.headline.object}
           references={item.blockId ? [] : item.references}
+          referenceTotals={item.referenceTotals}
         />
         {actions}
       </div>

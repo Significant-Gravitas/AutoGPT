@@ -22,6 +22,8 @@ export interface ApprovalItem {
   args: Record<string, unknown>;
   fields: { key: string; label: string }[];
   references: Reference[];
+  // Ids per argument before the server clipped it.
+  referenceTotals: Record<string, number>;
   clipped: string[];
   subject: { kind: string; key: string; name: string; irreversible: boolean };
   blockId: string | null;
@@ -63,6 +65,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
         label: str(f, "label") ?? String(f.key),
       })),
     references: asArray(payload.references).flatMap(toReference),
+    referenceTotals: toTotals(payload.reference_totals),
     clipped: asArray(payload.clipped).filter(
       (k): k is string => typeof k === "string",
     ),
@@ -179,6 +182,7 @@ function toReference(value: unknown): Reference[] {
       name,
       // A link is only ever built for an id that resolved.
       href: name ? safeHref(str(ref, "href")) : null,
+      summary: name ? str(ref, "summary") : null,
     },
   ];
 }
@@ -186,6 +190,14 @@ function toReference(value: unknown): Reference[] {
 // Only an in-app path: the payload is stored data, never a place to send the user.
 function safeHref(href: string | null) {
   return href && href.startsWith("/") && !href.startsWith("//") ? href : null;
+}
+
+function toTotals(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(asObject(value) ?? {}).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
 }
 
 function asArray(value: unknown): unknown[] {

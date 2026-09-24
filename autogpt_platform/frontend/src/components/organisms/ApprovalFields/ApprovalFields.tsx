@@ -23,6 +23,8 @@ interface Props {
   idsWhenAlone?: boolean;
   // What the id arguments name; one shows as its name, linked when it has a page.
   references?: Reference[];
+  // Ids per argument before clipping; a clipped list no longer counts itself.
+  referenceTotals?: Record<string, number>;
 }
 
 export function ApprovalFields({
@@ -32,6 +34,7 @@ export function ApprovalFields({
   hiddenKeys = [],
   idsWhenAlone = false,
   references = [],
+  referenceTotals = {},
 }: Props) {
   const [showAll, setShowAll] = useState(false);
   const labels = new Map(fields.map((f) => [f.key, f.label]));
@@ -59,6 +62,7 @@ export function ApprovalFields({
                 value={values[field.key]}
                 clipped={clipped.includes(field.key)}
                 references={references}
+                total={referenceTotals[field.key]}
               />
             </dd>
           </div>
@@ -83,6 +87,7 @@ interface FieldOrReferenceProps {
   value: unknown;
   clipped: boolean;
   references: Reference[];
+  total?: number;
 }
 
 function FieldOrReference({
@@ -90,12 +95,13 @@ function FieldOrReference({
   value,
   clipped,
   references,
+  total,
 }: FieldOrReferenceProps) {
   const refs = references.filter((ref) => ref.key === name);
   if (!refs.some((ref) => ref.name))
     return <FieldValue name={name} value={value} clipped={clipped} />;
-  const total = Array.isArray(value)
+  const counted = Array.isArray(value)
     ? value.filter((v) => typeof v === "string" && v.trim()).length
-    : 1;
-  return <ReferenceValue refs={refs} total={total} />;
+    : refs.length;
+  return <ReferenceValue refs={refs} total={total ?? counted} />;
 }

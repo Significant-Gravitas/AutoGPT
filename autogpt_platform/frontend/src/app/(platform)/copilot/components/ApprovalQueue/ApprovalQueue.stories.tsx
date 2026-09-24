@@ -85,6 +85,18 @@ export const NamedTemplate: Story = {
   args: queueOf([referenceCard("Hire expert")]),
 };
 
+export const NamedChat: Story = {
+  args: queueOf([referenceCard("Message chat")]),
+};
+
+export const NamedCredential: Story = {
+  args: queueOf([referenceCard("Grant credential")]),
+};
+
+export const NamedFile: Story = {
+  args: queueOf([referenceCard("Delete file")]),
+};
+
 export const UnresolvedId: Story = {
   args: queueOf([referenceCard("Unresolved id")]),
 };

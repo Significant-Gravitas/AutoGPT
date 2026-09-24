@@ -44,9 +44,7 @@ def _session(
 
 @pytest.fixture
 def gate_on():
-    with patch(
-        f"{_GATE}.is_feature_enabled", AsyncMock(return_value=Headline(ask="Run it"))
-    ):
+    with patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)):
         yield
 
 
@@ -55,7 +53,7 @@ def clean_session_state():
     """No prior approval and nothing rejected in this chat."""
     with (
         patch(f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)),
-        patch(f"{_GATE}.held.remember", AsyncMock(return_value=Headline(ask="Run it"))),
+        patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(
             f"{_GATE}.review_store.open_review",
             AsyncMock(return_value=Headline(ask="Run it")),
@@ -106,10 +104,7 @@ async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session
             f"{_GATE}.review_store.find_decision",
             AsyncMock(return_value=ReviewStatus.APPROVED),
         ),
-        patch(
-            f"{_GATE}.review_store.consume",
-            AsyncMock(return_value=Headline(ask="Run it")),
-        ),
+        patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
     ):
         decision = await check_action(
             "post_to_chat_platform", {"text": "hi"}, "u", _session("ask_first")
@@ -167,10 +162,7 @@ async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state
     approved = AsyncMock(return_value=ReviewStatus.APPROVED)
     with (
         patch(f"{_GATE}.review_store.find_decision", approved),
-        patch(
-            f"{_GATE}.review_store.consume",
-            AsyncMock(return_value=Headline(ask="Run it")),
-        ),
+        patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert decision.allowed
@@ -208,10 +200,7 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
             f"{_GATE}.review_store.find_decision",
             AsyncMock(return_value=ReviewStatus.REJECTED),
         ),
-        patch(
-            f"{_GATE}.review_store.consume",
-            AsyncMock(return_value=Headline(ask="Run it")),
-        ),
+        patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.set_ask", set_ask),
     ):
         decision = await check_action(

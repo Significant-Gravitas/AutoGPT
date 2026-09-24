@@ -30,6 +30,7 @@ export interface Reference {
   id: string;
   name: string | null;
   href: string | null;
+  summary: string | null;
 }
 
 export function fieldKind(key: string, value: unknown): FieldKind {

@@ -29,7 +29,7 @@ from backend.data.db_accessors import review_db
 
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
-from .references import Reference, resolve_references
+from .references import Reference, listed_ids, resolve_references
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,8 @@ class GateReviewPayload(BaseModel):
     fields: list[FieldLabel] = []
     # What the call's ids name, as they were when it was held.
     references: list[Reference] = []
+    # Ids per argument before clipping, so a long list still says "+N more".
+    reference_totals: dict[str, int] = {}
     tool_call_id: str = ""
     turn: int = 0
     mode: str | None = None
@@ -124,6 +126,10 @@ def review_payload(
         clipped=[key for key in shown if shown[key] is not redacted[key]],
         fields=_field_labels(tool_name, shown),
         references=references or [],
+        reference_totals={
+            key: len(listed_ids(args.get(key)))
+            for key in {ref.key for ref in references or []}
+        },
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,

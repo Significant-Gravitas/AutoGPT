@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ReferenceLink } from "@/components/organisms/ApprovalFields/components/ReferenceLink";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { COPILOT_TOOL_CATALOG } from "../../ToolChain/toolCatalog";
@@ -50,7 +50,7 @@ interface HeadlineTextProps {
 
 export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
   const { ask, object } = item.headline;
-  const href = linked ? objectHref(item) : null;
+  const reference = linked ? objectReference(item) : null;
   return (
     <>
       {ask}
@@ -58,13 +58,10 @@ export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
         <>
           {" "}
           <b className="font-semibold" translate="no">
-            {href ? (
-              <Link
-                href={href}
-                className="underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-              >
+            {reference?.href ? (
+              <ReferenceLink reference={{ ...reference, href: reference.href }}>
                 {object}
-              </Link>
+              </ReferenceLink>
             ) : (
               object
             )}
@@ -76,9 +73,7 @@ export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
 }
 
 // The headline names a resolved id's thing, and its field is hidden, so the link lives here.
-function objectHref(item: ApprovalItem) {
+function objectReference(item: ApprovalItem) {
   const [key] = item.headlineKeys;
-  return (
-    item.references.find((ref) => ref.key === key && ref.href)?.href ?? null
-  );
+  return item.references.find((ref) => ref.key === key && ref.href) ?? null;
 }

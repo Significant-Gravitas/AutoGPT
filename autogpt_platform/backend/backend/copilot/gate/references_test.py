@@ -68,6 +68,7 @@ async def test_a_single_id_resolves_to_its_name_and_page():
         id="f-111",
         name="Q3 reports",
         href="/library?folder=f-111",
+        summary="0 agents · 0 folders",
     )
     lib.get_folder.assert_awaited_once_with("f-111", "user-1")
 
@@ -253,6 +254,7 @@ def _library(
             raise NotFoundError(f"Library agent #{agent_id} not found")
         agent = MagicMock(id=agent_id)
         agent.name = agents[agent_id]
+        agent.description = ""
         return agent
 
     lib = MagicMock()
@@ -275,3 +277,29 @@ def _folder(folder_id: str, user_id: str, name: str) -> LibraryFolder:
     return LibraryFolder(
         id=folder_id, user_id=user_id, name=name, created_at=now, updated_at=now
     )
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("  Sends the\n morning   digest ", "Sends the morning digest"),
+        ("x" * 200, "x" * 139 + "…"),
+        ("   ", None),
+        (None, None),
+    ],
+)
+def test_a_summary_is_one_short_line_or_none(text, expected):
+    assert references._one_line(text) == expected
+
+
+async def test_a_resolved_agent_carries_its_description_for_the_hover():
+    lib = _library(agents={"a0": "Digest"})
+    agent = await lib.get_library_agent("a0", "user-1")
+    agent.description = "Sends the morning digest"
+    lib.get_library_agent = AsyncMock(return_value=agent)
+    with patch.object(references, "library_db", return_value=lib):
+        [ref] = await resolve_references(
+            "move_agents_to_folder", {"agent_ids": ["a0"]}, "user-1", _session()
+        )
+
+    assert (ref.name, ref.summary) == ("Digest", "Sends the morning digest")

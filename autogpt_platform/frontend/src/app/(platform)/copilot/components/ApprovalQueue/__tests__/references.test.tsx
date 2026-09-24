@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
@@ -42,7 +43,6 @@ test("a list of ids reads as linked names, the unresolved one as its id", async 
   const view = await card();
   const digest = view.getByRole("link", { name: "Morning digest" });
   expect(digest.getAttribute("href")).toBe("/library/agents/lib-digest");
-  expect(digest.getAttribute("title")).toBe("lib-digest");
   expect(view.getByText("lib-gone")).toBeDefined();
   expect(view.queryByRole("link", { name: "lib-gone" })).toBeNull();
   expect(view.getByText(/\+2 more/)).toBeDefined();
@@ -74,4 +74,49 @@ test("a stored link that leaves the app is dropped, the name kept", async () => 
   const view = await card();
   expect(view.getByText("Ada", { selector: "span" })).toBeDefined();
   expect(view.queryAllByRole("link")).toHaveLength(0);
+});
+
+test("hovering a resolved link shows its summary and its ID", async () => {
+  renderCard(referenceCard("Move agents"));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Morning digest" }));
+
+  const tip = await screen.findByRole("tooltip");
+  expect(tip.textContent).toContain(
+    "Summarises overnight email and news at 7am.",
+  );
+  expect(tip.textContent).toContain("lib-digest");
+});
+
+test("a link with no summary has no tooltip, only the ID as its title", async () => {
+  const review = referenceCard("Move agents");
+  const payload = review.payload as { references: { summary: unknown }[] };
+  payload.references.forEach((ref) => (ref.summary = null));
+  renderCard(review);
+
+  const view = await card();
+  const digest = view.getByRole("link", { name: "Morning digest" });
+  await userEvent.hover(digest);
+
+  expect(digest.getAttribute("title")).toBe("lib-digest");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("a list the server clipped still counts every ID it held", async () => {
+  const review = referenceCard("Move agents");
+  const payload = review.payload as {
+    arguments: Record<string, unknown>;
+    clipped: string[];
+    reference_totals: Record<string, number>;
+  };
+  payload.arguments.agent_ids = '["lib-digest", "lib-gone", "lib-tri…';
+  payload.clipped = ["agent_ids"];
+  payload.reference_totals.agent_ids = 120;
+  renderCard(review);
+
+  const view = await card();
+  expect(view.getByRole("link", { name: "Morning digest" })).toBeDefined();
+  expect(view.getByText(/\+115 more/)).toBeDefined();
 });

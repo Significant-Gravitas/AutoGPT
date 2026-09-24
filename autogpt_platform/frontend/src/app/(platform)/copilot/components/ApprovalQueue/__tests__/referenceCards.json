@@ -27,9 +27,13 @@
             "entity": "library_folder",
             "id": "f-q3",
             "name": "Q3 reports",
-            "href": "/library?folder=f-q3"
+            "href": "/library?folder=f-q3",
+            "summary": "4 agents · 1 folder"
           }
         ],
+        "reference_totals": {
+          "folder_id": 1
+        },
         "tool_call_id": "call-delete_folder",
         "turn": 1,
         "mode": "ask_first",
@@ -95,44 +99,54 @@
             "entity": "library_folder",
             "id": "f-archive",
             "name": "Archive",
-            "href": "/library?folder=f-archive"
+            "href": "/library?folder=f-archive",
+            "summary": "4 agents · 1 folder"
           },
           {
             "key": "agent_ids",
             "entity": "library_agent",
             "id": "lib-digest",
             "name": "Morning digest",
-            "href": "/library/agents/lib-digest"
+            "href": "/library/agents/lib-digest",
+            "summary": "Summarises overnight email and news at 7am."
           },
           {
             "key": "agent_ids",
             "entity": "library_agent",
             "id": "lib-gone",
             "name": null,
-            "href": null
+            "href": null,
+            "summary": null
           },
           {
             "key": "agent_ids",
             "entity": "library_agent",
             "id": "lib-triage",
             "name": "Inbox triage",
-            "href": "/library/agents/lib-triage"
+            "href": "/library/agents/lib-triage",
+            "summary": "Labels and routes new support email."
           },
           {
             "key": "agent_ids",
             "entity": "library_agent",
             "id": "lib-notes",
             "name": "Meeting notes",
-            "href": "/library/agents/lib-notes"
+            "href": "/library/agents/lib-notes",
+            "summary": "Turns call recordings into action items."
           },
           {
             "key": "agent_ids",
             "entity": "library_agent",
             "id": "lib-invoices",
             "name": "Invoice chaser",
-            "href": "/library/agents/lib-invoices"
+            "href": "/library/agents/lib-invoices",
+            "summary": "Nudges clients about overdue invoices."
           }
         ],
+        "reference_totals": {
+          "agent_ids": 7,
+          "folder_id": 1
+        },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
         "mode": "ask_first",
@@ -185,9 +199,13 @@
             "entity": "schedule",
             "id": "sch-digest",
             "name": "Daily digest",
-            "href": "/library/agents/lib-digest?activeTab=scheduled&activeItem=sch-digest"
+            "href": "/library/agents/lib-digest?activeTab=scheduled&activeItem=sch-digest",
+            "summary": "Runs 0 7 * * * · next 2026-09-25 07:00"
           }
         ],
+        "reference_totals": {
+          "schedule_id": 1
+        },
         "tool_call_id": "call-pause_schedule",
         "turn": 1,
         "mode": "ask_first",
@@ -245,9 +263,13 @@
             "entity": "expert_template",
             "id": "tpl-ada",
             "name": "Ada",
-            "href": "/marketplace/experts/tpl-ada"
+            "href": "/marketplace/experts/tpl-ada",
+            "summary": "Keeps the books balanced."
           }
         ],
+        "reference_totals": {
+          "template_id": 1
+        },
         "tool_call_id": "call-hire_expert",
         "turn": 1,
         "mode": "ask_first",
@@ -268,6 +290,207 @@
         }
       },
       "instructions": "hire_expert",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Message chat",
+    "review": {
+      "node_exec_id": "copilot-node-gate-message_session:2c8054b35c3384ca",
+      "node_id": "copilot-node-gate-message_session",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "message_session",
+        "arguments": {
+          "session_id": "s-q3",
+          "message": "Done?"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "session_id",
+            "label": "Session"
+          },
+          {
+            "key": "message",
+            "label": "Message"
+          }
+        ],
+        "references": [
+          {
+            "key": "session_id",
+            "entity": "chat_session",
+            "id": "s-q3",
+            "name": "Q3 planning",
+            "href": "/copilot?sessionId=s-q3",
+            "summary": "Last active 2026-09-24"
+          }
+        ],
+        "reference_totals": {
+          "session_id": 1
+        },
+        "tool_call_id": "call-message_session",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "message_session",
+          "name": "Message session",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Message another chat",
+          "object": "Q3 planning",
+          "object_key": "session_id"
+        }
+      },
+      "instructions": "message_session",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Grant credential",
+    "review": {
+      "node_exec_id": "copilot-node-gate-grant_expert_credential:b489e74557cde77d",
+      "node_id": "copilot-node-gate-grant_expert_credential",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "grant_expert_credential",
+        "arguments": {
+          "expert_id": "exp-ada",
+          "credential_id": "[redacted]"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "expert_id",
+            "label": "Expert"
+          },
+          {
+            "key": "credential_id",
+            "label": "Credential"
+          }
+        ],
+        "references": [
+          {
+            "key": "credential_id",
+            "entity": "credential",
+            "id": "cred-gh",
+            "name": "GitHub (work)",
+            "href": "/settings/integrations",
+            "summary": "github · api key"
+          },
+          {
+            "key": "expert_id",
+            "entity": "expert",
+            "id": "exp-ada",
+            "name": "Ada",
+            "href": "/team/exp-ada",
+            "summary": "Bookkeeper"
+          }
+        ],
+        "reference_totals": {
+          "credential_id": 1,
+          "expert_id": 1
+        },
+        "tool_call_id": "call-grant_expert_credential",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "grant_expert_credential",
+          "name": "Grant expert credential",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Give a teammate an account",
+          "object": "GitHub (work)",
+          "object_key": "credential_id"
+        }
+      },
+      "instructions": "grant_expert_credential",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Delete file",
+    "review": {
+      "node_exec_id": "copilot-node-gate-delete_workspace_file:728b5af581bf1036",
+      "node_id": "copilot-node-gate-delete_workspace_file",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "delete_workspace_file",
+        "arguments": {
+          "file_id": "file-q3",
+          "path": "/reports/q3-report.pdf"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "file_id",
+            "label": "File"
+          },
+          {
+            "key": "path",
+            "label": "Path"
+          }
+        ],
+        "references": [
+          {
+            "key": "file_id",
+            "entity": "workspace_file",
+            "id": "file-q3",
+            "name": "q3-report.pdf",
+            "href": "/artifacts?folder=wf-reports",
+            "summary": "application/pdf · 242 KB"
+          }
+        ],
+        "reference_totals": {
+          "file_id": 1
+        },
+        "tool_call_id": "call-delete_workspace_file",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "delete_workspace_file",
+          "name": "Delete workspace file",
+          "effect": "platform",
+          "irreversible": true
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Delete file",
+          "object": "/reports/q3-report.pdf",
+          "object_key": "path"
+        }
+      },
+      "instructions": "delete_workspace_file",
       "editable": false,
       "status": "WAITING"
     }
@@ -300,9 +523,13 @@
             "entity": "preset",
             "id": "3f0c9a2e-preset-gone",
             "name": null,
-            "href": null
+            "href": null,
+            "summary": null
           }
         ],
+        "reference_totals": {
+          "preset_id": 1
+        },
         "tool_call_id": "call-delete_preset",
         "turn": 1,
         "mode": "ask_first",

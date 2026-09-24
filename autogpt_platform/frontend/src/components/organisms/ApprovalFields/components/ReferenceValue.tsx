@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Fragment } from "react";
 import type { Reference } from "../helpers";
+import { ReferenceLink } from "./ReferenceLink";
 
 interface Props {
   refs: Reference[];
@@ -37,13 +37,8 @@ function ReferenceName({ reference }: { reference: Reference }) {
       </span>
     );
   return (
-    <Link
-      href={reference.href}
-      translate="no"
-      title={reference.id}
-      className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-600 hover:decoration-zinc-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-    >
+    <ReferenceLink reference={{ ...reference, href: reference.href }}>
       {reference.name}
-    </Link>
+    </ReferenceLink>
   );
 }

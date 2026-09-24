@@ -12,10 +12,14 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import SecretStr
+
 from backend.api.features.library.model import LibraryFolder
 from backend.copilot.gate import references
 from backend.copilot.gate.review import review_id_for, review_payload
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, ChatSessionInfo
+from backend.data.model import APIKeyCredentials
+from backend.data.workspace import WorkspaceFile
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.util.exceptions import NotFoundError
 
@@ -27,13 +31,14 @@ FIXTURE = (
 _USER = "user-1"
 _FOLDERS = {"f-q3": "Q3 reports", "f-archive": "Archive"}
 _AGENTS = {
-    "lib-digest": "Morning digest",
-    "lib-triage": "Inbox triage",
-    "lib-notes": "Meeting notes",
-    "lib-invoices": "Invoice chaser",
-    "lib-leads": "Lead scorer",
-    "lib-social": "Social scheduler",
+    "lib-digest": ("Morning digest", "Summarises overnight email and news at 7am."),
+    "lib-triage": ("Inbox triage", "Labels and routes new support email."),
+    "lib-notes": ("Meeting notes", "Turns call recordings into action items."),
+    "lib-invoices": ("Invoice chaser", "Nudges clients about overdue invoices."),
+    "lib-leads": ("Lead scorer", "Scores inbound leads against the ICP."),
+    "lib-social": ("Social scheduler", "Queues the week's posts."),
 }
+_WHEN = datetime(2026, 9, 24, 14, 5, tzinfo=UTC)
 # The call, as the model sends it, per story.
 _CALLS: list[tuple[str, str, dict[str, Any]]] = [
     ("Delete folder", "delete_folder", {"folder_id": "f-q3"}),
@@ -55,6 +60,17 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
     ),
     ("Pause schedule", "pause_schedule", {"schedule_id": "sch-digest"}),
     ("Hire expert", "hire_expert", {"template_id": "tpl-ada", "name": "Ada"}),
+    ("Message chat", "message_session", {"session_id": "s-q3", "message": "Done?"}),
+    (
+        "Grant credential",
+        "grant_expert_credential",
+        {"expert_id": "exp-ada", "credential_id": "cred-gh"},
+    ),
+    (
+        "Delete file",
+        "delete_workspace_file",
+        {"file_id": "file-q3", "path": "/reports/q3-report.pdf"},
+    ),
     ("Unresolved id", "delete_preset", {"preset_id": "3f0c9a2e-preset-gone"}),
 ]
 
@@ -64,6 +80,9 @@ async def build_cards() -> list[dict[str, Any]]:
         patch.object(references, "library_db", return_value=_library()),
         patch.object(references, "experts_db", return_value=_experts()),
         patch.object(references, "get_scheduler_client", return_value=_scheduler()),
+        patch.object(references, "get_chat_session_metadata", _chat),
+        patch.object(references, "IntegrationCredentialsManager", _credentials),
+        patch.object(references, "get_workspace_manager", _workspace),
     ):
         cards = [await _card(*call) for call in _CALLS]
     return json.loads(json.dumps(cards, default=str))
@@ -117,6 +136,8 @@ def _library() -> MagicMock:
             id=folder_id,
             user_id=user_id,
             name=_FOLDERS[folder_id],
+            agent_count=4,
+            subfolder_count=1,
             created_at=now,
             updated_at=now,
         )
@@ -124,11 +145,11 @@ def _library() -> MagicMock:
     async def get_library_agent(agent_id: str, user_id: str) -> MagicMock:
         if agent_id not in _AGENTS:
             raise NotFoundError(f"Library agent #{agent_id} not found")
-        return _named(agent_id, _AGENTS[agent_id])
+        return _named(agent_id, *_AGENTS[agent_id])
 
     async def by_graph(user_id: str, graph_id: str) -> MagicMock | None:
         return (
-            _named("lib-digest", _AGENTS["lib-digest"])
+            _named("lib-digest", *_AGENTS["lib-digest"])
             if graph_id == "g-digest"
             else None
         )
@@ -143,7 +164,12 @@ def _library() -> MagicMock:
 
 def _experts() -> MagicMock:
     experts = MagicMock()
-    experts.list_templates = AsyncMock(return_value=[_named("tpl-ada", "Ada")])
+    ada = _named("tpl-ada", "Ada")
+    ada.tagline, ada.job_title, ada.role = "Keeps the books balanced.", None, "Finance"
+    experts.list_templates = AsyncMock(return_value=[ada])
+    hired = _named("exp-ada", "Ada")
+    hired.tagline, hired.job_title, hired.role = None, "Bookkeeper", "Finance"
+    experts.get_expert = AsyncMock(return_value=hired)
     return experts
 
 
@@ -161,7 +187,41 @@ def _scheduler() -> MagicMock:
     return MagicMock(get_execution_schedules=AsyncMock(return_value=[job]))
 
 
-def _named(id: str, name: str) -> MagicMock:
-    thing = MagicMock(id=id)
+async def _chat(session_id: str, user_id: str) -> ChatSessionInfo:
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id=user_id,
+        title="Q3 planning",
+        usage=[],
+        started_at=_WHEN,
+        updated_at=_WHEN,
+    )
+
+
+def _credentials() -> MagicMock:
+    creds = APIKeyCredentials(
+        id="cred-gh", provider="github", title="GitHub (work)", api_key=SecretStr("x")
+    )
+    return MagicMock(store=MagicMock(get_creds_by_id=AsyncMock(return_value=creds)))
+
+
+async def _workspace(user_id: str, session_id: str) -> MagicMock:
+    file = WorkspaceFile(
+        id="file-q3",
+        workspace_id="ws-1",
+        created_at=_WHEN,
+        updated_at=_WHEN,
+        name="q3-report.pdf",
+        path="/reports/q3-report.pdf",
+        storage_path="ws-1/file-q3",
+        mime_type="application/pdf",
+        size_bytes=248_000,
+        folder_id="wf-reports",
+    )
+    return MagicMock(get_file_info=AsyncMock(return_value=file))
+
+
+def _named(id: str, name: str, description: str = "") -> MagicMock:
+    thing = MagicMock(id=id, description=description)
     thing.name = name
     return thing

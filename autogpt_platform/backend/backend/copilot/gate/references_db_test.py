@@ -40,6 +40,7 @@ async def test_a_held_delete_names_the_folder_in_the_stored_card(
             id=folder.id,
             name=name,
             href=f"/library?folder={folder.id}",
+            summary="0 agents · 0 folders",
         )
     ]
 
