@@ -18,10 +18,13 @@ from prisma.enums import ContentType
 
 from backend.api.features.search.content_handlers import build_workspace_file_text
 from backend.api.features.search.embeddings import (
+    EMBEDDING_MODEL,
     delete_content_embedding,
-    ensure_content_embedding,
+    generate_embedding,
     get_content_embedding,
+    store_content_embedding,
 )
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +46,25 @@ async def _run_embedding(file_id: str, user_id: str, name: str, path: str) -> No
         )
         if existing and existing.get("searchableText") == searchable_text:
             return
-        await ensure_content_embedding(
+        await store_content_embedding(
             content_type=ContentType.WORKSPACE_FILE,
             content_id=file_id,
+            embedding=await _embed(EMBEDDING_MODEL, searchable_text),
             searchable_text=searchable_text,
             metadata={"name": name, "path": path},
             user_id=user_id,
-            force=True,
         )
     except Exception as e:
         logger.warning(
             "Failed to ensure workspace file embedding for %s: %s", file_id, e
         )
+
+
+# Keyed by the text, which is all that is embedded: every installed skill is
+# "SKILL.md SKILL", so a hire of 8 skills asked for one vector 8 times.
+@cached(ttl_seconds=86_400, maxsize=256)
+async def _embed(model: str, text: str) -> list[float]:
+    return await generate_embedding(text)
 
 
 def schedule_workspace_file_embedding(
