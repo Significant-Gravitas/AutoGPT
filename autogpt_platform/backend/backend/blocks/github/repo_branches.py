@@ -275,7 +275,7 @@ class GithubDeleteBranchBlock(Block):
             test_mock={
                 "delete_branch": lambda *args, **kwargs: "Branch deleted successfully"
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
         )
 
     @staticmethod

@@ -78,6 +78,7 @@ class WordPressCreatePostBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=self.Input,
             output_schema=self.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

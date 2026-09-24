@@ -134,6 +134,7 @@ class PublishToMediumBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
         )
 
     async def create_post(

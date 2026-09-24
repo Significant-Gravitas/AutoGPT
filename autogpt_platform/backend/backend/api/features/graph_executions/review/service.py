@@ -13,6 +13,7 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
 from backend.copilot.constants import parse_node_id_from_exec_id
+from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -79,7 +80,7 @@ async def process_reviews(
             detail=f"Review(s) not found: {', '.join(sorted(missing_ids))}",
         )
 
-    graph_exec_id = _one_scope(reviews_map.values(), graph_exec_id)
+    graph_exec_id, chat_session_id = _one_scope(reviews_map.values(), graph_exec_id)
     if graph_exec_id is not None:
         await _assert_awaiting_review(user_id, graph_exec_id)
 
@@ -104,7 +105,10 @@ async def process_reviews(
         graph_exec_id,
     )
 
-    # A chat resumes when the LLM calls resume_capability, not from here.
+    # A held call finishes on its own: the answer starts the chat's next turn.
+    if chat_session_id is not None and updated_reviews:
+        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
+
     if graph_exec_id is not None and updated_reviews:
         await _resume_if_nothing_pending(
             user_id,
@@ -126,8 +130,10 @@ async def process_reviews(
     )
 
 
-def _one_scope(reviews, graph_exec_id: Optional[str]) -> Optional[str]:
-    """The single run every decision belongs to, or None for one chat's reviews."""
+def _one_scope(
+    reviews, graph_exec_id: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """The one run, or the one chat, every decision belongs to."""
     scopes = {(review.graph_exec_id, review.session_id) for review in reviews}
     if graph_exec_id is not None:
         if {g for g, _ in scopes} != {graph_exec_id}:
@@ -135,14 +141,14 @@ def _one_scope(reviews, graph_exec_id: Optional[str]) -> Optional[str]:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Review(s) not found for run {graph_exec_id}",
             )
-        return graph_exec_id
+        return graph_exec_id, None
 
     if len(scopes) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
-    return next(iter(scopes))[0]
+    return next(iter(scopes))
 
 
 async def _assert_awaiting_review(user_id: str, graph_exec_id: str) -> None:

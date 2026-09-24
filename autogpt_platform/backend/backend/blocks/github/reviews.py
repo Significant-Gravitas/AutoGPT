@@ -108,6 +108,7 @@ class GithubCreatePRReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod
@@ -426,6 +427,7 @@ class GithubSubmitPendingReviewBlock(Block):
                     "https://github.com/owner/repo/pull/1#pullrequestreview-123456",
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod

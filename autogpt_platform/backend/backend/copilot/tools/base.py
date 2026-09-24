@@ -17,7 +17,12 @@ from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
 from .capability_gates import gate_denied, gate_denied_error
-from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
+from .models import (
+    ApprovalRequiredResponse,
+    ErrorResponse,
+    NeedLoginResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +453,15 @@ class BaseTool:
                 success=False,
             )
 
+        # Auto-mode gate. Sits here because both engines funnel every registry
+        # tool through this method — baseline via ``execute_tool``, SDK via
+        # ``_execute_tool_sync`` — so there is one place to add, not two.
+        # Must stay AFTER the envelope and name gates: a call the envelope refuses can
+        # never run, so approving it would spend a user's decision on nothing.
+        gated = await self._gate(user_id, session, tool_call_id, kwargs)
+        if gated is not None:
+            return gated
+
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
         # whether it was dispatched rather than whether it succeeded.
@@ -487,6 +501,71 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
+
+    async def _gate(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> StreamToolOutputAvailable | None:
+        """Refusal to return instead of running, or None to proceed.
+
+        A gate that crashes must not become a gate that passes, so an
+        unexpected failure here refuses the call rather than falling through.
+        """
+        from backend.copilot.gate import check_action
+
+        try:
+            decision = await check_action(
+                self.name, kwargs, user_id, session, tool_call_id
+            )
+        except Exception:
+            logger.warning(f"Action gate failed for {self.name}", exc_info=True)
+            return self._refusal(
+                tool_call_id,
+                session,
+                "This action could not be checked against your approval "
+                "settings, so nothing ran. Tell the user and stop.",
+                args=kwargs,
+            )
+
+        if decision.allowed:
+            return None
+        return self._refusal(
+            tool_call_id,
+            session,
+            decision.reason,
+            review_id=decision.review_id,
+            args=kwargs,
+        )
+
+    def _refusal(
+        self,
+        tool_call_id: str,
+        session: ChatSession,
+        reason: str,
+        review_id: str | None = None,
+        args: dict[str, Any] | None = None,
+    ) -> StreamToolOutputAvailable:
+        from backend.copilot.gate import refusal_message
+        from backend.copilot.gate.headline import headline_for
+
+        headline = headline_for(self.name, args or {})
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=ApprovalRequiredResponse(
+                message=refusal_message(reason, review_id),
+                session_id=session.session_id,
+                tool_name=self.name,
+                reason=reason,
+                review_id=review_id,
+                ask=headline.ask,
+                object=headline.object,
+            ).model_dump_json(),
+            success=False,
+        )
 
     async def _execute(
         self,

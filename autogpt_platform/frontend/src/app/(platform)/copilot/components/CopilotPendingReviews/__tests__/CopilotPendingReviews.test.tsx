@@ -60,7 +60,9 @@ test("a chat's queue is read from the chat, and the resume is AutoPilot's", asyn
 
   render(<CopilotPendingReviews chatSessionId="chat-1" />);
 
-  expect(await screen.findByText("Create Folder")).toBeDefined();
+  expect((await screen.findAllByText("Create Folder")).length).toBeGreaterThan(
+    0,
+  );
   expect(screen.queryByText("Not this chat's review")).toBeNull();
 
   await userEvent.click(screen.getAllByRole("button", { name: /^Approve/ })[0]);
@@ -89,6 +91,6 @@ test("an agent run's queue is read from its execution", async () => {
 
   render(<CopilotPendingReviews graphExecId="exec-9" />);
 
-  expect(await screen.findByText("Send Email")).toBeDefined();
+  expect((await screen.findAllByText("Send Email")).length).toBeGreaterThan(0);
   expect(screen.queryByText("Not the run's review")).toBeNull();
 });
