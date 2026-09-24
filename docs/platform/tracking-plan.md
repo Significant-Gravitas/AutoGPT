@@ -285,6 +285,7 @@ Return visits are `$pageview`; account-level retention is computed in
 | --- | --- | --- | --- | --- |
 | `experiment_exposed` | browser | live | `experiment_key`, `variant`, `provider: launchdarkly`, `$feature/<flag>` | A LaunchDarkly-bucketed arm is shown to a signed-in user (`useLaunchDarklyExperiment`). |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
+| `feature_flag_mismatch` | browser | rename → `feature_flag_mismatched` | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. The analytics plan has no name for it; SECRT-2722 gives it the `object_action` past-tense form before it reaches production. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.

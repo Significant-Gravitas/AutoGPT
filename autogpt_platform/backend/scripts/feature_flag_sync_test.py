@@ -232,6 +232,57 @@ def test_off_boolean_flag_serves_its_off_variation_to_everyone(off_variation, ac
     assert _served(payload)("user-x", ADMIN) is active
 
 
+@pytest.mark.parametrize(
+    "clause",
+    [
+        {"attribute": "country", "op": "in", "values": ["IN"], "negate": True},
+        {"attribute": "country", "op": "endsWith", "values": ["N"], "negate": True},
+    ],
+)
+def test_negated_clause_never_serves_a_user_without_the_attribute(clause):
+    """LaunchDarkly: a missing attribute matches no clause, negated or not.
+
+    The trial offer's production rule is "country is not one of IN". Without
+    the is_set guard, PostHog would be free to serve it to a visitor whose
+    country is unknown -- the one case LaunchDarkly withholds it.
+    """
+    flag = _flag("boolean", rules=[_rule([clause], 0)], fallthrough=1)
+
+    mapped = map_flag(flag, ENV, _cohorts())
+
+    assert mapped.decisions == []
+    served = _served(mapped.payload)
+    assert served("user-x", {"country": "US"}) is True
+    assert served("user-x", {"country": "IN"}) is False
+    # The local evaluator defers to PostHog's servers here, and the group it
+    # defers with can only match once country is set.
+    group = _payload(mapped)["filters"]["groups"][0]["properties"]
+    assert {
+        "key": "country",
+        "type": "person",
+        "operator": "is_set",
+        "value": "is_set",
+    } in group
+
+
+def test_country_rule_ports_instead_of_needing_a_decision():
+    """The trial offer's country targeting must survive the migration."""
+    flag = _flag(
+        "boolean",
+        rules=[
+            _rule([{"attribute": "country", "op": "in", "values": ["US", "GB"]}], 0)
+        ],
+        fallthrough=1,
+    )
+
+    mapped = map_flag(flag, ENV, _cohorts())
+
+    assert mapped.decisions == []
+    served = _served(mapped.payload)
+    assert served("user-x", {"country": "GB"}) is True
+    assert served("user-x", {"country": "IN"}) is False
+
+
 def test_multivariate_flag_serves_launchdarkly_values_as_payloads():
     flag = _flag(
         "multivariate",
@@ -319,7 +370,7 @@ def test_target_on_a_context_kind_no_client_sends_is_dropped_with_a_note():
                 "rules": [
                     {
                         "clauses": [
-                            {"attribute": "country", "op": "in", "values": ["NL"]}
+                            {"attribute": "plan", "op": "in", "values": ["pro"]}
                         ],
                         "variation": 0,
                     }

@@ -3,19 +3,18 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useArtifactsFolders } from "../../useArtifactsFolders";
-import { FOLDER_STYLE } from "../WorkspaceFolders/folder-constants";
-import { Folder01Icon, Home01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { FolderTree } from "./components/FolderTree";
+import type { MoveSubject } from "./helpers";
+import { useMoveToFolderDialog } from "./useMoveToFolderDialog";
 
 interface Props {
-  fileIds: string[];
-  /** What is being moved, as shown in the prompt: `“report.pdf”` or `3 files`. */
+  move: MoveSubject;
+  /** What is being moved, as shown in the prompt: `“report.pdf”`, `3 files`
+      or `“Reports”`. */
   subject: string;
-  /** Folder every file already sits in, left out of the destinations.
-      `null` when the files are at the root or spread across folders. */
-  currentFolderId?: string | null;
-  /** Offer "Files (root)". Defaults to "some file is inside a folder", which
-      `currentFolderId` alone cannot express for a mixed selection. */
+  /** Offer "Files (root)". For files it defaults to "some file is inside a
+      folder", which `currentFolderId` alone cannot express for a mixed
+      selection; for a folder, to "not already at the root". */
   canMoveToRoot?: boolean;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
@@ -23,27 +22,31 @@ interface Props {
 }
 
 export function MoveToFolderDialog({
-  fileIds,
+  move,
   subject,
-  currentFolderId,
-  canMoveToRoot = currentFolderId != null,
+  canMoveToRoot,
   isOpen,
   setIsOpen,
   onMoved,
 }: Props) {
-  const { folders, moveFilesToFolder } = useArtifactsFolders();
-  const destinationFolders = folders.filter((f) => f.id !== currentFolderId);
-
-  function handleMove(folderId: string | null) {
-    // Close only on success; the hook toasts on error and we keep the dialog
-    // open so the user can retry without re-opening it.
-    moveFilesToFolder({ fileIds, folderId })
-      .then(() => {
-        setIsOpen(false);
-        onMoved?.();
-      })
-      .catch(() => {});
-  }
+  const { folders } = useArtifactsFolders();
+  const offerRoot = canMoveToRoot ?? defaultCanMoveToRoot(move, folders);
+  const {
+    rows,
+    selectedKey,
+    select,
+    toggleExpanded,
+    confirm,
+    canConfirm,
+    isMoving,
+  } = useMoveToFolderDialog({
+    move,
+    canMoveToRoot: offerRoot,
+    onDone: () => {
+      setIsOpen(false);
+      onMoved?.();
+    },
+  });
 
   return (
     <Dialog
@@ -56,42 +59,52 @@ export function MoveToFolderDialog({
           <Text variant="small" className="mb-1 text-zinc-500">
             Move {subject} to:
           </Text>
-          {canMoveToRoot && (
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 px-3 py-2.5"
-              onClick={() => handleMove(null)}
-              data-testid="move-to-root"
-            >
-              <Icon icon={Home01Icon} size={18} className="text-zinc-500" />
-              <Text variant="small-medium">Files (root)</Text>
-            </Button>
-          )}
-          {destinationFolders.length === 0 ? (
+          {rows.length === 0 ? (
             <div className="flex h-20 items-center justify-center">
               <Text variant="small" className="text-zinc-400">
                 {folders.length === 0 ? "No folders yet" : "No other folders"}
               </Text>
             </div>
           ) : (
-            destinationFolders.map((folder) => {
-              const style = FOLDER_STYLE;
-              return (
-                <Button
-                  key={folder.id}
-                  variant="ghost"
-                  className="w-full justify-start gap-3 px-3 py-2.5"
-                  onClick={() => handleMove(folder.id)}
-                  data-testid="move-to-folder-option"
-                >
-                  <Icon icon={Folder01Icon} size={18} className={style.icon} />
-                  <Text variant="small-medium">{folder.name}</Text>
-                </Button>
-              );
-            })
+            <FolderTree
+              rows={rows}
+              selectedKey={selectedKey}
+              onSelect={select}
+              onToggleExpanded={toggleExpanded}
+            />
           )}
         </div>
+        <Dialog.Footer>
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            onClick={() => setIsOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="small"
+            disabled={!canConfirm}
+            loading={isMoving}
+            onClick={confirm}
+            data-testid="confirm-move-to-folder"
+          >
+            Move
+          </Button>
+        </Dialog.Footer>
       </Dialog.Content>
     </Dialog>
   );
+}
+
+function defaultCanMoveToRoot(
+  move: MoveSubject,
+  folders: { id: string; parent_id?: string | null }[],
+): boolean {
+  if (move.kind === "files") return move.currentFolderId != null;
+  const self = folders.find((folder) => folder.id === move.folderId);
+  return (self?.parent_id ?? null) !== null;
 }

@@ -6,6 +6,7 @@ import { ExpertAreaChip } from "./components/ExpertAreaChip";
 
 interface Props {
   name: string;
+  isOtto?: boolean;
   role?: string | null;
   jobTitle?: string | null;
   size?: "compact" | "card" | "page";
@@ -15,6 +16,7 @@ interface Props {
 
 export function ExpertIdentityDetails({
   name,
+  isOtto = false,
   role,
   jobTitle,
   size = "card",
@@ -48,6 +50,11 @@ export function ExpertIdentityDetails({
         </Text>
         {nameAccessory}
       </Container>
+      {!area || (!isOtto && !compact) ? (
+        <Text as="span" variant="small" tone="muted">
+          {isOtto ? "Your personal Head of AI" : "AI Expert"}
+        </Text>
+      ) : null}
       {!compact && area ? (
         <ExpertAreaChip role={role ?? ""} label={area} />
       ) : area ? (

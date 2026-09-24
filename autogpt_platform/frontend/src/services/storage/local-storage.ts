@@ -1,5 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
-import { environment } from "../environment";
+import { createSafeStorage } from "./safe-storage";
 
 export enum Key {
   LOGOUT = "supabase-logout",
@@ -9,7 +8,6 @@ export enum Key {
   WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
   LIBRARY_AGENTS_CACHE = "library-agents-cache",
   CHAT_SESSION_ID = "chat_session_id",
-  COOKIE_CONSENT = "autogpt_cookie_consent",
   AI_AGENT_SAFETY_POPUP_SHOWN = "ai-agent-safety-popup-shown",
   COPILOT_SOUND_ENABLED = "copilot-sound-enabled",
   COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",
@@ -33,65 +31,4 @@ export enum Key {
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
 }
 
-/** Returns true when localStorage is accessible — false when it is null or when
- *  accessing it throws (e.g. cookies/storage blocked by the browser). */
-function hasStorage(): boolean {
-  try {
-    return window.localStorage !== null;
-  } catch {
-    return false;
-  }
-}
-
-function get(key: Key) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    // Fine, just return undefined not always items will be set on local storage
-    return;
-  }
-}
-
-function set(key: Key, value: string) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  try {
-    return window.localStorage.setItem(key, value);
-  } catch (e) {
-    // localStorage is null/blocked on some WebViews — silently ignore that case.
-    // Any other error (e.g. QuotaExceededError) is unexpected and should be tracked.
-    if (hasStorage()) {
-      Sentry.captureException(e);
-    }
-    return;
-  }
-}
-
-function clean(key: Key) {
-  if (environment.isServerSide()) {
-    Sentry.captureException(new Error("Local storage is not available"));
-    return;
-  }
-  try {
-    return window.localStorage.removeItem(key);
-  } catch (e) {
-    // localStorage is null/blocked on some WebViews — silently ignore that case.
-    // Any other error is unexpected and should be tracked.
-    if (hasStorage()) {
-      Sentry.captureException(e);
-    }
-    return;
-  }
-}
-
-export const storage = {
-  clean,
-  get,
-  set,
-};
+export const storage = createSafeStorage<Key>("local");

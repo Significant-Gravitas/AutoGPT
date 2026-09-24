@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
 
 import { AppSidebar } from "../AppSidebar";
+import { Flag } from "@/services/feature-flags/use-get-flag";
 
 function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
   return { ...getGetHomeDashboardResponseMock200(), agents };
@@ -58,7 +59,9 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
 });
 
-const useGetFlagMock = vi.hoisted(() => vi.fn(() => false));
+const useGetFlagMock = vi.hoisted(() =>
+  vi.fn<(flag: Flag) => boolean>(() => false),
+);
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -67,7 +70,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: () => useGetFlagMock(),
+    useGetFlag: (flag: Flag) => useGetFlagMock(flag),
   };
 });
 
@@ -112,7 +115,7 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Agents")).toBeDefined();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
-    expect(screen.getByText("Files")).toBeDefined();
+    expect(screen.queryByText("Files")).toBeNull();
     // /home 404s without the experts flag, so it must not be offered here.
     expect(screen.queryByText("Home")).toBeNull();
   });
@@ -139,10 +142,33 @@ describe("AppSidebar", () => {
   });
 
   it("renders the workspace and recent chats group headers", () => {
+    useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("Recent chats")).toBeDefined();
   });
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    "shows Workspace only for available destinations (Experts %s, Files %s)",
+    (experts, files) => {
+      useGetFlagMock.mockImplementation((flag) =>
+        flag === Flag.HIRE_EXPERTS
+          ? experts
+          : flag === Flag.ARTIFACTS_PAGE
+            ? files
+            : false,
+      );
+      renderSidebar();
+      expect(!!screen.queryByText("Workspace")).toBe(experts || files);
+      expect(!!screen.queryByRole("link", { name: /files/i })).toBe(files);
+      expect(screen.getByText("Recent chats")).toBeDefined();
+    },
+  );
 
   it("marks the active link based on the current pathname", () => {
     // global next/navigation mock resolves usePathname() to "/marketplace"

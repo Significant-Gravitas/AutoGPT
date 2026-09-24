@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "assetVersion": "1.1.0",
+  "baseUrl": "/autogpt-characters/v1.1",
+  "background": "opaque-warm-studio",
+  "renderType": "static-raster",
+  "logicalSizes": [
+    24,
+    32,
+    40,
+    48,
+    64,
+    96,
+    128,
+    256,
+    512
+  ],
+  "devicePixelRatios": [
+    1,
+    2
+  ],
+  "pixelSizes": [
+    24,
+    32,
+    40,
+    48,
+    64,
+    80,
+    96,
+    128,
+    192,
+    256,
+    512,
+    1024
+  ],
+  "identities": {
+    "otto": {
+      "displayName": "Otto",
+      "role": "Personal Head of AI",
+      "palette": "Mineral lavender",
+      "expressions": [
+        "neutral"
+      ],
+      "master": "masters/otto-neutral.png",
+      "nativePixels": [
+        1200,
+        1200
+      ],
+      "background": "opaque-warm-studio",
+      "crop": "full-square-studio",
+      "sourceNote": "Existing resting Otto reference; no anatomy change.",
+      "files": {
+        "24.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/24.png",
+          "bytes": 1010,
+          "sha256": "30899469e6be00e2710ab1726c9ad1659ce726e37ca4cd8968f0337d8d2367e4"
+        },
+        "24.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/24.webp",
+          "bytes": 300,
+          "sha256": "48e4a035b0c9839adda0c93edb7ddc9336238ac114ec700427f56d269b9a218d"
+        },
+        "32.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/32.png",
+          "bytes": 1521,
+          "sha256": "350d88d519cdf9e99c4e4ef9b696a9ff274b1729c678c95231eaa1aa74f1b230"
+        },
+        "32.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/32.webp",
+          "bytes": 434,
+          "sha256": "510b862ed161e377c895efaddbe50747a9f415a05d41d6c38b64def927a93adb"
+        },
+        "40.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/40.png",
+          "bytes": 2140,
+          "sha256": "07886b74cc035a5c700081803f86171553d2eba8795bf0312c6a4da44e0ca2d6"
+        },
+        "40.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/40.webp",
+          "bytes": 542,
+          "sha256": "6ec208dec7273367261b839e21957e6e41d0aba6bf8d6bfa9ce56bdd9830b47c"
+        },
+        "48.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/48.png",
+          "bytes": 2882,
+          "sha256": "66947abb7b3bb0f57261039ee9b07f918f04deb669a835511bdcd68a9ce2fc34"
+        },
+        "48.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/48.webp",
+          "bytes": 678,
+          "sha256": "0c10fda6b4ed7951d4e5414cfa5f83a84a95b60e4fca308743942aa8d0954acb"
+        },
+        "64.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/64.png",
+          "bytes": 4488,
+          "sha256": "cc97e9b54ca583ac7b69871ab6873c7ea158f39e040380fdae3a8a8d3b27cded"
+        },
+        "64.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/64.webp",
+          "bytes": 882,
+          "sha256": "9cd0df141c1276cbc95c852c11de66037ef42e1c9f7503e11859d6d50db7a5f7"
+        },
+        "80.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/80.png",
+          "bytes": 6364,
+          "sha256": "08031ff97a817b044da7af29de9f35570a2bcf1576825882943083d3b464c46b"
+        },
+        "80.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/80.webp",
+          "bytes": 1138,
+          "sha256": "b9d30353de600e6a3c47ea2d49a11991c00f5a1b9a58460a11f1d51a707815b5"
+        },
+        "96.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/96.png",
+          "bytes": 8532,
+          "sha256": "c42eca170fc2eaf4a8e408cde79fe1a23194ce88b8c51262b320864f7222bcb7"
+        },
+        "96.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/96.webp",
+          "bytes": 1376,
+          "sha256": "7ab39a0e01fb52c11d8963dba55135dc375d080bdd5f2011f6bf33c2cc5e75f4"
+        },
+        "128.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/128.png",
+          "bytes": 13593,
+          "sha256": "a3862eb2f2c8492218f54763d1de6796c64de56b50d1e4b3e97ae5480a6e45d9"
+        },
+        "128.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/128.webp",
+          "bytes": 1908,
+          "sha256": "505c9d73183d624ddcd523ab72a0eecb52157443625b67d0835cb4540b32330e"
+        },
+        "192.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/192.png",
+          "bytes": 26393,
+          "sha256": "dcd843627f9cc13eb07c453346b68e0ebfb5c40369128f95b08f25c21680f9d7"
+        },
+        "192.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/192.webp",
+          "bytes": 3158,
+          "sha256": "2babf2f25121177a8a859ea44dae20e871f0e151a9b56241b6fe0b2d9adfe923"
+        },
+        "256.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/256.png",
+          "bytes": 43218,
+          "sha256": "52c4498dc00e8b4afb1855ca6e741d6dd96c8049c260932215ecc4712166fff1"
+        },
+        "256.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/256.webp",
+          "bytes": 4448,
+          "sha256": "d2f3603fa1437767c04279d414c7eb334a59671536a382577002726b560f09bf"
+        },
+        "512.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/512.png",
+          "bytes": 150880,
+          "sha256": "ec172a26bd41e9db09e9d766838afde18ac49ce09610d4409175089d5dcf1884"
+        },
+        "512.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/512.webp",
+          "bytes": 11938,
+          "sha256": "bdd3f783ae75781201e8c191d7f1dd84c02d1544872c9b75e1e0621fec98d180"
+        },
+        "1024.png": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/1024.png",
+          "bytes": 492518,
+          "sha256": "a8721f333b5f64ef15c9ce424ea8378e8be287530f817f952c6a57686132abe8"
+        },
+        "1024.webp": {
+          "path": "public/autogpt-characters/v1.1/otto/neutral/1024.webp",
+          "bytes": 51754,
+          "sha256": "7d1f16886f4087788304e48173a8bad8a8190322bf8da391f799f7b19f479945"
+        }
+      }
+    },
+    "expert-maria": {
+      "displayName": "Maria",
+      "role": "SEO Content Manager",
+      "palette": "Terracotta",
+      "expressions": [
+        "neutral"
+      ],
+      "master": "masters/expert-maria-neutral.png",
+      "nativePixels": [
+        1254,
+        1254
+      ],
+      "background": "opaque-warm-studio",
+      "crop": "full-square-studio",
+      "sourceNote": "New finishing derivative of the terracotta reference; narrow head/base contact shadow.",
+      "files": {
+        "24.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/24.png",
+          "bytes": 992,
+          "sha256": "283df1d1a9eba01dda3df427e9e1a50120d30c01fb516057520d2e34a3ea78ee"
+        },
+        "24.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/24.webp",
+          "bytes": 328,
+          "sha256": "5cc781e2dd793e540b3d401679dbe226c817a16fb38695d90a13971aaf258648"
+        },
+        "32.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/32.png",
+          "bytes": 1512,
+          "sha256": "c79698456d94d559181c5a1ecaf9643bf4aa99276f80de0a2f754f6f9e4ed8c7"
+        },
+        "32.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/32.webp",
+          "bytes": 450,
+          "sha256": "a61d5e08f2fa0f2d643bf9b1ef1f1a6b50729b10185d3ba4b43314fe2f95e604"
+        },
+        "40.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/40.png",
+          "bytes": 2084,
+          "sha256": "39e17f46431e3cd16f4b10b4a1fca8baa4c821346d7d02b28e2113fe06e2d001"
+        },
+        "40.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/40.webp",
+          "bytes": 614,
+          "sha256": "0894bf887bd2ff49b6028ba7679e02e4ae8fda59eea5749214ec57e77b2e5a13"
+        },
+        "48.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/48.png",
+          "bytes": 2765,
+          "sha256": "00d0d35141594b58bf2d4a6136dc95e2279174689288acbb0cb7907f460cab70"
+        },
+        "48.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/48.webp",
+          "bytes": 676,
+          "sha256": "db2b25adccffbcf8eaa6cc3f0c6107d798f9f36d8545a76d6901bad7498b914f"
+        },
+        "64.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/64.png",
+          "bytes": 4444,
+          "sha256": "93b2c0c0ea2fcba06a85ec4c24eba385abf5ed874a473cfb8970eeddce2c2ea0"
+        },
+        "64.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/64.webp",
+          "bytes": 938,
+          "sha256": "fc7ee3d8e0e1725167482e914c08729aa4cf5e517435326be1d78eb8dac2b2e3"
+        },
+        "80.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/80.png",
+          "bytes": 6434,
+          "sha256": "a271c72ce842858491735f4506b9ce370f2435ef21c028de9bb99e17fb5c40e0"
+        },
+        "80.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/80.webp",
+          "bytes": 1152,
+          "sha256": "e054c31246bc6a71c464342e2fd982f2d764d86c787b991dbd350848fad145a6"
+        },
+        "96.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/96.png",
+          "bytes": 8771,
+          "sha256": "8e8ef879f9f6d4dc5f677145c4663c45cab7d0f16b53e8f92fcacd1ecb14bea0"
+        },
+        "96.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/96.webp",
+          "bytes": 1392,
+          "sha256": "c1eaec8598e2df1ddc1ab2afee7e6771decb1de04fa1039c00fd16b9c912f2c5"
+        },
+        "128.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/128.png",
+          "bytes": 14518,
+          "sha256": "1a438b12069a960f4689b20e72cf9e471bb1c3ff9edd282e3b0346cfd62a2345"
+        },
+        "128.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
+          "bytes": 1948,
+          "sha256": "3de483fccc0f69330043b428b097ba62b3656df522b046ee227379a8afa38f5a"
+        },
+        "192.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/192.png",
+          "bytes": 30750,
+          "sha256": "0c36327598a1b48f159b788fbf9957e55b7be65080042fc6824123b8a361182c"
+        },
+        "192.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/192.webp",
+          "bytes": 3108,
+          "sha256": "34c961e990d81f334c64086502f198daae69baa134ca90a7f982990a46567c80"
+        },
+        "256.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/256.png",
+          "bytes": 54255,
+          "sha256": "a327782cc93bfb1881322bbb8b41260df7b1b93229c0813028acb27d3d349ea1"
+        },
+        "256.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/256.webp",
+          "bytes": 4412,
+          "sha256": "08c92b136d74ea61446908a344edc4d773bf310644cb6f2f645d48e4e55b284a"
+        },
+        "512.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/512.png",
+          "bytes": 235501,
+          "sha256": "9e75a1f90f86f09d4c90ecabf8a630aa0a88cdc5b2ca15fec66541ba50165847"
+        },
+        "512.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/512.webp",
+          "bytes": 10804,
+          "sha256": "a5d45a32a315ab00fcc9a8fb28d6539ebe773a03ce261ab97b14dd346e620ef9"
+        },
+        "1024.png": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/1024.png",
+          "bytes": 1010368,
+          "sha256": "96aa4bd1d83c73466c7fd852d021c58d2e108123f270eea2cb156bd569d51d6c"
+        },
+        "1024.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-maria/neutral/1024.webp",
+          "bytes": 43636,
+          "sha256": "96ad26c0bca660a38273ea5130b14b5fb9570a903dacbdc6d2b34ac148529c29"
+        }
+      }
+    },
+    "expert-mina": {
+      "displayName": "Mina",
+      "role": "Bookkeeper",
+      "palette": "Sage",
+      "expressions": [
+        "neutral"
+      ],
+      "master": "masters/expert-mina-neutral.png",
+      "nativePixels": [
+        1254,
+        1254
+      ],
+      "background": "opaque-warm-studio",
+      "crop": "full-square-studio",
+      "sourceNote": "Corrected sage master; main-color head, flowing cream only on lower form, narrow contact shadow.",
+      "files": {
+        "24.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/24.png",
+          "bytes": 978,
+          "sha256": "5bf0edfb54f3d8d61e9b878b77d8be5413936c60374a5f87c4618d8fd012b80b"
+        },
+        "24.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/24.webp",
+          "bytes": 264,
+          "sha256": "69146faa9633819e9511e3f2c4cf2d5b6a80bb6a4fbb7814f752f64c54f01478"
+        },
+        "32.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/32.png",
+          "bytes": 1514,
+          "sha256": "0d500223ce58f6be18c4195b8c8af11b2212ae4db4db6e09e4e09c2041a13888"
+        },
+        "32.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/32.webp",
+          "bytes": 372,
+          "sha256": "258f7889008fba00d8ce3363e0dd81be84ccdd156b96d691cbd5b4e14c6e3a76"
+        },
+        "40.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/40.png",
+          "bytes": 2171,
+          "sha256": "b3b81721c6fca8dc138673ab6fdc5a6d0a3c43f4e9ddc3c799f58de31e0b7f57"
+        },
+        "40.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/40.webp",
+          "bytes": 462,
+          "sha256": "c5b8c3b55fb597c7e7c93e4e58daa9c697b3d62f8bfdefbb490ef91aaa33b49f"
+        },
+        "48.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/48.png",
+          "bytes": 2898,
+          "sha256": "2fc4d12da4d09e0f29a62d73c835728fefb6c091d496730b29803f9d4dae9368"
+        },
+        "48.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/48.webp",
+          "bytes": 532,
+          "sha256": "5cb8e8b8abc8c0512fa0b5f56ddcf5b62112a17cd552cba68497ecee6ef72cab"
+        },
+        "64.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/64.png",
+          "bytes": 4602,
+          "sha256": "5bf479e6d40d9792ccc8c01db9d6bb73e4b8d79222fe280d0b4ccf756870c29e"
+        },
+        "64.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/64.webp",
+          "bytes": 704,
+          "sha256": "c99d1cd6c9571f04ad1cd4222330780a9ca222bc034013662fe72838c5cf2c01"
+        },
+        "80.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/80.png",
+          "bytes": 6657,
+          "sha256": "f667cb61a38d41242f544982b9b8a20e7a1f359e9a83a5b78fbd72f3d308423e"
+        },
+        "80.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/80.webp",
+          "bytes": 932,
+          "sha256": "3a3d07d2eb19afd6c7729979da935b9ed73eda0a19817de0341a0d6db369cdf6"
+        },
+        "96.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/96.png",
+          "bytes": 9097,
+          "sha256": "f3ceb53094021cfaad3bfd0c1427f96d1c8da8ba9b84cade6f108a0ea74b2d68"
+        },
+        "96.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/96.webp",
+          "bytes": 1110,
+          "sha256": "87f0cc82a107a019635ae3cc4926f25c662ca9c1e9daa7ba8fc4923ebfec8408"
+        },
+        "128.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/128.png",
+          "bytes": 14907,
+          "sha256": "e98c9fe14538350938cd20c9e5dcfd3369da71ef5bd0e7b8af9f8978d7a8f833"
+        },
+        "128.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+          "bytes": 1586,
+          "sha256": "947339a67435ace92671a13328a2dd02045b85403c5d39d3d10051ad067f2d78"
+        },
+        "192.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/192.png",
+          "bytes": 30681,
+          "sha256": "615e307d2e8210a6e79b7bafd23eac85333382f385e576db493fe24b3a7be7e8"
+        },
+        "192.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/192.webp",
+          "bytes": 2712,
+          "sha256": "5a6fe8701edb332a9e13f53f02ca465bdce26236030f9cf70d26b20568d18201"
+        },
+        "256.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/256.png",
+          "bytes": 53573,
+          "sha256": "725d947f60b88cbc581bfc760a701b8c223d315f3e0c5ba1846cb723f80dbec3"
+        },
+        "256.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/256.webp",
+          "bytes": 3880,
+          "sha256": "d4904bb8f70c862203aa6733477c4ffb8901d982542cbe16caa136549704fe3a"
+        },
+        "512.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/512.png",
+          "bytes": 231113,
+          "sha256": "08f18a664a6c9135da713e46cc4e7743791fb8c8daf00e311cba829df8074e9d"
+        },
+        "512.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/512.webp",
+          "bytes": 9568,
+          "sha256": "a32b793cfcc853f8106c1cb2702232c608e1289fa760941945a0037c86d9eb5f"
+        },
+        "1024.png": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/1024.png",
+          "bytes": 974571,
+          "sha256": "f38832d7da9f1529e07173771fad7f5d75d9687035645c3f64eb56bf0273415e"
+        },
+        "1024.webp": {
+          "path": "public/autogpt-characters/v1.1/expert-mina/neutral/1024.webp",
+          "bytes": 41394,
+          "sha256": "d907403f4ff1d50763ffe169d044be6573fea88c459f1e6611bf3677b712626a"
+        }
+      }
+    }
+  },
+  "scope": {
+    "applicationIdentities": 3,
+    "referenceExpressions": 9,
+    "productionAnimation": false,
+    "transparentCutouts": false,
+    "threeDimensionalSource": false
+  }
+}
