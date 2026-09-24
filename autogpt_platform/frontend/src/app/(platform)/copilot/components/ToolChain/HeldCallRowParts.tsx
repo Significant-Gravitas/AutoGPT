@@ -51,6 +51,7 @@ const DETAIL: Record<Exclude<HeldState, "approved">, string> = {
 const READ_DETAIL: Partial<Record<HeldState, string>> = {
   waiting: `Nothing from it has reached ${AUTOPILOT_NAME} yet. ${AUTOPILOT_NAME} carried on without it.`,
   rejected: `You kept this out, so ${AUTOPILOT_NAME} never saw it.`,
+  unknown: `It isn't clear whether this reached ${AUTOPILOT_NAME}. Check before relying on it.`,
 };
 
 export function HeldCallDetail({ held }: { held: HeldRowInfo }) {

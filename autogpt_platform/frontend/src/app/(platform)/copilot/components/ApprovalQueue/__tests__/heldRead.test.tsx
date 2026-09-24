@@ -74,3 +74,16 @@ test("releasing a held read approves its row and leaves a Released receipt", asy
   expect(JSON.stringify(answered[0])).toContain('"approved":true');
   expect(await screen.findByText("· Released")).toBeDefined();
 });
+
+test("a read the check could not assess says so and quotes nothing", async () => {
+  const review = heldRead("u", "status.acme.dev");
+  const payload = review.payload as Record<string, unknown>;
+  serve([{ ...review, payload: { ...payload, judged: false, passage: "" } }]);
+  renderQueue();
+
+  expect(
+    await screen.findByText(/Otto could not check this, so he asks/),
+  ).toBeDefined();
+  expect(screen.queryByText("What it says")).toBeNull();
+  expect(screen.queryByText(/contains instructions/)).toBeNull();
+});

@@ -855,6 +855,9 @@ def _make_truncating_wrapper(
                 name, original_args, user_id, session
             )
             if released is not None:
+                if not released.get("isError"):
+                    # A release is the read succeeding, late.
+                    _clear_tool_failures(name)
                 return released
 
         result = await run(args)

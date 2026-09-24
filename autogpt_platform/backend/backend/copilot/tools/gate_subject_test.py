@@ -17,6 +17,7 @@ from backend.blocks._base import BlockEffect
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.basic import StoreValueBlock
+from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
@@ -176,7 +177,7 @@ async def test_an_unclassified_block_asks(gate, ran):
     assert _is_held(result)
     assert (
         gate.open_review.await_args.args[5]
-        == "Its effect is unknown: Github Add Label."
+        == "Otto does not know what Github Add Label does, so he asks."
     )
 
 
@@ -308,7 +309,7 @@ def test_a_linked_method_makes_a_web_request_unreadable(linked, effect):
     subject = workflow_subject(graph)
     assert subject.effect is effect
     assert subject.reason == (
-        "Its effect is unknown: Send Web Request." if linked else ""
+        "Otto does not know what Send Web Request does, so he asks." if linked else ""
     )
 
 
@@ -533,6 +534,104 @@ async def test_a_preset_this_chat_cannot_use_raises_no_card(gate):
     ):
         await RunAgentTool().execute(
             "user-1", _session("ask_first"), "call-1", preset_id="p-1"
+        )
+    gate.open_review.assert_not_awaited()
+    run.assert_awaited_once()
+
+
+# Execute Code itself resolves to bash_exec; this one is reached as a block.
+_CODE = {
+    "sandbox_id": "sbx-1",
+    "language": "python",
+    "step_code": "print(open('invoices.csv').read())",
+}
+
+
+async def test_a_code_block_in_auto_goes_to_the_supervisor_and_runs_on_a_vouch(
+    gate, ran
+):
+    """Its effect is the code the call carries, so the check reads that code."""
+    classify = AsyncMock(return_value=(True, ""))
+    with patch(f"{_GATE}.classify", classify):
+        result = await _run_capability(
+            _session("auto"), ExecuteCodeStepBlock().id, dict(_CODE)
+        )
+    assert not _is_held(result)
+    ran.assert_awaited_once()
+    assert (
+        classify.await_args.kwargs["args"]["input"]["step_code"] == _CODE["step_code"]
+    )
+
+
+async def test_a_code_block_the_supervisor_cannot_vouch_for_asks_with_its_reason(
+    gate, ran
+):
+    classify = AsyncMock(return_value=(False, "it reads a local file of invoices"))
+    with patch(f"{_GATE}.classify", classify):
+        result = await _run_capability(
+            _session("auto"), ExecuteCodeStepBlock().id, dict(_CODE)
+        )
+    assert _is_held(result)
+    ran.assert_not_awaited()
+    args, kwargs = gate.open_review.await_args
+    assert args[5] == "it reads a local file of invoices"
+    assert kwargs["reason_kind"] == "supervisor"
+
+
+async def test_a_code_block_in_ask_first_asks_without_the_supervisor(gate, ran):
+    classify = AsyncMock(return_value=(True, ""))
+    with patch(f"{_GATE}.classify", classify):
+        result = await _run_capability(
+            _session("ask_first"), ExecuteCodeStepBlock().id, dict(_CODE)
+        )
+    assert _is_held(result)
+    classify.assert_not_awaited()
+
+
+async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(gate, ran):
+    """Otto is the supervisor in every chat, an expert's included."""
+    session = _session().model_copy(update={"expert_id": "maria"})
+    await _run_capability(
+        session,
+        GithubAddLabelBlock().id,
+        {"issue_url": "https://github.com/o/r/issues/1", "label": "bug"},
+    )
+    reason = gate.open_review.await_args.args[5]
+    assert reason == "Otto does not know what Github Add Label does, so he asks."
+
+
+def test_a_workflow_with_two_irreversible_steps_names_both():
+    """Approving the run covers every step, so the card names every one it covers."""
+    subject = workflow_subject(
+        _graph(
+            [
+                _node("send", GmailSendBlock(), {}),
+                _node("post", SendDiscordMessageBlock(), {}),
+            ]
+        )
+    )
+    assert subject.irreversible
+    assert subject.reason == (
+        "Runs Morning digest; its steps Gmail Send and Send Discord Message "
+        "reach outside the platform."
+    )
+
+
+async def test_a_workflow_called_without_its_inputs_asks_nothing(gate):
+    """The run answers with the inputs it needs, so a card first is noise."""
+    graph = _graph(
+        [
+            _node("in", AgentInputBlock(), {"name": "topic"}),
+            _node("send", GmailSendBlock(), {}),
+        ]
+    )
+    run = AsyncMock(return_value=_answer())
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", run),
+    ):
+        await RunAgentTool().execute(
+            "user-1", _session("ask_first"), "call-1", library_agent_id="lib-1"
         )
     gate.open_review.assert_not_awaited()
     run.assert_awaited_once()

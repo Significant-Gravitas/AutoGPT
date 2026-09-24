@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
-from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.google.sheets import GoogleSheetsUpdateRowBlock
 from backend.blocks.http import SendWebRequestBlock
+from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.review import review_id_for, review_payload
 from backend.copilot.gate.subject import block_subject, workflow_subject
 from backend.data.graph import GraphModel, NodeModel
@@ -56,18 +57,17 @@ _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
         },
     ),
     (
-        "Execute Code",
-        ExecuteCodeBlock(),
+        "Execute Code Step",
+        ExecuteCodeStepBlock(),
         {
+            "sandbox_id": "sbx-q3",
             "language": "python",
-            "setup_commands": ["pip install pandas"],
-            "code": (
+            "step_code": (
                 "import pandas as pd\n\n"
                 "df = pd.read_csv('invoices.csv')\n"
                 "missing = df[df.po_number.isna()]\n"
                 "print(missing[['id', 'amount']].to_markdown())\n"
             ),
-            "timeout": 60,
         },
     ),
     (
@@ -111,12 +111,24 @@ def test_the_frontend_card_fixture_is_what_the_builder_makes():
     ), "the approval-card fixture is stale; rerun with UPDATE_CARD_FIXTURE=1"
 
 
+# What the supervisor might say of the code block's step; the builder cannot
+# call the model, so this stands in for its verdict.
+_SUPERVISOR = "it reads a local file of invoices and prints what it finds."
+
+
 def _block_card(story: str, block: Any, inputs: dict[str, Any]) -> dict[str, Any]:
     subject = block_subject(block, inputs)
     args = {"id": block.id, "input": inputs}
+    judged = subject.effect is Effect.SHELL
     return {
         "story": story,
-        "review": _row("run_capability", args, subject),
+        "review": _row(
+            "run_capability",
+            args,
+            subject,
+            reason=_SUPERVISOR if judged else subject.reason,
+            reason_kind="supervisor" if judged else None,
+        ),
         "schema": block.input_schema.jsonschema(),
     }
 
@@ -150,7 +162,14 @@ def _workflow_card() -> dict[str, Any]:
     }
 
 
-def _row(tool: str, args: dict[str, Any], subject: Any) -> dict[str, Any]:
+def _row(
+    tool: str,
+    args: dict[str, Any],
+    subject: Any,
+    reason: str | None = None,
+    reason_kind: str | None = None,
+) -> dict[str, Any]:
+    reason = subject.reason if reason is None else reason
     review_id = review_id_for("session-1", "user-1", tool, args)
     node_id = review_id.split(":")[0]
     return {
@@ -165,8 +184,8 @@ def _row(tool: str, args: dict[str, Any], subject: Any) -> dict[str, Any]:
             tool,
             args,
             subject,
-            reason=subject.reason,
-            reason_kind="subject" if subject.reason else "mode",
+            reason=reason,
+            reason_kind=reason_kind or ("subject" if reason else "mode"),
             mode="auto",
             tool_call_id=f"call-{tool}",
             turn=1,

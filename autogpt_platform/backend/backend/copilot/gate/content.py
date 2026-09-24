@@ -65,7 +65,7 @@ async def judge_content(
         response = await asyncio.wait_for(
             call_provider_openai_compat_sync(
                 client=_get_aux_client(),
-                model=config.gate_model,
+                model=config.gate_content_model,
                 messages=[
                     {"role": "system", "content": CONTENT_RUBRIC},
                     {"role": "user", "content": content},
@@ -80,7 +80,7 @@ async def judge_content(
         logger.warning(f"Content judge failed on {source[:80]}", exc_info=True)
         return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
 
-    verdict = parse_answer(raw, ("clean", "hold"), "passage")
+    verdict = parse_answer(_normalised(raw), ("clean", "hold"), "passage")
     if verdict is None:
         logger.warning(f"Content judge returned an unusable body for {source[:80]}")
         return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
@@ -90,3 +90,19 @@ async def judge_content(
     if not passage or passage.lower() == "none":
         passage = _NO_PASSAGE
     return ContentVerdict(held=True, passage=passage)
+
+
+def _normalised(raw: str) -> str:
+    """Sonnet 5 often echoes the rubric's ``clean|hold`` line, or answers with
+    the passage line alone; that line is then the finding."""
+    text = raw.strip()
+    first, _, rest = text.partition("\n")
+    if first.strip().strip("*`").lower().replace(" ", "") in (
+        "clean|hold",
+        "hold|clean",
+    ):
+        text = rest.strip()
+    if not text.lower().startswith("passage:"):
+        return text
+    found = text.split(":", 1)[1].strip().strip("\"'").lower()
+    return "clean" if found == "none" else f"hold\n{text}"

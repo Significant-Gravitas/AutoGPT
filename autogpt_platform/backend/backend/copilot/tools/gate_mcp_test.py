@@ -136,8 +136,8 @@ async def test_an_unmapped_tool_asks_naming_the_host_and_the_tool(gate, ran):
     assert _is_held(result)
     ran.assert_not_awaited()
     assert _headline(gate) == (
-        "brand_new_tool on api.githubcopilot.com — Its effect is unknown: "
-        "brand_new_tool on api.githubcopilot.com."
+        "brand_new_tool on api.githubcopilot.com — Otto does not know what "
+        "brand_new_tool on api.githubcopilot.com does, so he asks."
     )
 
 
