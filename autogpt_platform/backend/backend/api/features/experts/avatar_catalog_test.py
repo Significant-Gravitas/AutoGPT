@@ -12,6 +12,7 @@ def test_uploaded_and_saved_generated_avatars_are_preserved():
     for url in (
         "https://cdn.example/avatar.png",
         "/api/store/media/user/images/custom.png",
+        "/avatars/mine.svg",
         "/experts/clay/v1/finance.png",
     ):
         assert resolve_avatar_url(url) == url

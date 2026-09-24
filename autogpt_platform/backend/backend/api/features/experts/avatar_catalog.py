@@ -41,6 +41,6 @@ def resolve_avatar_url(url: str | None) -> str | None:
         return url
     if url in CATALOG.legacy:
         return CATALOG.legacy[url]
-    if url.startswith("/avatars/") and url.endswith(".svg"):
+    if url.startswith("/avatars/notion/") and url.endswith(".svg"):
         return DEFAULT_AVATAR_URL
     return url

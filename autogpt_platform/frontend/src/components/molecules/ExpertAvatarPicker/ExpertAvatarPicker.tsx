@@ -29,7 +29,13 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         disabled={picker.isBusy}
         onSelect={picker.selectPreset}
       />
-      <GenerationOptions {...picker} />
+      <GenerationOptions
+        shape={picker.shape}
+        expression={picker.expression}
+        isBusy={picker.isBusy}
+        setShape={picker.setShape}
+        setExpression={picker.setExpression}
+      />
       <p className="text-sm text-muted-foreground">
         Choose a look above, or generate one with its color. Up to five
         generations a day, four minutes apart.

@@ -7,7 +7,7 @@ export function resolveExpertAvatarUrl(url: string | null | undefined): string {
   if (!url) return DEFAULT_EXPERT_AVATAR_URL;
   const legacy: Record<string, string> = catalog.legacy;
   if (legacy[url]) return legacy[url];
-  if (url.startsWith("/avatars/") && url.endsWith(".svg")) {
+  if (url.startsWith("/avatars/notion/") && url.endsWith(".svg")) {
     return DEFAULT_EXPERT_AVATAR_URL;
   }
   return url;

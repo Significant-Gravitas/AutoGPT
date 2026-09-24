@@ -111,3 +111,61 @@ async def test_failed_generation_does_not_upload(monkeypatch):
     assert job.status == "failed"
     assert "bad image" not in (job.error or "")
     upload.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_provider_edit_round_trip_uses_reference_and_returns_validated_png(
+    monkeypatch,
+):
+    import base64
+    from types import SimpleNamespace
+
+    import httpx
+    from openai import AsyncOpenAI
+
+    from backend.api.features.experts import avatar_generation
+
+    png = io.BytesIO()
+    image = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    image.putpixel((512, 512), (100, 100, 100, 255))
+    image.save(png, format="PNG")
+    content = png.getvalue()
+    requests = []
+
+    def provider(request):
+        requests.append(request)
+        assert request.url.path == "/v1/images/edits"
+        assert b'name="background"\r\n\r\ntransparent' in request.content
+        assert b'name="output_format"\r\n\r\npng' in request.content
+        assert b'name="size"\r\n\r\n1024x1024' in request.content
+        assert b"reference.png" in request.content
+        assert avatar_generation.REFERENCE.read_bytes() in request.content
+        return httpx.Response(
+            200,
+            json={
+                "created": 1,
+                "data": [{"b64_json": base64.b64encode(content).decode()}],
+            },
+        )
+
+    def client(**kwargs):
+        return AsyncOpenAI(
+            **kwargs,
+            base_url="https://provider.test/v1",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
+        )
+
+    monkeypatch.setattr(avatar_generation, "AsyncOpenAI", client)
+    monkeypatch.setattr(
+        avatar_generation,
+        "Settings",
+        lambda: SimpleNamespace(
+            secrets=SimpleNamespace(openai_api_key="test-key"),
+            config=SimpleNamespace(expert_avatar_model="gpt-image-1.5"),
+        ),
+    )
+    result = await avatar_generation.generate_avatar(
+        ExpertAvatarRequest(category="finance")
+    )
+    assert result.getvalue() == content
+    assert len(requests) == 1

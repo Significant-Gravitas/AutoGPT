@@ -47,6 +47,7 @@ vi.mock("@/services/environment", () => ({
   environment: {
     areFeatureFlagsEnabled: () => true,
     getLaunchDarklyClientId: () => "test-client-id",
+    getCookiebotCBID: () => "",
   },
 }));
 

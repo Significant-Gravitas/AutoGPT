@@ -1,5 +1,11 @@
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  installCookiebot,
+  removeCookiebot,
+  TEST_COOKIEBOT_CBID,
+} from "@/tests/integrations/cookiebot";
 
 const posthog = vi.hoisted(() => ({
   identify: vi.fn(),
@@ -23,7 +29,10 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 }));
 
 vi.mock("@/services/environment", () => ({
-  environment: { isPostHogEnabled: () => true },
+  environment: {
+    isPostHogEnabled: () => true,
+    getCookiebotCBID: () => TEST_COOKIEBOT_CBID,
+  },
 }));
 
 vi.mock("@/services/feature-flags/flag-backend", () => ({
@@ -31,7 +40,10 @@ vi.mock("@/services/feature-flags/flag-backend", () => ({
 }));
 
 describe("PostHogUserTracker", () => {
+  afterEach(removeCookiebot);
+
   beforeEach(() => {
+    installCookiebot({ statistics: true });
     posthog.identify.mockClear();
     posthog.setPersonPropertiesForFlags.mockClear();
   });

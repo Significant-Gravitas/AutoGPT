@@ -12,6 +12,7 @@ describe("expert PNG avatars", () => {
     for (const url of [
       "https://cdn.example/upload.png",
       "/api/store/media/user/images/custom.png",
+      "/avatars/mine.svg",
       "/experts/clay/v1/finance.png",
     ]) {
       expect(resolveExpertAvatarUrl(url)).toBe(url);
