@@ -30,7 +30,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
-from .expert_scope import require_installed_workflow
+from .expert_scope import annotate_expert_grants, require_installed_workflow
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -330,7 +330,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "configuration and pass it as `trigger_config` — do NOT guess "
                 "values (e.g. don't invent a repository name). The required "
                 "fields and their schema are below; once you have the user's "
-                "answers, call setup_agent_webhook_trigger again with "
+                "answers, call tool:setup_agent_webhook_trigger again with "
                 "`trigger_config` filled in."
             ),
             session_id=session_id,
@@ -359,7 +359,9 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         Returns ``(agent_credentials, None)`` when ready to proceed, or
         ``({}, SetupRequirementsResponse)`` when the user must act first.
         """
-        matched, _ = await match_user_credentials_to_graph(user_id, graph, expert_id)
+        matched, _ = await match_user_credentials_to_graph(
+            user_id, graph, expert_id, session_id=session_id
+        )
         trigger_cred_key = self._trigger_cred_key(graph, trigger_node)
 
         effective = dict(matched)
@@ -374,7 +376,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             for key, cred in effective.items()
             if not (key == trigger_cred_key and trigger_cred_key not in selection)
         }
-        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        card_missing = await annotate_expert_grants(
+            user_id,
+            expert_id,
+            build_missing_credentials_from_graph(graph, matched_for_card),
+        )
         if card_missing:
             return {}, self._build_card(graph, card_missing, session_id)
 

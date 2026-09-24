@@ -5,7 +5,12 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../../store";
 import { HireStep } from "../HireStep";
 
@@ -188,6 +193,32 @@ describe("HireStep — hiring", () => {
     });
   });
 
+  it("sends the funnel start and the DataFast hire goal", async () => {
+    // The backend emits this hire's hire_completed, so without the start the
+    // funnel's completion rate is unreadable for onboarding hires.
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    const datafast = vi.fn();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
+    mockTeam(TEAM);
+    render(<HireStep />);
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Hire" }))[0],
+    );
+
+    await waitFor(() =>
+      expect(capture).toHaveBeenCalledWith("hire_started", {
+        template_id: "tpl-maria",
+      }),
+    );
+    await waitFor(() =>
+      expect(datafast).toHaveBeenCalledWith("hire_completed", {
+        template_id: "tpl-maria",
+      }),
+    );
+  });
+
   it("shows templates hired on an earlier visit as hired", async () => {
     mockTeam(TEAM);
     useOnboardingWizardStore.getState().markHired("tpl-max");
@@ -314,3 +345,8 @@ it("stops waiting after the deadline if transient errors persist", async () => {
   await new Promise((resolve) => setTimeout(resolve, 3000));
   expect(calls).toBe(stoppedAt);
 }, 26000);
+
+afterEach(() => {
+  removeCookiebot();
+  vi.unstubAllEnvs();
+});

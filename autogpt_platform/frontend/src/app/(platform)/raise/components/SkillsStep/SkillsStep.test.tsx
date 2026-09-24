@@ -45,6 +45,7 @@ const storeAgent = {
 const outreach: MarketplaceSkill = {
   slug: "outreach-playbook",
   name: "outreach-playbook",
+  title: "Outreach playbook",
   description: "Cold outreach that lands",
   categories: ["sales"],
   required_providers: [],

@@ -1,6 +1,6 @@
 import type { User } from "@/lib/auth/types";
 import { describe, expect, it } from "vitest";
-import { buildLDContext } from "../helpers";
+import { buildFlagPersonProperties, buildLDContext } from "../helpers";
 
 function userFixture(overrides: Partial<User> = {}): User {
   return {
@@ -19,6 +19,33 @@ describe("buildLDContext", () => {
       kind: "user",
       key: "anonymous",
       anonymous: true,
+    });
+  });
+
+  it("keys the anonymous context by the shared anonymous id when available", () => {
+    expect(buildLDContext(null, "anon-123")).toEqual({
+      kind: "user",
+      key: "anon-123",
+      anonymous: true,
+    });
+  });
+
+  it("adds a device context carrying the anonymous id for a signed-in user", () => {
+    const ctx = buildLDContext(userFixture(), "anon-123");
+
+    expect(ctx).toEqual({
+      kind: "multi",
+      user: {
+        kind: "user",
+        key: "00000000-0000-0000-0000-000000000001",
+        anonymous: false,
+        email: "user@example.com",
+        email_domain: "example.com",
+        role: "authenticated",
+        created_at: "2026-05-08T12:00:00Z",
+        custom: { role: "authenticated" },
+      },
+      device: { kind: "device", key: "anon-123", anonymous: true },
     });
   });
 
@@ -72,5 +99,23 @@ describe("buildLDContext", () => {
     const ctx = buildLDContext(userFixture({ email: "a.b@sub.example.com" }));
 
     expect("email_domain" in ctx && ctx.email_domain).toBe("sub.example.com");
+  });
+});
+
+describe("buildFlagPersonProperties", () => {
+  it("carries the attributes the ported rules target on, never the raw email", () => {
+    expect(buildFlagPersonProperties(userFixture())).toEqual({
+      email_domain: "example.com",
+      role: "authenticated",
+      created_at: "2026-05-08T12:00:00Z",
+    });
+  });
+
+  it("omits what the session does not carry", () => {
+    const properties = buildFlagPersonProperties(
+      userFixture({ role: undefined, created_at: undefined }),
+    );
+
+    expect(properties).toEqual({ email_domain: "example.com" });
   });
 });

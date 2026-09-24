@@ -1,6 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, expect, test, vi } from "vitest";
+import { StrictMode } from "react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
@@ -13,6 +14,25 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import HomePage from "../page";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
@@ -341,6 +361,82 @@ test("approving an item one-tap sends the review decision", async () => {
       },
     ],
   });
+  await waitFor(() =>
+    expect(
+      funnelCalls().find((body) => body.type === "home_attention_actioned")
+        ?.data,
+    ).toEqual({ kind: "approval", action: "approve" }),
+  );
+});
+
+test("declining an item records the confirmed decline", async () => {
+  const user = userEvent.setup();
+  const reviewRequests: unknown[] = [];
+  mockDashboard({ ...dashboard, attention: [approvalItem] });
+  server.use(
+    http.post("/api/proxy/api/review/action", async ({ request }) => {
+      reviewRequests.push(await request.json());
+      return HttpResponse.json({ failed_count: 0, processed_count: 1 });
+    }),
+  );
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Decline: Approve the camera shortlist",
+    }),
+  );
+  await user.click(
+    screen.getByRole("button", {
+      name: "Confirm decline: Approve the camera shortlist",
+    }),
+  );
+
+  await waitFor(() => expect(reviewRequests).toHaveLength(1));
+  expect(reviewRequests[0]).toEqual({
+    reviews: [
+      {
+        node_exec_id: "node-exec-1",
+        approved: false,
+        auto_approve_future: false,
+      },
+    ],
+  });
+  await waitFor(() =>
+    expect(
+      funnelCalls().find((body) => body.type === "home_attention_actioned")
+        ?.data,
+    ).toEqual({ kind: "approval", action: "decline" }),
+  );
+});
+
+test("does not count a failed attention decision as actioned", async () => {
+  const user = userEvent.setup();
+  let reviewAttempts = 0;
+  mockDashboard({ ...dashboard, attention: [approvalItem] });
+  server.use(
+    http.post("/api/proxy/api/review/action", () => {
+      reviewAttempts += 1;
+      return HttpResponse.json({
+        failed_count: 1,
+        processed_count: 0,
+        error: "review failed",
+      });
+    }),
+  );
+
+  render(<HomePage />);
+  const approveButton = await screen.findByRole("button", {
+    name: "Approve: Approve the camera shortlist",
+  });
+  await user.click(approveButton);
+
+  await waitFor(() => expect(reviewAttempts).toBe(1));
+  await waitFor(() =>
+    expect(approveButton.hasAttribute("disabled")).toBe(false),
+  );
+  expect(funnelEventNames()).not.toContain("home_attention_actioned");
 });
 
 test("keeps a Review deep link alongside the approval shortcuts", async () => {
@@ -369,6 +465,7 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
     agents: [],
     recent_work: { groups: [], total_count: 0 },
   });
+  server.use();
 
   render(<HomePage />);
 
@@ -379,6 +476,32 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
   expect(screen.queryByText("You are all caught up")).toBeNull();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(funnelEventNames()).not.toContain("briefing_opened");
+});
+
+test("tracks briefing outcomes and team members with useful dimensions", async () => {
+  const user = userEvent.setup();
+  mockDashboard(dashboard);
+  server.use();
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("link", { name: /Your camera research is ready/ }),
+  );
+  await user.click(await screen.findByRole("link", { name: "Manage Maria" }));
+
+  await waitFor(() => {
+    expect(
+      funnelCalls().find((body) => body.type === "briefing_outcome_clicked")
+        ?.data,
+    ).toEqual({ status: "completed" });
+    expect(
+      funnelCalls().find((body) => body.type === "home_team_member_clicked")
+        ?.data,
+    ).toEqual({ expert_id: "maria" });
+  });
 });
 
 test("shows a retryable page error when the aggregate cannot load", async () => {
@@ -398,12 +521,25 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   expect(
     await screen.findByText("Your Home briefing could not be loaded"),
   ).toBeDefined();
+  expect(funnelEventNames()).not.toContain("home_viewed");
 
   await user.click(screen.getByRole("button", { name: /try again/i }));
 
   expect(
     await screen.findByRole("heading", { name: "Needs you" }),
   ).toBeDefined();
+  await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
+});
+
+test("does not track home_viewed while feature state is loading", async () => {
+  setFlagStatusMock.mockReturnValueOnce({ enabled: true, ready: false });
+  server.use();
+
+  render(<HomePage />);
+  expect(screen.getByLabelText("Loading Home…")).toBeDefined();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(funnelEventNames()).not.toContain("home_viewed");
 });
 
 test("calls notFound when the experts feature is disabled", () => {
@@ -465,4 +601,44 @@ test("renders the briefing unchanged when no narrative was generated", async () 
     await screen.findByRole("heading", { name: "Recent work" }),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
+});
+
+test("emits the home_viewed funnel event once the dashboard mounts", async () => {
+  server.use();
+  mockDashboard(dashboard);
+
+  render(<HomePage />);
+
+  await screen.findByRole("heading", { name: "Needs you" });
+  await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
+});
+
+test("view events fire exactly once under StrictMode effect replay", async () => {
+  server.use();
+  // briefing_opened is an exposure event, so the briefing has to actually render.
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      narrative: "Two runs finished overnight.",
+    },
+  });
+
+  render(
+    <StrictMode>
+      <HomePage />
+    </StrictMode>,
+  );
+
+  await screen.findByRole("heading", { name: "Recent work" });
+  await waitFor(() => {
+    expect(funnelEventNames()).toContain("home_viewed");
+    expect(funnelEventNames()).toContain("briefing_opened");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(funnelEventNames().filter((e) => e === "home_viewed")).toHaveLength(1);
+  expect(
+    funnelEventNames().filter((e) => e === "briefing_opened"),
+  ).toHaveLength(1);
 });

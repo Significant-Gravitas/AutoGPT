@@ -175,7 +175,7 @@ export function AddSkillDialog({
                   {marketplaceSkills.map((skill) => (
                     <SkillOption
                       key={skill.slug}
-                      name={skill.name}
+                      name={skill.title}
                       description={skill.description}
                       icon={Store01Icon}
                       disabled={isSaving}

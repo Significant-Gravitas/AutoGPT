@@ -1,11 +1,5 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar as SharedExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -42,21 +36,12 @@ export function ExpertAvatar({
     return <AutopilotAvatar size={isSmall ? 24 : 36} />;
   }
 
-  const config = expertNotionConfig({ name, avatarUrl, color });
-  if (config) {
-    return (
-      <NotionAvatarImage
-        config={config}
-        size={isSmall ? 24 : 36}
-        title={name}
-      />
-    );
-  }
-
   return (
-    <Avatar className={cn("border border-stone-500", sizeClass)}>
-      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-      <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
-    </Avatar>
+    <SharedExpertAvatar
+      name={name}
+      avatarUrl={avatarUrl}
+      color={color}
+      size={isSmall ? 24 : 36}
+    />
   );
 }

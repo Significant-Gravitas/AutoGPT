@@ -47,6 +47,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Ran command",
     subject: (input) => quoted(input, "command", 60),
   },
+  start_desktop: {
+    category: "browser",
+    running: "Starting desktop",
+    done: "Started desktop",
+  },
   list_workspace_files: {
     category: "file-list",
     running: "Listing workspace files",
@@ -128,6 +133,35 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "block",
     running: "Running block",
     done: "Ran block",
+    subject: (_input, context) =>
+      quotedName(getBlockDisplayName(context.displayName, context.output)),
+  },
+  find_capability: {
+    category: "block",
+    running: "Searching capabilities for",
+    done: "Searched capabilities for",
+    subject: (input) => quoted(input, "query"),
+  },
+  describe_capability: {
+    category: "block",
+    running: "Reading capability",
+    done: "Read capability",
+    subject: (input) => quotedName(strField(input, "id")),
+  },
+  run_capability: {
+    category: "block",
+    running: "Running",
+    done: "Ran",
+    subject: (input, context) =>
+      quotedName(
+        getBlockDisplayName(context.displayName, context.output) ??
+          strField(input, "id"),
+      ),
+  },
+  resume_capability: {
+    category: "block",
+    running: "Resuming",
+    done: "Resumed",
     subject: (_input, context) =>
       quotedName(getBlockDisplayName(context.displayName, context.output)),
   },

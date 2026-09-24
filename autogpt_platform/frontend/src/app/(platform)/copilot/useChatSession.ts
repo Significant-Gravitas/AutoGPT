@@ -9,6 +9,7 @@ import type { CreateSessionRequest } from "@/app/api/__generated__/models/create
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -18,6 +19,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
   resolveCopilotLLMAuthSelection,
@@ -314,6 +316,9 @@ export function useChatSession({
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
       setSessionId(response.data.id);
+      if (expertId) {
+        trackFunnel("expert_thread_created", { expert_id: expertId });
+      }
       queryClient.invalidateQueries({
         queryKey: SESSION_LIST_QUERY_KEY,
       });
@@ -387,6 +392,11 @@ export function useChatSession({
       ? (sessionQuery.data.data.expert_id ?? null)
       : null;
 
+  const sessionSentFrom =
+    sessionQuery.data?.status === 200
+      ? getSessionSentFrom(sessionQuery.data.data.metadata)
+      : null;
+
   return {
     sessionId,
     setSessionId,
@@ -413,5 +423,6 @@ export function useChatSession({
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
     sessionChatStatus,
+    sessionSentFrom,
   };
 }

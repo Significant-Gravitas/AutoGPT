@@ -71,6 +71,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
 const brandVoice: MarketplaceSkill = {
   slug: "brand-voice-guide",
   name: "brand-voice-guide",
+  title: "Brand voice guide",
   description: "Write in a consistent brand voice.",
   categories: ["content"],
   required_providers: [],
@@ -83,8 +84,17 @@ const outreach: MarketplaceSkill = {
   ...brandVoice,
   slug: "outreach-playbook",
   name: "outreach-playbook",
+  title: "Outreach playbook",
   categories: ["sales"],
   required_providers: ["google"],
+};
+
+const seoAudit: MarketplaceSkill = {
+  ...brandVoice,
+  slug: "on-page-seo-audit",
+  name: "on-page-seo-audit",
+  title: "On-page SEO audit",
+  categories: ["marketing"],
 };
 
 const CATEGORIES = [
@@ -118,6 +128,17 @@ describe("Marketplace SkillsSection", () => {
     );
   });
 
+  test("shows a skill's title as its author cased it, acronyms intact", async () => {
+    server.use(listing([seoAudit]));
+
+    render(<MainMarkeplacePage />);
+
+    expect(
+      await screen.findByRole("link", { name: /On-page SEO audit/ }),
+    ).toBeDefined();
+    expect(screen.queryByText("On page seo audit")).toBeNull();
+  });
+
   test("shows skills as their own shelf, linked to the skill page", async () => {
     server.use(listing([brandVoice]));
 
@@ -132,7 +153,6 @@ describe("Marketplace SkillsSection", () => {
         },
       ),
     ).toBeDefined();
-    // The API returns the frontmatter name, which the seed pins to the slug.
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
     expect(card.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
@@ -169,6 +189,32 @@ describe("Marketplace SkillsSection", () => {
       name: /Brand voice guide/,
     });
     expect(brand.textContent).not.toContain("Works with");
+  });
+
+  test("credits the repo a vendored skill came from, and nothing for our own", async () => {
+    const coldEmail: MarketplaceSkill = {
+      ...outreach,
+      slug: "cold-email",
+      name: "cold-email",
+      title: "Cold email",
+      source_repo: "coreyhaines31/marketingskills",
+      source_url:
+        "https://github.com/coreyhaines31/marketingskills/tree/abc/skills/cold-email",
+      license: "MIT",
+    };
+    server.use(listing([brandVoice, coldEmail]));
+
+    render(<MainMarkeplacePage />);
+
+    await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
+    const vendored = await screen.findByRole("link", { name: /Cold email/ });
+    expect(vendored.textContent).toContain(
+      "From coreyhaines31/marketingskills",
+    );
+    const own = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
+    expect(own.textContent).not.toContain("From ");
   });
 
   test("marks a skill the user already has as Added", async () => {

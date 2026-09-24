@@ -143,6 +143,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O1_MINI = "o1-mini"
     # GPT-6 models (September 2026)
     GPT6_ASTRA = "gpt-6-astra"
+    GPT6_SOL = "gpt-6-sol"
+    GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
@@ -176,6 +178,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_5_OPUS = "claude-opus-5"
+    CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
@@ -202,6 +205,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
@@ -224,6 +228,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
+    INCLUSIONAI_LING_3_0_FLASH_VL = "inclusionai/ling-3.0-flash-vl"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
@@ -242,6 +247,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
+    QWEN3_8_FLASH = "qwen/qwen3.8-flash"
     # Z.ai (Zhipu) models
     ZAI_GLM_4_6 = "z-ai/glm-4.6"
     ZAI_GLM_4_6V = "z-ai/glm-4.6v"
@@ -252,6 +258,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
+    # Inception Labs models
+    INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
+    # Tencent models
+    TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    # Unbiased models
+    UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"

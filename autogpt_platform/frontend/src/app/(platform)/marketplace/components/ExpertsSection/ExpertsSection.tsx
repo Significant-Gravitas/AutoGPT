@@ -3,11 +3,12 @@
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Button } from "@/components/atoms/Button/Button";
+import { useTrackFunnelViewOnce } from "@/services/experts/use-track-funnel-view-once";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { useExpertsSection } from "./useExpertsSection";
 
-const RAISE_LABEL = "Raise your own";
+const RAISE_LABEL = "Create an Expert";
 const RAISE_HREF = "/raise";
 
 interface Props {
@@ -17,6 +18,11 @@ interface Props {
 export function ExpertsSection({ category }: Props) {
   const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
     useExpertsSection({ category });
+
+  useTrackFunnelViewOnce(
+    "experts_section_viewed",
+    !isLoading && !isError && templates.length > 0,
+  );
 
   if (isError || (!isLoading && templates.length === 0)) {
     // Under a category filter an empty shelf means "no experts in this

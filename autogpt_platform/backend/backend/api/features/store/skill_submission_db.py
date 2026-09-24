@@ -26,6 +26,8 @@ from backend.util.exceptions import NotFoundError, PreconditionFailed
 
 from . import skill_db, skill_model
 
+_MAX_LICENSE_CHARS = 256
+
 
 async def submit_skill(
     user_id: str, request: skill_model.SkillSubmissionRequest
@@ -65,6 +67,7 @@ async def submit_skill(
                 "categories": request.categories,
                 "requiredProviders": request.required_providers,
                 "sourceSkillSlug": slug,
+                "license": _license_of(skill),
                 "changesSummary": request.changes_summary or "Initial submission",
                 "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                 "submittedAt": datetime.datetime.now(datetime.timezone.utc),
@@ -125,6 +128,7 @@ async def edit_skill_submission(
                 "triggers": list(skill.triggers),
                 "categories": request.categories,
                 "requiredProviders": request.required_providers,
+                "license": _license_of(skill),
                 "changesSummary": request.changes_summary or version.changesSummary,
             },
         )
@@ -132,6 +136,18 @@ async def edit_skill_submission(
             raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
         await snapshot_version_files(updated.id, files, tx)
     return skill_model.SkillSubmission.from_db(updated, listing)
+
+
+def _license_of(skill: ParsedSkill) -> str | None:
+    value = skill.extra.get("license")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("license must be a string")
+    license_name = value.strip()
+    if len(license_name) > _MAX_LICENSE_CHARS:
+        raise ValueError(f"license must be ≤{_MAX_LICENSE_CHARS} chars")
+    return license_name or None
 
 
 async def review_skill_submission(

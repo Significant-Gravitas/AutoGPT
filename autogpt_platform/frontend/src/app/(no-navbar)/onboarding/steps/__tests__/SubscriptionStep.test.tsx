@@ -96,12 +96,12 @@ describe("subscription pricing experiment helpers", () => {
     expect(pro).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
   });
 
@@ -133,7 +133,7 @@ describe("subscription pricing experiment helpers", () => {
     expect(max).toMatchObject({
       highlighted: false,
       badge: null,
-      buttonVariant: "secondary",
+      buttonVariant: "primary",
     });
   });
 });

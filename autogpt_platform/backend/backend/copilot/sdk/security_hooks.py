@@ -182,6 +182,13 @@ def _validate_user_isolation(
     return {}
 
 
+# Tools whose display name (block, agent, MCP tool) streams to the UI before
+# the call finishes; the bridge tags their input with a call token.
+_DISPLAY_BRIDGED_TOOLS: frozenset[str] = frozenset(
+    {"run_agent", "run_capability", "resume_capability"}
+)
+
+
 def create_security_hooks(
     user_id: str | None,
     sdk_cwd: str | None = None,
@@ -280,7 +287,7 @@ def create_security_hooks(
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (
                 is_copilot_tool
-                and clean_name in {"run_agent", "run_block", "continue_run_block"}
+                and clean_name in _DISPLAY_BRIDGED_TOOLS
                 and tool_use_id is not None
                 and tool_display_bridge is not None
             ):

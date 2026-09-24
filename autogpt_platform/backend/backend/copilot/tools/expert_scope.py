@@ -9,22 +9,25 @@ expert's resources.
 
 import logging
 from enum import Enum
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.data.model import Credentials
+from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
+from .utils import find_matching_credential
 
 logger = logging.getLogger(__name__)
 
 WORKFLOW_NOT_INSTALLED = (
     "'{name}' is not installed on this expert. Experts can only run, edit, "
     "and schedule their installed workflows. Install it first with "
-    "install_expert_workflow, from the marketplace or the owner's library."
+    "tool:install_expert_workflow, from the marketplace or the owner's library."
 )
 EXPERT_OWNER_DENIED = (
     "Experts can only manage their own workflows and integrations. Open "
@@ -32,7 +35,7 @@ EXPERT_OWNER_DENIED = (
 )
 EXPERT_REQUIRED = (
     "Name the expert with expert_id. Personal AutoPilot manages experts' "
-    "resources on their behalf; list_team shows their ids."
+    "resources on their behalf; tool:list_team shows their ids."
 )
 
 
@@ -135,6 +138,50 @@ async def resolve_target_expert(
     return expert.id
 
 
+class RoutineOwner(BaseModel):
+    """Whose standing work a routine call acts on.
+
+    ``expert_id is None`` is not "unknown" — it is the account itself. Otto is
+    the platform's default assistant rather than a row in ``Expert``, so its
+    routines hang off the owner, and a personal AutoPilot session that names no
+    expert is asking about its own.
+    """
+
+    expert_id: str | None = None
+
+
+async def resolve_routine_owner(
+    user_id: str, session: ChatSession, requested_expert_id: str | None
+) -> RoutineOwner | ErrorResponse:
+    """``resolve_target_expert``'s rule, minus the requirement to name someone.
+
+    An expert session still acts on itself and may not name another. Personal
+    AutoPilot may name one of the owner's experts to manage its standing work,
+    and naming nobody means the account's own — the one case where
+    ``resolve_target_expert`` has to refuse and this does not.
+    """
+    if session.expert_id is not None:
+        if requested_expert_id and requested_expert_id != session.expert_id:
+            return ErrorResponse(
+                message=EXPERT_OWNER_DENIED,
+                error="access_denied",
+                session_id=session.session_id,
+            )
+        return RoutineOwner(expert_id=session.expert_id)
+    if not requested_expert_id:
+        return RoutineOwner()
+    expert = await experts_db().get_expert(
+        user_id, requested_expert_id, include_workflows=False
+    )
+    if expert is None:
+        return ErrorResponse(
+            message=f"Expert '{requested_expert_id}' was not found on this account.",
+            error="expert_not_found",
+            session_id=session.session_id,
+        )
+    return RoutineOwner(expert_id=expert.id)
+
+
 async def settle_expert_grants(user_id: str, session: ChatSession) -> None:
     """An expert installing a workflow on itself must not widen its own grants.
 
@@ -172,7 +219,7 @@ async def install_saved_agent(
             update={
                 "message": (
                     f"{result.message} The agent was saved but could not be "
-                    "installed on this expert; run install_expert_workflow "
+                    "installed on this expert; run tool:install_expert_workflow "
                     f"with library_agent_id='{result.library_agent_id}'."
                 )
             }
@@ -211,6 +258,60 @@ async def _ungranted_credentials(
     ]
 
 
+async def annotate_expert_grants(
+    user_id: str, expert_id: str | None, missing: dict[str, Any]
+) -> dict[str, Any]:
+    """Tell the setup card which expert is asking and what it could be granted.
+
+    Each missing credential gains an ``expert_grant`` entry so the card can
+    offer "Grant access" for an account credential the expert lacks, and can
+    grant a freshly connected one to the expert instead of leaving it
+    account-only. Returns a new mapping; personal AutoPilot passes through.
+    """
+    if expert_id is None or not missing:
+        return missing
+    providers = {
+        provider_slug(entry.get("provider", "")) for entry in missing.values()
+    } - {""}
+    candidates = await _ungranted_credentials(user_id, expert_id, providers)
+    return {
+        key: {
+            **entry,
+            "expert_grant": {
+                "expert_id": expert_id,
+                "credentials": [
+                    {
+                        "id": c.id,
+                        "title": c.title or str(c.provider),
+                        "type": str(c.type),
+                    }
+                    for c in candidates
+                    if _satisfies_requirement(c, entry)
+                ],
+            },
+        }
+        for key, entry in missing.items()
+    }
+
+
+def _satisfies_requirement(credential: Credentials, entry: dict[str, Any]) -> bool:
+    """The same provider/type/scope/host predicate a run applies when matching,
+    so an offered grant is one the next run will accept."""
+    provider = provider_slug(entry.get("provider", ""))
+    types = entry.get("types") or ([entry["type"]] if entry.get("type") else [])
+    if not provider or not types:
+        return False
+    scopes = entry.get("scopes") or None
+    field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
+        credentials_provider=frozenset([cast(ProviderName, provider)]),
+        credentials_types=frozenset(cast(CredentialsType, t) for t in types),
+        credentials_scopes=frozenset(scopes) if scopes else None,
+        discriminator=entry.get("discriminator"),
+        discriminator_values=set(entry.get("discriminator_values") or []),
+    )
+    return find_matching_credential([credential], field_info) is not None
+
+
 async def ungranted_credential_hint(
     user_id: str, expert_id: str | None, providers: set[str]
 ) -> str:
@@ -233,5 +334,5 @@ async def ungranted_credential_hint(
         "\n\nThe account already has matching credentials that this expert has "
         f"not been granted:\n{lines}\nAsk the user to grant one on the expert's "
         "Integrations page, or from personal AutoPilot with "
-        "grant_expert_credential."
+        "tool:grant_expert_credential."
     )

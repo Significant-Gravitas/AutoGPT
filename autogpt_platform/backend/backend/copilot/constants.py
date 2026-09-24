@@ -43,6 +43,12 @@ COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 COPILOT_SESSION_PREFIX = credit_metadata.CURRENT_CREDIT_MARKERS.copilot_session_prefix
 COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
 
+# Present in every spend-approval review id, on both the graph-execution
+# and the chat shape, so one ``contains`` lookup finds an expert's
+# decisions. Lives here rather than beside the approval flow so the
+# copilot can recognise one without importing the API layer.
+SPEND_REVIEW_MARKER = "expert-spend:"
+
 # Separator used in synthetic node_exec_id to encode node_id.
 # Format: "{node_id}:{random_hex}" — extract node_id via rsplit(":", 1)[0]
 COPILOT_NODE_EXEC_ID_SEPARATOR = ":"

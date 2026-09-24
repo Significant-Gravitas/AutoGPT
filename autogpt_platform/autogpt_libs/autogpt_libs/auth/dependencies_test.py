@@ -174,29 +174,34 @@ class TestAuthDependencies:
 class TestAuthDependenciesIntegration:
     """Integration tests for auth dependencies with FastAPI."""
 
-    acceptable_jwt_secret = "test-secret-with-proper-length-123456"
-
     @pytest.fixture
     def create_token(self, mocker: MockerFixture):
-        """Helper to create JWT tokens."""
+        """Helper to create ES256 tokens verified against a mocked JWK set."""
         import jwt
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from jwt.algorithms import ECAlgorithm
 
-        # JWT_JWKS_URL is required by Settings.validate(); HS256 tokens verify
-        # against JWT_VERIFY_KEY and never touch the JWKS client, so a
-        # present-but-unused URL is enough. Reset the cached settings so
-        # get_settings() rebuilds under this patched environment.
+        from autogpt_libs.auth import jwt_utils
+
+        kid = "test-key-1"
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        jwk = ECAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+        jwk.update({"kid": kid, "alg": "ES256", "use": "sig"})
+
         mocker.patch.dict(
             os.environ,
-            {
-                "JWT_VERIFY_KEY": self.acceptable_jwt_secret,
-                "JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks",
-            },
+            {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
             clear=True,
         )
         mocker.patch.object(config, "_settings", Settings())
+        mocker.patch.object(jwt_utils, "_jwks_client", None)
+        mocker.patch.object(jwt_utils, "_jwks_client_url", None)
+        mocker.patch.object(jwt.PyJWKClient, "fetch_data", return_value={"keys": [jwk]})
 
-        def _create_token(payload, secret=self.acceptable_jwt_secret):
-            return jwt.encode(payload, secret, algorithm="HS256")
+        def _create_token(payload):
+            return jwt.encode(
+                payload, private_key, algorithm="ES256", headers={"kid": kid}
+            )
 
         return _create_token
 
@@ -228,7 +233,6 @@ class TestAuthDependenciesIntegration:
 
         token = create_token(
             {"sub": "test-user", "role": "user", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get("/test", headers={"Authorization": f"Bearer {token}"})
@@ -249,7 +253,6 @@ class TestAuthDependenciesIntegration:
         # Regular user token
         user_token = create_token(
             {"sub": "regular-user", "role": "user", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(
@@ -260,7 +263,6 @@ class TestAuthDependenciesIntegration:
         # Admin token
         admin_token = create_token(
             {"sub": "admin-user", "role": "admin", "aud": "authenticated"},
-            secret=self.acceptable_jwt_secret,
         )
 
         response = client.get(

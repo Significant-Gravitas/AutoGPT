@@ -20,7 +20,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipientChip } from "../components/ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "../components/EmptySession/useRecipientPicker";
 import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
@@ -28,6 +28,25 @@ import { ChatSidebar } from "../components/ChatSidebar/ChatSidebar";
 import { useChatSession } from "../useChatSession";
 import { useCopilotUIStore } from "../store";
 import { groupSessionsByExpert } from "../useSessionList";
+
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
+
+/** Funnel events as PostHog received them, in order. */
+function funnelCalls() {
+  return capture.mock.calls.map(([event, data]) => ({
+    type: event as string,
+    data: (data ?? {}) as Record<string, unknown>,
+  }));
+}
+
+beforeEach(() => {
+  capture.mockReset();
+});
+
+function funnelEventNames() {
+  return capture.mock.calls.map(([event]) => event as string);
+}
 
 const flagState = vi.hoisted(() => ({
   values: { "hire-experts": true } as Record<string, boolean>,
@@ -203,6 +222,18 @@ function ExpertSessionHarness() {
   );
 }
 
+function AutopilotSessionHarness() {
+  const { createSession, sessionId } = useChatSession();
+  return (
+    <div>
+      <div data-testid="session-id">{sessionId ?? "none"}</div>
+      <button onClick={() => void createSession().catch(() => {})}>
+        create
+      </button>
+    </div>
+  );
+}
+
 /** Mirrors `CopilotPage`, which keys the chat host on the session id — every
  *  session change (including "New Chat" clearing it) remounts `useChatSession`
  *  with fresh refs. */
@@ -213,6 +244,11 @@ function KeyedSessionHost() {
 
 const NuqsWrapper = withNuqsTestingAdapter({
   searchParams: "?expertId=expert-maria",
+  hasMemory: true,
+});
+
+const EmptyNuqsWrapper = withNuqsTestingAdapter({
+  searchParams: "",
   hasMemory: true,
 });
 
@@ -272,6 +308,67 @@ describe("useChatSession — expert sessions", () => {
       // chosen for one chat leaked into every later chat.
       expect(createBody).toEqual({ expert_id: "expert-maria" });
     });
+    await waitFor(() =>
+      expect(
+        funnelCalls().find((event) => event.type === "expert_thread_created")
+          ?.data,
+      ).toEqual({ expert_id: "expert-maria" }),
+    );
+  });
+
+  it("does not emit expert_thread_created for an Autopilot session", async () => {
+    let transportInventoryLoaded = false;
+    server.use(
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          expert_id: null,
+        }),
+      ),
+      http.get("*/api/chat/sessions/new-autopilot-session", () =>
+        HttpResponse.json({
+          id: "new-autopilot-session",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+          user_id: "user-1",
+          messages: [],
+        }),
+      ),
+      http.get("*/api/chat/transports", () => {
+        transportInventoryLoaded = true;
+        return HttpResponse.json({
+          transports: [
+            {
+              auth_provider: "platform",
+              credential_id: null,
+              label: "AutoGPT Platform",
+              available: true,
+              default: true,
+            },
+          ],
+        });
+      }),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <EmptyNuqsWrapper>
+          <AutopilotSessionHarness />
+        </EmptyNuqsWrapper>
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(transportInventoryLoaded).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "create" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        "new-autopilot-session",
+      ),
+    );
+
+    expect(funnelEventNames()).not.toContain("expert_thread_created");
   });
 
   it("opens the expert's latest thread when one already exists", async () => {
@@ -457,10 +554,13 @@ describe("ChatSidebar — expert groups", () => {
     const mariaHeader = await screen.findByTestId(
       "expert-group-header-expert-maria",
     );
-    expect(mariaHeader.textContent).toBe("Maria");
+    expect(within(mariaHeader).getByText("Maria")).toBeDefined();
+    expect(within(mariaHeader).getByText(mariaExpert.role)).toBeDefined();
     expect(
-      screen.getByTestId("expert-group-header-autopilot").textContent,
-    ).toBe("Otto");
+      within(screen.getByTestId("expert-group-header-autopilot")).getByText(
+        "Otto",
+      ),
+    ).toBeDefined();
     expect(screen.getByText("Campaign ideas")).toBeDefined();
   });
 
@@ -533,7 +633,7 @@ describe("ChatSidebar — expert groups", () => {
     expect(within(mariaGroup).queryByText("Pinned campaign")).toBeNull();
   });
 
-  it("shows the first 5 chats of an expert and reveals the rest via Load more", async () => {
+  it("shows the first four chats of an expert and reveals the rest via Load more", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
         sessions: [
@@ -558,8 +658,8 @@ describe("ChatSidebar — expert groups", () => {
     );
 
     await screen.findByText("Maria chat 1");
-    expect(screen.getByText("Maria chat 5")).toBeDefined();
-    expect(screen.queryByText("Maria chat 6")).toBeNull();
+    expect(screen.getByText("Maria chat 4")).toBeDefined();
+    expect(screen.queryByText("Maria chat 5")).toBeNull();
 
     fireEvent.click(screen.getByTestId("expert-group-load-more-expert-maria"));
     expect(screen.getByText("Maria chat 6")).toBeDefined();
@@ -653,6 +753,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     name: "Maria",
     avatarUrl: mariaExpert.avatar_url,
     role: mariaExpert.role,
+    jobTitle: "Marketing Manager",
     isArchived: false,
     readOnlyReason: null,
   };
@@ -674,6 +775,8 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     const header = screen.getByTestId("expert-thread-header");
     expect(within(header).getByText("Maria")).toBeDefined();
+    expect(within(header).getByText("Marketing Manager")).toBeDefined();
+    expect(within(header).queryByText(mariaExpert.role)).toBeNull();
     expect(within(header).getByRole("img", { name: "Maria" })).toBeDefined();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
@@ -753,7 +856,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("keeps the passive chip keyboard-reachable, since the role only exists in its tooltip", () => {
+  it("keeps the passive chip keyboard-reachable with its area", () => {
     server.use(
       getGetExpertMockHandler(mariaExpert),
       getGetV1ListExecutionSchedulesForAUserMockHandler([]),
@@ -769,11 +872,48 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = screen.getByTestId("expert-thread-header");
-    const chip = within(header).getByLabelText("Maria — Marketing Strategist");
+    const chip = within(header).getByLabelText("Maria — Marketing Manager");
 
     // A tooltip opens on focus as well as hover; an unfocusable trigger
     // hides the role from keyboard users entirely.
     expect(chip.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("does not rewrite a job title that matches a special area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          jobTitle: "Social & Content Repurposing",
+        }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(
+      within(header).getByText("Social & Content Repurposing"),
+    ).toBeDefined();
+    expect(within(header).queryByText("Social media")).toBeNull();
+  });
+
+  it("falls back to the default role when an expert has no title or area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{ ...mariaIdentity, role: null, jobTitle: null }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Head of AI")).toBeDefined();
+    expect(within(header).getByLabelText("Maria — Head of AI")).toBeDefined();
   });
 });
 

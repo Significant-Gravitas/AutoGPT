@@ -231,7 +231,7 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const raise = await screen.findByRole("link", { name: "Raise expert" });
+    const raise = await screen.findByRole("link", { name: "Create an Expert" });
     expect(raise.getAttribute("href")).toBe("/raise");
     expect(
       screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
@@ -1010,9 +1010,11 @@ describe("TeamPage", () => {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
-    expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
-    ).toBe("/raise");
+    for (const createLink of screen.getAllByRole("link", {
+      name: "Create an Expert",
+    })) {
+      expect(createLink.getAttribute("href")).toBe("/raise");
+    }
   });
 
   test("shows an error card and retries when loading experts fails", async () => {
@@ -1212,6 +1214,34 @@ describe("TeamPage - setup needed card", () => {
 
     const card = await screen.findByTestId("setup-needed");
     expect(within(card).getByText("Needs a platform key")).toBeDefined();
+    expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
+  test("excludes MCP presets from native setup actions while keeping the unmet item", async () => {
+    server.use(
+      getListExpertSetupItemsMockHandler([
+        makeSetupItem({ providers: ["mcp_notion"] }),
+      ]),
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "mcp_notion",
+          display_name: "Notion",
+          supported_auth_types: [],
+          mcp_server: {
+            server_url: "https://mcp.notion.com/mcp",
+            documentation_url: "https://developers.notion.com/guides/mcp",
+            setup_instructions: "Sign in to Notion.",
+            connection_mode: "hosted",
+            auth_methods: ["oauth"],
+          },
+        },
+      ]),
+    );
+    render(<TeamPage />);
+
+    const card = await screen.findByTestId("setup-needed");
+    expect(within(card).getByText("Setup needed (1)")).toBeDefined();
+    expect(await within(card).findByText("Needs a platform key")).toBeDefined();
     expect(within(card).queryByRole("button", { name: "Connect" })).toBeNull();
   });
 

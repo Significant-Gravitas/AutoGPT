@@ -14,7 +14,7 @@ from .assembly import attach_workflows, load_fixtures, roster_experts
 from .generation import (
     MAX_TOOL_ROUNDS,
     add_usage,
-    expert_tools,
+    expert_reachable_tools,
     generate_turn,
     question_text,
     stub_tool_result,
@@ -225,11 +225,16 @@ def test_question_text_renders_questions_and_tolerates_bad_json():
 
 
 def test_stubbed_tools_stay_within_the_sessions_tool_surface():
-    """Every tool the stub table answers by name is one the model is given;
-    a stub for a tool that is not offered would never fire."""
+    """Every tool the stub table answers by name is one the session can reach;
+    a stub for a tool that is out of reach would never fire.
+
+    Most of these are deferred now — the model calls them through
+    ``run_capability``, which ``stub_tool_result`` unwraps — so the question
+    is reachability, not whether they appear in the schema list.
+    """
     from .generation import DELEGATION_TOOLS, HANDOFF_TOOL, LIBRARY_SEARCH_TOOLS
 
-    offered = {t["function"]["name"] for t in expert_tools(roster_experts(["Max"])[0])}
+    reachable = expert_reachable_tools(roster_experts(["Max"])[0])
     named = {
         *LIBRARY_SEARCH_TOOLS,
         *DELEGATION_TOOLS,
@@ -243,14 +248,39 @@ def test_stubbed_tools_stay_within_the_sessions_tool_surface():
         "list_agent_triggers",
         "list_workspace_files",
     }
-    assert named <= offered
+    assert named <= reachable
+
+
+def test_the_stub_table_is_reached_through_run_capability():
+    """The unwrap is what keeps every stub above firing after the swap."""
+    from .generation import called_name, stub_tool_result
+
+    assert called_name("run_capability", '{"id": "tool:memory_search"}') == (
+        "memory_search"
+    )
+    assert called_name("memory_search", "{}") == "memory_search"
+    answered = stub_tool_result(
+        "run_capability", '{"id": "tool:list_schedules", "input": {}}', None, []
+    )
+    assert "No schedules yet." in answered
+
+
+def test_a_malformed_call_still_gets_an_answer():
+    """A stub that raises ends the eval run; one that answers scores the turn.
+
+    The model writes these arguments, so `input` is not necessarily an object.
+    """
+    from .generation import stub_tool_result
+
+    for arguments in ('{"id": "tool:list_schedules", "input": "oops"}', "not json"):
+        assert stub_tool_result("run_capability", arguments, None, [])
 
 
 def test_expert_session_loses_staffing_tools_and_keeps_memory():
-    names = {t["function"]["name"] for t in expert_tools(roster_experts(["Max"])[0])}
+    names = expert_reachable_tools(roster_experts(["Max"])[0])
     assert "memory_search" in names
     assert "hire_expert" not in names
     assert "update_expert_soul" in names
-    plain = {t["function"]["name"] for t in expert_tools(None)}
+    plain = expert_reachable_tools(None)
     assert "hire_expert" in plain
     assert "update_expert_soul" not in plain

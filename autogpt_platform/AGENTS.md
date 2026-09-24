@@ -38,6 +38,32 @@ AutoGPT Platform is a monorepo containing:
 3. Docker Compose `environment:` sections provide service-specific overrides
 4. Shell environment variables have highest precedence
 
+#### Never commit a working secret value
+
+`.env.default` files are public. Any real key, token, password, or signing
+secret committed to one is a **published** secret: scanners pick it up, it gets
+filed as a GitHub security advisory against the repo, and self-hosters end up
+running on a value anyone can read — even when the hosted platform never uses
+it. Deleting it later does not unpublish it.
+
+For any new secret setting:
+
+1. Leave it **blank** in `.env.default` (keep the key and its comment).
+2. Add it to `SECRET_GENERATORS` in `single-container/runtime_config.py`.
+3. Let `make init-env` generate a per-developer value into `.env`.
+
+If the stack genuinely cannot boot without a local default, it must be
+*generated at setup time*, not checked in. This applies equally to
+`.env.default` files, CI workflow `env:` blocks, and docker-compose
+`environment:` blocks — generate ephemeral values in CI rather than pasting a
+literal. Two things enforce this: `.gitleaks.toml` and the `detect-secrets`
+pre-commit hook no longer exempt `.env.default` files, and the
+`check-env-defaults-blank` pre-commit hook (plus the matching unit test in
+`single-container/tests/test_runtime_config.py`, which CI runs) asserts that
+the settings listed in `BLANK_IN_ENV_DEFAULT` stay empty. Entropy scanners
+alone do not reliably flag a freshly generated key, so add each newly-retired
+setting to `BLANK_IN_ENV_DEFAULT` too.
+
 #### Key Points
 
 - All services use hardcoded defaults in docker-compose files (no `${VARIABLE}` substitutions)

@@ -118,6 +118,10 @@ def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
         f"Authorization: Basic {_SECRET}",
         f"Authorization: Token {_SECRET}",
         f'{{"authorization": "Bearer {_SECRET}"}}',
+        # An OAuth token endpoint's error can quote these back.
+        f"client_secret={_SECRET}",
+        f'{{"client_secret": "{_SECRET}"}}',
+        f'{{"id_token": "{_SECRET}"}}',
     ],
 )
 def test_sanitize_provider_message_leaves_no_secret(raw: str):
@@ -225,3 +229,60 @@ async def _resolve_for(expert_id: str | None, allowed: list[str]):
             {"url": "https://api.example.com/v1/data"},
             expert_id,
         )
+
+
+def _key_cred(cred_id: str, provider: str = "github"):
+    from backend.data.model import APIKeyCredentials
+
+    return APIKeyCredentials(
+        id=cred_id, provider=provider, title=cred_id, api_key=SecretStr("k")
+    )
+
+
+def _find(creds, selected=None, *, ask=False, field=None):
+    from backend.copilot.tools.utils import find_matching_credential
+
+    return find_matching_credential(
+        creds, field or _make_regular_field(), selected, ask_when_ambiguous=ask
+    )
+
+
+def test_the_credential_the_user_picked_wins():
+    creds = [_key_cred("work"), _key_cred("personal")]
+    picked = _find(creds, {"github": "personal"}, ask=True)
+    assert picked is not None and picked.id == "personal"
+
+
+def test_a_chat_tool_asks_rather_than_choosing_between_two_accounts():
+    # None surfaces as a missing credential, which is the card with a picker.
+    assert _find([_key_cred("work"), _key_cred("personal")], ask=True) is None
+
+
+def test_a_single_credential_needs_no_pick():
+    picked = _find([_key_cred("only")], ask=True)
+    assert picked is not None and picked.id == "only"
+
+
+def test_a_pick_that_no_longer_fits_is_ignored_not_trusted():
+    # Deleted, or for another provider: fall back to asking, never to a guess.
+    creds = [_key_cred("work"), _key_cred("personal")]
+    assert _find(creds, {"github": "deleted-id"}, ask=True) is None
+    assert _find(creds, {"slack": "work"}, ask=True) is None
+
+
+def test_callers_that_cannot_ask_keep_the_first_fit():
+    # Schedules and expert setup have nobody to ask; their behaviour is unchanged.
+    picked = _find([_key_cred("work"), _key_cred("personal")])
+    assert picked is not None and picked.id == "work"
+
+
+def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
+    from backend.integrations.credentials_store import openai_credentials
+
+    field = CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["openai"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+    assert _find([openai_credentials], ask=True, field=field) is openai_credentials
+    own = _key_cred("own-openai", provider="openai")
+    assert _find([own, openai_credentials], ask=True, field=field) is own

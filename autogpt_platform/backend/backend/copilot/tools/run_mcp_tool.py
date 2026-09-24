@@ -36,6 +36,7 @@ from backend.util.request import (
 )
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants
 from .models import (
     CredentialRejection,
     ErrorResponse,
@@ -100,7 +101,7 @@ class RunMCPToolTool(BaseTool):
         return (
             "Discover and execute MCP server tools. "
             "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
-            "Call get_mcp_guide first for server URLs and auth."
+            "Reached through run_capability on an MCP server entry."
         )
 
     @property
@@ -241,16 +242,20 @@ class RunMCPToolTool(BaseTool):
         if creds is None and allowed_ids is not None:
             ungranted = await auto_lookup_mcp_credential(user_id, normalized_url)
             if ungranted is not None:
-                return ErrorResponse(
+                # The card rather than a bare error: the expert can ask for the
+                # credential from it, which is what this PR adds.
+                return await self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
                     message=(
                         f"The account's credential for {server_host(server_url)} "
                         f"(credential_id={ungranted.id}) is not granted to this "
-                        "expert. Ask the user to grant it on the expert's "
-                        "Integrations page or from personal AutoPilot with "
-                        "grant_expert_credential."
+                        "expert. Ask the user to grant it from the card, on the "
+                        "expert's Integrations page, or from personal AutoPilot with "
+                        "tool:grant_expert_credential."
                     ),
-                    error="credential_not_granted",
-                    session_id=session_id,
                 )
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
@@ -321,8 +326,13 @@ class RunMCPToolTool(BaseTool):
                     # ``close`` is best-effort and swallows its own
                     # errors.
                     await probe_client.close()
-            return self._build_setup_requirements(
-                server_url, session_id, connected=connected, rejection=rejection
+            return await self._build_setup_requirements(
+                server_url,
+                session_id,
+                connected=connected,
+                rejection=rejection,
+                user_id=user_id,
+                expert_id=session.expert_id,
             )
 
         if client is None:
@@ -364,11 +374,31 @@ class RunMCPToolTool(BaseTool):
                 # not a rejection, so it stores, returns 2xx and greens the
                 # pill — and the next call 403s again. Reporting it as
                 # connected breaks that loop.
-                return self._build_setup_requirements(
+                kept_credential = creds is not None and not credential_rejected
+                if kept_credential and tool_name:
+                    # ...but on a *named tool call* the connected card reads as
+                    # success and says nothing about the refusal, so the caller
+                    # retries the same tool forever. Report the refusal.
+                    host = server_host(server_url)
+                    return ErrorResponse(
+                        message=(
+                            f"{_service_name(host)} refused '{tool_name}' with HTTP "
+                            f"{e.status_code}. The sign-in is still valid, so this is "
+                            "a permission or scope limit on that tool, not a missing "
+                            "credential. Call run_capability without a tool to list "
+                            "what this server actually exposes, or tell the user which "
+                            "permission the account is missing."
+                        ),
+                        session_id=session_id,
+                        error=f"HTTP {e.status_code}: {str(e)[:300]}",
+                    )
+                return await self._build_setup_requirements(
                     server_url,
                     session_id,
-                    connected=creds is not None and not credential_rejected,
+                    connected=kept_credential,
                     rejection=rejected,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
                 )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
@@ -407,7 +437,7 @@ class RunMCPToolTool(BaseTool):
     ) -> MCPToolsDiscoveredResponse:
         """List available tools from an already-initialized MCPClient.
 
-        Called when the agent invokes run_mcp_tool with only server_url (no
+        Called when run_capability targets an MCP server with no tool (no
         tool_name). Returns MCPToolsDiscoveredResponse so the agent can
         inspect tool schemas and choose one to execute in a follow-up call.
         """
@@ -441,7 +471,7 @@ class RunMCPToolTool(BaseTool):
                 f"{truncation_note} Full input "
                 "schemas are omitted to save context — `params` lists each "
                 "tool's argument names with required ones marked `*`. Call "
-                "run_mcp_tool again with tool_name and tool_arguments to "
+                "run_capability again with input {tool, arguments} to "
                 "execute one; if the arguments are wrong, the error response "
                 "includes a schema hint for that tool. Do NOT re-run "
                 "discovery after an argument error."
@@ -576,12 +606,16 @@ class RunMCPToolTool(BaseTool):
             None,
         )
 
-    def _build_setup_requirements(
+    async def _build_setup_requirements(
         self,
         server_url: str,
         session_id: str,
         connected: bool = False,
         rejection: CredentialRejection | None = None,
+        *,
+        user_id: str | None = None,
+        expert_id: str | None = None,
+        message: str | None = None,
     ) -> SetupRequirementsResponse | ErrorResponse:
         """Build a SetupRequirementsResponse for an MCP server credential.
 
@@ -590,6 +624,10 @@ class RunMCPToolTool(BaseTool):
         instead of the bare Connect button.  Used by the
         ``surface_connect_card`` path so the user always gets visible
         feedback even when stored creds are still valid.
+
+        In an expert session the missing credential carries ``expert_grant``
+        so the card can grant an existing account credential to the expert or
+        grant a freshly connected one, the same as every other connect card.
         """
         mcp_block = MCPToolBlock()
         credentials_fields_info = mcp_block.input_schema.get_credentials_fields_info()
@@ -598,7 +636,7 @@ class RunMCPToolTool(BaseTool):
         # can match the credential to the correct OAuth provider/server.
         for field_info in credentials_fields_info.values():
             if field_info.discriminator == "server_url":
-                field_info.discriminator_values.add(server_url)
+                field_info.discriminator_values.add(normalize_mcp_url(server_url))
 
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, matched_keys=set()
@@ -618,20 +656,38 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
+        if user_id is not None and not connected:
+            missing_creds_dict = await annotate_expert_grants(
+                user_id, expert_id, missing_creds_dict
+            )
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
         service = _service_name(host)
-        if rejection:
-            status = f" (HTTP {rejection.status_code})" if rejection.status_code else ""
-            message = (
-                f"{service} rejected the saved credential{status}. "
-                "Sign in again to continue."
-            )
-        elif connected:
-            message = f"You're connected to {service}. Use Reconnect to swap accounts."
-        else:
-            message = f"To continue, sign in to {service} and approve access."
+        if message is None:
+            if rejection:
+                status = (
+                    f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+                )
+                # The provider usually says why, and it is often something no
+                # amount of signing in again will fix — Brevo answers "API Key
+                # is not enabled" for a key created without the MCP option, and
+                # names its IP allow-list for a call from an unrecognised
+                # address. Dropping that left the card telling the user to retry
+                # the one thing that cannot work.
+                reason = (rejection.detail or "").strip()
+                message = (
+                    f"{service} rejected the saved credential{status}."
+                    + (f" {reason[:400]}" if reason else "")
+                    + " Sign in again if the credential is simply stale; "
+                    "otherwise fix what the service reported first."
+                )
+            elif connected:
+                message = (
+                    f"You're connected to {service}. Use Reconnect to swap accounts."
+                )
+            else:
+                message = f"To continue, sign in to {service} and approve access."
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -661,7 +717,10 @@ class RunMCPToolTool(BaseTool):
 def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
     return CredentialRejection(
         provider=ProviderName.MCP.value,
-        detail=sanitize_provider_message(str(error)),
+        # Providers put the fix at the end of the sentence — Brevo's 401 names
+        # its IP allow-list page, and the default 200-character cap truncated
+        # that link away, leaving the user the complaint without the remedy.
+        detail=sanitize_provider_message(str(error), max_chars=400),
         status_code=error.status_code,
         credential_id=creds.id,
         credential_title=creds.title,

@@ -477,6 +477,13 @@ async def add_org_member(
     invited_by: str | None = None,
 ) -> OrgMemberResponse:
     """Add a member to an organization and its default workspace."""
+    # A personal org bills the owner's own wallet, so a second member would
+    # spend it with no billing permission of their own.
+    if await prisma.organization.find_first(where={"id": org_id, "isPersonal": True}):
+        raise ValueError(
+            "Cannot add a member to a personal organization. Convert it first."
+        )
+
     member = await prisma.orgmember.create(
         data={
             "orgId": org_id,

@@ -13,7 +13,12 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MainAgentPage } from "../components/MainAgentPage/MainAgentPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
@@ -90,12 +95,23 @@ function renderAgentPage() {
   );
 }
 
+const datafast = vi.fn();
+
 describe("Install on Expert from marketplace detail", () => {
   beforeEach(() => {
+    configureCookiebot();
+    installCookiebot({ statistics: true });
+    datafast.mockReset();
+    (window as unknown as { datafast: typeof datafast }).datafast = datafast;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
     });
+  });
+
+  afterEach(() => {
+    removeCookiebot();
+    vi.unstubAllEnvs();
   });
 
   test("shows the action and installs on the selected expert", async () => {
@@ -131,6 +147,9 @@ describe("Install on Expert from marketplace detail", () => {
     expect(await screen.findByText("Installed on Maria")).toBeDefined();
     expect(installExpertId).toBe("expert-maria");
     expect(installBody).toEqual({ store_listing_version_id: "listing-1" });
+    expect(datafast).toHaveBeenCalledWith("workflow_installed_on_expert", {
+      expert_id: "expert-maria",
+    });
   });
 
   test("toasts success when the workflow is already installed", async () => {

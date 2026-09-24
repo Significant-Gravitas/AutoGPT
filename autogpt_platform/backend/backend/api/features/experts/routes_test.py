@@ -200,7 +200,7 @@ def test_list_expert_templates_links_live_hub_skills(
         {
             "id": "listing-1",
             "slug": "brand-voice-guide",
-            "name": "brand-voice-guide",
+            "title": "Brand voice guide",
             "description": "Keeps every draft on-brand.",
         }
     ]
@@ -249,6 +249,7 @@ def _mock_templates_with_hub_skill(
             "listing-1": MarketplaceSkill(
                 slug="brand-voice-guide",
                 name="brand-voice-guide",
+                title="Brand voice guide",
                 description="Keeps every draft on-brand.",
                 categories=[],
                 required_providers=[],
@@ -372,6 +373,7 @@ def test_create_raised_expert_returns_expert(
         "Otto",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -408,6 +410,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         json={
             "name": "Nova",
             "role": "Research Assistant",
+            "job_title": "  Market Research Analyst  ",
             "voice_preferences": "Warm and detailed.",
             "weekly_budget": 250,
             "attachments": [
@@ -428,6 +431,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         "Nova",
         "Research Assistant",
         "Warm and detailed.",
+        job_title="Market Research Analyst",
         avatar_url=None,
         color=None,
         about=None,
@@ -441,6 +445,28 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
     )
+
+
+def test_create_raised_expert_trims_job_title_before_length_check(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+    job_title = "j" * 100
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "job_title": f"  {job_title}  "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["job_title"] == job_title
 
 
 def test_create_raised_expert_forwards_about(
@@ -467,6 +493,7 @@ def test_create_raised_expert_forwards_about(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about="Always cites a source.",
@@ -518,6 +545,7 @@ def test_create_raised_expert_reports_attachment_installation_failure(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -581,6 +609,7 @@ def test_create_raised_expert_passes_avatar_and_color(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         about=None,
@@ -656,6 +685,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
 
     assert response.status_code == 200
     assert mock_create.await_args.kwargs == {
+        "job_title": None,
         "avatar_url": None,
         "color": None,
         "about": None,
@@ -861,6 +891,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "avatar_url": None,
             "color": "orange-500",
             "role": "Marketing Specialist",
+            "job_title": None,
             "is_archived": True,
         }
     ]
@@ -1202,6 +1233,11 @@ def test_update_expert_avatar_returns_updated_expert(
     test_user_id: str,
 ) -> None:
     updated = _make_expert(avatar_url="https://cdn.example.com/mara.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
     mock_update = mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1240,6 +1276,11 @@ def test_update_expert_avatar_rejects_unsafe_url(
 def test_update_expert_avatar_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1855,3 +1896,128 @@ def test_list_expert_setup_items_is_not_swallowed_by_the_expert_route(
     assert response.json()[0]["resolution"] == "connect"
     assert response.json()[0]["providers"] == ["notion"]
     mock_list.assert_awaited_once()
+
+
+# --- Computer -----------------------------------------------------------------
+
+
+def test_get_expert_computer_describes_the_experts_boxes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    from backend.copilot.computer import ComputerInfo
+
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    describe = mocker.patch(
+        "backend.api.features.experts.routes.describe_computer",
+        new_callable=AsyncMock,
+        return_value=ComputerInfo(
+            owner_kind="expert", owner_id="expert-1", e2b_active=True
+        ),
+    )
+
+    response = client.get("/experts/expert-1/computer")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owner_kind"] == "expert" and body["owner_id"] == "expert-1"
+    owner, mounts = describe.await_args.args
+    assert owner.kind == "expert" and owner.id == "expert-1"
+    assert set(mounts) == {"/home/user/workspace", "/home/user/shared"}
+
+
+def test_get_expert_computer_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    assert client.get("/experts/nope/computer").status_code == 404
+
+
+def test_start_expert_desktop_returns_the_stream(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.blocks.desktop._api import DesktopStream
+
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    open_desktop = mocker.patch(
+        "backend.api.features.experts.routes.open_desktop",
+        new_callable=AsyncMock,
+        return_value=(
+            DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
+            True,
+            True,
+        ),
+    )
+
+    response = client.post("/experts/expert-1/computer/desktop")
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://6080-sbx.e2b.app/vnc.html"
+    owner = open_desktop.await_args.args[0]
+    assert owner.kind == "expert" and owner.id == "expert-1"
+
+
+def test_start_expert_desktop_failure_is_a_502_with_a_fixed_message(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.experts.routes.open_desktop",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("sandbox sbx-123 rejected by api.e2b.app"),
+    )
+    response = client.post("/experts/expert-1/computer/desktop")
+    assert response.status_code == 502
+    # The provider's words stay in the log, never in the response.
+    assert response.json()["detail"] == "Failed to start the desktop."
+
+
+def test_start_expert_desktop_without_e2b_is_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = None
+    assert client.post("/experts/expert-1/computer/desktop").status_code == 503
+
+
+def test_existing_custom_avatar_can_be_kept_without_review(mocker):
+    expert = _make_expert(avatar_url="https://example.com/old.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    response = client.patch(
+        "/experts/expert-1/avatar", json={"avatar_url": expert.avatar_url}
+    )
+    assert response.status_code == 200

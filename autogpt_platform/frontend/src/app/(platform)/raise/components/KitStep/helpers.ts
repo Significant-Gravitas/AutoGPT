@@ -4,7 +4,6 @@ import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplac
 import type { RaiseAttachment } from "@/app/api/__generated__/models/raiseAttachment";
 import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { parseUsdToCredits } from "@/lib/credits";
-import { formatSkillTitle } from "../../../marketplace/components/SkillsSection/helpers";
 import type { RaiseAttachmentDraft } from "../../helpers";
 
 export const MAX_ATTACHMENTS = 20;
@@ -212,7 +211,7 @@ function marketplaceWorkflowHit(agent: StoreAgent): SearchHit {
 function marketplaceSkillHit(skill: MarketplaceSkill): SearchHit {
   return {
     key: `marketplace:skill:${skill.slug}`,
-    name: formatSkillTitle(skill.name),
+    name: skill.title,
     subtitle: "Marketplace skill",
     kind: "skill",
     source: "marketplace",

@@ -17,17 +17,54 @@ export type LDUserContext =
       custom: { role?: string };
     };
 
-// Mirror the context built by the backend
-// (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
-// rules evaluate identically on both sides.
+export interface LDDeviceContext {
+  kind: "device";
+  key: string;
+  anonymous: true;
+}
+
+export interface LDMultiContext {
+  kind: "multi";
+  user: LDUserContext;
+  device: LDDeviceContext;
+}
+
+export type LDContext = LDUserContext | LDMultiContext;
+
+// The attributes the ported flag targeting rules match on, in the flat shape
+// PostHog person properties take. No raw email: no rule reads it, and
+// individual targets key on the distinct id.
+export function buildFlagPersonProperties(user: User): Record<string, string> {
+  return {
+    ...(user.email && {
+      email_domain: user.email.split("@").at(-1) ?? "",
+    }),
+    ...(user.role && { role: user.role }),
+    ...(user.created_at && { created_at: user.created_at }),
+  };
+}
+
+// The `user` context mirrors the backend's
+// (feature_flag.py:_fetch_user_context_data), so rules on that kind evaluate
+// identically on both sides. The `device` context below is client-only.
 //
 // The auth session emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
-export function buildLDContext(user: User | null): LDUserContext {
+//
+// `anonymousID` is the first-party anonymous id shared with PostHog (see
+// services/analytics/anonymous-id.ts). Logged out, it is the user key, so
+// percentage rollouts are stable per visitor instead of identical for every
+// visitor. Logged in, it rides along as a `device` context so a rule that
+// buckets by device keeps the same arm across signup. Rules on the `user`
+// kind never see it.
+export function buildLDContext(
+  user: User | null,
+  anonymousID?: string | null,
+): LDContext {
   if (!user) {
-    return { kind: "user", key: "anonymous", anonymous: true };
+    return { kind: "user", key: anonymousID || "anonymous", anonymous: true };
   }
 
-  return {
+  const userContext: LDUserContext = {
     kind: "user",
     key: user.id,
     anonymous: false,
@@ -40,5 +77,13 @@ export function buildLDContext(user: User | null): LDUserContext {
     custom: {
       ...(user.role && { role: user.role }),
     },
+  };
+
+  if (!anonymousID) return userContext;
+
+  return {
+    kind: "multi",
+    user: userContext,
+    device: { kind: "device", key: anonymousID, anonymous: true },
   };
 }

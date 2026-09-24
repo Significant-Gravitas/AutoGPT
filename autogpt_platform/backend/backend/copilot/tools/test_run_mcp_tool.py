@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks.mcp.helpers import server_host
+from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.data.model import OAuth2Credentials
 
@@ -1212,13 +1212,18 @@ async def test_credential_lookup_normalizes_trailing_slash():
 async def test_build_setup_requirements_returns_setup_response():
     """_build_setup_requirements should return a SetupRequirementsResponse."""
     tool = RunMCPToolTool()
-    result = tool._build_setup_requirements(
+    result = await tool._build_setup_requirements(
         server_url=_SERVER_URL,
         session_id="test-session",
     )
     assert isinstance(result, SetupRequirementsResponse)
     assert result.setup_info.agent_id == _SERVER_URL
     assert "sign in" in result.message.lower()
+    missing = result.setup_info.user_readiness.missing_credentials
+    assert all(
+        entry["discriminator_values"] == [normalize_mcp_url(_SERVER_URL)]
+        for entry in missing.values()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1474,9 +1479,13 @@ async def test_rejected_card_differs_from_never_connected_by_the_rejection():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_ungranted_mcp_credential_is_refused_for_an_expert():
+    """Still refused, but with the card rather than a bare error: this PR lets
+    the user grant the credential from it, so an ErrorResponse would leave the
+    expert with nothing to act on. The refusal is the message, not the type."""
     response = await _run_with_grants([])
-    assert isinstance(response, ErrorResponse)
-    assert response.error == "credential_not_granted"
+    assert isinstance(response, SetupRequirementsResponse)
+    assert "not granted to this expert" in response.message
+    assert not response.setup_info.user_readiness.ready_to_run
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1525,3 +1534,111 @@ async def _run_with_grants(allowed: list[str]):
             session=make_session(_USER_ID, expert_id="expert-a"),
             server_url=_SERVER_URL,
         )
+
+
+# ---------------------------------------------------------------------------
+# Expert grants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ungranted_stored_credential_returns_a_grantable_connect_card():
+    """An expert whose account already holds the server's credential gets the
+    connect card with ``expert_grant`` so the user can grant it, not a bare
+    error that leaves the expert stuck."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID, expert_id="expert-a")
+    stored = MagicMock()
+    stored.id = "mcp-cred"
+
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=[])
+
+    # The lookup narrows by allowed_ids before ranking, so the granted-set call
+    # finds nothing and the unfiltered one still sees the account's credential.
+    async def lookup(_user_id, _url, allowed_ids=None):
+        return None if allowed_ids is not None else stored
+
+    async def annotate(user_id, expert_id, missing):
+        return {
+            key: {
+                **entry,
+                "expert_grant": {
+                    "expert_id": expert_id,
+                    "credentials": [
+                        {"id": "mcp-cred", "title": "Fetch", "type": "oauth2"}
+                    ],
+                },
+            }
+            for key, entry in missing.items()
+        }
+
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new=lookup,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.annotate_expert_grants",
+            side_effect=annotate,
+        ) as mock_annotate,
+    ):
+        response = await tool._execute(
+            user_id=_USER_ID, session=session, server_url=_SERVER_URL
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert "not granted to this expert" in response.message
+    mock_annotate.assert_awaited_once()
+    assert mock_annotate.await_args_list[0].args[:2] == (_USER_ID, "expert-a")
+    missing = response.setup_info.user_readiness.missing_credentials
+    assert all(
+        entry["expert_grant"]["credentials"][0]["id"] == "mcp-cred"
+        for entry in missing.values()
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_auth_required_card_is_annotated_for_the_expert():
+    """A 401 in an expert chat produces a card that grants the fresh sign-in
+    to the expert, the same as run_agent and connect_integration."""
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID, expert_id="expert-a")
+    mock_client = AsyncMock()
+    mock_client.initialize = AsyncMock(
+        side_effect=HTTPClientError("Unauthorized", status_code=401)
+    )
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=[])
+
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=mock_client),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.annotate_expert_grants",
+            new_callable=AsyncMock,
+            side_effect=lambda user_id, expert_id, missing: missing,
+        ) as mock_annotate,
+    ):
+        response = await tool._execute(
+            user_id=_USER_ID, session=session, server_url=_SERVER_URL
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert mock_annotate.await_args_list[0].args[:2] == (_USER_ID, "expert-a")

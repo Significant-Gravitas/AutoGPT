@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.api.features.experts import experts_db
+from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry, turn_queue
@@ -21,8 +22,15 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.builder_context import resolve_session_permissions
+from backend.copilot.computer import (
+    ComputerInfo,
+    computer_owner,
+    describe_computer,
+    mounts_for,
+    open_desktop,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.credential_selection import remember_selection
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
@@ -65,6 +73,7 @@ from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
     peek_pending_messages,
 )
+from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.provider_tiers import (
     ProviderTiersResponse,
     describe_provider_tiers,
@@ -93,6 +102,7 @@ from backend.copilot.response_model import (
     StreamStatus,
 )
 from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
@@ -148,7 +158,10 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
+from backend.integrations.credentials_store import provider_matches
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
@@ -279,6 +292,12 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    folder_ids: list[str] | None = Field(
+        default=None,
+        max_length=5,
+        description="Workspace folder IDs attached to this message. Named in "
+        "the message for the model to open, never expanded into their files.",
+    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -315,6 +334,7 @@ class QueuePendingMessageRequest(BaseModel):
     message: str = Field(max_length=64_000)
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
+    folder_ids: list[str] | None = Field(default=None, max_length=5)
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -347,7 +367,7 @@ class CreateSessionRequest(BaseModel):
       hides tools that conflict with the panel's scope
       (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
       — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
-      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
+      (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.
 
     ``expert_id`` scopes the session to a hired expert. It must reference
     an expert owned by the caller that is neither a template nor archived,
@@ -742,7 +762,7 @@ async def create_session(
     Two modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
-      run_block and run_agent calls to use dry-run simulation.
+      run_capability and run_agent calls to use dry-run simulation.
     - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
       on ``(user_id, builder_graph_id)``. Returns the existing session for
       that graph or creates one locked to it.  Graph ownership is validated
@@ -852,6 +872,76 @@ async def create_session(
     )
 
 
+@router.get(
+    "/sessions/{session_id}/computer",
+    dependencies=[Security(auth.requires_user)],
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def get_session_computer(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ComputerInfo:
+    """The computer behind this chat.
+
+    A plain chat has its own box; a chat that runs as a hired expert reports
+    the expert's persistent computer instead. Listing never wakes a paused box.
+    """
+    # Metadata only: the panel polls this, and the history is not needed.
+    session = await _validate_and_get_session(session_id, user_id)
+    return await describe_computer(
+        computer_owner(session_id, session.expert_id),
+        mounts_for(user_id, session.expert_id),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/desktop",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Session not found or access denied"},
+        502: {"description": "The desktop could not be started"},
+        503: {"description": "E2B is not configured"},
+    },
+)
+async def start_session_desktop(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> DesktopStream:
+    """Start or resume the desktop behind this chat and return its live stream.
+
+    Same box the ``start_desktop`` tool uses from inside a turn, so the side
+    panel and the model always look at one screen.
+    """
+    # Same gate as a turn: an archived expert's chat must not resurrect the
+    # expert's box (the archive already killed it, and nothing would kill
+    # the new one).
+    session = await _validate_and_get_writable_session(session_id, user_id)
+    api_key = ChatConfig().active_e2b_api_key
+    if not api_key:
+        raise HTTPException(
+            status_code=503, detail="E2B is not configured on this deployment."
+        )
+    try:
+        stream, _created, _shared = await open_desktop(
+            computer_owner(session_id, session.expert_id),
+            mounts_for(user_id, session.expert_id),
+            api_key,
+            user_id=user_id,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "[E2B] start_session_desktop failed for %s: %s",
+            session_id[:12],
+            exc,
+            exc_info=True,
+        )
+        # The cause is in the server log; provider errors can carry sandbox
+        # ids and infrastructure detail that the client has no use for.
+        raise HTTPException(status_code=502, detail="Failed to start the desktop.")
+    return stream
+
+
 @router.delete(
     "/sessions/{session_id}",
     dependencies=[Security(auth.requires_user)],
@@ -920,6 +1010,60 @@ async def disconnect_session_stream(
     await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
+
+
+class CredentialSelectionRequest(BaseModel):
+    """The credential the user picked for each provider on a connect card."""
+
+    selections: dict[str, str] = Field(
+        description="Provider slug to credential id.",  # gitleaks:allow (schema text)
+        max_length=20,
+    )
+
+
+@router.put(
+    "/sessions/{session_id}/credential-selection",
+    summary="Record credential picks for this chat",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session or credential not found"}},
+)
+async def select_session_credentials_route(
+    session_id: str,
+    request: CredentialSelectionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Keep the account the user chose on a connect card for the rest of the chat.
+
+    The card shows one account and the tools used to re-match on their own, so
+    with two accounts for a provider a run could land on the other one. The
+    tools now use exactly what is recorded here, and ask when several
+    credentials qualify and nothing was picked.
+
+    Every id is checked against the caller's own credentials and the provider
+    it is filed under; one bad entry rejects the request and records nothing.
+    """
+    if await get_chat_session_metadata(session_id, user_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
+    store = IntegrationCredentialsManager().store
+    selections: dict[str, str] = {}
+    for provider, credential_id in request.selections.items():
+        provider = provider.strip().lower()
+        if provider in selections:
+            # " GitHub " and "github" name the same provider; keeping only the
+            # later one would silently drop a credential the caller validated.
+            raise HTTPException(status_code=422, detail="duplicate_provider")
+        credential = await store.get_creds_by_id(user_id, credential_id)
+        if credential is None or not provider_matches(credential.provider, provider):
+            raise HTTPException(status_code=404, detail="credential_not_found")
+        selections[provider] = credential_id
+
+    await remember_selection(session_id, selections)
+    return {"status": "ok"}
 
 
 class ChangeSessionConnectionRequest(BaseModel):
@@ -1375,6 +1519,12 @@ async def reset_copilot_usage(
     )
 
 
+# A delivered cancel has been measured missing this window while the executor
+# was still tearing the turn down, so timing out here is a normal outcome.
+_CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
+_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
+
+
 async def _clear_pending_best_effort(session_id: str) -> None:
     """Drop the session's pending buffer, swallowing Redis errors.
 
@@ -1455,12 +1605,10 @@ async def cancel_session_task(
     logger.info(f"[CANCEL] Published cancel for session ...{session_id[-8:]}")
 
     # Poll until the executor confirms the task is no longer running.
-    poll_interval = 0.5
-    max_wait = 5.0
     waited = 0.0
-    while waited < max_wait:
-        await asyncio.sleep(poll_interval)
-        waited += poll_interval
+    while waited < _CANCEL_CONFIRM_TIMEOUT_SECONDS:
+        await asyncio.sleep(_CANCEL_CONFIRM_POLL_INTERVAL_SECONDS)
+        waited += _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS
         session_state = await stream_registry.get_session(session_id)
         if session_state is None or session_state.status != "running":
             logger.info(
@@ -1474,13 +1622,22 @@ async def cancel_session_task(
             return CancelSessionResponse(cancelled=True)
 
     logger.warning(
-        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after {max_wait}s, force-completing"
+        f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
+        f"{_CANCEL_CONFIRM_TIMEOUT_SECONDS}s, completing the turn as cancelled"
     )
-    await stream_registry.mark_session_completed(session_id, error_message="Cancelled")
+    # The user asked for this stop, so publishing a StreamError would paint
+    # the "assistant encountered an error" banner over their own cancel.
+    await stream_registry.mark_session_completed(
+        session_id,
+        error_message="Operation cancelled",
+        skip_error_publish=True,
+    )
     # Status is now force-flipped out of "running"; re-clear to drop any
     # follow-up that landed during the poll window.
     await _clear_pending_best_effort(session_id)
-    return CancelSessionResponse(cancelled=True)
+    return CancelSessionResponse(
+        cancelled=True, reason="cancel_published_not_confirmed"
+    )
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
@@ -1680,6 +1837,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
@@ -1724,7 +1882,18 @@ async def stream_chat_post(
                 weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
-            raise HTTPException(status_code=429, detail=str(e)) from e
+            # Structured envelope (not a bare string) so the frontend can
+            # offer "switch to another connection" (e.g. a connected
+            # BYOSUB/Codex credential) instead of only "upgrade your plan" --
+            # the platform cap does not apply once the turn is billed to a
+            # user-supplied credential instead of platform dollars.
+            failure = ProviderFailure(
+                kind=ProviderFailureKind.USAGE_LIMIT,
+                message=str(e),
+                auth_provider="platform",
+                resets_at=int(e.resets_at.timestamp()),
+            )
+            raise HTTPException(status_code=429, detail=failure.as_part()) from e
         except RateLimitUnavailable as e:
             # Fail-closed on Redis brown-out: the user may already be at or
             # past their USD cap and we cannot prove otherwise. 503 + a short
@@ -1742,15 +1911,18 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
-    if request.file_ids:
+    if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
-            request.file_ids,
+            request.file_ids or [],
             session_id=session_id,
             expert_id=session.expert_id,
         )
+        folders = await resolve_attachable_workspace_folders(
+            user_id, request.folder_ids or [], expert_id=session.expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
-        message += build_files_block(files)
+        message += build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -2030,6 +2202,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        folder_ids=request.folder_ids,
         expert_id=session.expert_id,
     )
 

@@ -233,6 +233,18 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     assert cost == expected
 
 
+def test_ollama_zero_cost_entry_matches_without_credentials():
+    ollama_model = LLMModel.OLLAMA_LLAMA3_2
+
+    cost, matching_filter = block_usage_cost(
+        AITextGeneratorBlock(),
+        {"model": ollama_model.value},
+    )
+
+    assert cost == 0
+    assert matching_filter == {"model": ollama_model}
+
+
 def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
     """End-to-end: E2B blocks use the real SECOND/divisor=10 BlockCost entry."""
     creds = {

@@ -299,7 +299,7 @@ class TestPromptSupplement:
         assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
         # Keep the high-value workflow rules that are NOT in any tool schema.
         assert "@@agptfile:" in SHARED_TOOL_NOTES
-        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "find_capability` is MANDATORY" in SHARED_TOOL_NOTES
         assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
@@ -2306,8 +2306,8 @@ class TestHiddenShortNamesForPermissions:
     def test_whitelist_hides_everything_not_listed(self):
         all_tools = all_known_tool_names()
         # Pick one stable, well-known tool as the whitelist.
-        keep = "find_block"
-        assert keep in all_tools, "test relies on find_block being registered"
+        keep = "find_capability"
+        assert keep in all_tools, "test relies on find_capability being registered"
         perms = CopilotPermissions(
             tools=[keep],
             tools_exclude=False,
