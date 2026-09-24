@@ -1999,6 +1999,49 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_success_is_deduplicated_per_invoice():
+    """invoice.payment_succeeded and invoice_payment.paid both deliver the
+    same invoice, and Stripe redelivers on a failed handler: every send for
+    one invoice must carry the same event uuid so revenue is counted once."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+
+    def invoice(invoice_id: str) -> dict:
+        return {
+            "id": invoice_id,
+            "customer": "cus_123",
+            "subscription": "sub_abc123",
+            "amount_paid": 5000,
+            "currency": "usd",
+            "subscription_details": {
+                "metadata": {"tier": "PRO", "billing_cycle": "monthly"}
+            },
+        }
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice("in_1"))
+        await handle_subscription_payment_success(invoice("in_1"))
+        await handle_subscription_payment_success(invoice("in_2"))
+
+    first, redelivery, next_invoice = track_mock.call_args_list
+    assert first.kwargs["uuid"] is not None
+    assert first.kwargs["uuid"] == redelivery.kwargs["uuid"]
+    assert first.kwargs["properties"]["$insert_id"] == "in_1"
+    assert next_invoice.kwargs["uuid"] != first.kwargs["uuid"]
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_success_metadata_absent_uses_user_tier():
     """When invoice metadata lacks tier/billing_cycle, falls back to user."""
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)

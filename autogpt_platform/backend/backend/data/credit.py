@@ -2987,11 +2987,15 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: PostHogEvent, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent,
+    distinct_id: str,
+    properties: dict[str, Any],
+    *,
+    dedup_key: str | None = None,
 ) -> None:
     # The shared client, never the posthog module's globals: another library
     # (graphiti-core) configures those for its own telemetry (SECRT-2710).
-    posthog_client.capture(distinct_id, event, properties)
+    posthog_client.capture(distinct_id, event, properties, dedup_key=dedup_key)
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
@@ -3017,6 +3021,11 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
                 "amount_cents": invoice.get("amount_paid"),
                 "currency": invoice.get("currency"),
             },
+            # One invoice is one payment: Stripe delivers both
+            # invoice.payment_succeeded and invoice_payment.paid for it, and
+            # redelivers either on a failed handler, so the revenue sum would
+            # count it twice without this.
+            dedup_key=invoice.get("id") or None,
         )
     except Exception:
         logger.warning(

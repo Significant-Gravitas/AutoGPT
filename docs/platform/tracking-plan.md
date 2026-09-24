@@ -245,7 +245,7 @@ differently.
 | `trial_converted` | backend | live | as above | The trial converts to paid. |
 | `trial_ended` | backend | live | as above | The trial ends without converting. |
 | `subscription_changed` | backend | live | `change_type: upgrade`, `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier upgrade takes effect. Downgrades and cancellations are not sent here yet. |
-| `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. |
+| `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. Deduplicated on the invoice id: Stripe delivers both `invoice.payment_succeeded` and `invoice_payment.paid` for one invoice, and redelivers either, so revenue is counted once. |
 | `topup_completed` | backend | live | `amount_credits`, `top_up_type`, `amount_cents` (the Checkout total or the auto top-up charge), `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
 | `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead. |
