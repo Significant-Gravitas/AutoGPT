@@ -1217,13 +1217,25 @@ async def is_store_listing_version_available_for_install(
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
+    *,
+    track_listing_added: bool = True,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
+
+    ``track_listing_added`` sends ``listing_added_to_library`` on a first-time
+    add. Pass ``False`` when the system installs the agent on the user's
+    behalf (an expert's preloads or workflows), which is not the user adding
+    a listing.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+    return await _add_store_agent_to_library(
+        store_listing_version_id,
+        user_id,
+        tx=None,
+        track_listing_added=track_listing_added,
+    )
 
 
 async def add_store_agent_to_library_in_transaction(
@@ -1231,8 +1243,14 @@ async def add_store_agent_to_library_in_transaction(
     user_id: str,
     tx: prisma.Prisma,
 ) -> library_model.LibraryAgent:
-    """Add a marketplace agent using the caller's transaction."""
-    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+    """Add a marketplace agent using the caller's transaction.
+
+    Sends no ``listing_added_to_library``: the caller may still roll back, and
+    the upsert cannot tell a first-time add from a restore.
+    """
+    return await _add_store_agent_to_library(
+        store_listing_version_id, user_id, tx=tx, track_listing_added=False
+    )
 
 
 async def _add_store_agent_to_library(
@@ -1240,6 +1258,7 @@ async def _add_store_agent_to_library(
     user_id: str,
     *,
     tx: prisma.Prisma | None,
+    track_listing_added: bool,
 ) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
@@ -1261,9 +1280,7 @@ async def _add_store_agent_to_library(
     library_agent = await add_graph_to_library(
         graph_model, user_id, store_listing_version, tx=tx
     )
-    if tx is None:
-        # A transactional caller may still roll back, and it upserts, so only
-        # the standalone path knows this is a first-time add that sticks.
+    if track_listing_added:
         track_listing_added_to_library(
             user_id=user_id,
             store_listing_version_id=store_listing_version.id,

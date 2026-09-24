@@ -1744,7 +1744,7 @@ async def _install_preloads(
             continue
         try:
             library_agent = await library_db.add_store_agent_to_library(
-                preload.storeListingVersionId, user_id
+                preload.storeListingVersionId, user_id, track_listing_added=False
             )
             row = await prisma.models.ExpertWorkflow.prisma().create(
                 data={
@@ -1900,7 +1900,7 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(existing)
 
     library_agent = await library_db.add_store_agent_to_library(
-        store_listing_version_id, user_id
+        store_listing_version_id, user_id, track_listing_added=False
     )
     try:
         row = await prisma.models.ExpertWorkflow.prisma().create(

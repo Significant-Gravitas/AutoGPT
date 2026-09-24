@@ -224,7 +224,7 @@ differently.
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
-| `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Restoring an entry the user already had does not count, and neither does an add inside another write's transaction (attaching a workflow to an expert is `workflow_installed_on_expert`). |
+| `listing_added_to_library` | backend | live | `store_listing_version_id`, `graph_id`, `library_agent_id` | A marketplace agent is added to the library for the first time. Only a user adding a listing counts (the library route and the add-to-library block). Restoring an entry the user already had does not, and neither does a system install: an add inside another write's transaction, an expert's hire preloads, or attaching a marketplace workflow to an expert (that is `workflow_installed_on_expert`). |
 | `listing_downloaded` | backend | live | `store_listing_version_id`, `graph_id` | A signed-in user downloads a marketplace agent file. Signed-out downloads have no user and are not sent. |
 
 ## Monetization

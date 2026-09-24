@@ -449,6 +449,19 @@ async def test_re_adding_a_marketplace_agent_sends_nothing(add_to_library_steps)
 
 
 @pytest.mark.asyncio
+async def test_system_install_of_a_listing_sends_nothing(add_to_library_steps):
+    # An expert's preloads and workflows are installed for the user, not
+    # picked by them; `workflow_installed_on_expert` covers those.
+    library_agent = await db.add_store_agent_to_library(
+        "version123", "test-user", track_listing_added=False
+    )
+
+    assert library_agent.id == "library-agent"
+    add_to_library_steps["add"].assert_awaited_once()
+    add_to_library_steps["track"].assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_transactional_marketplace_add_sends_nothing(add_to_library_steps):
     # The caller's transaction may still roll back; its own event covers it.
     await db.add_store_agent_to_library_in_transaction(
