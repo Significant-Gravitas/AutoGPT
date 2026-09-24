@@ -159,3 +159,56 @@ async def test_auto_approval_holds_for_its_chat_only(user_id):
     )
     assert approved is not None and approved.status == ReviewStatus.APPROVED
     assert other_chat is None
+
+
+async def test_a_backfilled_row_reads_as_its_chat(user_id):
+    # The migration keeps the legacy graph columns beside the new sessionId.
+    session_id = f"chat-{uuid4()}"
+    old_id = f"copilot-session-{session_id}"
+    await PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": f"copilot-node-blk:{uuid4().hex[:8]}",
+            "userId": user_id,
+            "graphExecId": old_id,
+            "graphId": old_id,
+            "graphVersion": 1,
+            "sessionId": session_id,
+            "payload": SafeJson({}),
+            "status": ReviewStatus.WAITING,
+        }
+    )
+
+    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    assert review.session_id == session_id
+    assert (review.graph_exec_id, review.graph_id, review.graph_version) == (
+        None,
+        None,
+        None,
+    )
+
+
+async def test_an_auto_approval_made_before_the_migration_still_holds(user_id):
+    session_id = f"chat-{uuid4()}"
+    node_id = "copilot-node-blk"
+    old_id = f"copilot-session-{session_id}"
+    await PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": f"auto_approve_{old_id}_{node_id}",
+            "userId": user_id,
+            "graphExecId": old_id,
+            "graphId": old_id,
+            "graphVersion": 1,
+            "sessionId": session_id,
+            "payload": SafeJson({}),
+            "status": ReviewStatus.APPROVED,
+            "processed": True,
+        }
+    )
+
+    approved = await check_approval(
+        node_exec_id=f"{node_id}:new",
+        node_id=node_id,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    assert approved is not None and approved.status == ReviewStatus.APPROVED

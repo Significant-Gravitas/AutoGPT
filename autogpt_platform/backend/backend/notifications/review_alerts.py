@@ -15,7 +15,7 @@ from prisma.enums import AlertCause, ReviewStatus
 from prisma.models import PendingHumanReview
 from prisma.types import PendingHumanReviewWhereInput
 
-from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_SESSION_PREFIX
 from backend.data import alerts as alerts_db
 from backend.data.graph import get_graph_metadata
 from backend.notifications.alert_causes import AwaitingReviewCause
@@ -35,8 +35,18 @@ async def sync_awaiting_review(
     scope = f"chat {session_id}" if session_id else f"agent {graph_id}"
     try:
         if session_id:
-            where: PendingHumanReviewWhereInput = {"sessionId": session_id}
+            where: PendingHumanReviewWhereInput = {
+                "OR": [
+                    {"sessionId": session_id},
+                    # Rows an older deploy wrote in the synthetic-graph shape.
+                    {"graphExecId": f"{COPILOT_SESSION_PREFIX}{session_id}"},
+                ]
+            }
             cause_key = f"awaiting_review:chat:{session_id}"
+            # The alert an older deploy raised for this chat, keyed as an agent.
+            await alerts_db.resolve_alert_condition(
+                user_id, f"awaiting_review:{COPILOT_SESSION_PREFIX}{session_id}"
+            )
         elif graph_id:
             where = {"graphId": graph_id}
             cause_key = f"awaiting_review:{graph_id}"
