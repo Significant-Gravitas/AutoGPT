@@ -6,25 +6,19 @@ import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotC
 import { okData } from "@/app/api/helpers";
 import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
-interface Props {
-  graphExecId: string;
-  graphId?: string;
-}
+type Props =
+  | { graphExecId: string; graphId?: string }
+  | { chatSessionId: string };
 
 /**
- * Renders a single consolidated PendingReviewsList for all pending copilot
- * reviews in a session — mirrors the non-copilot review page behavior.
- * Works for both run_capability (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
+ * Renders a single consolidated PendingReviewsList for the chat's own reviews
+ * (run_capability, MCP, spend approval) or for an agent run the chat started
+ * — mirrors the non-copilot review page behavior.
  */
-export function CopilotPendingReviews({ graphExecId, graphId }: Props) {
+export function CopilotPendingReviews(props: Props) {
   const { onSend } = useCopilotChatActions();
-  const { pendingReviews, refetch } = useCopilotPendingReviews({
-    graphExecId,
-    graphId,
-  });
-
-  // Graph executions auto-resume after approval; capability reviews need resume_capability.
-  const isGraphExecution = !graphExecId.startsWith("copilot-session-");
+  const graphExecId = "graphExecId" in props ? props.graphExecId : "";
+  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
 
   const handleReviewComplete = useCallback(async () => {
     // Brief delay for the server to propagate the approval
@@ -34,7 +28,8 @@ export function CopilotPendingReviews({ graphExecId, graphId }: Props) {
 
     if (remaining.length > 0) return;
 
-    if (isGraphExecution) {
+    // Graph executions auto-resume after approval; chat reviews need resume_capability.
+    if (graphExecId) {
       onSend(
         `All pending reviews have been processed. ` +
           `The agent execution will resume automatically for approved reviews. ` +
@@ -47,7 +42,7 @@ export function CopilotPendingReviews({ graphExecId, graphId }: Props) {
           `For rejected reviews, no further action is needed.`,
       );
     }
-  }, [refetch, onSend, isGraphExecution, graphExecId]);
+  }, [refetch, onSend, graphExecId]);
 
   if (pendingReviews.length === 0) return null;
 

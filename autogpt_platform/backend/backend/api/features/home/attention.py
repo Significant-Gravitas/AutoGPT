@@ -6,7 +6,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.briefing.outcome import as_utc, run_link
-from backend.copilot.constants import AUTOPILOT_NAME, is_copilot_synthetic_id
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
@@ -74,7 +74,7 @@ def _review_attention(
 
 
 def _waiting_on(review: PendingHumanReviewModel) -> str:
-    if is_copilot_synthetic_id(review.graph_exec_id):
+    if review.session_id:
         return AUTOPILOT_NAME
     if review.agent_name:
         return f"Workflow “{review.agent_name}”"
@@ -231,6 +231,6 @@ def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
 def _review_link(review: PendingHumanReviewModel) -> str:
     if review.session_id:
         return f"/copilot?sessionId={quote(review.session_id)}"
-    if review.library_agent_id:
+    if review.library_agent_id and review.graph_exec_id:
         return run_link(review.library_agent_id, review.graph_exec_id) or "/library"
     return "/library"
