@@ -12,6 +12,7 @@ const TAGS: Record<HeldState, { text: string; className: string }> = {
   rejected: { text: "Rejected", className: "bg-zinc-100 text-zinc-500" },
   expired: { text: "Expired", className: "bg-zinc-100 text-zinc-500" },
   closed: { text: "Not run", className: "bg-zinc-100 text-zinc-500" },
+  unknown: { text: "Unclear", className: "bg-amber-50 text-amber-700" },
   "not-run": { text: "Not run", className: "bg-red-50 text-red-700" },
 };
 
@@ -42,6 +43,7 @@ const DETAIL: Record<Exclude<HeldState, "approved">, string> = {
   waiting: `Nothing has run yet. ${AUTOPILOT_NAME} carried on without it.`,
   rejected: `You rejected this, so it didn't run. ${AUTOPILOT_NAME} was told.`,
   expired: `Approved, but it didn't run within an hour, so the approval lapsed. Ask ${AUTOPILOT_NAME} to try again.`,
+  unknown: `It may have run, but its result was lost. Check before relying on it.`,
   closed: `It couldn't be carried out, so nothing ran. Ask ${AUTOPILOT_NAME} to try again if it's still needed.`,
   "not-run": `${AUTOPILOT_NAME} couldn't open an approval for this, so nothing ran.`,
 };

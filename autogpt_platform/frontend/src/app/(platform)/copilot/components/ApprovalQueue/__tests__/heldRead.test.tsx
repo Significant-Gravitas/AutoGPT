@@ -6,12 +6,12 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { heldRead, SESSION_EXEC } from "./fixtures";
+import { heldRead, CHAT_SESSION } from "./fixtures";
 
 function serve(reviews: PendingHumanReviewModel[]) {
   const answered: unknown[] = [];
   server.use(
-    http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
     http.post("*/api/review/action", async ({ request }) => {
@@ -29,7 +29,7 @@ function serve(reviews: PendingHumanReviewModel[]) {
 function renderQueue() {
   return render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-      <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
 }

@@ -340,7 +340,4 @@ def _stub(
             else f"Read what {tool_name.replace('_', ' ')} returned"
         ),
         object=named_source or None,
-        graph_exec_id=(
-            review_store.session_exec_id(session.session_id) if review_id else None
-        ),
     ).model_dump_json()

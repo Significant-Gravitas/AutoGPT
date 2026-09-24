@@ -106,8 +106,8 @@ async def test_two_held_calls_in_one_turn_both_wait(
     first = await _hold(session, test_user_id, "one")
     second = await _hold(session, test_user_id, "two")
 
-    waiting = await review_db().get_pending_reviews_for_execution(
-        review_store.session_exec_id(session.session_id), test_user_id
+    waiting = await review_db().get_pending_reviews_for_chat_session(
+        session.session_id, test_user_id
     )
     assert [r.node_exec_id for r in waiting] == [first, second]
 
@@ -300,6 +300,7 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
         [delivered] = await held.resolve_answered(test_user_id, session)
 
     assert "may have run" in delivered.content
+    assert delivered.metadata["held_call"]["outcome"] == "unknown"
     assert await held.answered(test_user_id, session.session_id) == []
 
 

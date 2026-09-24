@@ -216,6 +216,23 @@ const RESUME_REPLAY_WITHOUT_DRAIN_HINT: UIMessageChunk[] =
     (chunk) => chunk.type !== "data-pending-drained",
   );
 
+/** Typed while the resumed turn was still running: the backend holds it in
+ *  the pending buffer and has not reached a tool boundary to drain it. */
+const QUEUED_FOLLOWUP = "Also check the weather";
+
+/** The replay of a turn still busy mid-tool: status chunks, then the
+ *  persisted half, then nothing more — no drain hint, because the follow-up
+ *  is still queued. `useChat` parks the status chunks in a placeholder under
+ *  its own id and pushes the real message once `start` lands. */
+const RESUME_REPLAY_STILL_RUNNING: UIMessageChunk[] = [
+  { type: "data-status", data: { message: "Setting up your environment…" } },
+  { type: "start", messageId: "resumed-turn-3" },
+  { type: "start-step" },
+  { type: "text-start", id: "replay-1" },
+  { type: "text-delta", id: "replay-1", delta: PERSISTED_HALF },
+  { type: "text-end", id: "replay-1" },
+];
+
 /**
  * A turn the backend started on its own (the engine-switch continuation
  * dispatched with ``is_user_message=False``): the completed answer is
@@ -233,6 +250,8 @@ function renderResumedSession(
   messages: SessionDetailResponseMessagesItem[] = HYDRATED_SESSION_MESSAGES,
   activeStreamStartedAt = "2026-05-13T00:04:00Z",
   replayChunks: UIMessageChunk[] = RESUME_REPLAY_CHUNKS,
+  pendingMessages: string[] = [],
+  strictMode = false,
 ) {
   let resumeRequests = 0;
   server.use(
@@ -253,6 +272,8 @@ function renderResumedSession(
         started_at: activeStreamStartedAt,
       },
     },
+    pendingMessages,
+    strictMode,
   });
   return { getResumeRequests: () => resumeRequests };
 }
@@ -422,6 +443,56 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
         `promoted-midturn-${TEST_SESSION_ID}-seq-5`,
         "resumed-turn-2",
       ]);
+    },
+  );
+
+  // The dev server mounts under Strict Mode, so the load-time buffer peek
+  // fires twice; the reload the user sees must draw the follow-up once
+  // either way.
+  it.each([
+    ["a plain mount", false],
+    ["a Strict Mode mount", true],
+  ])(
+    "keeps a follow-up the backend still holds as a queued bubble under the live turn on %s",
+    { timeout: 20000 },
+    async (_label, strictMode) => {
+      renderResumedSession(
+        HYDRATED_SESSION_MESSAGES,
+        "2026-05-13T00:04:00Z",
+        RESUME_REPLAY_STILL_RUNNING,
+        [QUEUED_FOLLOWUP],
+        strictMode,
+      );
+
+      expect(
+        await screen.findByText(PERSISTED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+      await waitFor(
+        () =>
+          expect(
+            document.querySelector('[data-message-id="resumed-turn-3"]'),
+          ).not.toBeNull(),
+        { timeout: 10000 },
+      );
+
+      // The server's message id landing after the status-only placeholder
+      // looks like an auto-continue, but the buffer still holds the
+      // follow-up: it stays a single queued bubble, drawn below the live
+      // assistant, not a promoted user row above the chain.
+      await waitFor(() => expect(screen.getByText("Queued")).toBeDefined());
+      expect(screen.getAllByText(QUEUED_FOLLOWUP)).toHaveLength(1);
+      const ids = Array.from(
+        document.querySelectorAll("[data-message-id]"),
+      ).map((el) => el.getAttribute("data-message-id"));
+      expect(ids.filter((id) => id?.startsWith("promoted-"))).toEqual([]);
+      const liveAssistant = document.querySelector(
+        '[data-message-id="resumed-turn-3"]',
+      )!;
+      const queuedBubble = screen.getByText(QUEUED_FOLLOWUP);
+      expect(
+        liveAssistant.compareDocumentPosition(queuedBubble) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     },
   );
 

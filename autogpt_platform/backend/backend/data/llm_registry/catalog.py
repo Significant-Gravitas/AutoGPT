@@ -529,12 +529,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-23: $0.06/$0.32 per 1M,
-                # cache read $0.01/1M (further drift since this PR's prior fix).
+                # Live OpenRouter rate as of 2026-09-24: $0.14/$0.42 per 1M,
+                # cache read $0.01/1M (drifted again since the prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=9.0,
-                    output_credits_per_1m=48.0,
+                    input_credits_per_1m=21.0,
+                    output_credits_per_1m=63.0,
                     cache_read_credits_per_1m=1.5,
                 ),
             ),

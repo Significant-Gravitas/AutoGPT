@@ -8,13 +8,13 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.briefing.outcome import as_utc, run_link
-from backend.copilot.constants import AUTOPILOT_NAME, is_copilot_synthetic_id
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
-from .models import HomeAction, HomeAttentionItem, HomeExpert
+from .models import HomeAction, HomeAttentionItem, HomeExpert, HomeHeadline
 
 # Longest payload preview we return before clipping it with an ellipsis.
 _PREVIEW_MAX = 140
@@ -89,13 +89,14 @@ def _gate_attention(
         kind="approval",
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
         title=gate.headline.text,
+        headline=HomeHeadline(ask=gate.headline.ask, object=gate.headline.object),
         description=_gate_reason(gate),
         why_it_matters="Nothing runs until you approve it.",
         expert=_review_expert(review),
         created_at=created_at,
         preview=_clip(
             " · ".join(
-                f"{field.label}: {gate.arguments[field.key]}"
+                f"{field.label}: {_preview_value(gate.arguments[field.key])}"
                 for field in gate.fields
                 if field.key != gate.headline.object_key
                 and gate.arguments.get(field.key) not in (None, "", [], {})
@@ -125,8 +126,21 @@ def _gate_reason(gate: GateReviewPayload) -> str:
     return f"{AUTOPILOT_NAME} is waiting for your approval."
 
 
+def _preview_value(value: object) -> str:
+    """As the card shows it: a list of names joined, never a Python repr."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(
+        isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in value
+    ):
+        return ", ".join(str(v) for v in value)
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return json.dumps(value, default=str, ensure_ascii=False)
+
+
 def _waiting_on(review: PendingHumanReviewModel) -> str:
-    if is_copilot_synthetic_id(review.graph_exec_id):
+    if review.session_id:
         return AUTOPILOT_NAME
     if review.agent_name:
         return f"Workflow “{review.agent_name}”"
@@ -283,6 +297,6 @@ def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
 def _review_link(review: PendingHumanReviewModel) -> str:
     if review.session_id:
         return f"/copilot?sessionId={quote(review.session_id)}"
-    if review.library_agent_id:
+    if review.library_agent_id and review.graph_exec_id:
         return run_link(review.library_agent_id, review.graph_exec_id) or "/library"
     return "/library"

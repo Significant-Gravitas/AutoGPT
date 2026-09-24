@@ -29,8 +29,8 @@ async def test_a_parked_call_mounts_the_approval_card():
         )
     assert result is not None
     payload = json.loads(result["content"][0]["text"])
+    assert payload["type"] == "approval_required"
     assert payload["review_id"] == "r1"
-    assert payload["graph_exec_id"] == f"copilot-session-{session.session_id}"
 
 
 async def test_an_allowed_call_proceeds():

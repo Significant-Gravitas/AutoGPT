@@ -21,7 +21,6 @@ from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
@@ -282,7 +281,6 @@ async def _run_mcp(
             block_id=entry.id if entry else server_url,
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
-            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
             input_data=review.model_dump(),
         )
     if tool_name:

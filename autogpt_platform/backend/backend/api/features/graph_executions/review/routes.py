@@ -6,11 +6,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
-from backend.copilot.constants import (
-    COPILOT_SESSION_PREFIX,
-    is_copilot_synthetic_id,
-    parse_node_id_from_exec_id,
-)
+from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
@@ -21,6 +17,7 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
@@ -45,18 +42,17 @@ router = APIRouter(
 
 async def _resolve_node_ids(
     node_exec_ids: list[str],
-    graph_exec_id: str,
-    is_copilot: bool,
+    graph_exec_id: str | None,
 ) -> dict[str, str]:
     """Resolve node_exec_id -> node_id for auto-approval records.
 
-    CoPilot synthetic IDs encode node_id in the format "{node_id}:{random}".
-    Graph executions look up node_id from NodeExecution records.
+    A chat review's id encodes its node id as "{node_id}:{random}"; graph
+    executions look up node_id from NodeExecution records.
     """
     if not node_exec_ids:
         return {}
 
-    if is_copilot:
+    if graph_exec_id is None:
         return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
 
     node_execs = await get_node_executions(
@@ -148,19 +144,42 @@ async def list_pending_reviews_for_execution(
         Reviews with invalid status are excluded with warning logs.
     """
 
-    # Verify user owns the graph execution before returning reviews
-    # (CoPilot synthetic IDs don't have graph execution records)
-    if not is_copilot_synthetic_id(graph_exec_id):
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    # Clients built before chat reviews had their own route ask for a chat
+    # under its old synthetic id.
+    if session_id := legacy_chat_session_id(graph_exec_id):
+        return await get_pending_reviews_for_chat_session(session_id, user_id)
+
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
         )
-        if not graph_exec:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
+
+
+@router.get(
+    "/session/{chat_session_id}",
+    summary="Get Pending Reviews for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+    responses={
+        200: {"description": "List of pending reviews for the chat session"},
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_pending_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """Get the reviews an AutoPilot chat is waiting on, oldest first.
+
+    Only the caller's own reviews are returned, so another user's chat session
+    id yields an empty list.
+    """
+    return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
 @router.post("/action", response_model=ReviewResponse)
@@ -192,19 +211,20 @@ async def process_review_action(
             detail=f"Review(s) not found: {', '.join(missing_ids)}",
         )
 
-    # Validate all reviews belong to the same execution
-    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
-    if len(graph_exec_ids) > 1:
+    # Validate all reviews belong to the same execution or chat
+    scopes = {
+        (review.graph_exec_id, review.session_id) for review in reviews_map.values()
+    }
+    if len(scopes) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
 
-    graph_exec_id = next(iter(graph_exec_ids))
-    is_copilot = is_copilot_synthetic_id(graph_exec_id)
+    graph_exec_id, chat_session_id = next(iter(scopes))
 
-    # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
-    if not is_copilot:
+    # Validate execution status for graph executions; a chat has none
+    if graph_exec_id is not None:
         graph_exec_meta = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -259,11 +279,12 @@ async def process_review_action(
         try:
             await create_auto_approval_record(
                 user_id=user_id,
+                node_id=node_id,
+                payload=review_result.payload,
                 graph_exec_id=review_result.graph_exec_id,
                 graph_id=review_result.graph_id,
                 graph_version=review_result.graph_version,
-                node_id=node_id,
-                payload=review_result.payload,
+                chat_session_id=review_result.session_id,
             )
             return (node_id, True)
         except Exception as e:
@@ -282,7 +303,7 @@ async def process_review_action(
     ]
 
     node_id_map = await _resolve_node_ids(
-        node_exec_ids_needing_auto_approval, graph_exec_id, is_copilot
+        node_exec_ids_needing_auto_approval, graph_exec_id
     )
 
     # Deduplicate by node_id — one auto-approval per node
@@ -325,20 +346,17 @@ async def process_review_action(
     )
 
     # A held call finishes on its own: the answer starts the chat's next turn.
-    if graph_exec_id.startswith(COPILOT_SESSION_PREFIX) and updated_reviews:
-        await wake_for_held_calls(
-            user_id,
-            graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX),
-            updated_reviews.values(),
-        )
+    if chat_session_id is not None and updated_reviews:
+        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
 
-    # Resume graph execution only for real graph executions (not CoPilot)
-    # CoPilot sessions are resumed by the LLM retrying run_block with review_id
-    if not is_copilot and updated_reviews:
+    # Resume graph execution only for real graph executions; a chat is resumed
+    # by the LLM calling resume_capability with the review_id
+    if graph_exec_id is not None and updated_reviews:
         still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
 
         if not still_has_pending:
             first_review = next(iter(updated_reviews.values()))
+            assert first_review.graph_id and first_review.graph_version is not None
 
             try:
                 user = await get_user_by_id(user_id)

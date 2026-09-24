@@ -17,13 +17,13 @@ import {
   folder,
   heldReview,
   mail,
-  SESSION_EXEC,
+  CHAT_SESSION,
   shell,
 } from "./fixtures";
 
 function serve(reviews: PendingHumanReviewModel[], status = 200) {
   server.use(
-    http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
     status === 200
@@ -41,7 +41,7 @@ function serve(reviews: PendingHumanReviewModel[], status = 200) {
 function renderQueue() {
   return render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-      <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
 }
@@ -93,7 +93,11 @@ test("the mode's reason is said once, in the header, and on no card", async () =
   renderQueue();
 
   await queue();
-  expect(screen.getAllByText(/Ask First is on, so/)).toHaveLength(1);
+  expect(
+    screen.getAllByText(
+      /Ask First is on, so Otto asks before he changes anything outside his workspace/,
+    ),
+  ).toHaveLength(1);
   expect(screen.queryByText(/so this action needs your approval/)).toBeNull();
 });
 

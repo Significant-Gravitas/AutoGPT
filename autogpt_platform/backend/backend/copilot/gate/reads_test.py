@@ -166,7 +166,6 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
     if verdict.held:
         stub = json.loads(result.output)
         assert stub["type"] == "approval_required"
-        assert stub["graph_exec_id"] == "copilot-session-session-1"
         assert _MARKER not in stub["message"]
         (row,) = rows.rows.values()
         assert row.payload["passage"] == _MARKER
