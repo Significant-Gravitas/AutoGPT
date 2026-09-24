@@ -205,3 +205,25 @@ def test_an_argument_the_headline_shortens_stays_on_the_card(path):
     assert headline_for("delete_workspace_file", {"path": "q3.md"}).object_key == (
         "path"
     )
+
+
+@pytest.mark.parametrize(
+    "tool, args, irreversible",
+    [
+        ("delete_workspace_file", {"path": "q3.md"}, True),
+        ("delete_skill", {"name": "invoice-chaser"}, True),
+        ("delete_schedule", {"schedule_id": "s1"}, True),
+        ("memory_forget_confirm", {"uuids": ["e1"], "hard_delete": True}, True),
+        # Retracted, not destroyed.
+        ("memory_forget_confirm", {"uuids": ["e1"]}, False),
+        # Its agents move to the root; the folder rows are only flagged.
+        ("delete_folder", {"folder_id": "f1"}, False),
+        ("delete_preset", {"preset_id": "p1"}, False),
+        ("revoke_expert_credential", {"expert_id": "e", "credential_id": "c"}, False),
+        ("create_folder", {"name": "Q3"}, False),
+    ],
+)
+def test_only_a_delete_that_destroys_data_is_marked_irreversible(
+    tool, args, irreversible
+):
+    assert review_payload(tool, args)["subject"]["irreversible"] is irreversible

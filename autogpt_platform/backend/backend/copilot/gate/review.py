@@ -28,7 +28,7 @@ from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
 from .headline import Headline, headline_for
-from .policy import DEFAULT_MODE, effect_for
+from .policy import DEFAULT_MODE, effect_for, is_irreversible
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,7 @@ def review_payload(
             key=tool_name,
             name=_label(tool_name),
             effect=effect_for(tool_name).value,
+            irreversible=is_irreversible(tool_name, args),
         ),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,

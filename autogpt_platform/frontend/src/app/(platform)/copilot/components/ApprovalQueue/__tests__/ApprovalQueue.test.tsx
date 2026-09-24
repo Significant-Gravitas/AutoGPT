@@ -232,3 +232,47 @@ test("a failed answer from a compact line opens its card with the error", async 
     "Couldn't send your answer",
   );
 });
+
+// As the server marks them (backend/copilot/gate/policy.py `is_irreversible`).
+function destructive(id: string, tool: string, args: Record<string, unknown>) {
+  return heldReview({
+    id,
+    tool,
+    args,
+    subject: {
+      kind: "tool",
+      key: tool,
+      name: tool,
+      effect: "platform",
+      irreversible: true,
+    },
+  });
+}
+
+test.each([
+  ["delete_workspace_file", (n: string) => ({ path: `${n}.md` })],
+  ["delete_skill", (n: string) => ({ name: n })],
+  ["delete_schedule", (n: string) => ({ schedule_id: n })],
+  ["memory_forget_confirm", (n: string) => ({ uuids: [n], hard_delete: true })],
+])(
+  "%s is marked can't-be-undone and never approved as a set",
+  async (tool, args) => {
+    serve([
+      destructive("a", tool, args("one")),
+      destructive("b", tool, args("two")),
+    ]);
+    renderQueue();
+
+    await queue();
+    expect(screen.getAllByText("Can't be undone")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Approve both" })).toBeNull();
+  },
+);
+
+test("a folder delete, which moves its agents to the root, stays unmarked", async () => {
+  serve([deleteFolder("a", "f-111")]);
+  renderQueue();
+
+  expect(await screen.findByText("f-111")).toBeDefined();
+  expect(screen.queryByText("Can't be undone")).toBeNull();
+});
