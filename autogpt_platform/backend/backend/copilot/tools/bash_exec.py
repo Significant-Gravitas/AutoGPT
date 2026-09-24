@@ -38,7 +38,9 @@ from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
     get_integration_env_vars,
-    get_integration_placeholder_env,
+    grant_to_box,
+    placeholder_env,
+    placeholder_grants,
 )
 from backend.copilot.model import ChatSession
 from backend.util.e2b_network import proxy_address
@@ -230,11 +232,20 @@ class BashExecTool(BaseTool):
         if user_id is not None:
             selected = await selected_credentials(session_id)
             if proxy_address() is not None:
-                envs.update(
-                    await get_integration_placeholder_env(
-                        user_id, required_scopes, selected
+                grants = await placeholder_grants(user_id, required_scopes, selected)
+                try:
+                    # Before the command runs: its placeholders resolve only
+                    # for credentials granted to this box.
+                    await grant_to_box(sandbox.sandbox_id, grants)
+                except Exception:
+                    # The command still runs; its placeholders go out as they
+                    # are and fail at the provider, which is the safe side.
+                    logger.warning(
+                        "[E2B] Could not grant credentials to %.12s",
+                        sandbox.sandbox_id,
+                        exc_info=True,
                     )
-                )
+                envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
                     user_id, required_scopes, selected

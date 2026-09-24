@@ -36,7 +36,8 @@ users at once.
    not stored. The swap everywhere else is kept (`swap_anywhere` on a
    credential) for providers that need it, and arrives with the binding
    table (SECRT-2616); nothing sets it yet. The backend is asked for values
-   per user and per host, and refuses hosts a credential is not bound to.
+   per user, per host and per box, and refuses hosts a credential is not bound
+   to (see "What a box holds").
    (`swap_proxy/swap.py`, `swap_proxy/source.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it,
@@ -116,19 +117,30 @@ fails at the provider, loudly and with nothing leaked.
 
 A CoPilot box behind the proxy gets, for each account its user connected, the
 provider's usual variables with a placeholder in them (`GH_TOKEN` and
-`GITHUB_TOKEN` for GitHub; `backend/copilot/integration_creds.py`):
+`GITHUB_TOKEN` for GitHub; `backend/copilot/integration_creds.py`). A
+placeholder names one stored credential, `hsurr:github:<credential id>`, and
+resolves only for a box that credential was **granted** to:
 
-- `hsurr:github` in the box's own environment, set when it is created: the
-  user's default GitHub credential, for what does not start through a command
-  (the desktop's browser and terminal).
-- `hsurr:github:<credential id>` in each command's environment
-  (`bash_exec`): the credential the chat picked, the same one the real token
-  used to come from. The backend lists every stored credential under its id as
-  well as the default, so a user with two accounts gets the one they chose.
-- A git credential helper, set through git's environment-variable config, that
+- Each command (`bash_exec`) is handed the credential the real token used to
+  come from (the chat's pick, else the best match for the scopes asked for),
+  and the backend records the grant for that box before the command runs. A
+  provider with no usable credential gets its variables set empty, not left
+  out, so a command never falls back to another account's placeholder from
+  the box's own environment; git's helper is switched off with it.
+- A new box starts with the user's default credential for each provider in its
+  own environment, granted the same way, for what does not start through a
+  command (the desktop's browser and terminal).
+- A git credential helper, set through git's environment-variable config,
   answers for `https://github.com` with `x-access-token` and `$GH_TOKEN`: a
   `git push` over HTTPS sends the placeholder as HTTP Basic, which is swapped
   here.
+
+The proxy asks for values per user, host and box (the proxy credential the
+connection presented). The backend answers only for a live box of that user's
+that gets swaps, by its own record of the box, and only with the credentials
+granted to it: another of the user's accounts, or an id typed by hand,
+resolves to nothing. A grant lasts as long as a paused box can, so a process a
+command left running keeps working.
 
 Without the proxy (`E2B_EGRESS_PROXY_ADDRESS` empty) commands get the real
 tokens as before, and the box's own environment gets nothing.
@@ -299,8 +311,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   the case, it does not close it.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
-- A connection stays authenticated while it stays open, also after its box's
-  credential is rotated.
+- A connection stays open after its box's credential is rotated (every
+  reconnect rotates it), but the backend no longer knows its box: from then on
+  nothing is swapped into it, and its text responses from bound hosts are
+  refused as while the backend is down, until the client opens a new one.
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.
