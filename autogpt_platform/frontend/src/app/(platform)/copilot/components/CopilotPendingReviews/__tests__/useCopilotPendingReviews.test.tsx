@@ -63,6 +63,28 @@ describe("useCopilotPendingReviews", () => {
     expect(calls.execution).toBe(settled);
   }, 10_000);
 
+  test("still polls the reviews when the run's status cannot be read", async () => {
+    const calls = { reviews: 0 };
+    server.use(
+      http.get("*/api/graphs/graph-1/executions/exec-1", () =>
+        HttpResponse.json({ detail: "down" }, { status: 500 }),
+      ),
+      http.get("*/api/review/execution/exec-1", () => {
+        calls.reviews++;
+        return HttpResponse.json([]);
+      }),
+    );
+    renderHook(
+      () =>
+        useCopilotPendingReviews({ graphExecId: "exec-1", graphId: "graph-1" }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(calls.reviews).toBeGreaterThan(1), {
+      timeout: 8000,
+    });
+  }, 10_000);
+
   test("keeps polling reviews while the run is paused for one", async () => {
     const calls = countRequests("REVIEW");
     renderHook(
