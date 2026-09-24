@@ -119,10 +119,12 @@ async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
         "costs about $0.05, and this task has spent $0.00 of its $0.00 ceiling"
     )
     _, kwargs = gate.open_review.await_args
+    # Microdollars: the card formats money itself.
     assert kwargs["spend"] == {
-        "estimate": "$0.05",
-        "spent": "$0.00",
-        "ceiling": "$0.00",
+        "estimate": 50_000,
+        "spent": 0,
+        "ceiling": 0,
+        "unit": CEILING_UNIT_MICRODOLLARS,
     }
     assert (await _check(_FREE, mode)).allowed
 
@@ -249,7 +251,7 @@ async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
 
 def test_a_money_card_offers_no_chat_rule():
     """Reads never consult a rule, so the card must offer none."""
-    spend = {"estimate": "$0.05", "spent": "$0.00", "ceiling": "$0.00"}
+    spend = {"estimate": 50_000, "spent": 0, "ceiling": 0, "unit": 1_000_000}
     payload = review_payload("t", {}, _PAID, spend)
     assert payload["spend"] == spend
     assert payload["chat_rules_allowed"] == []

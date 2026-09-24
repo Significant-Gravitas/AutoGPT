@@ -8,7 +8,21 @@ import {
 import { beautifyString } from "@/lib/utils";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
-export type ReasonKind = "mode" | "subject" | "supervisor" | "rule" | "content";
+export type ReasonKind =
+  | "mode"
+  | "subject"
+  | "supervisor"
+  | "rule"
+  | "content"
+  | "spend";
+
+// Microdollars, as the server sends them.
+export interface ApprovalSpend {
+  estimate: number;
+  spent: number;
+  ceiling: number;
+  unit: number;
+}
 
 export type ChatRule = "allow" | "judge";
 
@@ -27,6 +41,8 @@ export interface ApprovalItem {
   mode: string | null;
   // A held read's flagged passage, which the card quotes.
   passage: string | null;
+  // Over the task's spend ceiling: what this step costs and what approving adds.
+  spend: ApprovalSpend | null;
   chatRulesAllowed: ChatRule[];
   headline: { ask: string; object: string | null };
   // The argument the headline already names.
@@ -72,6 +88,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
     passage: str(payload, "passage"),
+    spend: toSpend(payload.spend),
     chatRulesAllowed: asArray(payload.chat_rules_allowed).filter(
       (r): r is ChatRule => r === "allow" || r === "judge",
     ),
@@ -141,7 +158,8 @@ export function isBare(item: ApprovalItem) {
   return (
     shownFieldKeys(item).length === 0 &&
     !reasonLine(item) &&
-    !item.subject.irreversible
+    !item.subject.irreversible &&
+    !item.spend
   );
 }
 
@@ -155,6 +173,7 @@ export function canApproveAll(items: ApprovalItem[], compact: boolean) {
       item.subject.key === key &&
       !item.subject.irreversible &&
       !isHeldRead(item) &&
+      !item.spend &&
       !isIdOnly(item) &&
       (!compact || isBare(item)),
   );
@@ -172,4 +191,13 @@ function isIdOnly(item: ApprovalItem) {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function toSpend(raw: unknown): ApprovalSpend | null {
+  const spend = asObject(raw);
+  if (!spend) return null;
+  const { estimate, spent, ceiling, unit } = spend;
+  if (![estimate, spent, ceiling, unit].every((n) => typeof n === "number"))
+    return null;
+  return { estimate, spent, ceiling, unit } as ApprovalSpend;
 }

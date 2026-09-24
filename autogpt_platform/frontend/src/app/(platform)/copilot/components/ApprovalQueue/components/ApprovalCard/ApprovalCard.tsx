@@ -13,6 +13,7 @@ import {
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
 import { HeldPassage } from "./HeldPassage";
+import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
@@ -42,7 +43,7 @@ export function ApprovalCard({
       <ApproveSplitButton
         label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
         subjectName={item.subject.name}
-        rules={read ? [] : item.chatRulesAllowed}
+        rules={read || item.spend ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
         disabled={busy}
         onApprove={onApprove}
@@ -89,6 +90,7 @@ export function ApprovalCard({
           </p>
         )}
         {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
+        {item.spend && <MoneyBlock spend={item.spend} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />
         ) : (

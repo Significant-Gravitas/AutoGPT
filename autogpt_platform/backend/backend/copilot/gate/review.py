@@ -78,7 +78,7 @@ class GateReviewPayload(BaseModel):
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
     # A money card's estimate, spend so far and ceiling.
-    spend: dict[str, str] | None = None
+    spend: dict[str, int] | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -117,7 +117,7 @@ def review_payload(
     tool_name: str,
     args: dict[str, Any],
     subject: "GateSubject | None" = None,
-    spend: dict[str, str] | None = None,
+    spend: dict[str, int] | None = None,
     *,
     reason: str = "",
     reason_kind: ReasonKind = "mode",
@@ -225,7 +225,7 @@ async def open_review(
     args: dict[str, Any],
     reason: str,
     subject: "GateSubject | None" = None,
-    spend: dict[str, str] | None = None,
+    spend: dict[str, int] | None = None,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
 ) -> bool:

@@ -168,8 +168,8 @@ async def check_action(
     elif spend is not None:
         spend_shown = _spend_shown(estimate, *spend)
         reason = (
-            f"costs about {spend_shown['estimate']}, and this task has spent "
-            f"{spend_shown['spent']} of its {spend_shown['ceiling']} ceiling"
+            f"costs about {_dollars(estimate)}, and this task has spent "
+            f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling"
         )
         reason_kind = "spend"
     elif verdict is Verdict.RUN:
@@ -207,7 +207,7 @@ async def _park(
     reason: str,
     reason_kind: review_store.ReasonKind,
     subject: Subject | None,
-    spend: dict[str, str] | None = None,
+    spend: dict[str, int] | None = None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
@@ -248,11 +248,13 @@ def refusal_message(reason: str, review_id: str | None) -> str:
     )
 
 
-def _spend_shown(estimate: int, spent: int, ceiling: int) -> dict[str, str]:
+def _spend_shown(estimate: int, spent: int, ceiling: int) -> dict[str, int]:
+    """In microdollars: the card formats money itself."""
     return {
-        "estimate": _dollars(estimate),
-        "spent": _dollars(spent),
-        "ceiling": _dollars(ceiling),
+        "estimate": estimate,
+        "spent": spent,
+        "ceiling": ceiling,
+        "unit": CEILING_UNIT_MICRODOLLARS,
     }
 
 
