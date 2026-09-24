@@ -92,7 +92,7 @@ async def _run_turn(refusal: AssistantMessage, result_text: str):
             session=session,
         ):
             events.append(event)
-    return events, attempts[0]
+    return events, attempts[0], session
 
 
 @pytest.mark.asyncio
@@ -120,7 +120,7 @@ async def _run_turn(refusal: AssistantMessage, result_text: str):
     ],
 )
 async def test_billing_refusal_shows_platform_message(refusal, result_text):
-    events, attempts = await _run_turn(refusal, result_text)
+    events, attempts, session = await _run_turn(refusal, result_text)
 
     streamed_text = "".join(
         e.delta for e in events if isinstance(e, StreamTextDelta)
@@ -134,6 +134,11 @@ async def test_billing_refusal_shows_platform_message(refusal, result_text):
     assert "temporarily unavailable" in errors[0].errorText
     assert "openrouter" not in errors[0].errorText.lower()
     assert attempts == 1
+
+    # The row a reload renders carries the same message, not the raw text.
+    marker = session.messages[-1].content or ""
+    assert "temporarily unavailable" in marker
+    assert "openrouter" not in marker.lower()
 
 
 def _raised_402() -> Exception:

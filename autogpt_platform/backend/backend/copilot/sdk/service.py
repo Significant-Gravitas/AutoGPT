@@ -522,11 +522,11 @@ async def _consume_sdk_until_done(
                 error=refusal,
                 session_id=ctx.session_id,
             )
+            # Not yielded here: the consumer stops at the first StreamError and
+            # closes this generator, so the outer loop yields it only after
+            # the history marker carrying this message is written.
             loop_state.stream_error_msg = PROVIDER_UNAVAILABLE_MESSAGE
             loop_state.stream_error_code = PROVIDER_UNAVAILABLE_CODE
-            yield StreamError(
-                errorText=PROVIDER_UNAVAILABLE_MESSAGE, code=PROVIDER_UNAVAILABLE_CODE
-            )
             loop_state.ended_with_stream_error = True
             break
 
@@ -1195,6 +1195,13 @@ def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
 # covers the codes that flow through the adapter -> ``_dispatch_response``.
 _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
     {"transient_api_error", "empty_completion"}
+)
+
+
+# Handled-error codes whose StreamError the outer retry loop yields itself,
+# after it has persisted the history marker, rather than the attempt.
+_OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
 )
 
 
@@ -4337,7 +4344,9 @@ async def _run_stream_attempt(
             "Stream error handled",
             error_msg=loop_state.stream_error_msg,
             code=loop_state.stream_error_code,
-            already_yielded=(loop_state.stream_error_code != "transient_api_error"),
+            already_yielded=(
+                loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
+            ),
         )
 
 
