@@ -11,7 +11,6 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.data.db_accessors import (
     execution_db,
     experts_db,
@@ -101,20 +100,21 @@ def compose_briefing(
     # every later LLM turn of that session. The renderer points the overflow
     # at the needs-attention list.
     for review in reviews[:_MAX_DECISION_ITEMS]:
-        if review.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
-            session_id = review.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
-            link = f"/copilot?sessionId={quote(session_id)}"
+        if review.session_id:
+            link = f"/copilot?sessionId={quote(review.session_id)}"
         else:
-            info = agent_info_by_graph_id.get(review.graph_id)
+            info = agent_info_by_graph_id.get(review.graph_id or "")
             link = (
-                run_link(info.library_agent_id if info else None, review.graph_exec_id)
+                run_link(
+                    info.library_agent_id if info else None, review.graph_exec_id or ""
+                )
                 or _LIBRARY_LINK
             )
         # _enrich_pending_reviews already resolved expert attribution on the
         # review model (including copilot-session reviews and executions older
         # than the 24h window); the local lookup only backfills gaps.
         fallback = experts_by_id.get(
-            review.expert_id or expert_id_by_exec.get(review.graph_exec_id) or ""
+            review.expert_id or expert_id_by_exec.get(review.graph_exec_id or "") or ""
         )
         decision_items.append(
             BriefingDecisionItem(
@@ -221,7 +221,9 @@ async def _compose_fresh_briefing(
     # Resolve only the graphs actually referenced, rather than paging the
     # library: paging it would drop the very agent being briefed for a user
     # with >100 agents, leaving an unlinkable "Agent" row.
-    graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
+    graph_ids = list(
+        {e.graph_id for e in executions} | {r.graph_id for r in reviews if r.graph_id}
+    )
     refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
     agent_info: dict[str, AgentInfo] = {
         ref.graph_id: AgentInfo(ref.name or DEFAULT_AGENT_NAME, ref.id) for ref in refs

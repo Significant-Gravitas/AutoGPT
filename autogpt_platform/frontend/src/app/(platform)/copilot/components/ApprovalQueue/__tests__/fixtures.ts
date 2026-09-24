@@ -1,6 +1,6 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 
-export const SESSION_EXEC = "copilot-session-s1";
+export const CHAT_SESSION = "s1";
 
 interface HeldArgs {
   id: string;
@@ -37,9 +37,10 @@ export function heldReview({
     node_exec_id: `${node}:${id}`,
     node_id: node,
     user_id: "u-1",
-    graph_exec_id: SESSION_EXEC,
-    graph_id: SESSION_EXEC,
-    graph_version: 1,
+    session_id: CHAT_SESSION,
+    graph_exec_id: null,
+    graph_id: null,
+    graph_version: null,
     payload: {
       tool,
       arguments: args,

@@ -125,6 +125,7 @@ async def persist_and_record_usage(
     block_name_override: str | None = None,
     extra_metadata: dict | None = None,
     graph_exec_id_override: str | None = None,
+    chat_session_id_override: str | None = None,
     credential_id_override: str | None = None,
     skip_daily: bool = False,
     execution_path: str = "sync",
@@ -247,10 +248,10 @@ async def persist_and_record_usage(
     # (e.g. fully-cached Anthropic responses where only cache tokens
     # accumulate a charge without incrementing total_tokens).
     if user_id and (total_tokens > 0 or cost_float is not None):
-        session_id = (
-            graph_exec_id_override
-            if graph_exec_id_override is not None
-            else (session.session_id if session else None)
+        # A dream pass logs under its own id as graph_exec_id; only a chat's
+        # usage names the chat.
+        chat_session_id = chat_session_id_override or (
+            session.session_id if session and graph_exec_id_override is None else None
         )
 
         if cost_float is not None:
@@ -286,7 +287,8 @@ async def persist_and_record_usage(
         _schedule_cost_log(
             PlatformCostEntry(
                 user_id=user_id,
-                graph_exec_id=session_id,
+                graph_exec_id=graph_exec_id_override,
+                chat_session_id=chat_session_id,
                 block_id=COPILOT_BLOCK_ID,
                 block_name=(
                     block_name_override

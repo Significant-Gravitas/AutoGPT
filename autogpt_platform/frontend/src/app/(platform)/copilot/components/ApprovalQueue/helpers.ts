@@ -14,7 +14,8 @@ export type ChatRule = "allow" | "judge";
 
 export interface ApprovalItem {
   reviewId: string;
-  graphExecId: string;
+  // Which list the answer refreshes: a chat's queue, or a run's.
+  scope: Pick<PendingHumanReviewModel, "graph_exec_id" | "session_id">;
   toolName: string;
   toolCallId: string;
   args: Record<string, unknown>;
@@ -45,7 +46,10 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
   const objectKey = str(headline, "object_key");
   return {
     reviewId: review.node_exec_id,
-    graphExecId: review.graph_exec_id,
+    scope: {
+      graph_exec_id: review.graph_exec_id,
+      session_id: review.session_id,
+    },
     toolName,
     toolCallId: str(payload, "tool_call_id") ?? "",
     args: asObject(payload.arguments) ?? {},

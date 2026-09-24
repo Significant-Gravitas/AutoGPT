@@ -14,7 +14,6 @@ from backend.copilot.gate.review import (
     node_id_for,
     review_id_for,
     review_payload,
-    session_exec_id,
 )
 
 
@@ -181,7 +180,7 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     approved_at = datetime.now(UTC) - age
     stored = MagicMock(
         status=status,
-        graph_exec_id=session_exec_id("s1"),
+        session_id="s1",
         reviewed_at=approved_at,
         updated_at=approved_at,
         created_at=approved_at,

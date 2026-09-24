@@ -442,7 +442,7 @@ def test_block_review_names_the_action_and_the_workflow() -> None:
 
 def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
     review = _review(NOW).model_copy(
-        update={"graph_exec_id": "copilot-session-abc", "agent_name": None}
+        update={"graph_exec_id": None, "session_id": "abc", "agent_name": None}
     )
 
     [item] = compose_attention_items(
