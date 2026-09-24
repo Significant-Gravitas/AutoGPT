@@ -883,7 +883,8 @@
       "auth_methods": [
         "oauth",
         "bearer"
-      ]
+      ],
+      "icon_id": "posthog"
     }
   },
   {

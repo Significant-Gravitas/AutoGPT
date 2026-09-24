@@ -23,6 +23,7 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     assert entry is not None
     assert entry.name == "mcp_posthog"
     assert entry.display_name == "PostHog"
+    assert entry.mcp_server.icon_id == "posthog"
     assert entry.mcp_server.connection_mode == "hosted"
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert (
