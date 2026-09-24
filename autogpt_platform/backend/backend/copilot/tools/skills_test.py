@@ -44,6 +44,8 @@ from backend.copilot.tools.skills import (
     SkillOwnedError,
     SkillPackage,
     SkillPackageError,
+    SkillWrite,
+    StoredSkill,
     StoreSkillResponse,
     StoreSkillTool,
     _is_safe_relative,
@@ -66,6 +68,7 @@ from backend.copilot.tools.skills import (
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
+    store_user_skills,
     validate_package,
 )
 from backend.util.exceptions import ConflictError
@@ -252,12 +255,23 @@ class _FakeWorkspaceManager:
         self.files: dict[str, bytes] = {}
         self.metadata: dict[str, dict] = {}
         self.reads: list[str] = []
+        # Per path, the hashes the write was told need no scan.
+        self.scanned: dict[str, frozenset[str]] = {}
 
     async def write_file(
-        self, *, content, filename, path, mime_type, overwrite, metadata=None
+        self,
+        *,
+        content,
+        filename,
+        path,
+        mime_type,
+        overwrite,
+        metadata=None,
+        scanned_checksums=(),
     ):
         self.files[path] = content
         self.metadata[path] = metadata or {}
+        self.scanned[path] = frozenset(scanned_checksums)
 
     async def read_file(self, path: str) -> bytes:
         if path not in self.files:
@@ -345,7 +359,9 @@ class _patch_skills_path:
         fake_lock = MagicMock()
         fake_lock.owner_id = "test-owner"
         fake_lock.try_acquire = AsyncMock(return_value="test-owner")
+        fake_lock.refresh = AsyncMock(return_value=True)
         fake_lock.release = AsyncMock()
+        self.lock = fake_lock
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
             patch(
@@ -767,6 +783,30 @@ async def test_store_user_skill_rejects_an_unknown_origin():
 
 
 @pytest.mark.asyncio
+async def test_a_batch_renews_its_write_lock_before_each_skill():
+    writes = [
+        SkillWrite(name=f"batch-{i}", description="d", body="b") for i in range(3)
+    ]
+    with _patch_skills_path(_FakeWorkspaceManager()) as patched:
+        outcomes = await store_user_skills("user-1", writes)
+    assert all(isinstance(o, StoredSkill) for o in outcomes)
+    # Kills: holding one 30 s lease across a whole batch.
+    assert patched.lock.refresh.await_count == 3
+    patched.lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_batch_that_lost_its_lock_finishes_without_releasing_it():
+    writes = [SkillWrite(name=f"lost-{i}", description="d", body="b") for i in range(2)]
+    with _patch_skills_path(_FakeWorkspaceManager()) as patched:
+        patched.lock.refresh.return_value = False
+        outcomes = await store_user_skills("user-1", writes)
+    assert all(isinstance(o, StoredSkill) for o in outcomes)
+    # Kills: releasing a key another writer may hold by now.
+    patched.lock.release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_copy_to_expert_keeps_the_installed_origin():
     """A bundled skill healed into an expert's folder stays a bundled one
     there, so the heal never spends the owner's saved slots either."""
@@ -774,15 +814,15 @@ async def test_copy_to_expert_keeps_the_installed_origin():
     _seed_skill(fake, "bundled", origin=SKILL_ORIGIN_MARKETPLACE)
     # Storing into an expert's folder records the name on the expert's row.
     experts = MagicMock()
-    experts.add_expert_skill_name = AsyncMock()
+    experts.add_expert_skill_names = AsyncMock()
     with (
         _patch_skills_path(fake),
         patch("backend.copilot.tools.skills.experts_db", return_value=experts),
     ):
         slug = await copy_skill_to_expert("user-1", "expert-1", "bundled")
     assert slug == "bundled"
-    experts.add_expert_skill_name.assert_awaited_once_with(
-        "user-1", "expert-1", "bundled"
+    experts.add_expert_skill_names.assert_awaited_once_with(
+        "user-1", "expert-1", ["bundled"]
     )
     copied = fake.metadata["/experts/expert-1/skills/bundled/SKILL.md"]
     assert copied["skill_origin"] == "marketplace"

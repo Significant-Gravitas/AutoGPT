@@ -24,9 +24,10 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 import asyncio
 import logging
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
-from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.blocks.desktop._api import DISPLAY, SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
@@ -126,7 +127,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
+        f"<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n"
         f"<standing_work>\n"
         f"Part of your job is the work that repeats. A colleague who only "
         f"ever acts when asked is half a colleague: when you notice something "
@@ -227,7 +228,10 @@ async def build_expert_context(
     own role, and a teammate's workflows are the easiest thing for the model
     to borrow questions from. Plain sessions always get their roster.
 
-    Returns ``""`` when there is nothing to inject or any lookup fails.
+    Returns ``""`` when there is nothing to inject or any lookup fails, except
+    that an expert session always keeps its computer block: the system prompt
+    leaves the plain chat's computer note out for every expert session, so
+    this is the only place the expert hears about its machine.
     """
     if not user_id:
         return ""
@@ -258,7 +262,7 @@ async def build_expert_context(
         )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
-        return ""
+        return render_expert_computer_block() if expert_id else ""
 
 
 async def _expert_session_context(
@@ -290,9 +294,9 @@ async def _expert_session_context(
         _load_teammates(),
     )
     # Identity validation already failed closed before this context lookup.
-    # If the expert changes between those reads, omit only this optional block.
+    # If the expert changes between those reads, omit only the optional blocks.
     if expert is None or expert.is_archived:
-        return ""
+        return render_expert_computer_block()
     return (
         render_expert_workflows_block(expert)
         + await _routines_block(user_id, expert_id)
@@ -457,6 +461,10 @@ def render_expert_computer_block() -> str:
         "or GUI app; it is the same machine your commands run in. The desktop "
         "is shared with the user, not private from either of you: you can see "
         "everything on it, and so can they.\n"
+        "- The screen shows only what runs on this machine's display: launch "
+        "the app or browser with bash_exec, in the background with "
+        f"DISPLAY={DISPLAY}. browser_* tools run elsewhere and never appear on "
+        "it.\n"
         "- Never ask the user to sign into personal accounts on this "
         "desktop; use their connected integrations instead.\n"
         "</expert_computer>\n\n"

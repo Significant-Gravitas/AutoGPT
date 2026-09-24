@@ -555,6 +555,9 @@ async def update_expert_avatar(
     request: ExpertAvatarUpdate,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
+    current = await experts_db.get_expert(user_id, expert_id)
+    if current is None:
+        raise fastapi.HTTPException(404, "Expert not found")
     try:
         return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
     except experts_db.ExpertNotFoundError as e:

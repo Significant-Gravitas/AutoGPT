@@ -40,7 +40,7 @@ async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
     assert "refused" not in caplog.text
     expected = "anthropic/claude-opus-5" if use_openrouter else "claude-opus-5"
     assert normalize_model_for_transport(route.model, cfg) == expected
-    assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
+    assert cfg.fast_advanced_model == "anthropic/claude-opus-5"
     assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
 
 

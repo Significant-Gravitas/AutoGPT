@@ -401,6 +401,7 @@ export const ChatContainer = ({
                             sessionId={sessionId}
                             expertId={expertIdentity?.id ?? null}
                             modeSelector={modeSelector}
+                            expertName={expertIdentity?.name ?? null}
                             voiceToggle={
                               isVoiceModeEnabled ? (
                                 <VoiceModeButton
