@@ -34,8 +34,10 @@ test("sends shape and expression choices, then polls until the preview is ready"
   await userEvent.click(screen.getByRole("button", { name: "Charcoal" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Shape" }));
   await userEvent.click(screen.getByRole("option", { name: "Bean" }));
-  await userEvent.click(screen.getByRole("combobox", { name: "Color" }));
-  await userEvent.click(screen.getByRole("option", { name: "Pine" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
+  await userEvent.click(screen.getByRole("option", { name: "Finance" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Shade" }));
+  await userEvent.click(screen.getByRole("option", { name: "Dark" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Base" }));
   await userEvent.click(screen.getByRole("option", { name: "Wide" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Tilt" }));
@@ -59,8 +61,8 @@ test("sends shape and expression choices, then polls until the preview is ready"
   expect(screen.queryByRole("status")).not.toBeNull();
   expect(requests).toEqual([
     {
-      category: "development",
-      color: "pine",
+      category: "finance",
+      shade: "dark",
       shape: "bean",
       base: "wide",
       tilt: "left",
@@ -84,6 +86,6 @@ test("sends shape and expression choices, then polls until the preview is ready"
   );
   expect(onPick).toHaveBeenCalledWith(
     "https://cdn.test/focused.png",
-    "blue-300",
+    "green-300",
   );
 });

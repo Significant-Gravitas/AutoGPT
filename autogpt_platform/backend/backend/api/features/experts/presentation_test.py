@@ -212,7 +212,9 @@ def test_template_projection_replaces_shared_draft_avatars_only():
         identity="",
         tagline=None,
     )
-    assert template_presentation(row)["avatarUrl"] == "/experts/clay/v2/noor.png"
+    assert (
+        template_presentation(row)["avatarUrl"] == "/experts/clay/v4/noor-marketing.png"
+    )
     row.avatarUrl = "https://custom.example/image.png"
     assert template_presentation(row)["avatarUrl"] == row.avatarUrl
     row.avatarUrl = "/experts/clay/v1/finance.png"
@@ -230,7 +232,7 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
     template = SimpleNamespace(
         id="template",
         name="Noor",
-        avatarUrl="/experts/clay/v2/noor.png",
+        avatarUrl="/experts/clay/v4/noor-marketing.png",
         jobTitle="Writer",
         tagline="Hi",
         bio=None,
@@ -264,5 +266,5 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
             "isTemplate": False,
             "updatedAt": "0",
         },
-        data={"avatarUrl": "/experts/clay/v2/noor.png"},
+        data={"avatarUrl": "/experts/clay/v4/noor-marketing.png"},
     )

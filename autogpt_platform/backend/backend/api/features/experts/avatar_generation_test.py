@@ -229,3 +229,17 @@ def test_accents_can_move_to_head_and_repeat():
     assert "rounded irregular patch" in prompt
     assert "Head stays wholly main color" not in prompt
     assert "LOWER BASE" not in prompt
+
+
+def test_shade_uses_category_hue_instead_of_an_unrelated_color():
+    prompt = avatar_prompt(
+        ExpertAvatarRequest.model_validate(
+            {
+                "category": "finance",
+                "shade": "dark",
+                "color": "terracotta",
+            }
+        )
+    )
+    assert "#8B9481" in prompt
+    assert "#C47F5C" not in prompt

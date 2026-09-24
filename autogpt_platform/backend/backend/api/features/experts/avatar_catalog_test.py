@@ -94,3 +94,28 @@ def test_accent_refresh_handles_each_known_default_and_preserves_other_choices()
         ]:
             if custom != avatar.previous_url:
                 assert resolve_builtin_avatar_url(avatar.name, custom) == custom
+
+
+def test_every_builtin_category_has_distinct_transparent_artwork():
+    from pathlib import Path
+
+    from PIL import Image
+
+    from backend.api.features.experts.avatar_catalog import CATALOG, PRESETS
+    from backend.api.features.experts.seed import ROSTER
+
+    public = Path(__file__).parent.parents[4] / "frontend/public"
+    by_name = {avatar.name: avatar for avatar in CATALOG.identities}
+    for entry in ROSTER:
+        avatar = by_name[entry["name"]]
+        assert avatar.primary_category == entry["categories"][0]
+        assert set(avatar.variants) == set(entry["categories"])
+        assert avatar.color_id == PRESETS[avatar.primary_category].color_id
+        assert avatar.url == avatar.variants[avatar.primary_category].url
+        assert len({v.url for v in avatar.variants.values()}) == len(avatar.variants)
+        for variant in avatar.variants.values():
+            with Image.open(public / variant.url.lstrip("/")) as image:
+                if variant.url.endswith(".png"):
+                    assert image.size == (512, 512)
+                    assert image.mode == "RGBA"
+                    assert image.getchannel("A").getextrema() == (0, 255)

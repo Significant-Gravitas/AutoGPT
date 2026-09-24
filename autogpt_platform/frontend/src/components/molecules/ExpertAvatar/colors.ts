@@ -19,6 +19,13 @@ const TOPIC_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 /** Category hues stay fixed; generated body colors can vary within the roster. */
+export function getCategoryHex(
+  category: string | null | undefined,
+): string | undefined {
+  return catalog.avatars.find((avatar) => avatar.id === category?.toLowerCase())
+    ?.hex;
+}
+
 export function getExpertTopicHex(
   role: string | null | undefined,
   categories?: string[],

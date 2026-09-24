@@ -3,7 +3,7 @@ import type { ExpertAvatarRequestAccentCount } from "@/app/api/__generated__/mod
 import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
 import { useMutation } from "@tanstack/react-query";
 import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
-import type { ExpertAvatarRequestColor } from "@/app/api/__generated__/models/expertAvatarRequestColor";
+import type { ExpertAvatarRequestShade } from "@/app/api/__generated__/models/expertAvatarRequestShade";
 import type { ExpertAvatarRequestBase } from "@/app/api/__generated__/models/expertAvatarRequestBase";
 import type { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
 import type { ExpertAvatarRequestInlay } from "@/app/api/__generated__/models/expertAvatarRequestInlay";
@@ -13,7 +13,7 @@ import { ACCEPTED_AVATAR_TYPES, MAX_AVATAR_BYTES } from "./helpers";
 import {
   EXPERT_AVATARS,
   BUILTIN_EXPERT_AVATARS,
-  resolveExpertAvatarUrl,
+  resolveCategoryAvatarUrl,
   getManagedAvatar,
 } from "../ExpertAvatar/helpers";
 import { useEffect, useRef, useState } from "react";
@@ -27,33 +27,26 @@ interface Args {
 
 export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
   const [selectedUrl, setSelectedUrl] = useState(() =>
-    resolveExpertAvatarUrl(avatarUrl),
+    resolveCategoryAvatarUrl(avatarUrl),
   );
   const [category, setCategory] = useState<ExpertAvatarRequestCategory>(() => {
     const preset = EXPERT_AVATARS.find(
-      (avatar) => avatar.url === resolveExpertAvatarUrl(avatarUrl),
+      (avatar) => avatar.url === resolveCategoryAvatarUrl(avatarUrl),
     );
-    const managed = getManagedAvatar(resolveExpertAvatarUrl(avatarUrl), 128);
+    const managed = getManagedAvatar(resolveCategoryAvatarUrl(avatarUrl), 128);
     if (managed?.assetID === "expert-mina") return "finance";
     if (managed?.assetID === "expert-maria") return "marketing";
+    const builtin = BUILTIN_EXPERT_AVATARS.find(
+      (avatar) => avatar.url === resolveCategoryAvatarUrl(avatarUrl),
+    );
     return (
       Object.values(ExpertAvatarRequestCategory).find(
-        (value) => value === preset?.id,
+        (value) => value === (builtin?.primary_category ?? preset?.id),
       ) ?? "content"
     );
   });
-  const [mineralColor, setMineralColor] = useState<
-    NonNullable<ExpertAvatarRequestColor>
-  >(() => {
-    const url = resolveExpertAvatarUrl(avatarUrl);
-    return (
-      (BUILTIN_EXPERT_AVATARS.find((avatar) => avatar.url === url)
-        ?.color_id as NonNullable<ExpertAvatarRequestColor>) ??
-      (EXPERT_AVATARS.find((avatar) => avatar.url === url)
-        ?.color_id as NonNullable<ExpertAvatarRequestColor>) ??
-      "stone"
-    );
-  });
+  const [shade, setShade] =
+    useState<NonNullable<ExpertAvatarRequestShade>>("standard");
   const [base, setBase] = useState<ExpertAvatarRequestBase>("compact");
   const [tilt, setTilt] = useState<ExpertAvatarRequestTilt>("level");
   const [inlay, setInlay] = useState<ExpertAvatarRequestInlay>("sweep");
@@ -100,7 +93,7 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
     if (!preset || !category) return;
     generation.reset();
     setCategory(category);
-    setMineralColor(preset.color_id as NonNullable<ExpertAvatarRequestColor>);
+    setShade("standard");
     setSelectedUrl(preset.url);
     setSelectedColor(preset.color);
     setUploadError(null);
@@ -135,7 +128,7 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
   function generate() {
     void generation.generate({
       category,
-      color: mineralColor,
+      shade,
       shape,
       base,
       tilt,
@@ -154,8 +147,9 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
     category,
     shape,
     setShape,
-    mineralColor,
-    setMineralColor,
+    shade,
+    setShade,
+    setCategory,
     base,
     setBase,
     tilt,

@@ -21881,6 +21881,13 @@
             "title": "Accent Count",
             "default": "one"
           },
+          "shade": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "light", "dark"] },
+              { "type": "null" }
+            ],
+            "title": "Shade"
+          },
           "expression": {
             "type": "string",
             "enum": ["friendly", "curious", "focused", "pleased"],

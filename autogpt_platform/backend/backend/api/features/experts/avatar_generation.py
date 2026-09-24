@@ -35,6 +35,7 @@ class ExpertAvatarRequest(BaseModel):
     inlay: Literal["sweep", "pool", "curl", "patch", "cap", "teardrop"] = "sweep"
     accent_placement: Literal["body", "head", "both"] = "body"
     accent_count: Literal["one", "two", "three"] = "one"
+    shade: Literal["standard", "light", "dark"] | None = None
     expression: Literal["friendly", "curious", "focused", "pleased"] = "friendly"
 
 
@@ -74,11 +75,15 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
 
 def avatar_prompt(request: ExpertAvatarRequest) -> str:
     color = COLORS[request.color or PRESETS[request.category].color_id]
+    hue = color.hex
+    if request.shade is not None:
+        color = COLORS[PRESETS[request.category].color_id]
+        hue = category_shade(color.hex, request.shade)
     return (
         "Create ONE new AutoGPT Clay & Rock specialist avatar. Use the attached image "
         "as a material, lighting and head outline reference. Render only ONE figure. "
         "Replace its color, base, tilt and inlay with the choices below. "
-        f"Main mineral hue: {color.label} {color.hex} across head and base. "
+        f"Main mineral hue: {color.label} {hue} across head and base. "
         f"Head outline: {SHAPES[request.shape]}. Base: {BASES[request.base]}. "
         f"Tilt: {TILTS[request.tilt]}. Accent shape: {INLAYS[request.inlay]}. "
         f"Accent placement: {ACCENT_PLACEMENTS[request.accent_placement]}. "
@@ -96,6 +101,16 @@ def avatar_prompt(request: ExpertAvatarRequest) -> str:
         "front or slight three-quarter view. Square transparent PNG, full figure centered "
         "at 80% of canvas height, safe margins, quiet contact shadow. No backdrop or pedestal."
     )
+
+
+def category_shade(hex_color: str, shade: str) -> str:
+    amount = {"standard": 0, "light": 0.16, "dark": -0.16}[shade]
+    channels = [int(hex_color[index : index + 2], 16) for index in (1, 3, 5)]
+    values = [
+        round(value + (255 - value) * amount if amount >= 0 else value * (1 + amount))
+        for value in channels
+    ]
+    return "#" + "".join(f"{value:02X}" for value in values)
 
 
 def validate_png(content: bytes) -> io.BytesIO:

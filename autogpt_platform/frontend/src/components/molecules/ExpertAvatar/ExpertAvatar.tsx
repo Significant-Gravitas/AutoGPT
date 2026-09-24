@@ -7,7 +7,7 @@ import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
-import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
+import { getManagedAvatar, resolveCategoryAvatarUrl } from "./helpers";
 
 import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
@@ -19,6 +19,7 @@ interface Props {
   size?: number;
   className?: string;
   backgroundColor?: string;
+  category?: string | null;
 }
 
 export function ExpertAvatar({
@@ -28,8 +29,9 @@ export function ExpertAvatar({
   size = 40,
   className,
   backgroundColor,
+  category,
 }: Props) {
-  const src = resolveExpertAvatarUrl(avatarUrl);
+  const src = resolveCategoryAvatarUrl(avatarUrl, category);
   const managed = getManagedAvatar(src, size);
   if (managed && !backgroundColor) {
     return (

@@ -73,6 +73,7 @@ export function ExpertsSection({ category }: Props) {
             <ExpertCard
               key={template.id}
               expert={template}
+              category={category}
               isHired={hiredTemplateIds.has(template.id)}
             />
           ))}

@@ -18,13 +18,19 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   expert: ExpertTemplate;
   isHired: boolean;
+  category?: string | null;
 }
 
 /** Each card is a plain link to the expert's own page, so a profile can be
  *  shared and opened directly. */
-export function ExpertCard({ expert, isHired }: Props) {
+export function ExpertCard({ expert, isHired, category }: Props) {
   const accent = getExpertAccent(expert.role);
-  const topicColor = getExpertTopicHex(expert.role, expert.categories);
+  const topicColor = getExpertTopicHex(
+    expert.role,
+    category && expert.categories?.includes(category)
+      ? [category]
+      : expert.categories,
+  );
   const skills = expert.bundled_skills ?? [];
 
   return (
@@ -44,6 +50,7 @@ export function ExpertCard({ expert, isHired }: Props) {
           avatarUrl={expert.avatar_url}
           size={88}
           backgroundColor={topicColor}
+          category={category ?? expert.categories?.[0]}
         />
 
         <div>

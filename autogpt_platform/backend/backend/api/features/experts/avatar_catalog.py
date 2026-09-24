@@ -51,7 +51,14 @@ class AvatarColorOption(BaseModel):
     hex: str
 
 
+class CategoryAvatar(BaseModel):
+    url: str
+    hex: str
+
+
 class BuiltinAvatar(BaseModel):
+    primary_category: AvatarCategory
+    variants: dict[AvatarCategory, CategoryAvatar]
     previous_urls: list[str] = Field(default_factory=list)
     previous_url: str
     id: str

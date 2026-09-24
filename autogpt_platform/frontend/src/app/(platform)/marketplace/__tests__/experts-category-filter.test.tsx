@@ -123,6 +123,39 @@ describe("Marketplace category filter over experts", () => {
     );
   });
 
+  test("category dots and multi-category cards use the selected category", async () => {
+    const expert = template("Quinn", ["research", "finance"]);
+    expert.avatar_url = "/experts/clay/v3/quinn.png";
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler([
+        { value: "research", label: "Research", description: "Research" },
+        { value: "finance", label: "Finance", description: "Finance" },
+      ]),
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json([expert]),
+      ),
+    );
+    render(<MainMarkeplacePage />);
+    const finance = await findCategoryChip("Finance");
+    expect(
+      finance.querySelector('[aria-hidden="true"]')?.getAttribute("style"),
+    ).toContain("#A5B09A");
+    await userEvent.click(finance);
+    const card = await screen.findByRole("link", { name: /Quinn/ });
+    await waitFor(() =>
+      expect(card.querySelector("img")?.getAttribute("src")).toContain(
+        "quinn-finance.png",
+      ),
+    );
+    expect(finance.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(await findCategoryChip("All"));
+    await waitFor(() =>
+      expect(card.querySelector("img")?.getAttribute("src")).toContain(
+        "/v3/quinn.png",
+      ),
+    );
+  });
+
   test("the chip row sits above the experts shelf it narrows", async () => {
     render(<MainMarkeplacePage />);
 

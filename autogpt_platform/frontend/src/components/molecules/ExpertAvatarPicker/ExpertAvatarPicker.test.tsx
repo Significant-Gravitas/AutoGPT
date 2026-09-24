@@ -38,7 +38,7 @@ test("generates a preview and only saves the selected PNG after confirmation", a
   expect(requests).toEqual([
     {
       category: "finance",
-      color: "sage",
+      shade: "standard",
       shape: "pebble",
       base: "compact",
       tilt: "level",
@@ -177,7 +177,7 @@ test.each([
   expect(requests).toEqual([
     {
       category: "finance",
-      color: "sage",
+      shade: "standard",
       shape: "pebble",
       base: "compact",
       tilt: "level",
