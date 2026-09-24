@@ -51,13 +51,29 @@ async function queue() {
 }
 
 test("the headline names the action and its argument is not repeated below", async () => {
-  serve([folder("a", "Q3 reports")]);
+  serve([
+    heldReview({
+      id: "a",
+      tool: "create_folder",
+      args: { name: "Q3 reports", color: "blue" },
+      fields: [
+        { key: "name", label: "Name" },
+        { key: "color", label: "Color" },
+      ],
+      headline: {
+        ask: "Create folder",
+        object: "Q3 reports",
+        object_key: "name",
+      },
+    }),
+  ]);
   renderQueue();
 
   const heading = await screen.findByRole("heading", {
     name: "Create folder Q3 reports",
   });
   expect(heading).toBeDefined();
+  expect(screen.getByText("Color")).toBeDefined();
   expect(screen.queryByText("Name")).toBeNull();
   expect(screen.getAllByText("Q3 reports")).toHaveLength(1);
 });
