@@ -1906,6 +1906,8 @@ model PlatformCostLog {
   userId       String?
   User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   graphExecId  String?
+  // The AutoPilot chat the cost came from, when it did not come from a graph run.
+  chatSessionId String?
   nodeExecId   String?
   graphId      String?
   nodeId       String?
