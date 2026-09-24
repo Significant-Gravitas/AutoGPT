@@ -30,6 +30,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
+            jobTitle={expert.job_title}
             size="page"
             nameAccessory={
               <IntegrationIcons

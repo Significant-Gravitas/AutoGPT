@@ -12,6 +12,7 @@ from backend.copilot.capabilities.models import (
     CapabilityEntry,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 
@@ -39,6 +40,18 @@ EAGER_CORE: frozenset[str] = frozenset(
         "delegate_to_expert",
         "handoff_to_expert",
         "TodoWrite",
+        # The expert prompt tells the model to use ``start_desktop`` by name,
+        # and a deferred tool named directly is refused. Eager, the screen
+        # goes on in one call instead of a find/run round trip every turn.
+        "start_desktop",
+        # The refusal the building gate prints tells the model to call
+        # ``enter_agent_building_mode``, which a deferred tool named directly
+        # refuses — the same bind ``start_desktop`` was in.
+        "enter_agent_building_mode",
+        # The memory supplement orders a search before answering anything a
+        # past conversation could hold, and a deferred tool named directly is
+        # refused, so that order can only be followed eager.
+        "memory_search",
         # ``kickoff_turn_disabled_tools`` narrows a hire's first turn to this
         # one tool. Deferred, that gate leaves the turn with no tools at all:
         # the card it exists to open is unreachable, and so is the
@@ -76,6 +89,7 @@ def _tool_entry(name: str, tool: "BaseTool", group: str | None) -> CapabilityEnt
         klass="service",
         name=name,
         purpose=clip_purpose(tool.description),
+        description=normalize_text(tool.description),
         tags=tags,
         context="direct",
         implementations=[

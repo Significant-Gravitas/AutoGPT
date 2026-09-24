@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV1GetNotificationPreferencesMockHandler,
@@ -14,11 +14,18 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 
 import SettingsPreferencesPage from "../page";
 
@@ -493,5 +500,80 @@ describe("SettingsPreferencesPage", () => {
     expect(await screen.findByText("Time zone")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Briefing" })).toBeNull();
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
+  });
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    test("opens the Cookiebot dialog from the Cookies card", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot({ statistics: true });
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("explains why cookie settings are missing when Cookiebot could not load", async () => {
+      configureCookiebot();
+      vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      expect(
+        await screen.findByText(/cookie settings couldn.t load/i),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
+
+    test("offers the button once Cookiebot finishes loading", async () => {
+      configureCookiebot();
+      const readyState = vi
+        .spyOn(document, "readyState", "get")
+        .mockReturnValue("interactive");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      const button = await screen.findByRole("button", {
+        name: "Cookie settings",
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+
+      const { renew } = installCookiebot();
+      readyState.mockReturnValue("complete");
+      act(() => {
+        window.dispatchEvent(new Event("load"));
+      });
+
+      await waitFor(() =>
+        expect((button as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(button);
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("hides the Cookies card when no consent banner is configured", async () => {
+      vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Time zone")).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
   });
 });

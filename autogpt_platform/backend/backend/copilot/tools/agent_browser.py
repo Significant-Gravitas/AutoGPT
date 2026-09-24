@@ -127,7 +127,7 @@ async def _snapshot(session_name: str) -> str:
         return f"[snapshot failed: {stderr[:300]}]"
     text = stdout.strip()
     if len(text) > _MAX_SNAPSHOT_CHARS:
-        suffix = "\n\n[Snapshot truncated — use browser_act to navigate further]"
+        suffix = "\n\n[Snapshot truncated — use tool:browser_act to navigate further]"
         keep = max(0, _MAX_SNAPSHOT_CHARS - len(suffix))
         text = text[:keep] + suffix
     return text
@@ -526,10 +526,10 @@ class BrowserNavigateTool(BaseTool):
     def description(self) -> str:
         return (
             "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
-            "for browser_act. Session persists (cookies/auth carry over). "
+            "for tool:browser_act. Session persists (cookies/auth carry over). "
             "For static pages, prefer web_fetch. "
-            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify. "
-            "For auth: navigate to login, fill creds and submit with browser_act, then navigate to target."
+            "For SPAs, elements may load late — use tool:browser_act with wait + tool:browser_screenshot to verify. "
+            "For auth: navigate to login, fill creds and submit with tool:browser_act, then navigate to target."
         )
 
     @property

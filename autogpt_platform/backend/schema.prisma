@@ -156,6 +156,7 @@ model User {
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
+  ExpertRoutines       ExpertRoutine[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -166,7 +167,7 @@ model User {
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
   SkillListings         SkillListing[]
-  SkillVersionsReviewed SkillListingVersion[] @relation("SkillVersionsReviewed")
+  SkillVersionsReviewed SkillListingVersion[]   @relation("SkillVersionsReviewed")
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
@@ -191,7 +192,7 @@ model User {
   PlatformUserLinks PlatformUserLink[]
 
   ExperimentAssignments ExperimentAssignment[]
-  Attribution          UserAttribution?
+  Attribution           UserAttribution?
 }
 
 // One row per (user, experiment): the arm a user was bucketed into the first
@@ -234,11 +235,11 @@ model UserAttribution {
   datafastSessionId String?
 
   // First landing on the site, as seen by the browser that later signed up.
-  landingPath String?
-  referrer    String?
-  utmSource   String?
-  utmMedium   String?
-  utmCampaign String?
+  landingPath  String?
+  referrer     String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
   // "email" | "google" when the account was created in this browser session.
   signupMethod String?
 
@@ -263,30 +264,30 @@ enum SubscriptionTier {
 }
 
 model SubscriptionTrial {
-  id                        String                      @id @default(uuid())
-  userId                    String                      @unique
-  user                      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        String    @id @default(uuid())
+  userId                    String    @unique
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   offer                     Json
   stripeCustomerId          String
-  stripeCheckoutSessionId   String?                     @unique
-  stripeSubscriptionId      String?                     @unique
-  stripeConversionInvoiceId String?                     @unique
-  notificationRevision      Int                         @default(0)
-  checkoutAttempt           Int                         @default(0)
+  stripeCheckoutSessionId   String?   @unique
+  stripeSubscriptionId      String?   @unique
+  stripeConversionInvoiceId String?   @unique
+  notificationRevision      Int       @default(0)
+  checkoutAttempt           Int       @default(0)
   checkoutSuccessUrl        String
   checkoutCancelUrl         String
-  checkoutMetadata          Json                        @default("{}")
-  status                    String                      @default("checkout_pending")
+  checkoutMetadata          Json      @default("{}")
+  status                    String    @default("checkout_pending")
   rejectionReason           String?
   cardVerifiedAt            DateTime?
   startedAt                 DateTime?
   endsAt                    DateTime?
   consumedAt                DateTime?
   convertedAt               DateTime?
-  cancelAtPeriodEnd         Boolean                     @default(false)
-  costMicrodollars          BigInt                      @default(0)
-  createdAt                 DateTime                    @default(now())
-  updatedAt                 DateTime                    @updatedAt
+  cancelAtPeriodEnd         Boolean   @default(false)
+  costMicrodollars          BigInt    @default(0)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@index([status, endsAt])
   @@index([stripeCustomerId, id])
@@ -522,7 +523,10 @@ model UserWorkspaceFile {
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
 
-  @@unique([workspaceId, path])
+  // Paths are unique among LIVE files, which Prisma cannot express: the rule is
+  // a partial unique index created in migrations
+  // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
+  // the path it was deleted at.
   @@index([workspaceId, isDeleted])
   @@index([folderId])
 }
@@ -540,7 +544,7 @@ model UserWorkspaceFolder {
   name String
   icon String?
 
-  // Forward-compat for nesting; unused by the v1 API (always null).
+  // Null = a folder at the workspace root.
   parentId String?
   Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   Children UserWorkspaceFolder[] @relation("WorkspaceFolderHierarchy")
@@ -549,7 +553,9 @@ model UserWorkspaceFolder {
 
   Files UserWorkspaceFile[]
 
-  @@unique([workspaceId, parentId, name])
+  // Names are unique among LIVE siblings, which Prisma cannot express: both
+  // rules are partial unique indexes created in migrations
+  // ("..._workspaceId_parentId_name_live_key" and "..._workspaceId_name_root_key").
   @@index([workspaceId, isDeleted])
 }
 
@@ -1151,6 +1157,7 @@ model Expert {
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
   BundledSkills   ExpertSkillListing[]
+  Routines        ExpertRoutine[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1200,6 +1207,114 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId, createdAt, id])
+}
+
+// Where a routine's turn lands each time it fires.
+enum ExpertRoutineSource {
+  // Shipped by a roster or a shared package. Its prompt was written by someone
+  // who will never see the account it runs on, so it arrives reaching nothing
+  // and stays that way until the owner grants it.
+  TEMPLATE
+  // Dictated by the owner in their own chat. There is no third party in the
+  // prompt, so it runs with the same reach a `schedule_followup` has always had.
+  OWNER
+}
+
+enum ExpertRoutineSession {
+  // A brand-new chat every fire. No memory of the last run.
+  FRESH
+  // One named chat, pinned when the routine was switched on: the one it was
+  // set up in unless the owner named another. Any session the owner holds in
+  // the same expert scope is allowed, which is the one thing `schedule_followup`
+  // could do that a routine could not.
+  PINNED
+  // One durable thread of its own, minted at the first fire and reused after.
+  // Per routine, not per expert, so two routines on the same cadence never
+  // interleave into one conversation. With `graphiti-memory` off this thread
+  // IS the routine's memory, which is why it is the default.
+  THREAD
+}
+
+// Standing work an expert does unattended: a prompt on a cadence, firing as a
+// copilot turn. `schedule_followup` is the primitive underneath; this is the
+// durable record that owns the cadence, the thread, and the on/off state.
+//
+// Template rows are proposals — a draft prompt, a suggested cadence, and the
+// questions an owner has to answer before it can run. Hiring copies them OFF,
+// because a cadence that fires unattended from the day of hire is a much
+// bigger promise than a skill. Switching one on resolves the proposal into the
+// routine that actually runs.
+model ExpertRoutine {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Null when the routine is the account's own standing work rather than an
+  // expert's — Otto is the platform's default assistant, not a row in Expert,
+  // so its routines have no expert to hang off. Exactly one of expertId and
+  // userId is set: a template or hire row names the expert and takes its owner
+  // from it; an account row names the owner directly.
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Roster/shared slug, and the key `_sync_routines` matches on. Null when the
+  // expert authored this one in conversation; Postgres treats NULLs as
+  // distinct, so the unique below still allows many authored rows.
+  key String?
+
+  title  String
+  // The proposal on a template row; what actually runs once resolved.
+  prompt String
+  // One routine, several fire times — a callback sweep that runs at 08:30 and
+  // again at 13:00 is one thing the owner switched on, not two. Template rows
+  // hold the suggested cadence; hire rows hold the resolved one.
+  crons  String[]
+  // What the owner has to tell the expert before this can run: which repo,
+  // which inbox, what time. Carried from the source package's installer block.
+  // A routine with unanswered asks cannot be switched on.
+  asks   String[]
+
+  sessionMode ExpertRoutineSession @default(THREAD)
+  // THREAD: null until the first fire mints it, then reused. PINNED: the chat
+  // the owner named. FRESH: stays null.
+  sessionId   String?
+
+  // Where the prompt came from, which is what decides how far a fire-time turn
+  // can reach. Nothing else in the row answers that: a proposal and an
+  // owner's own words are both just text by the time they are scheduled.
+  source ExpertRoutineSource @default(TEMPLATE)
+
+  // Exactly one of `crons` and `runAt` is set. `runAt` is the one-shot — "check
+  // the deploy at six" — which gets a row like any other so it can be listed,
+  // renamed, cancelled and counted rather than living only as a scheduler job.
+  runAt   DateTime?
+  // Stamped when a one-shot has run. The row outlives its job on purpose; this
+  // is what stops a spent routine still reading as switched on.
+  firedAt DateTime?
+
+  // One scheduler job per cron. Empty means off — off is the absence of a job,
+  // not a paused one, so a routine nobody switched on costs the scheduler
+  // nothing.
+  scheduleIds           String[]
+  enabledAt             DateTime?
+  // Set when the owner resolved the proposal (a time, a source, a rewrite).
+  // From then on the row is theirs and roster edits never touch it again.
+  customizedAt          DateTime?
+  // False means the fire-time turn resolves an EMPTY credential allow-list, so
+  // the routine provably reaches nothing outside the platform — the rule
+  // `PreloadSeed.cron` states for preloads, enforced rather than asserted.
+  // Seeded and shared rows always arrive false; only an owner binding this
+  // routine to their connections sets it.
+  grantsCredentials     Boolean   @default(false)
+  // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
+  // what archiving paused, never one the owner had switched off themselves.
+  pausedByExpertArchive Boolean   @default(false)
+
+  @@unique([expertId, key])
+  @@index([expertId, createdAt, id])
+  @@index([userId, createdAt, id])
 }
 
 // A Skills Hub listing a roster template comes with; hiring installs its
@@ -1404,8 +1519,8 @@ model AgentGraphExecution {
   // What started this run, when it was not a person: the scheduler job or
   // the webhook that fired. Soft references, since jobs live in
   // APScheduler's own store and webhooks are cleaned up independently.
-  scheduleId String?
-  webhookId  String?
+  scheduleId    String?
+  webhookId     String?
 
   inputs           Json?
   credentialInputs Json?
@@ -2174,9 +2289,19 @@ model SkillListingVersion {
   // provider names as used by the credentials system.
   requiredProviders String[] @default([])
 
+  // SHA-256 of each exact file an install wrote after it passed the virus
+  // scan; a later install writing the same bytes skips the scan.
+  scannedSha256 String[] @default([])
+
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
+
+  // Where a vendored skill came from, shown as attribution on the card. Null
+  // for a creator's own skill and for one the platform wrote itself.
+  sourceRepo String?
+  sourceUrl  String?
+  license    String?
 
   isDeleted   Boolean @default(false)
   isAvailable Boolean @default(true)
@@ -2200,7 +2325,7 @@ model SkillListingVersion {
   // Tenancy
   organizationId String?
 
-  Files     SkillListingFile[]
+  Files SkillListingFile[]
 
   @@unique([skillListingId, version])
   @@index([skillListingId, submissionStatus, isAvailable])

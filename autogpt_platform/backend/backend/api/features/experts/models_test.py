@@ -8,6 +8,7 @@ from backend.api.features.experts.models import (
     EXPERT_IDENTITY_MAX_LENGTH,
     Expert,
     ExpertDayOneItem,
+    ExpertSkillsUpdate,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     RaiseAttachment,
@@ -18,6 +19,7 @@ from backend.api.features.experts.models import (
     encode_voice_preferences,
     validate_avatar_url,
 )
+from backend.copilot.tools.skills import MAX_SKILLS_PER_EXPERT
 
 
 def test_soul_update_strips_optional_fields():
@@ -268,3 +270,14 @@ def test_validate_avatar_url_accepts_https_and_relative_paths(
 def test_validate_avatar_url_rejects_unsafe_values(value: str):
     with pytest.raises(ValueError):
         validate_avatar_url(value)
+
+
+def test_skill_list_bound_matches_the_per_expert_cap():
+    """``ExpertSkillsUpdate`` cannot import the cap (circular import), so the
+    literal it carries is pinned here to the constant the folder enforces."""
+    bound = next(
+        m.max_length
+        for m in ExpertSkillsUpdate.model_fields["skills"].metadata
+        if getattr(m, "max_length", None) is not None
+    )
+    assert bound == MAX_SKILLS_PER_EXPERT

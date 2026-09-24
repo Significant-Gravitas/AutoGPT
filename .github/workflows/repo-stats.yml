@@ -7,14 +7,14 @@ on:
     - cron: "0 23 * * *"
   workflow_dispatch: # Allow for running this manually.
 
+permissions: {}
+
 jobs:
   j1:
     name: github-repo-stats
     runs-on: ubuntu-latest
     steps:
       - name: run-ghrs
-        # Use latest release.
-        uses: jgehrcke/github-repo-stats@HEAD
+        uses: jgehrcke/github-repo-stats@ff48771cbb4324c3b77490bbfc26d6a5f3831cdb # default branch as of 2026-07-10
         with:
           ghtoken: ${{ secrets.ghrs_github_api_token }}
-

@@ -171,11 +171,11 @@ describe("RecentChats — expert groups", () => {
     renderRecentChats();
 
     expect(await screen.findByText("expert-maria chat 4")).toBeDefined();
-    expect(await screen.findByText(mariaExpert.role)).toBeDefined();
+    expect(await screen.findByText("Marketing Manager")).toBeDefined();
     expect(
-      screen.getByText(mariaExpert.role).classList.contains("opacity-70"),
+      screen.getByText("Marketing Manager").classList.contains("opacity-70"),
     ).toBe(true);
-    expect(screen.queryByText("Marketing Manager")).toBeNull();
+    expect(screen.queryByText(mariaExpert.role)).toBeNull();
     expect(screen.queryByText("expert-maria chat 5")).toBeNull();
     expect(screen.queryByText("autopilot chat 5")).toBeNull();
 
@@ -198,13 +198,11 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(
-      expertGroup.querySelector('img[data-testid="notion-avatar-image"]'),
-    ).not.toBe(null);
+    expect(expertGroup.querySelector('[role="img"]')).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
-  it("colours a generated sidebar avatar with the expert's owner token", async () => {
+  it("uses a neutral fallback when no appearance is saved", async () => {
     const novaExpert: Expert = {
       ...mariaExpert,
       id: "expert-nova",
@@ -222,16 +220,9 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Nova chats",
     });
-    const avatar = expertGroup.querySelector(
-      'img[data-testid="notion-avatar-image"]',
-    );
-    expect(avatar?.getAttribute("width")).toBe("32");
-    expect(avatar?.getAttribute("height")).toBe("32");
-    expect(avatar?.classList.contains("border")).toBe(true);
-    expect(avatar?.classList.contains("border-zinc-400")).toBe(true);
-    expect(avatar?.getAttribute("data-avatar")).toMatch(
-      /\.violet\.svg\?v=\d+$/,
-    );
+    const avatar = expertGroup.querySelector('[role="img"]');
+    expect(avatar?.getAttribute("aria-label")).toBe("Nova, AI Expert");
+    expect(expertGroup.querySelector("[data-avatar]")).toBeNull();
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

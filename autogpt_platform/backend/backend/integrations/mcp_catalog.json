@@ -1074,5 +1074,21 @@
       ],
       "icon_id": "wonder"
     }
+  },
+  {
+    "name": "mcp_zapier",
+    "display_name": "Zapier",
+    "description": "Trigger and run actions across 8,000+ apps Zapier connects to, using natural language through Zapier's official MCP server.",
+    "mcp_server": {
+      "server_url": "https://mcp.zapier.com/api/v1/connect",
+      "documentation_url": "https://docs.zapier.com/mcp/home",
+      "setup_instructions": "Sign in with your Zapier account via OAuth to use the apps and Zaps already connected in your Zapier workspace. If your setup isn't on Zapier's supported OAuth client list, create a connection token at mcp.zapier.com instead and use it as a bearer token.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "zapier"
+    }
   }
 ]

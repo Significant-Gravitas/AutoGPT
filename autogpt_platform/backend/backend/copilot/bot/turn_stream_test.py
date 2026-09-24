@@ -343,6 +343,37 @@ class TestNativeChoices:
         choices_mock.clear_choice.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_multi_select_question_uses_numbered_text(self):
+        # A native button consumes the question on the first click, so there
+        # is no way to pick a second option through one.
+        adapter = _choice_adapter()
+
+        await _clarify(
+            adapter,
+            [
+                {
+                    "question": "Which areas?",
+                    "options": ["Research", "Outreach"],
+                    "allow_multiple": True,
+                }
+            ],
+        )
+
+        adapter.send_choice_buttons.assert_not_awaited()
+        sent = adapter.send_message.await_args.args[1]
+        assert "1. Research" in sent
+        assert "(Pick one or more.)" in sent
+
+    @pytest.mark.asyncio
+    async def test_single_select_question_keeps_no_multi_hint(self):
+        adapter = _choice_adapter()
+        adapter.supports_choice_buttons = False
+
+        await _clarify(adapter, [{"question": "Region?", "options": ["EU", "US"]}])
+
+        assert "Pick one or more" not in adapter.send_message.await_args.args[1]
+
+    @pytest.mark.asyncio
     async def test_too_many_options_for_this_platform_uses_text(self):
         adapter = _choice_adapter(max_options=6)
 

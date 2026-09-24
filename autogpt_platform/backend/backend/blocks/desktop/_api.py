@@ -17,6 +17,13 @@ from typing import Literal, Mapping, Optional
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
 
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
+
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
 WORKSPACE_PATH = "/home/user/workspace"
@@ -46,7 +53,12 @@ _VNC_DIR = VNC_PASSWORD_PATH.rsplit("/", 1)[0]
 _X11VNC_LOG = f"{_VNC_DIR}/x11vnc.log"
 _X11VNC_ERROR_LOG = f"{_VNC_DIR}/x11vnc_stderr.log"
 _NOVNC_LOG = f"{_VNC_DIR}/novnc.log"
-_STOP_STREAM = "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
+# The password file goes too: x11vnc deletes it only once it has read it, and
+# one that failed before that would leave the credential resting on the box.
+_STOP_STREAM = (
+    "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true; "
+    f"rm -f {shlex.quote(VNC_PASSWORD_PATH)}"
+)
 # Bound on the E2B volumes API (private beta) so a slow create cannot stall
 # sandbox creation; the by-name mount fallback is the normal path anyway.
 VOLUME_API_TIMEOUT_SECONDS = 10
@@ -95,16 +107,18 @@ class DesktopSession:
         volume_mounts: Optional[Mapping[str, str]] = None,
         template: str = DESKTOP_TEMPLATE,
         metadata: Optional[Mapping[str, str]] = None,
+        *,
+        owner: EgressOwner,
     ) -> tuple["DesktopSession", PersistenceInfo]:
         """Create a desktop sandbox.
 
         *volume_mounts* maps mount paths to durable volume names (see
         ``workspace_volume_mounts``); *metadata* is stamped on the sandbox so
         its owner can find it again through the E2B API if the cached id is
-        lost.
+        lost; *owner* is who the egress proxy sees the box as.
         """
         sandbox, persistence = await _create_sandbox_with_volumes(
-            volume_mounts, api_key, timeout_seconds, template, metadata
+            volume_mounts, api_key, timeout_seconds, template, metadata, owner=owner
         )
         session = cls(sandbox)
         try:
@@ -122,19 +136,26 @@ class DesktopSession:
             # rather than leak a sandbox that would bill until timeout and
             # then sit paused forever.
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+                await asyncio.wait_for(
+                    kill_sandbox(sandbox), timeout=_KILL_TIMEOUT_SECONDS
+                )
             raise
         return session, persistence
 
     @classmethod
     async def connect(
-        cls, sandbox_id: str, api_key: str, timeout_seconds: Optional[int] = None
+        cls,
+        sandbox_id: str,
+        api_key: str,
+        timeout_seconds: Optional[int] = None,
+        *,
+        owner: EgressOwner,
     ) -> "DesktopSession":
         """Reattach to a desktop; *timeout_seconds* re-arms its running-time
         limit, otherwise the SDK's 300 s default would pause a resumed desktop
         under the user long before a freshly created one."""
-        sandbox = await AsyncSandbox.connect(
-            sandbox_id, api_key=api_key, timeout=timeout_seconds
+        sandbox = await connect_sandbox(
+            AsyncSandbox, sandbox_id, owner, api_key=api_key, timeout=timeout_seconds
         )
         return cls(sandbox)
 
@@ -144,12 +165,12 @@ class DesktopSession:
         """Return the live stream URL and its password, starting the VNC stack
         only if needed.
 
-        *password* is the one this caller issued last time.  While noVNC is
-        still serving it (E2B's pause/resume restores processes) the same URL
-        comes back: restarting x11vnc and noVNC would sever the stream the
-        user is watching.  Without it, or once the proxy is gone, the stack is
-        (re)started under a fresh password, and whoever held the old URL is
-        locked out.  The caller decides when to forget the password (after a
+        *password* is the one this caller issued last time.  While x11vnc and
+        noVNC are both still serving it (E2B's pause/resume restores
+        processes) the same URL comes back: restarting them would sever the
+        stream the user is watching.  Without it, or once either is gone, the
+        stack is (re)started under a fresh password, and whoever held the old
+        URL is locked out.  The caller decides when to forget the password (after a
         pause, say) and so when a URL that may have leaked stops working.
         """
         if password is None or not await self._stream_listening():
@@ -213,8 +234,23 @@ class DesktopSession:
             return "(log unreadable)"
 
     async def _stream_listening(self) -> bool:
-        """Whether noVNC is still serving the stream (it survives a pause)."""
-        return await self._check(f'netstat -tuln | grep -q ":{STREAM_PORT} "')
+        """Whether the whole stream is still up (it survives a pause).
+
+        Both halves, not just the proxy: noVNC keeps listening after x11vnc
+        has died, and a URL handed back then opens onto nothing.  A listener
+        on the VNC port is not proof of x11vnc either: once it is gone the
+        box's user can bind that port itself, so root's own process is asked
+        for as well, which that user cannot forge.
+        """
+        try:
+            await self._vnc_command(
+                f"pgrep -x -u {VNC_USER} x11vnc >/dev/null"
+                f' && netstat -tln | grep -q ":{VNC_PORT} "'
+                f' && netstat -tln | grep -q ":{STREAM_PORT} "'
+            )
+        except Exception:
+            return False
+        return True
 
     async def _vnc_command(self, command: str):
         return await self.run_command(command, user=VNC_USER)
@@ -261,7 +297,15 @@ class DesktopSession:
         await self.sandbox.pause()
 
     async def kill(self) -> None:
-        await self.sandbox.kill()
+        await kill_sandbox(self.sandbox)
+
+    async def stop_stream(self) -> None:
+        """Stop serving the screen; the display itself stays up.
+
+        Whatever password the stream ran under stops working with it, and the
+        next ``start_stream`` brings the stack back under a fresh one.
+        """
+        await self._vnc_command(_STOP_STREAM)
 
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):
@@ -350,11 +394,14 @@ async def _create_sandbox_with_volumes(
     timeout_seconds: int,
     template: str = DESKTOP_TEMPLATE,
     metadata: Optional[Mapping[str, str]] = None,
+    *,
+    owner: EgressOwner,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
     kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template, metadata)
     if not volume_mounts:
         sandbox = await asyncio.wait_for(
-            AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+            create_sandbox(AsyncSandbox, owner, **kwargs),
+            timeout=CREATE_TIMEOUT_SECONDS,
         )
         return sandbox, PersistenceInfo()
 
@@ -367,7 +414,7 @@ async def _create_sandbox_with_volumes(
     for attempt in range(1, MOUNTED_CREATE_ATTEMPTS + 1):
         try:
             sandbox = await asyncio.wait_for(
-                AsyncSandbox.create(**kwargs, volume_mounts=mounts),
+                create_sandbox(AsyncSandbox, owner, **kwargs, volume_mounts=mounts),
                 timeout=CREATE_TIMEOUT_SECONDS,
             )
         except Exception as exc:
@@ -387,7 +434,7 @@ async def _create_sandbox_with_volumes(
     if kwargs.get("metadata"):
         kwargs["metadata"] = {**kwargs["metadata"], "autogpt_mounts": "none"}
     sandbox = await asyncio.wait_for(
-        AsyncSandbox.create(**kwargs), timeout=CREATE_TIMEOUT_SECONDS
+        create_sandbox(AsyncSandbox, owner, **kwargs), timeout=CREATE_TIMEOUT_SECONDS
     )
     return sandbox, PersistenceInfo(
         warning=(

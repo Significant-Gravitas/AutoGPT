@@ -4,6 +4,7 @@ import { RAISE_PROMPTS, type RaiseDraft } from "./helpers";
 // controls it introduces wait for the question to finish typing.
 export const BEAT_KEYS = [
   "role",
+  "jobTitle",
   "name",
   "avatar",
   "about",
@@ -43,6 +44,7 @@ export function buildFlowItems(
 
   const questions: Record<BeatKey, string> = {
     role: RAISE_PROMPTS.roleQuestion,
+    jobTitle: RAISE_PROMPTS.jobTitleQuestion,
     name: RAISE_PROMPTS.nameQuestion,
     avatar: RAISE_PROMPTS.avatarQuestion(draft.name),
     about: RAISE_PROMPTS.aboutQuestion(draft.name),
@@ -86,7 +88,8 @@ export function beatTriggers(
 ): Record<BeatKey, boolean> {
   return {
     role: draft.hasStarted,
-    name: draft.role !== null,
+    jobTitle: draft.role !== null,
+    name: draft.jobTitle !== null,
     avatar: draft.name !== "",
     about: draft.avatarUrl !== null,
     voice: draft.about !== null,
@@ -99,6 +102,7 @@ export function beatTriggers(
 function beatAnswers(draft: RaiseDraft): Record<BeatKey, boolean> {
   return {
     role: draft.role !== null,
+    jobTitle: draft.jobTitle !== null,
     name: draft.name !== "",
     avatar: draft.avatarUrl !== null,
     about: draft.about !== null,
@@ -120,6 +124,8 @@ export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
   switch (beat) {
     case "role":
       return { role: null };
+    case "jobTitle":
+      return { jobTitle: null };
     case "name":
       return { name: "" };
     case "avatar":

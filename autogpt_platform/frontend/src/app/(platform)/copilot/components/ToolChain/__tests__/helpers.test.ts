@@ -561,6 +561,25 @@ describe("markSupersededSubSessionRows", () => {
     ]);
   });
 
+  it("supersedes the delegation card when the poll ran through run_capability", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      {
+        ...subRow("b", "run_capability", "sub-1"),
+        input: {
+          id: "tool:get_sub_session_result",
+          input: { sub_session_id: "sub-1" },
+        },
+      },
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      false,
+    ]);
+  });
+
   it("keeps the answer of a run a re-delegation reuses the session for", () => {
     // Re-delegation deliberately reuses the sub-session, so keying on the id
     // alone would drop the first run's response from the transcript.

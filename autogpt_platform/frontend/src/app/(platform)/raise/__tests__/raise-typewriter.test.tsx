@@ -46,7 +46,7 @@ function renderRaise() {
 }
 
 function visibleBubbleText() {
-  const log = screen.getByRole("log", { name: "Raise expert conversation" });
+  const log = screen.getByRole("log", { name: "Expert creation conversation" });
   return Array.from(log.querySelectorAll("span[aria-hidden]")).map(
     (node) => node.textContent ?? "",
   );
@@ -66,6 +66,7 @@ test("renders restored conversation messages instantly after reload", async () =
     step: "avatar",
     hasStarted: true,
     role: "marketer",
+    jobTitle: "Marketing Manager",
     name: "Nova",
     color: null,
     avatarUrl: null,
@@ -82,7 +83,7 @@ test("renders restored conversation messages instantly after reload", async () =
   expect(
     await screen.findByRole(
       "log",
-      { name: "Raise expert conversation" },
+      { name: "Expert creation conversation" },
       { timeout: 5000 },
     ),
   ).toBeDefined();
@@ -90,7 +91,9 @@ test("renders restored conversation messages instantly after reload", async () =
   const visible = visibleBubbleText();
   expect(
     visible.some((text) =>
-      text.includes("Hello, I'm Otto. I'll help you raise your own expert."),
+      text.includes(
+        "Hello, I'm Otto. I'll help you create your own AI Expert.",
+      ),
     ),
   ).toBe(true);
   expect(

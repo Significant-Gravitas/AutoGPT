@@ -64,7 +64,7 @@ class FindLibraryAgentTool(BaseTool):
                         "agent's full graph JSON to (pretty-printed, "
                         "overwrites) instead of returning it inline. Requires "
                         "agent_id. The response includes an @@agptfile ref to "
-                        "pass to edit_agent — avoids pulling a large graph "
+                        "pass to tool:edit_agent — avoids pulling a large graph "
                         "through context when editing an existing agent."
                     ),
                 },
@@ -132,7 +132,7 @@ class FindLibraryAgentTool(BaseTool):
                 update={
                     "message": (
                         f"{result.message} You are an expert: to reuse a match, "
-                        "install it with install_expert_workflow rather than "
+                        "install it with tool:install_expert_workflow rather than "
                         "building a new agent."
                     )
                 }
@@ -152,7 +152,7 @@ class FindLibraryAgentTool(BaseTool):
             message += (
                 " Also in the owner's library, not installed on you: "
                 f"{_install_candidates(uninstalled)} — install one with "
-                "install_expert_workflow to use it."
+                "tool:install_expert_workflow to use it."
             )
         return result.model_copy(
             update={
@@ -255,7 +255,7 @@ async def _write_graph_note(
         user_id,
         session_id,
         label="Agent graph",
-        pass_to="edit_agent / validate_agent_graph",
+        pass_to="tool:edit_agent / tool:validate_agent_graph",
         fallback_note="retry with include_graph=true to inspect the graph inline.",
     )
     return note

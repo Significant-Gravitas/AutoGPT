@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { RJSFSchema } from "@rjsf/utils";
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import Form from "./registry";
 import { ExtendedFormContextType } from "./types";
 import { customValidator } from "./utils/custom-validator";
@@ -24,6 +24,7 @@ export function FormRenderer({
   formContext,
   className,
 }: FormRendererProps) {
+  const domIdPrefix = `${useId()}-`;
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
@@ -36,7 +37,7 @@ export function FormRenderer({
   return (
     <div className={cn("mt-4", className)} data-tutorial-id="input-handles">
       <Form
-        formContext={formContext}
+        formContext={{ ...formContext, domIdPrefix }}
         idPrefix="agpt"
         idSeparator="_%_"
         schema={preprocessedSchema}

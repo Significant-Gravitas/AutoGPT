@@ -3,6 +3,8 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import { v4 as uuidv4 } from "uuid";
+import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 
 // Backstop only. Promotion is normally driven instantly by the backend's
 // ``data-pending-drained`` SSE hint (see ``useMidTurnDrainPromotion``); this
@@ -86,7 +88,10 @@ export function useCopilotPendingChips({
   });
 
   const queueMessage = useCallback((text: string) => {
-    setQueue((prev) => [...prev, { id: crypto.randomUUID(), text }]);
+    // Options force uuid's getRandomValues path: crypto.randomUUID does not
+    // exist on a plain-HTTP LAN origin, and this updater runs during render,
+    // so there it took the whole chat page down instead of queueing.
+    setQueue((prev) => [...prev, { id: uuidv4({}), text }]);
   }, []);
 
   return { queuedMessages, queueMessage };
@@ -194,7 +199,7 @@ function usePeekOnBoundary({
       // disappears.
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
-          id: crypto.randomUUID(),
+          id: uuidv4({}),
           text,
         }));
         const queuedDuringWindow = current.filter(
@@ -441,7 +446,7 @@ function countPendingDrainedHints(messages: UIMessage[]): number {
   let count = 0;
   for (const message of messages) {
     for (const part of message.parts) {
-      if (part.type === "data-pending-drained") count++;
+      if (part.type === PENDING_DRAINED_PART_TYPE) count++;
     }
   }
   return count;
@@ -473,21 +478,22 @@ async function pollBackendAndPromote(
   const drained = snapshotQueue.slice(0, drainedCount);
   const drainedIds = new Set(drained.map((entry) => entry.id));
 
-  // Splice the promoted bubble at ``len-1`` so the trailing streaming
-  // assistant stays at ``messages[-1]``.  AI SDK's ``useChat`` streams
-  // every SSE text/tool delta into the last message; pushing the user
-  // bubble onto the tail makes ``[-1]`` the user bubble and every
-  // subsequent chunk lands in the wrong slot (silently) until a page
-  // refresh.  Inserting before the assistant keeps the stream flowing.
+  // Every drained chip becomes a fallback bubble, whether or not the
+  // ``data-pending-drained`` hint carried its text. A backend that ships the
+  // text lets the transcript draw the bubble at the drain point instead
+  // (``splitMessagesAtDrainHints``), and the render-time split then drops
+  // the fallback row it matches — so deciding here from the transcript's
+  // hints is unnecessary, and unsafe: the poll cannot tell which hint was
+  // this drain's, so an earlier drain's text would suppress a later chip
+  // with the same words (count-only hint, dropped hint) and lose its bubble.
   //
-  // The one tradeoff: during streaming the promoted bubbles cluster
-  // just above the current streaming assistant — which is earlier in
-  // the chronological order than the DB-canonical spot (between the
-  // tool result they rode in on and the continuing assistant).  AI SDK's
-  // single-message-per-turn model can't represent that mid-turn split
-  // client-side.  ``useHydrateOnStreamEnd`` replaces the in-memory
-  // messages with the DB-canonical order once the stream ends, so the
-  // bubbles snap to the correct position.
+  // Why not simply append the bubble? ``useChat`` streams every SSE delta
+  // into ``messages[-1]``; pushing the user bubble onto the tail makes
+  // ``[-1]`` the user bubble and every subsequent chunk lands in the wrong
+  // slot (silently) until a page refresh. Inserting before the assistant
+  // keeps the stream flowing, at the cost of showing a count-only follow-up
+  // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
+  // the list to the DB order at the end of the turn.
   setMessages((prev) => {
     const newBubbles = drained
       .map((entry) =>

@@ -1,12 +1,12 @@
-"""Search the capability registry: integrations, blocks, MCP servers and
-platform tools behind one query."""
+"""Search the capability registry: integrations, blocks, MCP servers,
+platform tools and the session owner's skills behind one query."""
 
+import asyncio
 import logging
 from typing import Any
 
 from backend.copilot.capabilities.index import SearchHit
 from backend.copilot.capabilities.models import CapabilityKindName
-from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.resolve import load_connection_state
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
@@ -18,15 +18,17 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .session_registry import session_registry
 
 logger = logging.getLogger(__name__)
 
 CONTEXTS = ("direct", "graph")
-KINDS = ("tool", "block", "mcp_server")
+KINDS = ("tool", "block", "mcp_server", "skill")
 _KIND_ARG: dict[str, CapabilityKindName] = {
     "tool": "tool",
     "block": "block",
     "mcp_server": "mcp_server",
+    "skill": "skill",
 }
 
 
@@ -41,10 +43,11 @@ class FindCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Search everything the platform can do: integrations, blocks, MCP "
-            "servers and platform tools, by service name or action. Results are "
-            "ranked and show whether the user has connected each one. Call this "
-            "before saying something is not possible. Then describe_capability(id) "
-            "to see inputs, and run_capability(id, input) to act."
+            "servers, platform tools and skills, by service name or action. "
+            "Results are ranked and show whether the user has connected each "
+            "one. Call this before saying something is not possible. Then "
+            "describe_capability(id) to see inputs, and run_capability(id, "
+            "input) to act."
         )
 
     @property
@@ -109,8 +112,10 @@ class FindCapabilityTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        connections = await load_connection_state(user_id)
-        result = get_registry().search(
+        connections, index = await asyncio.gather(
+            load_connection_state(user_id), session_registry(user_id, session)
+        )
+        result = index.search(
             query,
             context="graph" if context == "graph" else "direct",
             kind=_KIND_ARG.get(kind or ""),
@@ -128,7 +133,12 @@ class FindCapabilityTool(BaseTool):
                 session_id=session_id,
             )
         return CapabilityListResponse(
-            message=_message(result.service, len(result.hits), len(result.fallback)),
+            message=_message(
+                result.service,
+                len(result.hits),
+                len(result.fallback),
+                skills=any(hit.entry.kind == "skill" for hit in result.hits),
+            ),
             query=query,
             capabilities=[_listing(hit) for hit in result.hits],
             count=len(result.hits),
@@ -145,15 +155,24 @@ def _listing(hit: SearchHit) -> dict[str, Any]:
     return listing
 
 
-def _message(service: str | None, hits: int, fallback: int) -> str:
+def _message(
+    service: str | None, hits: int, fallback: int, *, skills: bool = False
+) -> str:
     parts = [f"Found {hits} capabilit{'y' if hits == 1 else 'ies'}"]
     if service:
         parts.append(f"for {service}")
     text = " ".join(parts) + "."
     if fallback:
         text += f" {fallback} generic fallback(s) listed separately."
-    return (
-        f"{text} Call describe_capability(id) before first use, then "
+    text += (
+        " Call describe_capability(id) before first use, then "
         "run_capability(id, input). connected=false means the user must sign in "
         "first: run_capability returns the sign-in card."
     )
+    if skills:
+        text += (
+            " A kind=skill result is a saved procedure: "
+            "run_capability(id, input={}) loads its body and package files; "
+            "read it before acting."
+        )
+    return text

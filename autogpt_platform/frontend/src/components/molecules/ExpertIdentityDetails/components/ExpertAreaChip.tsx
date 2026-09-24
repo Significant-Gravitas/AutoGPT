@@ -1,13 +1,13 @@
 import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 
 interface Props {
   role: string;
+  label: string;
 }
 
-export function ExpertAreaChip({ role }: Props) {
+export function ExpertAreaChip({ role, label }: Props) {
   return (
     <Badge
       variant="info"
@@ -19,7 +19,7 @@ export function ExpertAreaChip({ role }: Props) {
         className="shrink-0"
         aria-hidden
       />
-      <span className="truncate">{getExpertRoleLabel(role)}</span>
+      <span className="truncate">{label}</span>
     </Badge>
   );
 }

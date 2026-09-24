@@ -3,6 +3,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { ReactNode } from "react";
+import { CategoryTag } from "../../../components/CategoryChip/CategoryTag";
 
 interface Props {
   expert: Expert;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function ExpertPageHeader({ expert, actions }: Props) {
+  const area = expert.categories?.[0];
+
   return (
     <header>
       <div className="flex flex-wrap items-center gap-4 sm:gap-5">
@@ -20,11 +23,24 @@ export function ExpertPageHeader({ expert, actions }: Props) {
           size={96}
         />
         <div className="min-w-0 flex-1">
+          {/* The job title trails the name, as it does on the shelf's cards;
+              the chip below belongs to the area the expert works in. */}
           <ExpertIdentityDetails
             name={expert.name}
-            role={expert.role}
+            role={area || expert.job_title ? undefined : expert.role}
             size="page"
+            nameAlign="baseline"
+            nameAccessory={
+              expert.job_title ? (
+                <span className="min-w-0 truncate text-base text-zinc-500">
+                  {expert.job_title}
+                </span>
+              ) : undefined
+            }
           />
+          {area ? (
+            <CategoryTag category={area} size="default" className="mt-2" />
+          ) : null}
         </div>
         <div className="w-full sm:w-auto">{actions}</div>
       </div>

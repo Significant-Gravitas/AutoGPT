@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
@@ -188,6 +189,8 @@ from backend.data.workspace import (
     resolve_expert_workspace_scope,
     soft_delete_workspace_file,
 )
+from backend.data.workspace_folder import list_workspace_folders
+from backend.data.workspace_skill import publish_workspace_skill_file
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -445,11 +448,13 @@ class DatabaseManager(AppService):
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
+    publish_workspace_skill_file = _(publish_workspace_skill_file)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
+    list_workspace_folders = _(list_workspace_folders)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
     resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
@@ -531,6 +536,16 @@ class DatabaseManager(AppService):
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    # The scheduler's fire path reads the routine behind a copilot-turn job to
+    # find its durable thread and whether the owner granted it anything.
+    create_routine = _(experts_db.create_routine)
+    list_routines = _(experts_db.list_routines)
+    enable_routine = _(experts_db.enable_routine)
+    disable_routine = _(experts_db.disable_routine)
+    get_routine = _(experts_db.get_routine)
+    record_routine_thread = _(experts_routine_jobs.record_routine_thread)
+    record_routine_fired = _(experts_routine_jobs.record_routine_fired)
+    mark_routine_unscheduled = _(experts_routine_jobs.mark_routine_unscheduled)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
     spend_approval_required = _(experts_spend_approval.spend_approval_required)
     park_execution_for_spend_approval = _(
@@ -545,6 +560,7 @@ class DatabaseManager(AppService):
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
+    add_expert_skill_names = _(experts_db.add_expert_skill_names)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
@@ -853,11 +869,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
+    publish_workspace_skill_file = d.publish_workspace_skill_file
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
+    list_workspace_folders = d.list_workspace_folders
     soft_delete_workspace_file = d.soft_delete_workspace_file
     resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
@@ -930,6 +948,14 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    get_routine = d.get_routine
+    record_routine_thread = d.record_routine_thread
+    record_routine_fired = d.record_routine_fired
+    mark_routine_unscheduled = d.mark_routine_unscheduled
+    create_routine = d.create_routine
+    list_routines = d.list_routines
+    enable_routine = d.enable_routine
+    disable_routine = d.disable_routine
     enforce_expert_run_budget = d.enforce_expert_run_budget
     spend_approval_required = d.spend_approval_required
     park_execution_for_spend_approval = d.park_execution_for_spend_approval
@@ -942,6 +968,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
     add_expert_skill_name = d.add_expert_skill_name
+    add_expert_skill_names = d.add_expert_skill_names
     remove_expert_skill_name = d.remove_expert_skill_name
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow

@@ -775,8 +775,8 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     const header = screen.getByTestId("expert-thread-header");
     expect(within(header).getByText("Maria")).toBeDefined();
-    expect(within(header).getByText(mariaExpert.role)).toBeDefined();
-    expect(within(header).queryByText("Marketing Manager")).toBeNull();
+    expect(within(header).getByText("Marketing Manager")).toBeDefined();
+    expect(within(header).queryByText(mariaExpert.role)).toBeNull();
     expect(within(header).getByRole("img", { name: "Maria" })).toBeDefined();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
@@ -872,11 +872,48 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = screen.getByTestId("expert-thread-header");
-    const chip = within(header).getByLabelText(`Maria — ${mariaExpert.role}`);
+    const chip = within(header).getByLabelText("Maria — Marketing Manager");
 
     // A tooltip opens on focus as well as hover; an unfocusable trigger
     // hides the role from keyboard users entirely.
     expect(chip.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("does not rewrite a job title that matches a special area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{
+          ...mariaIdentity,
+          jobTitle: "Social & Content Repurposing",
+        }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(
+      within(header).getByText("Social & Content Repurposing"),
+    ).toBeDefined();
+    expect(within(header).queryByText("Social media")).toBeNull();
+  });
+
+  it("falls back to the default role when an expert has no title or area", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={{ ...mariaIdentity, role: null, jobTitle: null }}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(within(header).getByText("Head of AI")).toBeDefined();
+    expect(within(header).getByLabelText("Maria — Head of AI")).toBeDefined();
   });
 });
 

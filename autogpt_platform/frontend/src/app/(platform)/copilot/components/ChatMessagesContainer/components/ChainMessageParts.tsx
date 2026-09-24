@@ -15,7 +15,6 @@ interface Props {
   isCurrentlyStreaming: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
@@ -28,7 +27,6 @@ export function ChainMessageParts({
   isCurrentlyStreaming,
   onRetry,
   fileUrlBuilder,
-  forceArtifacts,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
@@ -70,7 +68,6 @@ export function ChainMessageParts({
         partIndex={segment.index}
         onRetry={onRetry}
         fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}

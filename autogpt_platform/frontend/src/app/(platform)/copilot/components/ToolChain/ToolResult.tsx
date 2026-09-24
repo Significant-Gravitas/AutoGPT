@@ -15,6 +15,7 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
@@ -148,6 +149,16 @@ function chipStrings(value: unknown, key: string): string[] | null {
     .map((item) => str(item, key))
     .filter((label): label is string => !!label);
   return labels.length > 0 ? labels : null;
+}
+
+/** The live desktop is the whole point of start_desktop: embed the stream
+ *  instead of letting the payload fall through to a truncated key/value
+ *  dump. The same renderer serves block outputs and attachments, and the
+ *  card is what tells the side panel a desktop exists. */
+function desktopCard(output: Record<string, unknown>, readOnly: boolean) {
+  const stream = output.desktop_stream;
+  if (!stream || !desktopStreamRenderer.canRender(stream)) return null;
+  return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
 }
 
 const CAPABILITY_RUN_TOOLS = new Set([
@@ -340,6 +351,11 @@ function toolCard(
     case "run_capability":
     case "resume_capability": {
       if (!output) return null;
+      // Transcripts recorded while start_desktop was deferred (#14569 until
+      // it went eager again) carry its result on a run_capability row: same
+      // payload, same card.
+      const desktop = desktopCard(output, readOnly);
+      if (desktop) return desktop;
       const block = asObject(output.block);
       if (block) return <BlockListCard blocks={[block]} />;
       if (str(output, "block_name", "block_id"))
@@ -438,16 +454,8 @@ function toolCard(
     }
     case "bash_exec":
       return <Terminal row={row} />;
-    case "start_desktop": {
-      // The live desktop is the whole point of the tool: embed the stream
-      // instead of letting the payload fall through to a truncated key/value
-      // dump. The same renderer serves block outputs and attachments.
-      const stream = output ? output.desktop_stream : null;
-      if (stream && desktopStreamRenderer.canRender(stream)) {
-        return <DesktopStreamCard stream={stream} readOnly={readOnly} />;
-      }
-      return null;
-    }
+    case "start_desktop":
+      return output ? desktopCard(output, readOnly) : null;
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":
@@ -494,7 +502,10 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  const card = toolCard(row, output, readOnly);
+  const target = capabilityTargetRow(row);
+  const card =
+    toolCard(target, output, readOnly) ??
+    (target === row ? null : toolCard(row, output, readOnly));
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;
@@ -508,7 +519,7 @@ export function ToolResult({ row, readOnly = false }: Props) {
     return <KeyValueList value={str(output, "message") ?? ""} />;
 
   return (
-    linkCard(data, asObject(row.input)) ??
+    linkCard(data, asObject(target.input)) ??
     shapeCard(data) ?? <KeyValueList value={data} />
   );
 }

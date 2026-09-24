@@ -9,12 +9,26 @@ import asyncio
 import logging
 import mimetypes
 import uuid
-from typing import Optional
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import (
+    workspace_db,
+    workspace_folder_db,
+    workspace_skill_db,
+)
+from backend.data.skill_capacity import (
+    MAX_SKILLS_PER_EXPERT,
+    SKILL_ORIGIN_LABELS,
+    SKILL_ORIGIN_USER,
+    SkillLimitError,
+    SkillOwnedError,
+    skill_origin,
+    skill_owner_folder,
+)
 from backend.data.workspace import WorkspaceFile
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -22,9 +36,13 @@ from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
     WorkspaceScope,
 )
+from backend.data.workspace_skill import WorkspaceSkillWrite
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
+
+if TYPE_CHECKING:
+    from backend.data.workspace_folder import WorkspaceFolder
 
 
 def format_bytes(n: int) -> str:
@@ -106,6 +124,15 @@ class WorkspaceManager:
         if requested is None:
             return allowed
         return [p for p in requested if any(p.startswith(a) for a in allowed)]
+
+    def _include_user_files(self, requested: bool) -> bool:
+        """Whether a listing also spans the owner's own files.
+
+        A scoped manager answers from its own grant: the scope is resolved
+        from persisted attribution, so it decides both directions and a
+        caller's argument is only consulted when there is no scope to ask.
+        """
+        return self.scope.reads_user_files if self.scope is not None else requested
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -220,6 +247,7 @@ class WorkspaceManager:
         mime_type: Optional[str] = None,
         overwrite: bool = False,
         metadata: Optional[dict] = None,
+        scanned_checksums: Collection[str] = (),
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -234,6 +262,9 @@ class WorkspaceManager:
             mime_type: MIME type (auto-detected if not provided)
             overwrite: Whether to overwrite existing file at path
             metadata: Optional metadata dict (e.g., origin tracking)
+            scanned_checksums: SHA-256s of bytes the server has already
+                scanned clean; content hashing to one of them is not scanned
+                again. Never pass hashes a client supplied.
 
         Returns:
             Created WorkspaceFile instance
@@ -301,15 +332,14 @@ class WorkspaceManager:
 
         # Scan here — callers must NOT duplicate this scan.
         # WorkspaceManager owns virus scanning for all persisted files.
-        await scan_content_safe(content, filename=filename)
+        checksum = compute_file_checksum(content)
+        if checksum not in scanned_checksums:
+            await scan_content_safe(content, filename=filename)
 
         # Auto-detect MIME type if not provided
         if mime_type is None:
             mime_type, _ = mimetypes.guess_type(filename)
             mime_type = mime_type or "application/octet-stream"
-
-        # Compute checksum
-        checksum = compute_file_checksum(content)
 
         # Generate unique file ID for storage
         file_id = str(uuid.uuid4())
@@ -360,14 +390,69 @@ class WorkspaceManager:
                     ) from None
                 raise ValueError(f"File already exists at path: {path}")
 
+        replaced_storage_path: str | None = None
+        replaced_file_id: str | None = None
         try:
-            file = await _persist_db_record()
+            if skill_owner_folder(path) is not None:
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    WorkspaceSkillWrite(
+                        workspace_id=self.workspace_id,
+                        file_id=file_id,
+                        name=filename,
+                        path=path,
+                        storage_path=storage_path,
+                        mime_type=mime_type,
+                        size_bytes=len(content),
+                        overwrite=overwrite,
+                        checksum=checksum,
+                        metadata=metadata,
+                    )
+                )
+                if publication.status == "capacity":
+                    origin = skill_origin(metadata) or SKILL_ORIGIN_USER
+                    raise SkillLimitError(
+                        f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {SKILL_ORIGIN_LABELS[origin]} "
+                        "skills). Delete an unused skill first."
+                    )
+                if publication.status == "owned":
+                    raise SkillOwnedError(
+                        f"'{path.rsplit('/', 2)[1]}' is one of the owner's own skills; "
+                        "rename or delete it before installing a skill by that name."
+                    )
+                if publication.status == "exists":
+                    raise ValueError(f"File already exists at path: {path}")
+                assert publication.file is not None
+                file = publication.file
+                replaced_storage_path = publication.replaced_storage_path
+                replaced_file_id = publication.replaced_file_id
+            else:
+                file = await _persist_db_record()
         except Exception:
             try:
                 await storage.delete(storage_path)
             except Exception as e:
                 logger.warning(f"Failed to clean up orphaned storage file: {e}")
             raise
+
+        if replaced_storage_path and replaced_storage_path != storage_path:
+            try:
+                await storage.delete(replaced_storage_path)
+            except Exception:
+                logger.warning("Failed to clean up replaced skill blob", exc_info=True)
+
+        if replaced_file_id and replaced_file_id != file.id:
+            try:
+                from backend.api.features.workspace.embeddings import (
+                    delete_workspace_file_embedding,
+                )
+
+                await delete_workspace_file_embedding(
+                    file_id=replaced_file_id, user_id=self.user_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean up replaced skill embedding", exc_info=True
+                )
 
         logger.info(
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
@@ -391,6 +476,13 @@ class WorkspaceManager:
 
         return file
 
+    async def list_folders(self) -> list["WorkspaceFolder"]:
+        """The folder tree; empty for a scope without the owner's files, whose
+        folders these are."""
+        if self.scope is not None and not self.scope.reads_user_files:
+            return []
+        return await workspace_folder_db().list_workspace_folders(self.workspace_id)
+
     async def list_files(
         self,
         path: Optional[str] = None,
@@ -402,8 +494,10 @@ class WorkspaceManager:
         metadata_equals: Optional[dict] = None,
         metadata_not_equals: Optional[dict] = None,
         folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
         root_only: bool = False,
         allowed_path_prefixes: Optional[list[str]] = None,
+        include_user_files: bool = False,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -427,15 +521,29 @@ class WorkspaceManager:
             metadata_not_equals: Match files whose ``metadata`` does not equal
                 this object (Artifacts "Generated" filter).
             folder_id: If set, only return files in this folder.
+            folder_ids: If set, only return files in any of these folders.
             root_only: If True, only return root-level files (folderId IS NULL).
+                Every folder filter is a workspace-wide axis, so any of them
+                lifts the current-session default the way
+                ``include_all_sessions`` does; an expert's scope still confines
+                the result.
             allowed_path_prefixes: Only list files under these prefixes. When
                 the manager carries a scope the prefixes are intersected with
                 it (see :meth:`_allowed_prefixes`).
+            include_user_files: Also list the owner's own files. A scoped
+                manager takes this from its scope instead
+                (see :meth:`_include_user_files`).
 
         Returns:
             List of WorkspaceFile instances
         """
-        effective_path = self._get_effective_path(path, include_all_sessions)
+        effective_path = self._get_effective_path(
+            path,
+            include_all_sessions
+            or folder_id is not None
+            or folder_ids is not None
+            or root_only,
+        )
         db = workspace_db()
 
         return await db.list_workspace_files(
@@ -448,8 +556,10 @@ class WorkspaceManager:
             metadata_equals=metadata_equals,
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
+            folder_ids=folder_ids,
             root_only=root_only,
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
+            include_user_files=self._include_user_files(include_user_files),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -563,7 +673,11 @@ class WorkspaceManager:
         self,
         path: Optional[str] = None,
         include_all_sessions: bool = False,
+        folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
+        root_only: bool = False,
         allowed_path_prefixes: Optional[list[str]] = None,
+        include_user_files: bool = False,
     ) -> int:
         """
         Get number of files in workspace.
@@ -575,15 +689,28 @@ class WorkspaceManager:
             path: Optional path prefix to filter (e.g., "/documents/")
             include_all_sessions: If True, count all files in workspace.
                                   If False (default), only count current session's files.
+            folder_id: See :meth:`list_files`.
+            folder_ids: See :meth:`list_files`.
+            root_only: See :meth:`list_files`.
 
         Returns:
             Number of files
         """
-        effective_path = self._get_effective_path(path, include_all_sessions)
+        effective_path = self._get_effective_path(
+            path,
+            include_all_sessions
+            or folder_id is not None
+            or folder_ids is not None
+            or root_only,
+        )
         db = workspace_db()
 
         return await db.count_workspace_files(
             self.workspace_id,
             path_prefix=effective_path,
+            folder_id=folder_id,
+            folder_ids=folder_ids,
+            root_only=root_only,
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
+            include_user_files=self._include_user_files(include_user_files),
         )

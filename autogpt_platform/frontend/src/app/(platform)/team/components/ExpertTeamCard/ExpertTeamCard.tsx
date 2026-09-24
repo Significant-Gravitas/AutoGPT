@@ -98,7 +98,7 @@ export function ExpertTeamCard({
               avatarUrl={expert.avatar_url}
               color={expert.color}
               size={88}
-              className="ring-4 ring-background"
+              className="rounded-full ring-4 ring-background"
             />
           </span>
 
@@ -130,6 +130,7 @@ export function ExpertTeamCard({
           <ExpertIdentityDetails
             name={expert.name}
             role={expert.role}
+            jobTitle={expert.job_title}
             nameAccessory={
               <IntegrationIcons
                 expertName={expert.name}
