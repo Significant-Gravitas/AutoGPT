@@ -1580,11 +1580,6 @@ async def _cancel_customer_subscriptions(
 
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
-    details = (
-        {"cancellation_details": {"comment": cancellation_comment}}
-        if cancellation_comment
-        else {}
-    )
     # Query active and trialing separately; Stripe's list API accepts a single status
     # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
     # past_due subs rather than filter them out client-side via status="all".
@@ -1626,15 +1621,31 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    invoice_now=False,
-                    prorate=False,
-                    **details,
+                    **_cancel_params(cancellation_comment, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
             else:
-                await stripe_call(stripe.Subscription.cancel_async, sub_id, **details)
+                await stripe_call(
+                    stripe.Subscription.cancel_async,
+                    sub_id,
+                    **_cancel_params(cancellation_comment, trial=False),
+                )
     return len(seen_ids)
+
+
+def _cancel_params(
+    cancellation_comment: str | None, *, trial: bool
+) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration; a comment, when given,
+    becomes ``cancellation_details.comment``."""
+    params: stripe.Subscription.CancelParams = {}
+    if trial:
+        params["invoice_now"] = False
+        params["prorate"] = False
+    if cancellation_comment:
+        params["cancellation_details"] = {"comment": cancellation_comment}
+    return params
 
 
 async def cancel_stripe_subscription(user_id: str) -> bool:
