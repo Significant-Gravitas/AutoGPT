@@ -194,6 +194,7 @@ describe("Marketplace expert page", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Maria" }),
     ).toBeDefined();
+    expect(screen.getByText("Marketing Strategist")).toBeDefined();
     expect(screen.getByText("Grows your brand while you sleep")).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: /^Workflows/ })).getByText(
@@ -292,7 +293,9 @@ describe("Marketplace expert page", () => {
 
     renderPage();
 
-    const link = await screen.findByRole("link", { name: "Brand voice guide" });
+    const link = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
     expect(link.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
     );
@@ -322,7 +325,7 @@ describe("Marketplace expert page", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("link", { name: "SEO content brief" }),
+      await screen.findByRole("link", { name: /^SEO content brief/ }),
     ).toBeDefined();
     expect(screen.queryByText("Seo content brief")).toBeNull();
   });
