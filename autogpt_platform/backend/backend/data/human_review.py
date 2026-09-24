@@ -320,7 +320,15 @@ def _scope_columns(
     session_id: str | None,
 ) -> dict:
     if session_id:
-        return {"sessionId": session_id}
+        # The legacy graph values let pods on the previous deploy, which read
+        # these columns as non-null, still load the row; drop with the cleanup.
+        legacy_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
+        return {
+            "sessionId": session_id,
+            "graphExecId": legacy_id,
+            "graphId": legacy_id,
+            "graphVersion": 1,
+        }
     return {
         "graphExecId": graph_exec_id,
         "graphId": graph_id,

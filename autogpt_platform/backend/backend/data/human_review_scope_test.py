@@ -9,8 +9,9 @@ from uuid import uuid4
 
 import pytest
 from prisma.enums import ReviewStatus
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import PendingHumanReview, User
+from pydantic import BaseModel
 
 from backend.data.human_review import (
     check_approval,
@@ -62,7 +63,8 @@ async def test_chat_review_has_no_graph_fields_and_is_found_by_its_chat(user_id)
     row = await PendingHumanReview.prisma().find_unique(
         where={"nodeExecId": review.node_exec_id}
     )
-    assert row and row.sessionId == session_id and row.graphExecId is None
+    assert row and row.sessionId == session_id
+    assert row.graphExecId == f"copilot-session-{session_id}"
 
 
 async def test_graph_review_keeps_its_graph_execution(user_id):
@@ -107,7 +109,8 @@ async def test_a_caller_passing_the_old_synthetic_id_writes_a_chat_review(user_i
     row = await PendingHumanReview.prisma().find_unique(
         where={"nodeExecId": review.node_exec_id}
     )
-    assert row and row.sessionId == session_id and row.graphId is None
+    assert row and row.sessionId == session_id
+    assert row.graphId == f"copilot-session-{session_id}"
     # ...and the same caller finds it again by the id it passed.
     old_id = f"copilot-session-{session_id}"
     found = await get_pending_reviews_for_execution(old_id, user_id)
@@ -212,3 +215,57 @@ async def test_an_auto_approval_made_before_the_migration_still_holds(user_id):
         session_id=session_id,
     )
     assert approved is not None and approved.status == ReviewStatus.APPROVED
+
+
+class _PreviousDeployReview(BaseModel):
+    """The graph fields as the review model before this change required them."""
+
+    node_exec_id: str
+    graph_exec_id: str
+    graph_id: str
+    graph_version: int
+
+
+async def test_a_new_chat_review_loads_on_the_previous_deploy_too(user_id):
+    session_id = f"chat-{uuid4()}"
+    await get_or_create_human_review(
+        user_id=user_id,
+        node_exec_id=f"copilot-node-blk:{uuid4().hex[:8]}",
+        session_id=session_id,
+        input_data={},
+        message="Create Folder",
+        editable=True,
+    )
+    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    row = await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": review.node_exec_id}
+    )
+    assert row
+
+    _PreviousDeployReview(
+        node_exec_id=row.nodeExecId,
+        graph_exec_id=row.graphExecId,
+        graph_id=row.graphId,
+        graph_version=row.graphVersion,
+    )
+    assert review.session_id == session_id and review.graph_exec_id is None
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        {},
+        {"graphExecId": "ge-1", "graphId": "g-1", "graphVersion": 1, "sessionId": "s"},
+    ],
+    ids=["neither", "both"],
+)
+async def test_the_database_refuses_a_review_without_exactly_one_scope(user_id, scope):
+    with pytest.raises(PrismaError, match="graph_or_session_check"):
+        await PendingHumanReview.prisma().create(
+            data={
+                "nodeExecId": f"bad-{uuid4()}",
+                "userId": user_id,
+                "payload": SafeJson({}),
+                **scope,
+            }
+        )
