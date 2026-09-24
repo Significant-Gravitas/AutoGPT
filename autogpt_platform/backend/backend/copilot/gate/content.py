@@ -65,7 +65,7 @@ async def judge_content(
         response = await asyncio.wait_for(
             call_provider_openai_compat_sync(
                 client=_get_aux_client(),
-                model=config.gate_model,
+                model=config.gate_content_model,
                 messages=[
                     {"role": "system", "content": CONTENT_RUBRIC},
                     {"role": "user", "content": content},
@@ -80,6 +80,11 @@ async def judge_content(
         logger.warning(f"Content judge failed on {source[:80]}", exc_info=True)
         return ContentVerdict(held=True, passage=_UNCHECKED, judged=False)
 
+    # A quoted passage with no verdict word can only be a hold.
+    if raw.strip().lower().startswith(
+        "passage:"
+    ) and not raw.strip().lower().startswith("passage: none"):
+        raw = f"hold\n{raw.strip()}"
     verdict = parse_answer(raw, ("clean", "hold"), "passage")
     if verdict is None:
         logger.warning(f"Content judge returned an unusable body for {source[:80]}")
