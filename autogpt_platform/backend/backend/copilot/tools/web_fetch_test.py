@@ -154,8 +154,8 @@ async def test_execute_detects_js_rendered_shell_and_emits_hint():
         )
 
     assert isinstance(result, WebFetchResponse)
-    assert "browser_navigate" in result.message
-    assert "browser_navigate" in result.content
+    assert "tool:browser_navigate" in result.message
+    assert "tool:browser_navigate" in result.content
     assert "Content not rendered" in result.content
 
 

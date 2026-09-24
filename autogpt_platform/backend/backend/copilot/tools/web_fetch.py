@@ -260,11 +260,11 @@ class WebFetchTool(BaseTool):
         if is_html and extract_text and _is_client_rendered_shell(raw_text, text):
             hint = (
                 "[Notice: Content not rendered. This page appears to require JavaScript "
-                "to render its content. Use the 'browser_navigate' tool instead.]"
+                "to render its content. Use the 'tool:browser_navigate' tool instead.]"
             )
             text = f"{hint}\n\n{text}".strip()
             message = (
-                f"Fetched {url} — warning: content not rendered (use browser_navigate)"
+                f"Fetched {url} — warning: content not rendered (use tool:browser_navigate)"
             )
 
         if text_truncated and raw_truncated:
