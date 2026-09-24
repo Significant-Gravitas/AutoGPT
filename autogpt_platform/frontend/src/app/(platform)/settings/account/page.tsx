@@ -39,6 +39,7 @@ export default function SettingsPreferencesPage() {
   } = usePreferencesPage();
 
   const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
+  const browserCardIndex = showNotifications ? 3 : 2;
 
   if (isError) {
     return (
@@ -80,9 +81,11 @@ export default function SettingsPreferencesPage() {
         />
       ) : null}
 
-      <BrowserNotificationsCard index={3} />
+      <BrowserNotificationsCard index={browserCardIndex} />
 
-      {isConsentManagerConfigured() ? <CookieSettingsCard index={4} /> : null}
+      {isConsentManagerConfigured() ? (
+        <CookieSettingsCard index={browserCardIndex + 1} />
+      ) : null}
 
       <SaveBar
         visible={dirty}
