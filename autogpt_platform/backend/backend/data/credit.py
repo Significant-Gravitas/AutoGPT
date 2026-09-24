@@ -808,8 +808,7 @@ class UserCredit(UserCreditBase):
                 await self._top_up_credits(
                     user_id=user_id,
                     amount=auto_top_up.amount,
-                    # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
+                    key=_auto_top_up_key(user_id, metadata),
                     ceiling_balance=auto_top_up.threshold,
                     top_up_type=TopUpType.AUTO,
                 )
@@ -1400,6 +1399,13 @@ class UserCredit(UserCreditBase):
             )
             for invoice in invoices.data
         ]
+
+
+def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str | None:
+    """One auto top-up per graph execution or chat; usage with neither
+    leaves the ceiling balance as the only guard."""
+    scope = metadata.graph_exec_id or metadata.session_id
+    return f"AUTO-TOP-UP-{user_id}-{scope}" if scope else None
 
 
 class DisabledUserCredit(UserCreditBase):
