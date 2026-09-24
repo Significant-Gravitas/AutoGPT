@@ -85,7 +85,6 @@ _SUBJECT_KEYS = (
     "filename",
     "file_path",
     "url",
-    "channel",
     "query",
 )
 _HEADLINE_VERBS = {

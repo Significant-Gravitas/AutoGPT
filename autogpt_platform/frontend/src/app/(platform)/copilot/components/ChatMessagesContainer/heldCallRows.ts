@@ -46,3 +46,59 @@ function isHeldOutput(output: unknown): boolean {
     typeof (value as { review_id?: unknown }).review_id === "string"
   );
 }
+
+export type HeldOutcomeKind = "approved" | "rejected" | "expired" | "closed";
+
+export interface HeldOutcome {
+  outcome: HeldOutcomeKind;
+  // The run's own output, as the tool would have returned it directly.
+  output: unknown;
+}
+
+const OUTCOMES = new Set<string>(["approved", "rejected", "expired", "closed"]);
+const RESULT_RE = /<held_call_result[^>]*>\n?([\s\S]*?)\n?<\/held_call_result>/;
+
+export function getHeldOutcomes(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): Map<string, HeldOutcome> {
+  const outcomes = new Map<string, HeldOutcome>();
+  for (const message of messages) {
+    const held = heldCallMetadata(message.metadata);
+    if (!held) continue;
+    const text = message.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
+    const body = RESULT_RE.exec(text)?.[1] ?? "";
+    outcomes.set(held.toolCallId, {
+      // Rows persisted before the outcome was recorded say "Nothing ran" when refused.
+      outcome:
+        held.outcome ??
+        (body.startsWith("Nothing ran") ? "closed" : "approved"),
+      output: parseOutput(body),
+    });
+  }
+  return outcomes;
+}
+
+function heldCallMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const held = (metadata as { held_call?: unknown }).held_call;
+  if (!held || typeof held !== "object") return null;
+  const { tool_call_id, outcome } = held as Record<string, unknown>;
+  if (typeof tool_call_id !== "string" || !tool_call_id) return null;
+  return {
+    toolCallId: tool_call_id,
+    outcome:
+      typeof outcome === "string" && OUTCOMES.has(outcome)
+        ? (outcome as HeldOutcomeKind)
+        : null,
+  };
+}
+
+function parseOutput(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
