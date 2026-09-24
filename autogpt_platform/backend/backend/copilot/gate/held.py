@@ -16,13 +16,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from prisma.enums import ReviewStatus
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
+from backend.util.encryption import JSONCryptor
 
 from . import chat_rules
 from . import review as review_store
@@ -72,7 +73,13 @@ async def remember(session_id: str, call: HeldCall) -> bool:
     try:
         redis = await get_redis_async()
         async with redis.pipeline(transaction=True) as pipe:
-            pipe.hset(_key(session_id), call.review_id, call.model_dump_json())
+            # Encrypted: the arguments can hold a credential, and must stay exact
+            # to match the approval, so they cannot be redacted like the card's.
+            pipe.hset(
+                _key(session_id),
+                call.review_id,
+                JSONCryptor().encrypt(call.model_dump(mode="json")),
+            )
             pipe.expire(_key(session_id), _TTL_SECONDS)
             await pipe.execute()
         return True
@@ -366,7 +373,12 @@ async def _held(session_id: str) -> dict[str, HeldCall]:
     held: dict[str, HeldCall] = {}
     for key, value in raw.items():
         review_id = key.decode() if isinstance(key, bytes) else key
-        held[review_id] = HeldCall.model_validate_json(value)
+        stored = value.decode() if isinstance(value, bytes) else value
+        try:
+            held[review_id] = HeldCall.model_validate(JSONCryptor().decrypt(stored))
+        except ValidationError:
+            # Unreadable is the same as gone: the answer restores it from its card.
+            logger.warning(f"Gate could not read held call {review_id}")
     return held
 
 
