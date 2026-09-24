@@ -31,7 +31,8 @@ RUN if [ -f .env.production ]; then \
     fi
 RUN pnpm run generate:api
 # In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
-RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
+# The cache mount keeps Next.js's webpack cache between builds (CI restores it too)
+RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:24.18-alpine3.23 AS prod

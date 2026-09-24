@@ -257,6 +257,27 @@ jobs:
             image=${{ env.BUILDKIT_IMAGE }}
             network=host
 
+      # The frontend Dockerfile keeps Next.js's webpack cache in a BuildKit cache
+      # mount. A fresh builder starts empty, so seed the mount from the last run.
+      - name: Set up Platform - Restore Next.js build cache
+        id: next-build-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/next-build-cache
+          key: next-build-cache-v1-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+          restore-keys: next-build-cache-v1-
+
+      - name: Set up Platform - Load Next.js build cache into BuildKit
+        if: steps.next-build-cache.outputs.cache-matched-key != ''
+        working-directory: /tmp/next-build-cache
+        run: |
+          docker buildx build --progress=plain -f - . <<'EOF'
+          FROM node:24.18-alpine3.23
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              --mount=type=bind,target=/seed \
+              cp -a /seed/. /app/.next/cache/
+          EOF
+
       - name: Set up Platform - Build Docker images
         id: platform-build
         working-directory: autogpt_platform
@@ -303,6 +324,23 @@ jobs:
 
       - name: Wait for image build and database
         wait: [platform-build, database]
+
+      - name: Export Next.js build cache from BuildKit
+        id: next-build-cache-export
+        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
+        continue-on-error: true
+        working-directory: /tmp
+        background: true
+        run: |
+          rm -rf /tmp/next-build-cache
+          docker buildx build --progress=plain --no-cache --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
+          FROM node:24.18-alpine3.23 AS export
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              mkdir /out && cp -a /app/.next/cache/. /out/
+          FROM scratch
+          COPY --from=export /out /
+          EOF
+          du -sh /tmp/next-build-cache
 
       - name: Set up Platform - Run migrations
         run: |
@@ -436,3 +474,15 @@ jobs:
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.resolved.yml logs
+
+      - name: Wait for Next.js build cache export
+        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
+        wait: [next-build-cache-export]
+
+      - name: Save Next.js build cache
+        if: ${{ !cancelled() && steps.next-build-cache-export.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/next-build-cache
+          key: ${{ steps.next-build-cache.outputs.cache-primary-key }}
