@@ -11,7 +11,9 @@ reads what the model would read and the stored bytes are what it would have got.
 import base64
 import json
 import logging
+import re
 from contextvars import ContextVar
+from datetime import UTC, datetime
 from typing import Any, Callable
 
 from prisma.enums import ReviewStatus
@@ -96,6 +98,10 @@ _DELIVERED = (
     "The user released this content and it was already delivered to you "
     "once; nothing more arrives for this call."
 )
+_EXPIRED = (
+    "The user released this content, but it was not delivered within an hour, "
+    "so the release lapsed. Read it again if it is still needed."
+)
 _UNRECORDABLE = (
     "It could not be checked or queued for the user's review, so it is left "
     "out. Tell the user; do not fetch it another way."
@@ -161,6 +167,9 @@ async def answered_read(
     consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED:
         return "rejected", _REJECTED
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
+        return "expired", _EXPIRED
     if not consumed:
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
@@ -217,7 +226,14 @@ async def screen_read(
             args=args,
         )
         return await _hold(
-            call, user_id, session, source, verdict.passage, output, success
+            call,
+            user_id,
+            session,
+            source,
+            page_words(verdict.passage, text) if verdict.judged else "",
+            output,
+            success,
+            judged=verdict.judged,
         )
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
@@ -259,6 +275,19 @@ def source_of(tool_name: str, args: dict[str, Any]) -> str:
     return tool_name
 
 
+def page_words(passage: str, text: str) -> str:
+    """The judge's quote, only as far as the page itself says it.
+
+    Models append their own gloss ('..." - directive'), which the card must
+    not show as the page's words; a quote the page never contained is dropped.
+    """
+    for candidate in (passage, re.split(r'["\u201d]\s*[-\u2013\u2014]', passage)[0]):
+        candidate = candidate.strip().strip('"\u201c\u201d')
+        if candidate and candidate in text:
+            return candidate
+    return ""
+
+
 def read_headline(tool_name: str, args: dict[str, Any]) -> Headline:
     headline = named(f"Let {AUTOPILOT_NAME} read", _SOURCE_KEYS, args)
     if headline.object is None:
@@ -282,12 +311,20 @@ async def _hold(
     passage: str,
     output: str,
     success: bool,
+    *,
+    judged: bool = True,
 ) -> str:
-    """Queue the read on the chat's held calls; its answer delivers the bytes."""
+    """Queue the read on the chat's held calls; its answer delivers the bytes.
+
+    ``judged`` False: the check could not assess it, so there is no passage."""
     tool_name = call.tool_name
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
-    reason = f"this content contains instructions: {passage}"
+    reason = (
+        f"this content contains instructions: {passage}"
+        if judged
+        else "this content could not be checked"
+    )
     headline = read_headline(tool_name, call.args)
     payload = {
         **review_store.review_payload(
@@ -302,6 +339,7 @@ async def _hold(
         "source": source,
         "headline": headline.model_dump(),
         "passage": passage,
+        "judged": judged,
         "success": success,
         # Both seams hand over JSON-encoded text, whose control characters are
         # escaped, so the column's sanitiser leaves it byte-identical.

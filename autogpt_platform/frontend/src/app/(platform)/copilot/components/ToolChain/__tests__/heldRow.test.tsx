@@ -151,3 +151,12 @@ test("a call that may have run claims neither approval nor refusal", async () =>
   expect(screen.queryByText(/Created folder/)).toBeNull();
   expect(screen.queryByText(/Didn't create folder/)).toBeNull();
 });
+
+test("a held read whose release is unclear stays a read, not an action that may have run", async () => {
+  render(readChain(new Map([["call-9", { outcome: "unknown", output: "" }]])));
+  expect(await screen.findByText("Unclear")).toBeDefined();
+  expect(
+    screen.getAllByText('Read "docs.northwind.io/billing"').length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText(/It may have run/)).toBeNull();
+});

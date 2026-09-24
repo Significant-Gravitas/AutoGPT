@@ -52,7 +52,7 @@ export function applyHeldOutcome(
   }
   // It may have run; claim neither success nor a refusal.
   if (outcome.outcome === "unknown") {
-    return settle(row, ask, "unknown", reviewId);
+    return settle(row, ask, "unknown", reviewId, read);
   }
   if (outcome.outcome !== "approved") {
     return settle(row, didnt, outcome.outcome, reviewId, read);
