@@ -14,6 +14,8 @@ interface Args {
 }
 
 const POLL_MS = 2000;
+// A run can go minutes before it pauses, so poll it slowly until it does.
+const PRE_REVIEW_POLL_MS = 5000;
 
 export function useCopilotPendingReviews({
   graphExecId,
@@ -31,8 +33,7 @@ export function useCopilotPendingReviews({
       query: {
         enabled: isRun,
         select: okData,
-        refetchInterval: (q) =>
-          isLiveStatus(readStatus(q.state.data)) ? POLL_MS : false,
+        refetchInterval: (q) => pollInterval(readStatus(q.state.data)),
       },
     },
   );
@@ -70,11 +71,13 @@ function readStatus(raw: unknown) {
   return response?.status === 200 ? response.data?.status : undefined;
 }
 
-function isLiveStatus(status: string | undefined) {
-  return (
+function pollInterval(status: string | undefined) {
+  if (status === AgentExecutionStatus.REVIEW) return POLL_MS;
+  if (
     status === AgentExecutionStatus.QUEUED ||
     status === AgentExecutionStatus.RUNNING ||
-    status === AgentExecutionStatus.INCOMPLETE ||
-    status === AgentExecutionStatus.REVIEW
-  );
+    status === AgentExecutionStatus.INCOMPLETE
+  )
+    return PRE_REVIEW_POLL_MS;
+  return false;
 }
