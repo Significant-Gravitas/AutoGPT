@@ -34,12 +34,10 @@ class FakeRedis:
     async def get(self, name):
         return self.store.get(name)
 
-    async def incr(self, name):
+    async def eval(self, script, numkeys, *keys_and_args):
+        name, window = keys_and_args
         self.store[name] = str(int(self.store.get(name, "0")) + 1)
         return int(self.store[name])
-
-    async def expire(self, name, time):
-        return True
 
     def add_box(
         self,

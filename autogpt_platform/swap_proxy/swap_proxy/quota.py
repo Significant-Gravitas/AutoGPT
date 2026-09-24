@@ -22,10 +22,19 @@ logger = logging.getLogger(__name__)
 KEY_PREFIX = "swap:quota:"
 
 
-class RedisCounter(Protocol):
-    def incr(self, name: str) -> Awaitable[Any]: ...
+# One round trip, atomic: the key is created with its expiry or not at all,
+# so a failure between the two can never leave a count that outlives its window.
+_INCR_SCRIPT = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return count
+"""
 
-    def expire(self, name: str, time: int) -> Awaitable[Any]: ...
+
+class RedisCounter(Protocol):
+    def eval(
+        self, script: str, numkeys: int, *keys_and_args: Any
+    ) -> Awaitable[Any]: ...
 
 
 @dataclass(frozen=True)
@@ -62,15 +71,20 @@ class QuotaVerdict:
 
 class RequestQuota:
     """*per_box* and *per_user* requests per *window* seconds; 0 turns one
-    off."""
+    off.  Anything else that would weaken the quota without saying so (a
+    negative limit, a window under a second) is refused here."""
 
     def __init__(
         self, redis: RedisCounter, *, per_box: int, per_user: int, window: int
     ):
+        if per_box < 0 or per_user < 0:
+            raise ValueError("Quota limits must be 0 (off) or more")
+        if window <= 0:
+            raise ValueError("The quota window must be at least a second")
         self._redis = redis
         self._per_box = per_box
         self._per_user = per_user
-        self._window = max(window, 1)
+        self._window = window
 
     async def take(
         self, owner_label: str, user_id: Optional[str], *, now: Optional[float] = None
@@ -87,9 +101,7 @@ class RequestQuota:
                 continue
             key = f"{KEY_PREFIX}{scope}:{ident}:{index}"
             try:
-                count = int(await self._redis.incr(key))
-                if count == 1:
-                    await self._redis.expire(key, self._window)
+                count = int(await self._redis.eval(_INCR_SCRIPT, 1, key, self._window))
             except Exception:
                 logger.warning("Quota count failed; refusing the swap", exc_info=True)
                 return QuotaVerdict(reason="quota-unavailable")

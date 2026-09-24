@@ -11,14 +11,15 @@ class Counter:
         self.ttls: dict[str, int] = {}
         self.fail = fail
 
-    async def incr(self, name):
+    async def eval(self, script, numkeys, *keys_and_args):
+        name, window = keys_and_args
+        """What the script does, in one step."""
         if self.fail:
             raise ConnectionError("redis down")
         self.counts[name] = self.counts.get(name, 0) + 1
+        if self.counts[name] == 1:
+            self.ttls[name] = window
         return self.counts[name]
-
-    async def expire(self, name, time):
-        self.ttls[name] = time
 
 
 NOW = 7200.0 + 600  # 600 s into a window of an hour
@@ -67,6 +68,17 @@ async def test_a_count_that_cannot_be_taken_refuses():
     verdict = await quota(Counter(fail=True)).take("session:s-1", "user-a", now=NOW)
     assert verdict.reason == "quota-unavailable"
     assert "no credential was attached" in verdict.message()
+
+
+@pytest.mark.parametrize(
+    "per_box, per_user, window",
+    [(-1, 3, 3600), (2, -1, 3600), (2, 3, 0), (2, 3, -60)],
+)
+def test_a_value_that_would_quietly_weaken_the_quota_is_refused(
+    per_box, per_user, window
+):
+    with pytest.raises(ValueError):
+        quota(Counter(), per_box=per_box, per_user=per_user, window=window)
 
 
 @pytest.mark.parametrize("per_box, per_user", [(0, 0)])

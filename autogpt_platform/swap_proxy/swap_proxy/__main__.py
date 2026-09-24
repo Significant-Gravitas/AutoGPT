@@ -111,6 +111,7 @@ async def run() -> None:
     redis = connect_redis(settings)
     await redis.ping()
     source = BackendCredentialSource(settings.backend_url)
+    # Raises on a setting that would quietly weaken the quota: no start.
     quota = RequestQuota(
         redis,
         per_box=settings.quota_per_box,
