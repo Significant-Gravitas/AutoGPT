@@ -263,6 +263,7 @@ Return visits are `$pageview`; account-level retention is computed in
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
+| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
@@ -318,6 +319,7 @@ new one.
 | `subscription_payment_success` | `payment_succeeded` | — |
 | `credit_topup_success` | `topup_completed` | — |
 | `subscription_tier_reconciliation_discrepancy` | `subscription_tier_reconciled` | — |
+| `feature_flag_mismatch` | `feature_flag_mismatched` | — (not in the analytics plan; renamed to the `object_action` past-tense form before it reached production) |
 
 ## Differences from the analytics plan
 

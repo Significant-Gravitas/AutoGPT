@@ -33,9 +33,11 @@ describe("generateMetadata", () => {
       params: Promise.resolve({ expertId: "template-maria" }),
     });
 
-    expect(metadata.title).toBe("Maria, Marketing - AutoGPT Marketplace");
+    expect(metadata.title).toBe(
+      "Maria, Marketing · AI Expert - AutoGPT Marketplace",
+    );
     expect(metadata.openGraph).toMatchObject({
-      title: "Maria, Marketing - AutoGPT Marketplace",
+      title: "Maria, Marketing · AI Expert - AutoGPT Marketplace",
       description: "Turns your product story into campaigns that land.",
       type: "profile",
     });

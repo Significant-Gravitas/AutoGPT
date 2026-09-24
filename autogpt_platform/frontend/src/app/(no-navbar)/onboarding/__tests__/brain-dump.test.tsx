@@ -168,11 +168,9 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => mockFlags[flag] ?? false,
-}));
-
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useLDClient: () => ({
-    waitForInitialization: () => Promise.resolve(),
+  useFlagStatus: (flag: string) => ({
+    enabled: mockFlags[flag] ?? false,
+    ready: true,
   }),
 }));
 

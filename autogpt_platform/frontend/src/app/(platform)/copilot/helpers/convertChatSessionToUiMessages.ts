@@ -1,6 +1,10 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 import { toolDisplayName } from "./toolDisplay";
+import {
+  WORKSPACE_FOLDER_PART_TYPE,
+  type WorkspaceFolderPartData,
+} from "./workspaceAttachments";
 
 export interface TurnStats {
   durationMs?: number;
@@ -84,18 +88,39 @@ function coerceSessionChatMessages(
 
 /**
  * Parse the `[Attached files]` block appended by the backend and return
- * the cleaned text plus reconstructed FileUIPart objects.
+ * the cleaned text plus the reconstructed attachment parts.
  *
- * Backend format:
+ * Backend format (`build_files_block`), with either hint line present or
+ * both — a message can attach only folders, so neither may be assumed:
  * ```
  * \n\n[Attached files]
  * - name.jpg (image/jpeg, 191.0 KB), file_id=<uuid>
+ * - Q3 (folder, 3 file(s) directly inside), folder_id=<uuid>
  * Use read_workspace_file with the file_id to access file contents.
+ * Use list_workspace_files with the folder_id to see what is in a folder.
  * ```
  */
-const ATTACHED_FILES_RE =
-  /\n?\n?\[Attached files\]\n([\s\S]*?)Use read_workspace_file with the file_id to access file contents\./;
+const FILE_HINT =
+  "Use read_workspace_file with the file_id to access file contents.";
+const FOLDER_HINT =
+  "Use list_workspace_files with the folder_id to see what is in a folder.";
+// Ends at the LAST hint line, so a hint the block also carries is never left
+// behind as raw text in the user's bubble.
+const ATTACHED_FILES_RE = new RegExp(
+  `\\n?\\n?\\[Attached files\\]\\n([\\s\\S]*?)(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)})(?:\\n(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)}))*`,
+);
 const FILE_LINE_RE = /^- (.+) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
+const FOLDER_LINE_RE =
+  /^- (.+) \(folder, (\d+) file\(s\) directly inside\), folder_id=([0-9a-f-]+)$/;
+
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface WorkspaceFolderUiPart {
+  type: typeof WORKSPACE_FOLDER_PART_TYPE;
+  data: WorkspaceFolderPartData;
+}
 
 /** Default file URL builder — routes through the authed workspace
  *  download endpoint.  Public viewers override this via the
@@ -110,16 +135,28 @@ function extractFileParts(
 ): {
   cleanText: string;
   fileParts: FileUIPart[];
+  folderParts: WorkspaceFolderUiPart[];
 } {
   const match = content.match(ATTACHED_FILES_RE);
-  if (!match) return { cleanText: content, fileParts: [] };
+  if (!match) return { cleanText: content, fileParts: [], folderParts: [] };
 
   const cleanText = content.replace(match[0], "").trim();
   const lines = match[1].trim().split("\n");
   const fileParts: FileUIPart[] = [];
+  const folderParts: WorkspaceFolderUiPart[] = [];
 
   for (const line of lines) {
-    const m = line.trim().match(FILE_LINE_RE);
+    const trimmed = line.trim();
+    const folder = trimmed.match(FOLDER_LINE_RE);
+    if (folder) {
+      const [, name, fileCount, id] = folder;
+      folderParts.push({
+        type: WORKSPACE_FOLDER_PART_TYPE,
+        data: { id, name, fileCount: Number(fileCount) },
+      });
+      continue;
+    }
+    const m = trimmed.match(FILE_LINE_RE);
     if (!m) continue;
     const [, filename, mimeType, fileId] = m;
     fileParts.push({
@@ -130,7 +167,7 @@ function extractFileParts(
     });
   }
 
-  return { cleanText, fileParts };
+  return { cleanText, fileParts, folderParts };
 }
 
 function safeJsonParse(value: string): unknown {
@@ -410,7 +447,7 @@ export function convertChatSessionMessagesToUiMessages(
           state: "done",
         } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number]);
       } else if (msg.role === "user") {
-        const { cleanText, fileParts } = extractFileParts(
+        const { cleanText, fileParts, folderParts } = extractFileParts(
           msg.content,
           fileUrlBuilder,
         );
@@ -419,6 +456,15 @@ export function convertChatSessionMessagesToUiMessages(
         }
         for (const fp of fileParts) {
           parts.push(fp);
+        }
+        for (const folderPart of folderParts) {
+          parts.push(
+            folderPart as UIMessage<
+              unknown,
+              UIDataTypes,
+              UITools
+            >["parts"][number],
+          );
         }
       } else {
         parts.push({ type: "text", text: msg.content, state: "done" });
