@@ -324,7 +324,7 @@ function realStory(name: string): Story {
 
 export const RealGmailSend = realStory("Gmail Send");
 export const RealGoogleSheetsUpdateRow = realStory("Google Sheets Update Row");
-export const RealExecuteCode = realStory("Execute Code");
+export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");

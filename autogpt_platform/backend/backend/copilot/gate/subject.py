@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
+from backend.copilot.constants import AUTOPILOT_NAME
 
-from .effects import block_effect, graph_effect
+from .effects import JUDGED_BLOCKS, block_effect, graph_effect
 from .policy import Effect
 
 if TYPE_CHECKING:
@@ -42,6 +43,9 @@ OWN_REVIEW = Subject(key="", name="", effect=Effect.UNGATED)
 def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
     effect = block_effect(block, inputs)
     name = display_name(block)
+    if type(block).__name__ in JUDGED_BLOCKS:
+        # Judged like the shell: the supervisor's verdict is the reason.
+        return Subject(key=f"block:{block.id}", name=name, effect=Effect.SHELL)
     return Subject(
         key=f"block:{block.id}",
         name=name,
@@ -103,7 +107,7 @@ def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str
     """The card's reason line: ``culprit`` is the workflow step that decided."""
     if effect is None:
         step = display_name(culprit) if culprit is not None else name
-        return f"Its effect is unknown: {step}."
+        return f"{AUTOPILOT_NAME} does not know what {step} does, so he asks."
     does = {
         BlockEffect.EXTERNAL: "reaches outside the platform",
         BlockEffect.PLATFORM: "changes your platform objects",

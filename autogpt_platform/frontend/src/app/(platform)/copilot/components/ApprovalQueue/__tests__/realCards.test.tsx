@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
+import { isIdKey } from "@/components/organisms/ApprovalFields/helpers";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -44,7 +45,25 @@ test.each(cards.map((card) => [card.story, card] as const))(
     expect(text).not.toContain("MimeType");
     if (card.schema) {
       // Labels come from the schema once it arrives; each shown input has one.
-      await screen.findByText(payload.fields[0].label);
+      const shown = payload.fields.find((field) => !isIdKey(field.key));
+      if (shown) await screen.findByText(shown.label);
     }
   },
 );
+
+test("a code block's step renders as code", async () => {
+  const card = cards.find((c) => c.story === "Execute Code Step")!;
+  server.use(
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+      HttpResponse.json([card.review]),
+    ),
+    realCardSchemaHandler(cards),
+  );
+  render(
+    <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+    </CopilotChatActionsProvider>,
+  );
+  const code = await screen.findByText(/import pandas as pd/);
+  expect(code.closest("pre")).not.toBeNull();
+});
