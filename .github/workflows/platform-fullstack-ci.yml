@@ -398,7 +398,8 @@ jobs:
         run: |
           echo "Creating E2E test data..."
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
-          docker compose -f ../docker-compose.resolved.yml exec -T rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
+          # The embedding backfill (~6,300 items) runs 300 requests at a time instead of 100
+          docker compose -f ../docker-compose.resolved.yml exec -T -e E2E_EMBEDDING_BATCH_SIZE=300 rest_server sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py" || {
             echo "❌ E2E test data creation failed!"
             docker compose -f ../docker-compose.resolved.yml logs --tail=50 rest_server
             exit 1
