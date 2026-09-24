@@ -803,7 +803,11 @@ class UserCredit(UserCreditBase):
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
-        if auto_top_up.threshold and balance < auto_top_up.threshold:
+        if (
+            auto_top_up.threshold
+            and balance < auto_top_up.threshold
+            and not await _legacy_chat_top_up_exists(user_id, metadata)
+        ):
             try:
                 await self._top_up_credits(
                     user_id=user_id,
@@ -1405,6 +1409,22 @@ def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
     """One auto top-up per graph execution or chat. A top-up stays inactive
     until its charge succeeds, so the key is what stops a repeat charge."""
     return f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or metadata.chat_session_id}"
+
+
+async def _legacy_chat_top_up_exists(
+    user_id: str, metadata: UsageTransactionMetadata
+) -> bool:
+    """A chat's auto top-up keyed before chats had their own id (only a failed
+    or still-pending one keeps its key; a charged one takes the payment's)."""
+    if not metadata.chat_session_id:
+        return False
+    legacy_key = f"AUTO-TOP-UP-{user_id}-copilot-session-{metadata.chat_session_id}"
+    return (
+        await CreditTransaction.prisma().find_first(
+            where={"transactionKey": legacy_key, "userId": user_id}
+        )
+        is not None
+    )
 
 
 class DisabledUserCredit(UserCreditBase):

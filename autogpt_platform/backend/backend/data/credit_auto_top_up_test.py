@@ -1,6 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
+from prisma.enums import CreditTransactionType
+from prisma.models import CreditTransaction, User
 
 from backend.data import credit
 from backend.data.credit import UsageTransactionMetadata, UserCredit
@@ -46,3 +49,37 @@ async def test_usage_outside_a_run_or_chat_still_has_a_key(top_ups):
     await _spend(UsageTransactionMetadata(reason="CoPilot daily rate limit reset"))
 
     assert top_ups.await_args.kwargs["key"] == "AUTO-TOP-UP-u1-None"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_with_an_uncharged_legacy_top_up_is_not_charged_again(
+    server, top_ups
+):
+    # Before chats had their own id, a chat's top-up was keyed on
+    # copilot-session-<id>; only a failed or pending one keeps that key.
+    user_id = f"top-up-{uuid4()}"
+    await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
+    try:
+        await CreditTransaction.prisma().create(
+            data={
+                "userId": user_id,
+                "transactionKey": f"AUTO-TOP-UP-{user_id}-copilot-session-chat-1",
+                "amount": 500,
+                "type": CreditTransactionType.TOP_UP,
+                "isActive": False,
+            }
+        )
+        spend = UserCredit().spend_credits
+
+        await spend(user_id=user_id, cost=5, metadata=_chat("chat-1"))
+        top_ups.assert_not_awaited()
+
+        await spend(user_id=user_id, cost=5, metadata=_chat("chat-2"))
+        assert top_ups.await_args.kwargs["key"] == f"AUTO-TOP-UP-{user_id}-chat-2"
+    finally:
+        await CreditTransaction.prisma().delete_many(where={"userId": user_id})
+        await User.prisma().delete_many(where={"id": user_id})
+
+
+def _chat(chat_session_id: str) -> UsageTransactionMetadata:
+    return UsageTransactionMetadata(chat_session_id=chat_session_id)
