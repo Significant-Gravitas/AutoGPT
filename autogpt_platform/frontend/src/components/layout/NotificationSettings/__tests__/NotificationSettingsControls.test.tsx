@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { NotificationSettingsControls } from "../NotificationSettingsControls";
+import { useNotificationSettings } from "../useNotificationSettings";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
@@ -75,8 +76,12 @@ describe("NotificationSettingsControls", () => {
   });
 
   it("asks the browser for permission when switching on", async () => {
+    // A real browser updates `Notification.permission` before resolving.
     const requestPermission = setPermission("default");
-    requestPermission.mockResolvedValue("granted");
+    requestPermission.mockImplementation(async () => {
+      setPermission("granted");
+      return "granted";
+    });
 
     render(<NotificationSettingsControls />);
     await userEvent.click(
@@ -147,6 +152,21 @@ describe("NotificationSettingsControls", () => {
     );
     expect(notifications.getAttribute("aria-checked")).toBe("false");
     expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false);
+  });
+
+  it("sees a blocked browser as blocked on the very first render", () => {
+    setPermission("denied");
+    const seen: boolean[] = [];
+    function Probe() {
+      seen.push(useNotificationSettings().isBlocked);
+      return null;
+    }
+
+    render(<Probe />);
+
+    // An effect-based read would first render as not blocked, and paint an
+    // enabled switch before correcting itself.
+    expect(seen[0]).toBe(true);
   });
 
   it("keeps sound gated behind notifications being on", async () => {

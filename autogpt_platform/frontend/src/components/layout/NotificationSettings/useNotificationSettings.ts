@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useSyncExternalStore } from "react";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-function readPermission(): NotificationPermission | "unsupported" {
-  if (typeof Notification === "undefined") return "unsupported";
-  return Notification.permission;
-}
+import {
+  readPermission,
+  readServerPermission,
+  subscribeToPermission,
+} from "./helpers";
 
 /**
  * The one place that knows how the browser's three-state permission maps onto
@@ -28,33 +29,25 @@ export function useNotificationSettings() {
   const isSoundEnabled = useCopilotUIStore((s) => s.isSoundEnabled);
   const toggleSound = useCopilotUIStore((s) => s.toggleSound);
 
-  // `Notification.permission` doesn't exist during SSR and reading it during
-  // render would desync hydration, so it lands after mount. It is re-read when
-  // the tab comes back, since site settings can change it behind our back.
-  const [permission, setPermission] = useState<
-    NotificationPermission | "unsupported"
-  >("default");
-  useEffect(() => {
-    function syncPermission() {
-      const current = readPermission();
-      setPermission(current);
-      // The store only checks permission once, at load. A revoke since then
-      // must switch our flag off too, or the switch shows on while nothing
-      // can ever be delivered.
-      const store = useCopilotUIStore.getState();
-      if (current !== "granted" && store.isNotificationsEnabled) {
-        store.setNotificationsEnabled(false);
-      }
-    }
+  // Read during render, so a blocked or unsupported browser never paints an
+  // enabled switch first. Answering the prompt fires no event, hence the
+  // manual refresh after it.
+  const permission = useSyncExternalStore(
+    subscribeToPermission,
+    readPermission,
+    readServerPermission,
+  );
+  const [, refreshPermission] = useReducer((count: number) => count + 1, 0);
 
-    syncPermission();
-    window.addEventListener("focus", syncPermission);
-    document.addEventListener("visibilitychange", syncPermission);
-    return () => {
-      window.removeEventListener("focus", syncPermission);
-      document.removeEventListener("visibilitychange", syncPermission);
-    };
-  }, []);
+  // The store only checks permission once, at load. A revoke since then must
+  // switch our flag off too, or the switch shows on while nothing can ever be
+  // delivered. This reads the browser directly because the hydration render
+  // still sees the server's "default".
+  useEffect(() => {
+    if (isNotificationsEnabled && readPermission() !== "granted") {
+      setNotificationsEnabled(false);
+    }
+  }, [permission, isNotificationsEnabled, setNotificationsEnabled]);
 
   const isSupported = permission !== "unsupported";
   const isBlocked = permission === "denied";
@@ -75,7 +68,7 @@ export function useNotificationSettings() {
     }
 
     const result = await Notification.requestPermission();
-    setPermission(result);
+    refreshPermission();
 
     if (result === "granted") {
       setNotificationsEnabled(true);
