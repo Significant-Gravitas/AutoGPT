@@ -7,11 +7,13 @@ import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
+from backend.data import credit_metadata
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.credit_history.queries import credit_history_query
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
-from backend.executor.billing import charge_reconciled_usage
+from backend.executor.billing import charge_reconciled_usage, charge_usage
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +59,45 @@ def _async_db_client(spend_credits_return: int = 0) -> MagicMock:
     client.spend_credits = AsyncMock(return_value=spend_credits_return)
     client.get_credits = MagicMock(return_value=0)
     return client
+
+
+def test_execution_fee_writer_uses_current_history_marker(monkeypatch):
+    monkeypatch.setattr(
+        credit_metadata,
+        "CURRENT_CREDIT_MARKERS",
+        credit_metadata.CreditMetadataMarkers(
+            reconciliation_delta_input_key="reconciled_delta_v2",
+            execution_fee_input_key="charge_v2",
+            execution_fee_input_value="Execution Cost v2",
+            daily_reset_reason="reset v2",
+            copilot_session_prefix="copilot-session-v2-",
+        ),
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 100
+    monkeypatch.setattr(
+        "backend.executor.billing.resolve_block_cost",
+        lambda _node_exec: (SearchTheWebBlock(), 0, {}),
+    )
+    monkeypatch.setattr(
+        "backend.executor.billing._block_has_paid_cost_entry", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        "backend.executor.billing.execution_usage_cost", lambda _count: (2, 10)
+    )
+    monkeypatch.setattr("backend.executor.billing.get_db_client", lambda: db_client)
+
+    charge_usage(exec_entry, execution_count=10)
+
+    metadata = db_client.spend_credits.call_args.kwargs["metadata"]
+    assert metadata.input == {
+        "execution_count": 10,
+        "charge_v2": "Execution Cost v2",
+    }
+    query = credit_history_query(organization=False)
+    assert "charge_v2" in query
+    assert "Execution Cost v2" in query
 
 
 def test_dynamic_cost_block_with_zero_balance_raises_ibe_preflight(
@@ -252,7 +293,7 @@ async def test_items_cost_scales_linearly_with_result_count(tmp_block_costs_over
     call_kwargs = db_client.spend_credits.await_args.kwargs
     assert call_kwargs["cost"] == 10
     meta_input = call_kwargs["metadata"].input
-    assert meta_input.get("reconciled_delta") == 10
+    assert meta_input == {"reconciled_delta": 10}
 
 
 @pytest.mark.asyncio
