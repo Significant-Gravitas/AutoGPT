@@ -133,8 +133,8 @@ from backend.data.human_review import (
     check_approval,
     delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
-    get_pending_reviews_for_session,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
@@ -371,7 +371,7 @@ class DatabaseManager(AppService):
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
-    get_pending_reviews_for_session = _(get_pending_reviews_for_session)
+    get_pending_reviews_for_chat_session = _(get_pending_reviews_for_chat_session)
     get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
@@ -774,7 +774,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
-    get_pending_reviews_for_session = d.get_pending_reviews_for_session
+    get_pending_reviews_for_chat_session = d.get_pending_reviews_for_chat_session
     get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status

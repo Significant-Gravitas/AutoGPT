@@ -13821,19 +13821,19 @@
         }
       }
     },
-    "/api/review/session/{session_id}": {
+    "/api/review/session/{chat_session_id}": {
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Chat Session",
-        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's session id\nyields an empty list.",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
         "operationId": "getV2Get pending reviews for chat session",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "session_id",
+            "name": "chat_session_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Session Id" }
+            "schema": { "type": "string", "title": "Chat Session Id" }
           }
         ],
         "responses": {

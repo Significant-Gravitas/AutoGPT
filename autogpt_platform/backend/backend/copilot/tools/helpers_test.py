@@ -997,7 +997,7 @@ def _make_hitl_prep(
 async def test_check_hitl_no_review_needed() -> None:
     prep = _make_hitl_prep(input_data={"action": "read"}, needs_review=False)
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_session = AsyncMock(return_value=[])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")
@@ -1012,7 +1012,7 @@ async def test_check_hitl_no_review_needed() -> None:
 async def test_check_hitl_review_required() -> None:
     prep = _make_hitl_prep(input_data={"action": "delete"}, needs_review=True)
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_session = AsyncMock(return_value=[])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")
@@ -1025,7 +1025,7 @@ async def test_check_hitl_review_required() -> None:
     assert kwargs["is_graph_execution"] is False
     assert kwargs["execution_context"].session_id == "hitl-sess"
     assert kwargs["execution_context"].graph_exec_id is None
-    mock_rdb.get_pending_reviews_for_session.assert_awaited_once_with(
+    mock_rdb.get_pending_reviews_for_chat_session.assert_awaited_once_with(
         "hitl-sess", "user1"
     )
 
@@ -1041,7 +1041,7 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
     existing.node_exec_id = "existing-review-42"
 
     mock_rdb = MagicMock()
-    mock_rdb.get_pending_reviews_for_session = AsyncMock(return_value=[existing])
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[existing])
 
     with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
         result = await check_hitl_review(prep, "user1", "hitl-sess")

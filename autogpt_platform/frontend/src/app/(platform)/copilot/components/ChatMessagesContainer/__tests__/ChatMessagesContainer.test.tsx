@@ -1492,7 +1492,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toEqual({ sessionId: "sess-123" });
+    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
   });
 
   it("finds a chat review stored before it had a session id of its own", () => {
@@ -1507,7 +1507,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toEqual({ sessionId: "sess-123" });
+    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
   });
 
   it("finds an agent run's reviews by its graph execution", () => {

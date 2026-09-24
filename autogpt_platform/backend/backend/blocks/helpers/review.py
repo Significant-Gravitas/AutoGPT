@@ -70,7 +70,7 @@ class HITLReviewHelper:
         is_graph_execution: bool = True,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        chat_session_id: Optional[str] = None,
     ) -> Optional[ReviewResult]:
         """
         Handle a review request for a block that requires human review.
@@ -83,7 +83,7 @@ class HITLReviewHelper:
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
             graph_version: Version of the graph
-            session_id: The chat asking, when not a graph execution
+            chat_session_id: The chat asking, when not a graph execution
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
 
@@ -107,7 +107,7 @@ class HITLReviewHelper:
             user_id=user_id,
             input_data=input_data,
             graph_exec_id=graph_exec_id,
-            session_id=session_id,
+            chat_session_id=chat_session_id,
         ):
             logger.info(
                 f"Block {block_name} skipping review for node {node_exec_id} - "
@@ -140,7 +140,7 @@ class HITLReviewHelper:
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            session_id=session_id,
+            chat_session_id=chat_session_id,
             input_data=input_data,
             message=block_name,  # Use block_name directly as the message
             editable=editable,
@@ -181,7 +181,7 @@ class HITLReviewHelper:
         is_graph_execution: bool = True,
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        chat_session_id: Optional[str] = None,
     ) -> Optional[ReviewDecision]:
         """
         Handle a review request and return the decision in a single call.
@@ -194,7 +194,7 @@ class HITLReviewHelper:
             graph_exec_id: ID of the graph execution
             graph_id: ID of the graph
             graph_version: Version of the graph
-            session_id: The chat asking, when not a graph execution
+            chat_session_id: The chat asking, when not a graph execution
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
 
@@ -215,7 +215,7 @@ class HITLReviewHelper:
             is_graph_execution=is_graph_execution,
             organization_id=organization_id,
             team_id=team_id,
-            session_id=session_id,
+            chat_session_id=chat_session_id,
         )
 
         if review_result is None:

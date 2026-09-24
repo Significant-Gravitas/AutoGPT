@@ -1006,7 +1006,7 @@ async def check_hitl_review(
     input_data = prep.input_data
 
     # Reuse an existing WAITING review for identical input (LLM retry guard)
-    existing_reviews = await review_db().get_pending_reviews_for_session(
+    existing_reviews = await review_db().get_pending_reviews_for_chat_session(
         session_id, user_id
     )
     existing_review = next(

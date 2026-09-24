@@ -869,7 +869,7 @@ export function ChatMessagesContainer({
             <CopilotPendingReviews graphExecId={reviewTarget.graphExecId} />
           )}
           {!readOnly && reviewTarget?.kind === "chat" && sessionID && (
-            <CopilotPendingReviews sessionId={sessionID} />
+            <CopilotPendingReviews chatSessionId={sessionID} />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

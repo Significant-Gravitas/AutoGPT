@@ -189,7 +189,7 @@ async def open_chat_spend_review(
     review id. An open row for the same expert is reused so a model retry
     does not stack cards."""
     node_id = f"{COPILOT_NODE_PREFIX}{SPEND_REVIEW_MARKER}{needed.expert_id}"
-    for review in await human_review.get_pending_reviews_for_session(
+    for review in await human_review.get_pending_reviews_for_chat_session(
         session_id, user_id
     ):
         if review.node_id == node_id:
@@ -198,7 +198,7 @@ async def open_chat_spend_review(
     await human_review.get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        session_id=session_id,
+        chat_session_id=session_id,
         input_data=_review_payload(needed, block=block_name),
         message=needed.headline,
         editable=False,

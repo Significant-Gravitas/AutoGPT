@@ -41,13 +41,13 @@ export function usePendingReviewsForExecution(
   };
 }
 
-export function usePendingReviewsForSession(
-  sessionId: string,
+export function usePendingReviewsForChatSession(
+  chatSessionId: string,
   options?: UsePendingReviewsForExecutionOptions,
 ) {
-  const query = useGetV2GetPendingReviewsForChatSession(sessionId, {
+  const query = useGetV2GetPendingReviewsForChatSession(chatSessionId, {
     query: {
-      enabled: options?.enabled ?? !!sessionId,
+      enabled: options?.enabled ?? !!chatSessionId,
       refetchInterval: options?.refetchInterval,
       refetchIntervalInBackground: !!options?.refetchInterval,
     },

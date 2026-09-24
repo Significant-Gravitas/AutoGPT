@@ -17,8 +17,8 @@ from backend.data.human_review import (
     check_approval,
     create_auto_approval_record,
     get_or_create_human_review,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
-    get_pending_reviews_for_session,
 )
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -46,13 +46,13 @@ async def test_chat_review_has_no_graph_fields_and_is_found_by_its_chat(user_id)
     await get_or_create_human_review(
         user_id=user_id,
         node_exec_id=f"copilot-node-blk:{uuid4().hex[:8]}",
-        session_id=session_id,
+        chat_session_id=session_id,
         input_data={"path": "/reports"},
         message="Create Folder",
         editable=True,
     )
 
-    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    [review] = await get_pending_reviews_for_chat_session(session_id, user_id)
     assert review.session_id == session_id
     assert (review.graph_exec_id, review.graph_id, review.graph_version) == (
         None,
@@ -63,7 +63,7 @@ async def test_chat_review_has_no_graph_fields_and_is_found_by_its_chat(user_id)
     row = await PendingHumanReview.prisma().find_unique(
         where={"nodeExecId": review.node_exec_id}
     )
-    assert row and row.sessionId == session_id
+    assert row and row.chatSessionId == session_id
     assert row.graphExecId == f"copilot-session-{session_id}"
 
 
@@ -104,12 +104,12 @@ async def test_a_caller_passing_the_old_synthetic_id_writes_a_chat_review(user_i
         editable=False,
     )
 
-    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    [review] = await get_pending_reviews_for_chat_session(session_id, user_id)
     assert review.graph_exec_id is None
     row = await PendingHumanReview.prisma().find_unique(
         where={"nodeExecId": review.node_exec_id}
     )
-    assert row and row.sessionId == session_id
+    assert row and row.chatSessionId == session_id
     assert row.graphId == f"copilot-session-{session_id}"
     # ...and the same caller finds it again by the id it passed.
     old_id = f"copilot-session-{session_id}"
@@ -132,7 +132,7 @@ async def test_a_row_in_the_old_shape_still_resolves_to_its_chat(user_id):
         }
     )
 
-    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    [review] = await get_pending_reviews_for_chat_session(session_id, user_id)
     assert review.session_id == session_id
     assert review.graph_exec_id is None and review.graph_id is None
     assert [
@@ -145,27 +145,27 @@ async def test_auto_approval_holds_for_its_chat_only(user_id):
     node_id = "copilot-node-blk"
 
     await create_auto_approval_record(
-        user_id=user_id, node_id=node_id, payload={}, session_id=session_id
+        user_id=user_id, node_id=node_id, payload={}, chat_session_id=session_id
     )
 
     approved = await check_approval(
         node_exec_id=f"{node_id}:new",
         node_id=node_id,
         user_id=user_id,
-        session_id=session_id,
+        chat_session_id=session_id,
     )
     other_chat = await check_approval(
         node_exec_id=f"{node_id}:new",
         node_id=node_id,
         user_id=user_id,
-        session_id=f"chat-{uuid4()}",
+        chat_session_id=f"chat-{uuid4()}",
     )
     assert approved is not None and approved.status == ReviewStatus.APPROVED
     assert other_chat is None
 
 
 async def test_a_backfilled_row_reads_as_its_chat(user_id):
-    # The migration keeps the legacy graph columns beside the new sessionId.
+    # The migration keeps the legacy graph columns beside the new chatSessionId.
     session_id = f"chat-{uuid4()}"
     old_id = f"copilot-session-{session_id}"
     await PendingHumanReview.prisma().create(
@@ -175,13 +175,13 @@ async def test_a_backfilled_row_reads_as_its_chat(user_id):
             "graphExecId": old_id,
             "graphId": old_id,
             "graphVersion": 1,
-            "sessionId": session_id,
+            "chatSessionId": session_id,
             "payload": SafeJson({}),
             "status": ReviewStatus.WAITING,
         }
     )
 
-    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    [review] = await get_pending_reviews_for_chat_session(session_id, user_id)
     assert review.session_id == session_id
     assert (review.graph_exec_id, review.graph_id, review.graph_version) == (
         None,
@@ -201,7 +201,7 @@ async def test_an_auto_approval_made_before_the_migration_still_holds(user_id):
             "graphExecId": old_id,
             "graphId": old_id,
             "graphVersion": 1,
-            "sessionId": session_id,
+            "chatSessionId": session_id,
             "payload": SafeJson({}),
             "status": ReviewStatus.APPROVED,
             "processed": True,
@@ -212,7 +212,7 @@ async def test_an_auto_approval_made_before_the_migration_still_holds(user_id):
         node_exec_id=f"{node_id}:new",
         node_id=node_id,
         user_id=user_id,
-        session_id=session_id,
+        chat_session_id=session_id,
     )
     assert approved is not None and approved.status == ReviewStatus.APPROVED
 
@@ -231,12 +231,12 @@ async def test_a_new_chat_review_loads_on_the_previous_deploy_too(user_id):
     await get_or_create_human_review(
         user_id=user_id,
         node_exec_id=f"copilot-node-blk:{uuid4().hex[:8]}",
-        session_id=session_id,
+        chat_session_id=session_id,
         input_data={},
         message="Create Folder",
         editable=True,
     )
-    [review] = await get_pending_reviews_for_session(session_id, user_id)
+    [review] = await get_pending_reviews_for_chat_session(session_id, user_id)
     row = await PendingHumanReview.prisma().find_unique(
         where={"nodeExecId": review.node_exec_id}
     )
@@ -255,12 +255,17 @@ async def test_a_new_chat_review_loads_on_the_previous_deploy_too(user_id):
     "scope",
     [
         {},
-        {"graphExecId": "ge-1", "graphId": "g-1", "graphVersion": 1, "sessionId": "s"},
+        {
+            "graphExecId": "ge-1",
+            "graphId": "g-1",
+            "graphVersion": 1,
+            "chatSessionId": "s",
+        },
     ],
     ids=["neither", "both"],
 )
 async def test_the_database_refuses_a_review_without_exactly_one_scope(user_id, scope):
-    with pytest.raises(PrismaError, match="graph_or_session_check"):
+    with pytest.raises(PrismaError, match="graph_or_chat_session_check"):
         await PendingHumanReview.prisma().create(
             data={
                 "nodeExecId": f"bad-{uuid4()}",

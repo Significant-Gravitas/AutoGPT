@@ -139,7 +139,7 @@ async def test_pending_reviews_are_enriched(server: SpinTestServer):
             data={
                 "nodeExecId": f"{COPILOT_NODE_PREFIX}some-block:{uuid4().hex[:8]}",
                 "userId": user_id,
-                "sessionId": session.session_id,
+                "chatSessionId": session.session_id,
                 "payload": SafeJson({"foo": "bar"}),
                 "editable": True,
                 "status": ReviewStatus.WAITING,

@@ -80,7 +80,7 @@ async def open_mcp_review(
     """
     node_id = mcp_review_node_id(host)
     data = payload.model_dump()
-    for review in await review_db().get_pending_reviews_for_session(
+    for review in await review_db().get_pending_reviews_for_chat_session(
         session_id, user_id
     ):
         if (
@@ -93,7 +93,7 @@ async def open_mcp_review(
     await review_db().get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        session_id=session_id,
+        chat_session_id=session_id,
         input_data=data,
         message=(
             f"Run MCP tool '{payload.tool}' on {host} with the shown arguments? "

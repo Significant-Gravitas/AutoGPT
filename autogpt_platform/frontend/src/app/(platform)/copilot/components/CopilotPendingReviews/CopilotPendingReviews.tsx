@@ -5,11 +5,11 @@ import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/Pe
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   usePendingReviewsForExecution,
-  usePendingReviewsForSession,
+  usePendingReviewsForChatSession,
 } from "@/hooks/usePendingReviews";
 import { okData } from "@/app/api/helpers";
 
-type Props = { graphExecId: string } | { sessionId: string };
+type Props = { graphExecId: string } | { chatSessionId: string };
 
 const POLL = { refetchInterval: 2000 };
 
@@ -21,14 +21,14 @@ const POLL = { refetchInterval: 2000 };
 export function CopilotPendingReviews(props: Props) {
   const { onSend } = useCopilotChatActions();
   const graphExecId = "graphExecId" in props ? props.graphExecId : "";
-  const sessionId = "sessionId" in props ? props.sessionId : "";
+  const chatSessionId = "chatSessionId" in props ? props.chatSessionId : "";
   const forRun = usePendingReviewsForExecution(graphExecId, {
     ...POLL,
     enabled: !!graphExecId,
   });
-  const forChat = usePendingReviewsForSession(sessionId, {
+  const forChat = usePendingReviewsForChatSession(chatSessionId, {
     ...POLL,
-    enabled: !!sessionId,
+    enabled: !!chatSessionId,
   });
   const { pendingReviews, refetch } = graphExecId ? forRun : forChat;
 
