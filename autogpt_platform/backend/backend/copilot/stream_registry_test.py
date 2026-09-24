@@ -794,3 +794,49 @@ async def test_get_active_session_falls_back_when_the_stream_is_empty():
         _session, last_id = await stream_registry.get_active_session("sess-1")
 
     assert last_id == "0-0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_message, wakes",
+    [
+        (None, True),
+        ("model provider timed out", True),
+        (stream_registry.CANCELLED_MESSAGE, False),
+    ],
+)
+async def test_a_finished_turn_wakes_the_chat_for_cards_answered_during_it(
+    error_message: str | None, wakes: bool
+):
+    """Nothing else starts that turn, so a failed one wakes it too; the
+    user's own Stop leaves it for their next turn."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
+    wake = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+        patch.object(stream_registry, "release_turn_slot", new=AsyncMock()),
+        patch(
+            "backend.copilot.stream_registry.dispatch_next_for_user", new=AsyncMock()
+        ),
+        patch("backend.copilot.gate.held.wake", new=wake),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message=error_message
+        )
+
+    assert wake.await_count == (1 if wakes else 0)
+    if wakes:
+        wake.assert_awaited_once_with("u1", "sess-1")

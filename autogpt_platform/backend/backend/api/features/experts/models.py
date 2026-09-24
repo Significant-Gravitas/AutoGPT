@@ -19,9 +19,9 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_sensitive_action
-# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
-# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+# Only some outward calls are actually gated for approval — is_irreversible_action
+# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
+# phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.

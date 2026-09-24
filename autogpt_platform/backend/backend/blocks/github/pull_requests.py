@@ -219,6 +219,7 @@ class GithubMakePullRequestBlock(Block):
                     "https://github.com/owner/repo/pull/1",
                 )
             },
+            is_irreversible_action=True,
         )
 
     @staticmethod
@@ -755,7 +756,7 @@ class GithubMergePullRequestBlock(Block):
                     "Pull Request successfully merged",
                 )
             },
-            is_sensitive_action=True,
+            is_irreversible_action=True,
         )
 
     @staticmethod

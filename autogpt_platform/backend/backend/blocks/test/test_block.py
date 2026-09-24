@@ -49,8 +49,8 @@ async def test_available_blocks(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
-    """A sensitive-action block's whole input dict becomes the review payload.
+def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
+    """An irreversible-action block's whole input dict becomes the review payload.
 
     `data` is the key the approval card historically unwrapped to, rendering
     that one field in place of the arguments the block goes on to execute.
@@ -59,11 +59,11 @@ def test_sensitive_action_blocks_have_no_data_input(block: Type[Block]):
     delete this case once the render path is re-checked.
     """
     block_instance = block()
-    if not block_instance.is_sensitive_action:
+    if not block_instance.is_irreversible_action:
         return
 
     assert "data" not in block_instance.input_schema.model_fields, (
-        f"{block_instance.name} is a sensitive action with a top-level 'data' "
+        f"{block_instance.name} is an irreversible action with a top-level 'data' "
         f"input; rename it so the approval card cannot be read as showing only "
         f"that field."
     )
