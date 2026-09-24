@@ -347,7 +347,9 @@ async def process_review_action(
     # A held call finishes on its own: the answer starts the chat's next turn.
     if graph_exec_id.startswith(COPILOT_SESSION_PREFIX) and updated_reviews:
         await wake_for_held_calls(
-            user_id, graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+            user_id,
+            graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX),
+            updated_reviews.values(),
         )
 
     # Resume graph execution only for real graph executions (not CoPilot)

@@ -41,7 +41,7 @@ describe("storage", () => {
   });
 
   describe("null localStorage", () => {
-    it("returns undefined for set and clean instead of throwing", () => {
+    it("keeps values in memory instead of throwing", () => {
       const original = Object.getOwnPropertyDescriptor(window, "localStorage");
       Object.defineProperty(window, "localStorage", {
         value: null,
@@ -49,7 +49,9 @@ describe("storage", () => {
       });
       try {
         expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
+        expect(storage.get(Key.COPILOT_MODE)).toBe("fast");
         expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+        expect(storage.get(Key.COPILOT_MODE)).toBeNull();
       } finally {
         if (original) {
           Object.defineProperty(window, "localStorage", original);
@@ -84,19 +86,21 @@ describe("storage", () => {
   });
 
   describe("server-side guard", () => {
-    it("returns undefined for get when on server side", () => {
+    // Every route pulls a module in that reads storage while zustand builds
+    // its store, so this path runs on every server render. It must be silent.
+    it("reads null on the server without reporting to Sentry", () => {
       vi.mocked(environment.isServerSide).mockReturnValue(true);
-      expect(storage.get(Key.COPILOT_MODE)).toBeUndefined();
+
+      expect(storage.get(Key.COPILOT_MODE)).toBeNull();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
 
-    it("returns undefined for set when on server side", () => {
+    it("drops writes on the server without reporting to Sentry", () => {
       vi.mocked(environment.isServerSide).mockReturnValue(true);
+
       expect(storage.set(Key.COPILOT_MODE, "fast")).toBeUndefined();
-    });
-
-    it("returns undefined for clean when on server side", () => {
-      vi.mocked(environment.isServerSide).mockReturnValue(true);
       expect(storage.clean(Key.COPILOT_MODE)).toBeUndefined();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
   });
 });

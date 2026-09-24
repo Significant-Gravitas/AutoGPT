@@ -66,7 +66,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Raise an expert")).toBeDefined();
+    expect(screen.getByText("Create an Expert")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.getByText("Sorts your morning inbox.")).toBeDefined();
@@ -231,7 +231,7 @@ describe("expert change cards", () => {
       />,
     );
 
-    expect(screen.getByText("Expert raised")).toBeDefined();
+    expect(screen.getByText("Expert created")).toBeDefined();
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Inbox triage")).toBeDefined();
     expect(screen.queryByText("Raised")).toBeNull();

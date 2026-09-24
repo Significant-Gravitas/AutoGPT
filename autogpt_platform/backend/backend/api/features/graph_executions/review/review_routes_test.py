@@ -1273,7 +1273,9 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
 
     assert response.status_code == 200
     if woken:
-        wake.assert_awaited_once_with(test_user_id, woken)
+        wake.assert_awaited_once()
+        assert wake.await_args.args[:2] == (test_user_id, woken)
+        assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
     else:
         wake.assert_not_called()
 

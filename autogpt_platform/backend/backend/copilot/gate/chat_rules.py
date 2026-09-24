@@ -21,6 +21,13 @@ _RULES: dict[str, ChatRule] = {rule: rule for rule in get_args(ChatRule)}
 _TTL_SECONDS = 90 * 24 * 60 * 60
 _ASK_KEY = "copilot:gate:ask:"
 
+DECLINED = "You declined this action earlier in this chat."
+# An outage asks rather than runs, but must not claim the user said no.
+UNREADABLE = (
+    "Your earlier decisions in this chat could not be checked, so this action "
+    "needs your approval."
+)
+
 
 async def set_ask(session_id: str, rule_key: str) -> None:
     """Only the user's answer on a card replaces an ask, so re-proposing the
@@ -57,7 +64,10 @@ async def set_answer_rules(
             await set_rule(session_id, key, rule)
 
 
-async def rule_for(session_id: str, rule_key: str) -> ChatRule | None:
+async def rule_for(
+    session_id: str, rule_key: str
+) -> ChatRule | Literal["unreadable"] | None:
+    """``unreadable`` asks like ``ask`` but must not claim the user said no."""
     try:
         redis = await get_redis_async()
         raw = await redis.get(_key(session_id, rule_key))
@@ -67,7 +77,7 @@ async def rule_for(session_id: str, rule_key: str) -> ChatRule | None:
             "assuming the subject asks",
             exc_info=True,
         )
-        return "ask"
+        return "unreadable"
     if raw is None:
         return None
     value = raw.decode() if isinstance(raw, bytes) else str(raw)

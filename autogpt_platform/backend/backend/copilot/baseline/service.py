@@ -2338,7 +2338,7 @@ async def stream_chat_completion_baseline(
     # turn's sandbox and tool bounds, and its result opens the turn.
     held_results = await resolve_answered(user_id, session)
     if held_results and await persist_pending_as_user_rows(
-        session, None, held_results, log_prefix="[Baseline]"
+        session, transcript_builder, held_results, log_prefix="[Baseline]"
     ):
         openai_messages.extend(
             format_pending_as_user_message(pm) for pm in held_results

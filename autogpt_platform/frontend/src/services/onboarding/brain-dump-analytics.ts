@@ -45,7 +45,7 @@ type BrainDumpEvent =
   | "intro_followup_sent"
   | "later_dump_completed"
   // The team Otto proposed on the greeting page: one event per card
-  // shown, then the doors out of it — hire, raise your own, talk it
+  // shown, then the doors out of it — hire, create your own, talk it
   // through, or skip straight to the builder.
   | "expert_recommended"
   | "expert_recommendation_clicked"

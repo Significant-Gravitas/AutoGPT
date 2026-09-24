@@ -14,7 +14,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules
-from backend.copilot.gate.review import instructions_for
+from backend.copilot.gate.review import payload_headline, review_payload
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.models import MCPToolOutputResponse
 from backend.copilot.tools.run_capability import RunCapabilityTool
@@ -110,8 +110,10 @@ def _is_held(result) -> bool:
 
 
 def _headline(gate) -> str:
-    _, _, _, tool_name, _, reason, subject = gate.open_review.await_args.args
-    return instructions_for(tool_name, reason, subject.name)
+    _, _, _, tool_name, args, reason, subject = gate.open_review.await_args.args
+    card = payload_headline(review_payload(tool_name, args, subject))
+    assert card == f"Run “{subject.name}”"
+    return f"{subject.name} — {reason}"
 
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])

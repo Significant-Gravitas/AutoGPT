@@ -772,10 +772,12 @@ describe("ArtifactsPage - expert filter", () => {
 
     fireEvent.click(novaTab);
 
+    // The expert narrows where you are, so the root listing stays root-only
+    // instead of flattening the whole workspace.
     await waitFor(() => {
       const last = requests[requests.length - 1];
       expect(last.expertId).toBe("expert-a");
-      expect(last.rootOnly).toBe("false");
+      expect(last.rootOnly).toBe("true");
     });
     expect(novaTab.getAttribute("aria-selected")).toBe("true");
   });

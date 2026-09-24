@@ -37,6 +37,7 @@ from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
+_ALREADY_HELD = "This exact call is already waiting for the user's approval."
 _CONSUMED = (
     "This approval was already used by an identical call that ran. "
     "Do not retry; tell the user what ran."
@@ -54,7 +55,12 @@ _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval.
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
 # The user's own word on the subject in this chat outranks the mode's rule.
-_RULE_VERDICTS = {"allow": Verdict.RUN, "judge": Verdict.JUDGE, "ask": Verdict.ASK}
+_RULE_VERDICTS = {
+    "allow": Verdict.RUN,
+    "judge": Verdict.JUDGE,
+    "ask": Verdict.ASK,
+    "unreadable": Verdict.ASK,
+}
 
 
 class Decision(BaseModel):
@@ -124,6 +130,10 @@ async def check_action(
             session_id, await held.rule_key(session_id, review_id, tool_name)
         )
         return Decision(allowed=False, reason=_REJECTED)
+    if review is not None and review.status == ReviewStatus.WAITING:
+        # The first call's card and stored call stand; re-storing would
+        # re-point the late result at the retry's tool call id.
+        return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)
@@ -139,15 +149,19 @@ async def check_action(
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     if verdict is Verdict.JUDGE and subject is not None and subject.irreversible:
         verdict = Verdict.ASK
-    if rule == "ask":
-        reason = "You declined this action earlier in this chat."
+    reason_kind: review_store.ReasonKind
+    if rule in ("ask", "unreadable"):
+        reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
+        reason_kind = "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
-        reason = subject.reason
+        reason, reason_kind = subject.reason, "subject"
     elif verdict is Verdict.ASK:
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
+        reason_kind = "mode"
     else:
+        reason_kind = "supervisor"
         allowed, reason = await classify(
             tool_name=tool_name,
             args=args,
@@ -162,7 +176,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
     )
-    return await _park(call, user_id, session, reason, subject)
+    return await _park(call, user_id, session, reason, reason_kind, subject)
 
 
 async def _park(
@@ -170,13 +184,22 @@ async def _park(
     user_id: str,
     session: ChatSession,
     reason: str,
+    reason_kind: review_store.ReasonKind,
     subject: Subject | None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     if not await review_store.open_review(
-        call.review_id, user_id, session, call.tool_name, call.args, reason, subject
+        call.review_id,
+        user_id,
+        session,
+        call.tool_name,
+        call.args,
+        reason,
+        subject,
+        reason_kind=reason_kind,
+        tool_call_id=call.tool_call_id,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(allowed=False, reason=reason, review_id=call.review_id)

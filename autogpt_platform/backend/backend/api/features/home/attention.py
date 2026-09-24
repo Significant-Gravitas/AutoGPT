@@ -2,11 +2,14 @@ import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+from pydantic import ValidationError
+
 from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.constants import AUTOPILOT_NAME, is_copilot_synthetic_id
+from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
@@ -44,6 +47,8 @@ def compose_attention_items(
 def _review_attention(
     review: PendingHumanReviewModel, now: datetime
 ) -> HomeAttentionItem:
+    if gate := _gate_payload(review):
+        return _gate_attention(review, gate, now)
     title = (
         review.action
         or review.instructions
@@ -71,6 +76,53 @@ def _review_attention(
         review=review,
         primary_action=HomeAction(label="Review", href=_review_link(review)),
     )
+
+
+def _gate_attention(
+    review: PendingHumanReviewModel, gate: GateReviewPayload, now: datetime
+) -> HomeAttentionItem:
+    """A held AutoPilot call: the card's own headline and reason, and its inputs
+    as the preview, because Home answers it without opening the chat."""
+    created_at = as_utc(review.created_at)
+    return HomeAttentionItem(
+        id=f"approval-{review.node_exec_id}",
+        kind="approval",
+        priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
+        title=gate.headline.text,
+        description=_gate_reason(gate),
+        why_it_matters="Nothing runs until you approve it.",
+        expert=_review_expert(review),
+        created_at=created_at,
+        preview=_clip(
+            " · ".join(
+                f"{field.label}: {gate.arguments[field.key]}"
+                for field in gate.fields
+                if field.key != gate.headline.object_key
+                and gate.arguments.get(field.key) not in (None, "", [], {})
+            )
+        )
+        or None,
+        review=review,
+        primary_action=HomeAction(label="Open chat", href=_review_link(review)),
+    )
+
+
+def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:
+    if not review.node_exec_id.startswith(GATE_NODE_PREFIX):
+        return None
+    try:
+        return GateReviewPayload.model_validate(review.payload)
+    except ValidationError:
+        # A row written before the payload carried a headline.
+        return None
+
+
+def _gate_reason(gate: GateReviewPayload) -> str:
+    if gate.reason_kind == "supervisor" and gate.reason:
+        return f"Not sure this is safe: {gate.reason}"
+    if gate.reason_kind in ("subject", "rule", "content") and gate.reason:
+        return gate.reason
+    return f"{AUTOPILOT_NAME} is waiting for your approval."
 
 
 def _waiting_on(review: PendingHumanReviewModel) -> str:

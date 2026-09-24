@@ -25,6 +25,7 @@ from backend.copilot.tools.models import ApprovalRequiredResponse
 from . import active_mode, held
 from . import review as review_store
 from .content import Image, judge_content
+from .headline import headline_for
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,9 @@ def is_held_read(review_id: str) -> bool:
     return review_id.startswith(f"{COPILOT_NODE_PREFIX}gate-read-")
 
 
-async def answered_read(user_id: str, review: PendingHumanReviewModel) -> str:
+async def answered_read(
+    user_id: str, review: PendingHumanReviewModel
+) -> "tuple[held.Outcome, str]":
     """What an answered held read delivers: its bytes on approval, else a refusal.
 
     Never re-runs the read, and never sets a chat rule: a rejected page says
@@ -147,8 +150,8 @@ async def answered_read(user_id: str, review: PendingHumanReviewModel) -> str:
     """
     consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED or not consumed:
-        return _REJECTED
-    return held_bytes(review).output
+        return "rejected", _REJECTED
+    return "approved", held_bytes(review).output
 
 
 def held_bytes(review: PendingHumanReviewModel) -> Release:
@@ -263,8 +266,17 @@ async def _hold(
     tool_name = call.tool_name
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
+    reason = f"this content contains instructions: {passage}"
     payload = {
-        **review_store.review_payload(tool_name, call.args),
+        **review_store.review_payload(
+            tool_name,
+            call.args,
+            reason=reason,
+            reason_kind="content",
+            mode=session.metadata.autopilot_mode,
+            tool_call_id=call.tool_call_id,
+            turn=review_store.turn_of(session),
+        ),
         "source": source,
         "passage": passage,
         "success": success,
@@ -272,13 +284,12 @@ async def _hold(
         # escaped, so the column's sanitiser leaves it byte-identical.
         "content": output,
     }
-    reason = f"this content contains instructions: {passage}"
     if not await review_store.open_review_row(
         call.review_id,
         user_id,
         session,
         payload,
-        review_store.instructions_for(tool_name, reason),
+        headline_for(tool_name, call.args).text,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)

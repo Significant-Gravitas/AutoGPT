@@ -797,11 +797,19 @@ async def test_get_active_session_falls_back_when_the_stream_is_empty():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error_message, wakes", [(None, True), ("cancelled", False)])
+@pytest.mark.parametrize(
+    "error_message, wakes",
+    [
+        (None, True),
+        ("model provider timed out", True),
+        (stream_registry.CANCELLED_MESSAGE, False),
+    ],
+)
 async def test_a_finished_turn_wakes_the_chat_for_cards_answered_during_it(
     error_message: str | None, wakes: bool
 ):
-    """Nothing else starts that turn; a stopped or failed turn must not."""
+    """Nothing else starts that turn, so a failed one wakes it too; the
+    user's own Stop leaves it for their next turn."""
     fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1", "user_id": "u1"})
     wake = AsyncMock()
 
