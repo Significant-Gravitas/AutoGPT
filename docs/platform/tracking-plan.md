@@ -206,7 +206,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
 | `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
-| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). An idempotent re-hire of an active expert does not fire. |
+| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
 | `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
