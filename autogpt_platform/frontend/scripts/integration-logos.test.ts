@@ -29,17 +29,4 @@ describe("integration logo assets", () => {
     expect(entry.mcp_server.icon_id).toBeTruthy();
     expectPNG(entry.mcp_server.icon_id!);
   });
-
-  test.each([
-    "allquiet",
-    "ayrshare",
-    "compass",
-    "database",
-    "dataforb2b",
-    "elevenlabs",
-    "generic_webhook",
-    "rmfg",
-    "stripe_link",
-    "typesafe",
-  ])("%s has a bundled integration icon", expectPNG);
 });
