@@ -141,7 +141,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3
         assert defaults["multiple_tool_calls"] is False
         assert defaults["execution_mode"] == "extended_thinking"
-        assert defaults["model"] == "claude-opus-4-6"
+        assert defaults["model"] == "claude-opus-5-5"
         assert len(fixer.fixes_applied) == 6
 
     def test_preserves_existing_values(self):
@@ -196,7 +196,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3  # filled
         assert defaults["multiple_tool_calls"] is False  # filled
         assert defaults["execution_mode"] == "extended_thinking"  # filled
-        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert defaults["model"] == "claude-opus-5-5"  # filled
         assert len(fixer.fixes_applied) == 5
 
     def test_skips_non_sdm_nodes(self):
@@ -271,7 +271,7 @@ class TestFixOrchestratorBlocks:
         assert defaults["retry"] == 3  # kept
         assert defaults["multiple_tool_calls"] is False  # kept
         assert defaults["execution_mode"] == "extended_thinking"  # filled
-        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert defaults["model"] == "claude-opus-5-5"  # filled
         assert len(fixer.fixes_applied) == 4
 
     def test_multiple_sdm_nodes(self):

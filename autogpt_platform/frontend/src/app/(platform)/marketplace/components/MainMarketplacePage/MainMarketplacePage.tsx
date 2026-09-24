@@ -1,19 +1,22 @@
 "use client";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { UserAiIcon } from "@hugeicons/core-free-icons";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   Flag,
   useFlagStatus,
   useGetFlag,
 } from "@/services/feature-flags/use-get-flag";
-import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
+import { SkillsList } from "../SkillsList/SkillsList";
 import { SkillsSection } from "../SkillsSection/SkillsSection";
+import { WorkflowsShelf } from "../WorkflowsShelf/WorkflowsShelf";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
@@ -39,6 +42,11 @@ export const MainMarkeplacePage = () => {
   // visitor browsing the marketplace needs a way to reach them. Signed-in
   // users keep the flag gate so the beta stays invisible to them.
   const showExperts = !isUserLoading && (!isLoggedIn || isHireExpertsEnabled);
+  const hasWorkflowShelf = Boolean(
+    topAgents &&
+      (topAgents.agents.length > 0 ||
+        (!category && (featuredAgents?.agents.length ?? 0) > 0)),
+  );
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -71,41 +79,61 @@ export const MainMarkeplacePage = () => {
             below its content changes what the reader has scrolled past. */}
         <CategoryFilter selected={category} onSelect={setCategory} />
         {showExperts ? <ExpertsSection category={category} /> : null}
-        {skillsHub.ready && skillsHub.enabled ? (
-          <SkillsSection category={category} />
-        ) : null}
-        {topAgents && (
-          <div className="mb-20" id={AGENTS_SECTION_ID}>
-            <AgentsSection
-              sectionTitle="All AI Workflows"
-              titleIcon={<AICatalogIcon size={30} />}
-              subtitle={
-                isHireExpertsEnabled
-                  ? "Install one on an Expert, or run it standalone."
-                  : "Ready-made automations from the community."
-              }
-              agents={topAgents.agents}
-            >
-              {/* Featured is a whole-marketplace shelf; under a category filter
-                  it would show workflows the filter excludes. */}
-              {!category &&
-                featuredAgents &&
-                featuredAgents.agents.length > 0 && (
-                  <FeaturedSection featuredAgents={featuredAgents.agents} />
-                )}
-            </AgentsSection>
-          </div>
+        {isHireExpertsEnabled ? (
+          <>
+            {skillsHub.ready && skillsHub.enabled ? (
+              <SkillsList key={category ?? "all"} category={category} />
+            ) : null}
+            {topAgents && (
+              <WorkflowsShelf
+                id={AGENTS_SECTION_ID}
+                agents={topAgents.agents}
+                featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
+                total={topAgents.pagination.total_items}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {skillsHub.ready && skillsHub.enabled ? (
+              <SkillsSection category={category} />
+            ) : null}
+            {topAgents && (
+              <div className="mb-20" id={AGENTS_SECTION_ID}>
+                <AgentsSection
+                  sectionTitle="All AI Workflows"
+                  titleIcon={
+                    <Icon icon={UserAiIcon} size="2.2rem" aria-hidden />
+                  }
+                  subtitle="Ready-made automations from the community."
+                  agents={topAgents.agents}
+                >
+                  {/* Featured is a whole-marketplace shelf; under a category filter
+                      it would show workflows the filter excludes. */}
+                  {!category &&
+                    featuredAgents &&
+                    featuredAgents.agents.length > 0 && (
+                      <FeaturedSection featuredAgents={featuredAgents.agents} />
+                    )}
+                </AgentsSection>
+              </div>
+            )}
+          </>
         )}
         {featuredCreators && (
           <div className="mb-4">
             <FeaturedCreators featuredCreators={featuredCreators.creators} />
           </div>
         )}
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+        {/* The expert layout invites publishing from under the workflows
+            shelf instead, where it cannot outshout the shelf itself. */}
+        {!isHireExpertsEnabled || !hasWorkflowShelf ? (
+          <BecomeACreator
+            title="Become a Creator"
+            description="Join our ever-growing community of hackers and tinkerers"
+            buttonText="Become a Creator"
+          />
+        ) : null}
       </main>
       <MarketplaceTabIntro />
     </div>

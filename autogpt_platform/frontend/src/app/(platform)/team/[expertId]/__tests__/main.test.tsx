@@ -62,6 +62,7 @@ import {
 import { format, subDays } from "date-fns";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -1069,9 +1070,9 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
+      name: "Change Maria's appearance",
     });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
+    const fileInput = screen.getByLabelText("Upload Maria appearance");
     expect(button.contains(fileInput)).toBe(false);
     const pickerClick = vi.spyOn(fileInput, "click");
     fireEvent.click(button);
@@ -1081,7 +1082,7 @@ describe("ExpertDetailPage", () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalled());
-    expect(uploadAvatarSpy).toHaveBeenCalledWith(file);
+    expect(uploadAvatarSpy).toHaveBeenCalledWith(file, "expert-avatar");
     const body = await updateSpy.mock.results[0].value.json();
     expect(body).toEqual({ avatar_url: "https://cdn.example.com/maria.png" });
   });
@@ -1096,12 +1097,17 @@ describe("ExpertDetailPage", () => {
       }),
     );
 
-    render(<ExpertDetailPage />);
+    render(
+      <>
+        <ExpertDetailPage />
+        <Toaster />
+      </>,
+    );
 
     const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
+      name: "Change Maria's appearance",
     });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
+    const fileInput = screen.getByLabelText("Upload Maria appearance");
     expect(button.contains(fileInput)).toBe(false);
     fireEvent.change(fileInput, {
       target: { files: [new File(["x"], "maria.png", { type: "image/png" })] },
@@ -1110,6 +1116,8 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(uploadAvatarSpy).toHaveBeenCalled());
     await waitFor(() => expect(button).not.toHaveProperty("disabled", true));
     expect(updateSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText("Couldn't update appearance")).toBeDefined();
+    expect(await screen.findByText("Unauthorized")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {

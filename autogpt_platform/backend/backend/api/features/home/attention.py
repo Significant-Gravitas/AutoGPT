@@ -218,6 +218,6 @@ def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
 def _review_link(review: PendingHumanReviewModel) -> str:
     if review.session_id:
         return f"/copilot?sessionId={quote(review.session_id)}"
-    if review.library_agent_id:
+    if review.library_agent_id and review.graph_exec_id:
         return run_link(review.library_agent_id, review.graph_exec_id) or "/library"
     return "/library"

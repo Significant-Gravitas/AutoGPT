@@ -14,9 +14,15 @@
  * - The backend stores it on the user at signup (`UserAttribution`), which is
  *   the join key for everything else.
  *
- * An existing PostHog device id is adopted rather than replaced, so returning
+ * It only outlives the page with analytics consent. Without it the id is
+ * minted fresh for each page load and kept in memory, nothing an earlier
+ * visit stored is read, and the first landing stays in memory too. Granting
+ * persists both without a reload; withdrawing deletes them. With consent an
+ * existing PostHog device id is adopted rather than replaced, so returning
  * visitors keep their history.
  */
+
+import { hasConsentFor, subscribeToConsent } from "@/services/consent/consent";
 
 const ANONYMOUS_ID_KEY = "agpt_anonymous_id";
 const FIRST_LANDING_KEY = "agpt_first_landing";
@@ -43,11 +49,16 @@ export interface FirstLanding {
 }
 
 let memoryID: string | null = null;
+let pageLanding: FirstLanding | null = null;
 
 export function getAnonymousID(): string | null {
   if (typeof window === "undefined") return null;
   if (memoryID) return memoryID;
 
+  if (!hasConsentFor("analytics")) {
+    memoryID = newID();
+    return memoryID;
+  }
   const stored = readStorage(ANONYMOUS_ID_KEY);
   const id = stored ?? readPostHogDeviceID() ?? newID();
   if (!stored) writeStorage(ANONYMOUS_ID_KEY, id);
@@ -56,38 +67,69 @@ export function getAnonymousID(): string | null {
 }
 
 /**
- * Remember the first page this browser landed on, once. Captured under
- * legitimate interest rather than analytics consent — to be revisited after GTM.
+ * Remember the page this visit landed on. It is stored as the browser's first
+ * landing only with analytics consent (once, on the first visit that has it);
+ * otherwise it stays in memory for this page load.
  */
 export function captureFirstLanding(): void {
   if (typeof window === "undefined") return;
-  if (readStorage(FIRST_LANDING_KEY)) return;
-
-  const params = new URLSearchParams(window.location.search);
-  const landing: FirstLanding = {
-    path: redactPath(window.location.pathname, window.location.search),
-    referrer: redactReferrer(document.referrer),
-    utm_source: params.get("utm_source"),
-    utm_medium: params.get("utm_medium"),
-    utm_campaign: params.get("utm_campaign"),
-    at: new Date().toISOString(),
-  };
-  writeStorage(FIRST_LANDING_KEY, JSON.stringify(landing));
+  pageLanding ??= describeLanding();
+  if (hasConsentFor("analytics")) persistFirstLanding();
 }
 
 export function readFirstLanding(): FirstLanding | null {
+  if (typeof window === "undefined") return null;
+  if (!hasConsentFor("analytics")) return pageLanding;
   const raw = readStorage(FIRST_LANDING_KEY);
-  if (!raw) return null;
+  if (!raw) return pageLanding;
   try {
     return JSON.parse(raw) as FirstLanding;
   } catch {
-    return null;
+    return pageLanding;
   }
 }
 
 /**
- * Rotate the browser identity and clear its first landing. Persist the new
- * identity immediately so old PostHog storage cannot restore the last visitor.
+ * Keep the stored identity in step with analytics consent: persist this page's
+ * id and landing on a grant, delete them otherwise (also clearing whatever a
+ * visit with consent left behind). Returns the unsubscribe.
+ */
+export function followAnalyticsConsentForIdentity(): () => void {
+  if (typeof window === "undefined") return () => {};
+  syncStoredIdentity();
+  return subscribeToConsent(syncStoredIdentity);
+}
+
+function syncStoredIdentity(): void {
+  if (!hasConsentFor("analytics")) {
+    forgetStoredIdentity();
+    return;
+  }
+  const id = getAnonymousID();
+  if (id && readStorage(ANONYMOUS_ID_KEY) !== id) {
+    writeStorage(ANONYMOUS_ID_KEY, id);
+  }
+  persistFirstLanding();
+}
+
+function persistFirstLanding(): void {
+  if (!pageLanding || readStorage(FIRST_LANDING_KEY)) return;
+  writeStorage(FIRST_LANDING_KEY, JSON.stringify(pageLanding));
+}
+
+function forgetStoredIdentity(): void {
+  try {
+    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
+    window.localStorage.removeItem(FIRST_LANDING_KEY);
+  } catch {
+    // Storage blocked: nothing persisted to clear.
+  }
+}
+
+/**
+ * Rotate the browser identity and clear its first landing. With consent the
+ * new identity is persisted immediately so old PostHog storage cannot restore
+ * the last visitor.
  */
 export function resetAnonymousID(nextID?: string): void {
   if (typeof window === "undefined") {
@@ -95,22 +137,20 @@ export function resetAnonymousID(nextID?: string): void {
     return;
   }
   memoryID = nextID || newID();
-  try {
-    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
-    window.localStorage.removeItem(FIRST_LANDING_KEY);
-  } catch {
-    // Storage blocked: nothing persisted to clear.
-  }
-  writeStorage(ANONYMOUS_ID_KEY, memoryID);
+  pageLanding = null;
+  forgetStoredIdentity();
+  if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
 }
 
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
+  pageLanding = null;
 }
 
-/** PostHog's own device id, when its persistence exists in this browser. */
+/** PostHog's own device id, when it may be read and exists in this browser. */
 export function getPostHogDeviceID(): string | null {
   if (typeof window === "undefined") return null;
+  if (!hasConsentFor("analytics")) return null;
   return readPostHogDeviceID();
 }
 
@@ -126,6 +166,18 @@ function readPostHogDeviceID(): string | null {
   } catch {
     return null;
   }
+}
+
+function describeLanding(): FirstLanding {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    path: redactPath(window.location.pathname, window.location.search),
+    referrer: redactReferrer(document.referrer),
+    utm_source: params.get("utm_source"),
+    utm_medium: params.get("utm_medium"),
+    utm_campaign: params.get("utm_campaign"),
+    at: new Date().toISOString(),
+  };
 }
 
 function redactPath(pathname: string, search: string): string {

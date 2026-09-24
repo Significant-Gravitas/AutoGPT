@@ -111,7 +111,9 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Create an Expert" })
+        .getAttribute("href"),
     ).toBe("/raise");
     // The card is the link: a shared URL lands on the same profile the
     // marketplace opens, with no dialog in between.
@@ -141,8 +143,9 @@ describe("Marketplace ExpertsSection", () => {
     expect(card.getAttribute("href")).toBe(
       "/marketplace/experts/template-maria",
     );
-    expect(screen.queryByText("Raise your own")).toBeNull();
+    expect(screen.queryByText("Create an Expert")).toBeNull();
     expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Hire" })).toBeNull();
     expect(rosterRequested).toBe(false);
   });
 
@@ -161,7 +164,7 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
     expect(screen.queryByText("Meet the AI Experts")).toBeNull();
-    expect(screen.queryByText(/raise your own expert/)).toBeNull();
+    expect(screen.queryByText(/create your own expert/)).toBeNull();
     expect(templatesRequested).toBe(false);
   });
 
@@ -176,7 +179,7 @@ describe("Marketplace ExpertsSection", () => {
     await waitFor(
       () => {
         const raiseLink = screen.getByRole("link", {
-          name: "Raise your own",
+          name: "Create an Expert",
         });
         expect(raiseLink.getAttribute("href")).toBe("/raise");
         expect(screen.queryByText("Meet the AI Experts")).toBeNull();
@@ -196,7 +199,7 @@ describe("Marketplace ExpertsSection", () => {
     render(<MainMarkeplacePage />);
 
     const raiseLink = await screen.findByRole("link", {
-      name: "Raise your own",
+      name: "Create an Expert",
     });
     expect(raiseLink.getAttribute("href")).toBe("/raise");
   });
@@ -251,7 +254,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(within(maria).getByText("SEO Content Manager")).toBeDefined();
     expect(within(maria).queryByText("Marketing Strategist")).toBeNull();
     const max = screen.getByRole("link", { name: /Max/ });
-    expect(within(max).getByText("Sales")).toBeDefined();
+    expect(within(max).getByText("Sales Development Rep")).toBeDefined();
   });
 
   test("shows no skills row on a card without Hub skills", async () => {
