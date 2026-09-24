@@ -89,3 +89,57 @@ test("an approved call that failed when it ran shows its error, still marked app
     .find((el) => el.className.includes("text-red"));
   expect(errorLine).toBeDefined();
 });
+
+const HELD_READ: MessagePart = {
+  type: "tool-web_fetch",
+  state: "output-available",
+  toolCallId: "call-9",
+  input: { url: "docs.northwind.io/billing" },
+  output: {
+    type: "approval_required",
+    tool_name: "web_fetch",
+    reason:
+      "Content withheld pending your review: web_fetch docs.northwind.io/billing.",
+    review_id: "copilot-node-gate-read-web_fetch:abc",
+    ask: "Read",
+    object: "docs.northwind.io/billing",
+  },
+} as MessagePart;
+
+function readChain(outcomes: Map<string, HeldOutcome>) {
+  return (
+    <CopilotChatActionsProvider onSend={vi.fn()}>
+      <HeldOutcomesContext.Provider value={outcomes}>
+        <ToolChain parts={[HELD_READ]} isStreaming={false} />
+      </HeldOutcomesContext.Provider>
+    </CopilotChatActionsProvider>
+  );
+}
+
+test("a held read's row reads Held, then Kept out, and keeps naming the read", async () => {
+  const { rerender } = render(readChain(new Map()));
+
+  expect(await screen.findByText("Held")).toBeDefined();
+  expect(
+    screen.getAllByText('Read "docs.northwind.io/billing"').length,
+  ).toBeGreaterThan(0);
+  expect(screen.queryByText("Waiting for you")).toBeNull();
+
+  rerender(
+    readChain(new Map([["call-9", { outcome: "rejected", output: "no" }]])),
+  );
+
+  expect(await screen.findByText("Kept out")).toBeDefined();
+  expect(
+    screen.getAllByText('Read "docs.northwind.io/billing"').length,
+  ).toBeGreaterThan(0);
+});
+
+test("a released read's row reads Released", async () => {
+  render(
+    readChain(
+      new Map([["call-9", { outcome: "approved", output: { content: "hi" } }]]),
+    ),
+  );
+  expect(await screen.findByText("Released")).toBeDefined();
+});

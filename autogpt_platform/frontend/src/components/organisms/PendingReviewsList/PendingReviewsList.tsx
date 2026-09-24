@@ -6,7 +6,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
-import type { ReviewItemChatRule } from "@/app/api/__generated__/models/reviewItemChatRule";
 import {
   Alert01Icon,
   ArrowDown01Icon,
@@ -45,7 +44,7 @@ export function PendingReviewsList({
 
   const [pendingAction, setPendingAction] = useState<{
     nodeId: string;
-    action: "approve" | "reject" | "allow" | "judge";
+    action: "approve" | "reject";
   } | null>(null);
 
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
@@ -111,11 +110,7 @@ export function PendingReviewsList({
   // Scoped to one node's reviews on purpose: these are the rows rendered
   // directly above the button that calls this, and a decision must never
   // reach a row the reviewer has not been shown.
-  async function processGroup(
-    nodeId: string,
-    approved: boolean,
-    chatRule: ReviewItemChatRule = null,
-  ) {
+  async function processGroup(nodeId: string, approved: boolean) {
     const groupReviews = groupedReviews[nodeId] || [];
 
     if (groupReviews.length === 0) {
@@ -127,10 +122,7 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction({
-      nodeId,
-      action: chatRule ?? (approved ? "approve" : "reject"),
-    });
+    setPendingAction({ nodeId, action: approved ? "approve" : "reject" });
     const reviewItems = [];
 
     for (const review of groupReviews) {
@@ -162,7 +154,6 @@ export function PendingReviewsList({
         approved,
         reviewed_data: parsedData,
         auto_approve_future: autoApproveThisNode && approved,
-        chat_rule: approved ? chatRule : null,
       });
     }
 
@@ -343,28 +334,6 @@ export function PendingReviewsList({
                         ? "Approve"
                         : `Approve ${reviewCount} reviews`}
                     </Button>
-                    {nodeReviews.every(hasSubject) && (
-                      <>
-                        <Button
-                          onClick={() => processGroup(nodeId, true, "allow")}
-                          disabled={isProcessing}
-                          variant="secondary"
-                          className="rounded-full px-4 py-3"
-                          loading={groupAction === "allow" && isProcessing}
-                        >
-                          Allow for this chat
-                        </Button>
-                        <Button
-                          onClick={() => processGroup(nodeId, true, "judge")}
-                          disabled={isProcessing}
-                          variant="secondary"
-                          className="rounded-full px-4 py-3"
-                          loading={groupAction === "judge" && isProcessing}
-                        >
-                          Judge for this chat
-                        </Button>
-                      </>
-                    )}
                     <Button
                       onClick={() => processGroup(nodeId, false)}
                       disabled={isProcessing}
@@ -389,20 +358,6 @@ export function PendingReviewsList({
         auto-approval on or off using the toggle for each node.
       </Text>
     </div>
-  );
-}
-
-// A card naming a subject can set the chat's rule on it; one for a bare tool
-// or a held read cannot.
-function hasSubject(review: PendingHumanReviewModel) {
-  const payload = review.payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload))
-    return false;
-  const subject = (payload as Record<string, unknown>).subject;
-  return (
-    !!subject &&
-    typeof subject === "object" &&
-    typeof (subject as Record<string, unknown>).name === "string"
   );
 }
 

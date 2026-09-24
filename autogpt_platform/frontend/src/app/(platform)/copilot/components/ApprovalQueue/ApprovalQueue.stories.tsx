@@ -13,9 +13,11 @@ import { toApprovalItem } from "./helpers";
 import {
   deleteFolder,
   folder,
+  heldRead,
   heldReview,
   mail,
   shell,
+  workflow,
 } from "./__tests__/fixtures";
 
 function answerAfter(ms: number, status = 200) {
@@ -59,7 +61,56 @@ export const TwoOnTheSameSubject: Story = {
   args: queueOf([folder("a", "Q3 reports", 6), folder("b", "Invoices", 5)]),
 };
 
-export const IrreversibleWithInputs: Story = { args: queueOf([mail()]) };
+const GMAIL_SCHEMA = http.get("*/api/builder/blocks/batch", () =>
+  HttpResponse.json([
+    {
+      id: "b-gmail",
+      name: "GmailSendBlock",
+      inputSchema: {
+        type: "object",
+        required: ["to", "subject"],
+        properties: {
+          to: { type: "array", title: "To" },
+          subject: { type: "string", title: "Subject" },
+          body: { type: "string", title: "Body" },
+        },
+      },
+    },
+  ]),
+);
+
+export const IrreversibleWithInputs: Story = {
+  args: queueOf([mail()]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+// As the server sends it: no chat rule is offered for a block yet.
+export const BlockCard: Story = {
+  args: queueOf([mail("mail", [])]),
+  parameters: { msw: { handlers: [GMAIL_SCHEMA, answerAfter(600_000)] } },
+};
+
+export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+export const BlockChainRow: StoryObj = {
+  render: () => {
+    const part = {
+      type: "tool-run_capability",
+      state: "output-available",
+      toolCallId: "call-gmail",
+      input: { id: "b-gmail", input: { to: ["dana@acme.com"] } },
+      output: {
+        type: "approval_required",
+        tool_name: "run_capability",
+        review_id: "copilot-node-gate-run_capability:gmail",
+        ask: "Run",
+        object: "Gmail Send",
+      },
+    } as MessagePart;
+    const row = applyHeldOutcome(toChainRow(part, 0)!, new Map());
+    return <ChainRowView row={row} isLast />;
+  },
+};
 
 export const SupervisorCouldNotVouch: Story = { args: queueOf([shell()]) };
 
@@ -142,6 +193,58 @@ export const ChainRows: StoryObj = {
     const rows = parts.map((part, i) =>
       applyHeldOutcome(toChainRow(part, i)!, OUTCOMES),
     );
+    return (
+      <div className="flex flex-col">
+        {rows.map((row, i) => (
+          <ChainRowView
+            key={row.key}
+            row={row}
+            isLast={i === rows.length - 1}
+          />
+        ))}
+      </div>
+    );
+  },
+};
+
+export const HeldRead: Story = {
+  args: queueOf([heldRead("r", "docs.northwind.io/billing")]),
+};
+
+export const HeldReadBesideAnAction: Story = {
+  args: queueOf([
+    folder("a", "Q3 reports", 6),
+    heldRead("r", "docs.northwind.io/billing"),
+  ]),
+};
+
+const READ_PART = (id: string, url: string) =>
+  ({
+    type: "tool-web_fetch",
+    state: "output-available",
+    toolCallId: `read-${id}`,
+    input: { url },
+    output: {
+      type: "approval_required",
+      tool_name: "web_fetch",
+      review_id: `copilot-node-gate-read-web_fetch:${id}`,
+      ask: "Read",
+      object: url,
+    },
+  }) as MessagePart;
+
+const READ_OUTCOMES = new Map<string, HeldOutcome>([
+  ["read-b", { outcome: "approved", output: { message: "fetched" } }],
+  ["read-c", { outcome: "rejected", output: "" }],
+]);
+
+export const HeldReadChainRows: StoryObj = {
+  render: () => {
+    const rows = [
+      READ_PART("a", "docs.northwind.io/billing"),
+      READ_PART("b", "status.acme.dev"),
+      READ_PART("c", "pastebin.example/raw/x1"),
+    ].map((part, i) => applyHeldOutcome(toChainRow(part, i)!, READ_OUTCOMES));
     return (
       <div className="flex flex-col">
         {rows.map((row, i) => (

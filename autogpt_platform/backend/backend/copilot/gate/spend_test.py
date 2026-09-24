@@ -253,7 +253,9 @@ def test_a_money_card_offers_no_chat_rule():
     payload = review_payload("t", {}, _PAID, spend)
     assert payload["spend"] == spend
     assert payload["chat_rules_allowed"] == []
-    assert review_payload("t", {}, _SEND)["spend"] is None
+    sent = review_payload("t", {}, _SEND)
+    assert sent["spend"] is None
+    assert sent["chat_rules_allowed"] == ["allow", "judge"]
 
 
 async def test_flag_on_a_root_turn_opens_its_tree(ledger):

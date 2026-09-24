@@ -450,3 +450,36 @@ async def test_mcp_file_read_is_judged_on_the_text_the_model_receives(rows):
 
     assert len(to_model) < 75_000
     assert judge.await_args.kwargs["text"] == to_model
+
+
+async def test_a_held_read_is_named_by_its_source_on_the_card_and_the_chain_row(
+    rows,
+):
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await _call(
+            _Fetch(_MARKER), _session(), {"url": "docs.northwind.io/billing"}
+        )
+
+    (row,) = rows.rows.values()
+    assert row.payload["reason_kind"] == "content"
+    assert row.payload["headline"] == {
+        "ask": "Let Otto read",
+        "object": "docs.northwind.io/billing",
+        "object_key": "url",
+    }
+    assert row.instructions == "Let Otto read “docs.northwind.io/billing”"
+    stub = json.loads(result.output)
+    assert (stub["ask"], stub["object"]) == ("Read", "docs.northwind.io/billing")
+
+
+async def test_a_held_read_with_no_named_source_says_what_returned_it(rows):
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        result = await _call(
+            _Fetch(_MARKER, name="memory_search"), _session(), {"limit": 3}
+        )
+
+    (row,) = rows.rows.values()
+    assert row.payload["headline"]["ask"] == "Let Otto read what memory search returned"
+    stub = json.loads(result.output)
+    assert stub["ask"] == "Read what memory search returned"
+    assert stub["object"] is None

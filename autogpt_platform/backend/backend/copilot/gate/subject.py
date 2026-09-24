@@ -47,11 +47,12 @@ NO_OP = Subject(key="", name="", effect=Effect.UNGATED)
 
 def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
     effect = block_effect(block, inputs)
+    name = display_name(block)
     return Subject(
         key=f"block:{block.id}",
-        name=display_name(block),
+        name=name,
         effect=_gate_effect(effect),
-        reason=_reason(effect, block, culprit=None),
+        reason=_reason(effect, name, culprit=None),
         irreversible=_irreversible(effect, block),
         estimate=_priced(effect, lambda: block_usage_cost(block, inputs)[0]),
     )
@@ -63,15 +64,20 @@ def workflow_subject(
     """``schedules`` and ``saves_preset``: the call also creates a platform
     object, so a read workflow is at least a platform edit."""
     effect, decided_by = graph_effect(graph)
+    name = graph.name or "Untitled workflow"
     subject = Subject(
         key=f"workflow:{graph.id}",
-        name=graph.name or "Untitled workflow",
+        name=name,
         effect=_gate_effect(effect),
-        reason=_reason(effect, decided_by, culprit=decided_by),
+        reason=_reason(effect, name, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
         estimate=0 if schedules else _priced(effect, lambda: graph_cost_credits(graph)),
     )
-    creates = "creates a schedule" if schedules else "saves a preset"
+    creates = (
+        f"Runs {name} and creates a schedule."
+        if schedules
+        else f"Runs {name} and saves a preset."
+    )
     if (schedules or saves_preset) and subject.effect in (
         Effect.READ,
         Effect.WORKSPACE,
@@ -87,23 +93,22 @@ def mcp_subject(server_url: str, tool: str) -> Subject:
     url = urlsplit(server_url)
     host = url.hostname or server_url
     port = f":{url.port}" if url.port not in (None, 443) else ""
-    effect, reason = _MCP_EFFECTS[mcp_tool_effect(server_url, tool)]
+    mapped = mcp_tool_effect(server_url, tool)
+    name = f"{tool} on {host}"
+    if mapped is None:
+        effect, reason = Effect.EXTERNAL, f"Its effect is unknown: {name}."
+    elif mapped == "read":
+        effect, reason = Effect.READ, ""
+    else:
+        effect = Effect.EXTERNAL
+        reason = f"Runs {name}, which reaches outside the platform."
     return Subject(
         key=f"mcp:{host}{port}{url.path.rstrip('/')}::{tool}",
-        name=f"{tool} on {host}",
+        name=name,
         effect=effect,
         reason=reason,
-        irreversible=reason == _IRREVERSIBLE,
+        irreversible=mapped == "irreversible",
     )
-
-
-_IRREVERSIBLE = "cannot be taken back"
-_MCP_EFFECTS: dict[str | None, tuple[Effect, str]] = {
-    "read": (Effect.READ, ""),
-    "external": (Effect.EXTERNAL, "reaches outside the platform"),
-    "irreversible": (Effect.EXTERNAL, _IRREVERSIBLE),
-    None: (Effect.EXTERNAL, "its effect is unknown"),
-}
 
 
 def graph_cost_credits(graph: "GraphModel") -> int:
@@ -143,19 +148,20 @@ def _gate_effect(effect: BlockEffect | None) -> Effect:
     return Effect.EXTERNAL if effect is None else _EFFECTS[effect]
 
 
-def _reason(
-    effect: BlockEffect | None, block: Block | None, culprit: Block | None
-) -> str:
-    step = f": {display_name(culprit)}" if culprit is not None else ""
+def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str:
+    """The card's reason line: ``culprit`` is the workflow step that decided."""
     if effect is None:
-        return f"effect unknown{step}"
-    if effect is BlockEffect.EXTERNAL:
-        if block is not None and block.is_irreversible_action:
-            return f"cannot be taken back{step}"
-        return f"reaches outside the platform{step}"
-    if effect is BlockEffect.PLATFORM:
-        return f"changes your platform objects{step}"
-    return ""
+        step = display_name(culprit) if culprit is not None else name
+        return f"Its effect is unknown: {step}."
+    does = {
+        BlockEffect.EXTERNAL: "reaches outside the platform",
+        BlockEffect.PLATFORM: "changes your platform objects",
+    }.get(effect)
+    if does is None:
+        return ""
+    if culprit is not None:
+        return f"Runs {name}; its step {display_name(culprit)} {does}."
+    return f"Runs {name}, which {does}."
 
 
 def _irreversible(effect: BlockEffect | None, block: Block | None) -> bool:

@@ -77,6 +77,8 @@ class Decision(BaseModel):
     review_id: str | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
+    # The block or workflow the card names, so the chain row names it too.
+    subject_name: str | None = None
 
 
 ALLOW = Decision(allowed=True)
@@ -153,9 +155,8 @@ async def check_action(
     rule = (
         await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
     )
+    # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
-    if verdict is Verdict.JUDGE and subject is not None and subject.irreversible:
-        verdict = Verdict.ASK
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
     spend = spend_shown = None
     if effect is Effect.READ and estimate > 0 and mode != "unsupervised":
@@ -224,7 +225,12 @@ async def _park(
         tool_call_id=call.tool_call_id,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    return Decision(allowed=False, reason=reason, review_id=call.review_id)
+    return Decision(
+        allowed=False,
+        reason=reason,
+        review_id=call.review_id,
+        subject_name=subject.name if subject is not None else None,
+    )
 
 
 def refusal_message(reason: str, review_id: str | None) -> str:

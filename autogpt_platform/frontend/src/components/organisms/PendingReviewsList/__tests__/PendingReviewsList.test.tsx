@@ -164,54 +164,6 @@ test("a block's group is titled by its action and names its workflow", () => {
   expect(screen.queryByText(/SendEmailBlock/)).toBeNull();
 });
 
-function makeGateReview(subject?: Record<string, string>) {
-  return makeReview({
-    node_exec_id: "copilot-node-gate-run_capability:abc",
-    node_id: "copilot-node-gate-run_capability",
-    editable: false,
-    payload: {
-      tool: "run_capability",
-      arguments: {},
-      ...(subject ? { subject } : {}),
-    },
-  });
-}
-
-test("a card naming a subject can allow it for the rest of the chat", async () => {
-  const captured = captureReviewAction();
-
-  render(
-    <PendingReviewsList
-      reviews={[
-        makeGateReview({
-          name: "do_thing on mcp.example.com",
-          effect: "external",
-        }),
-      ]}
-    />,
-  );
-
-  await userEvent.click(
-    screen.getByRole("button", { name: "Allow for this chat" }),
-  );
-
-  await waitFor(() => expect(captured.body).toBeDefined());
-  expect(captured.body?.reviews).toEqual([
-    expect.objectContaining({ approved: true, chat_rule: "allow" }),
-  ]);
-});
-
-test("a card for a bare tool offers no chat rule", () => {
-  render(<PendingReviewsList reviews={[makeGateReview()]} />);
-
-  expect(
-    screen.queryByRole("button", { name: "Allow for this chat" }),
-  ).toBeNull();
-  expect(
-    screen.queryByRole("button", { name: "Judge for this chat" }),
-  ).toBeNull();
-});
-
 test("an AutoPilot action's card neither calls it a workflow nor offers an edit", () => {
   render(
     <PendingReviewsList
