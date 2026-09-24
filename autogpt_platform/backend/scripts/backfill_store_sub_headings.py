@@ -2,19 +2,19 @@
 
 Marketplace listings now require a short call-to-action sub-heading, but rows
 predating that rule can hold an empty string, which leaves preview cards to
-fall back on the full description. This generates a one-line CTA from the
-listing's name and description via ``gpt-4o-mini`` and, with ``--apply``,
-writes it back.
+fall back on the full description.
 
-Every run writes a CSV of ``id,name,description,proposed_sub_heading`` so the
-generated lines can be reviewed before anything is written.
+A dry run (the default) generates a one-line CTA per listing from its name and
+description via ``gpt-4o-mini`` and writes ``id,name,description,
+proposed_sub_heading`` to the CSV; it writes nothing to the database. Review
+the CSV, editing or deleting rows as needed, then ``--apply`` writes that CSV's
+``proposed_sub_heading`` values to the rows whose subHeading is still empty.
+``--apply`` generates nothing.
 
 Usage::
 
     poetry run python scripts/backfill_store_sub_headings.py            # dry run
     poetry run python scripts/backfill_store_sub_headings.py --apply
-
-Dry run is the default; ``--apply`` is the only thing that writes.
 """
 
 from __future__ import annotations
@@ -27,6 +27,10 @@ import sys
 from pathlib import Path
 
 DEFAULT_CSV_PATH = Path("store_sub_heading_backfill.csv")
+# Spreadsheet apps evaluate cells opening with these (CWE-1236).
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+# Matches the API validator, which strips all whitespace; btrim() trims only spaces.
+BLANK_SUB_HEADING = "\"subHeading\" !~ '\\S'"
 
 MODEL = "gpt-4o-mini"
 MAX_OUTPUT_TOKENS = 40
@@ -58,6 +62,18 @@ async def main(
     from backend.api.features.store.model import SUB_HEADING_MAX_LENGTH
     from backend.data.db import connect, disconnect
 
+    if apply:
+        reviewed = read_reviewed_csv(csv_path, SUB_HEADING_MAX_LENGTH)
+        await connect()
+        try:
+            written = await persist_sub_headings(reviewed)
+        finally:
+            await disconnect()
+        print(
+            f"Updated {written} of {len(reviewed)} listing version(s) from {csv_path}."
+        )
+        return 0
+
     await connect()
     try:
         rows = await find_listings_without_sub_heading(limit, include_unapproved)
@@ -75,12 +91,9 @@ async def main(
         for row_id, name, _description, proposed in proposals[:5]:
             print(f"  {row_id}  {name!r}\n    -> {proposed!r}")
 
-        if not apply:
-            print("\nDry run: nothing written. Re-run with --apply to persist.")
-            return 0
-
-        written = await persist_sub_headings(proposals)
-        print(f"Updated {written} listing version(s).")
+        print(
+            f"\nDry run: nothing written. Review {csv_path}, then re-run with --apply."
+        )
         return 0
     finally:
         await disconnect()
@@ -91,8 +104,7 @@ async def find_listings_without_sub_heading(
 ) -> list[tuple[str, str, str]]:
     from prisma import get_client
 
-    # Prisma has no "empty once trimmed" string filter, and a whitespace-only
-    # sub-heading is as empty as "" to the API validator that strips it.
+    # Prisma has no "empty once trimmed" string filter.
     status_clause = (
         "" if include_unapproved else "AND \"submissionStatus\" = 'APPROVED'"
     )
@@ -101,7 +113,7 @@ async def find_listings_without_sub_heading(
         f"""
         SELECT id, name, description
         FROM platform."StoreListingVersion"
-        WHERE btrim("subHeading") = '' AND "isDeleted" = false
+        WHERE {BLANK_SUB_HEADING} AND "isDeleted" = false
         {status_clause}
         ORDER BY "createdAt" DESC
         {limit_clause}
@@ -173,21 +185,49 @@ def write_csv(path: Path, proposals: list[tuple[str, str, str, str]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["id", "name", "description", "proposed_sub_heading"])
-        writer.writerows(proposals)
+        writer.writerows(
+            (row_id, *(escape_formula(cell) for cell in cells))
+            for row_id, *cells in proposals
+        )
 
 
-async def persist_sub_headings(proposals: list[tuple[str, str, str, str]]) -> int:
+def read_reviewed_csv(path: Path, max_length: int) -> list[tuple[str, str]]:
+    if not path.exists():
+        raise SystemExit(f"{path} not found: run without --apply first to create it")
+    reviewed: list[tuple[str, str]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            row_id = row["id"].strip()
+            proposed = unescape_formula(row["proposed_sub_heading"]).strip()
+            if not proposed or len(proposed) > max_length:
+                print(f"  skipping {row_id}: {proposed!r} is empty or too long")
+                continue
+            reviewed.append((row_id, proposed))
+    return reviewed
+
+
+def escape_formula(cell: str) -> str:
+    return "'" + cell if cell.startswith(FORMULA_PREFIXES) else cell
+
+
+def unescape_formula(cell: str) -> str:
+    return (
+        cell[1:] if cell[:1] == "'" and cell[1:].startswith(FORMULA_PREFIXES) else cell
+    )
+
+
+async def persist_sub_headings(reviewed: list[tuple[str, str]]) -> int:
     from prisma import get_client
 
     client = get_client()
     written = 0
-    for row_id, _name, _description, proposed in proposals:
+    for row_id, proposed in reviewed:
         # The emptiness re-check keeps a concurrent edit from being overwritten.
         written += await client.execute_raw(
-            """
+            f"""
             UPDATE platform."StoreListingVersion"
             SET "subHeading" = $2
-            WHERE id = $1 AND btrim("subHeading") = ''
+            WHERE id = $1 AND {BLANK_SUB_HEADING}
             """,
             row_id,
             proposed,
@@ -197,17 +237,23 @@ async def persist_sub_headings(proposals: list[tuple[str, str, str, str]]) -> in
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--limit", type=int, default=None, help="Dry run only.")
     parser.add_argument(
         "--include-unapproved",
         action="store_true",
-        help="Also cover DRAFT/PENDING/REJECTED versions, which fail validation on edit.",
+        help="Dry run only: also cover DRAFT/PENDING/REJECTED versions, which fail "
+        "validation on edit.",
     )
-    parser.add_argument("--csv", type=Path, default=DEFAULT_CSV_PATH)
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=DEFAULT_CSV_PATH,
+        help="Written by a dry run; read by --apply.",
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Write the generated sub-headings. Without it the run is read-only.",
+        help="Write the reviewed CSV's proposed_sub_heading values. Generates nothing.",
     )
     args = parser.parse_args()
     raise SystemExit(

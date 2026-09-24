@@ -17,6 +17,7 @@ import {
 
 import { CharCountedTextarea } from "../../PublishAgentModal/components/AgentInfoStep/components/CharCountedTextarea";
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
+import { SUB_HEADING_MAX } from "../../PublishAgentModal/components/AgentInfoStep/helpers";
 
 import { useEditAgentForm } from "./useEditAgentForm";
 import {
@@ -187,17 +188,22 @@ export function EditAgentForm({
                     control={form.control}
                     name="subheader"
                     render={({ field }) => (
-                      <Input
-                        id={field.name}
-                        labelVariant="body"
-                        label="Tagline"
-                        labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
-                        type="text"
-                        placeholder="Find decision-makers at any company in seconds"
-                        error={form.formState.errors.subheader?.message}
-                        required
-                        {...field}
-                      />
+                      <CharCountedTextarea
+                        max={SUB_HEADING_MAX}
+                        value={field.value ?? ""}
+                      >
+                        <Input
+                          id={field.name}
+                          labelVariant="body"
+                          label="Tagline"
+                          labelTooltip="The one-line subtitle shown under the agent name and on preview cards. Start with a verb and name the outcome for the user."
+                          type="text"
+                          placeholder="Find decision-makers at any company in seconds"
+                          error={form.formState.errors.subheader?.message}
+                          required
+                          {...field}
+                        />
+                      </CharCountedTextarea>
                     )}
                   />
                 </div>
