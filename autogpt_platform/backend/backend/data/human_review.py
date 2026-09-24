@@ -302,6 +302,17 @@ def _review_scope(
     return graph_exec_id, session_id
 
 
+def _alert_scope(
+    review: PendingHumanReview,
+) -> tuple[str, str | None, str | None]:
+    """``(user, graph id, session id)`` of the alert a review counts toward;
+    a chat's legacy and new rows share one."""
+    session_id = review.sessionId or legacy_chat_session_id(review.graphExecId)
+    if session_id:
+        return review.userId, None, session_id
+    return review.userId, review.graphId, None
+
+
 def _scope_columns(
     graph_exec_id: str | None,
     graph_id: str | None,
@@ -740,10 +751,7 @@ async def process_all_reviews_for_execution(
 
     # Re-derive the "waiting on your review" alert from the live queue, so
     # clearing the last item resolves it rather than leaving a stale alert.
-    for scope in {
-        (r.userId, r.graphId, r.sessionId or legacy_chat_session_id(r.graphExecId))
-        for r in reviews_to_process
-    }:
+    for scope in {_alert_scope(r) for r in reviews_to_process}:
         await _sync_awaiting_review_safely(*scope)
 
     # Note: Execution resumption is now handled at the API layer after ALL reviews
