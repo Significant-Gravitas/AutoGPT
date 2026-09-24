@@ -93,7 +93,11 @@ test("the mode's reason is said once, in the header, and on no card", async () =
   renderQueue();
 
   await queue();
-  expect(screen.getAllByText(/Ask First is on, so/)).toHaveLength(1);
+  expect(
+    screen.getAllByText(
+      /Ask First is on, so Otto asks before he changes anything outside his workspace/,
+    ),
+  ).toHaveLength(1);
   expect(screen.queryByText(/so this action needs your approval/)).toBeNull();
 });
 

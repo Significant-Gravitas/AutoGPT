@@ -156,7 +156,12 @@ export const ChainRows: StoryObj = {
   },
 };
 
-function homeRow(title: string, description: string, action: string) {
+function homeRow(
+  title: string,
+  description: string,
+  action: string,
+  headline?: { ask: string; object: string },
+) {
   const review = folder("a", "Q3 reports");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white">
@@ -166,6 +171,7 @@ function homeRow(title: string, description: string, action: string) {
           kind: "approval",
           priority: "normal",
           title,
+          headline,
           description,
           why_it_matters: "Nothing runs until you approve it.",
           review,
@@ -194,5 +200,6 @@ export const HomeRowAfter: StoryObj = {
       "Create folder “Q3 reports”",
       "Otto is waiting for your approval.",
       "Open chat",
+      { ask: "Create folder", object: "Q3 reports" },
     ),
 };

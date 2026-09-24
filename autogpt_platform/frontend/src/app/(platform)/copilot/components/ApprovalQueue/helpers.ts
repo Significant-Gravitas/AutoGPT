@@ -115,7 +115,7 @@ export function modeLabel(mode: string | null) {
 
 export function modeLine(mode: string | null) {
   if (mode === "ask_first")
-    return `Ask First is on, so ${AUTOPILOT_NAME} asks before it changes anything outside its workspace.`;
+    return `Ask First is on, so ${AUTOPILOT_NAME} asks before he changes anything outside his workspace.`;
   return `${AUTOPILOT_NAME} asks before anything that reaches outside the platform.`;
 }
 

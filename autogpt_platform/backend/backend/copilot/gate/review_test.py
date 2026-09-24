@@ -191,3 +191,17 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     with patch("backend.copilot.gate.review.review_db", return_value=db):
         assert await find_decision("rid", "u1", "s1") == expected
     assert db.delete_review_by_node_exec_id.await_count == (expected is None)
+
+
+@pytest.mark.parametrize(
+    "path", ["a" * 100 + ".md", "two  spaces.md", "line\nbreak.md"]
+)
+def test_an_argument_the_headline_shortens_stays_on_the_card(path):
+    """The approval binds the whole value, so a headline that cannot show all
+    of it must not hide the field that does."""
+    headline = headline_for("delete_workspace_file", {"path": path})
+    assert headline.object is not None
+    assert headline.object_key is None
+    assert headline_for("delete_workspace_file", {"path": "q3.md"}).object_key == (
+        "path"
+    )

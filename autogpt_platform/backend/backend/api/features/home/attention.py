@@ -14,7 +14,7 @@ from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
-from .models import HomeAction, HomeAttentionItem, HomeExpert
+from .models import HomeAction, HomeAttentionItem, HomeExpert, HomeHeadline
 
 # Longest payload preview we return before clipping it with an ellipsis.
 _PREVIEW_MAX = 140
@@ -89,6 +89,7 @@ def _gate_attention(
         kind="approval",
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
         title=gate.headline.text,
+        headline=HomeHeadline(ask=gate.headline.ask, object=gate.headline.object),
         description=_gate_reason(gate),
         why_it_matters="Nothing runs until you approve it.",
         expert=_review_expert(review),

@@ -43,7 +43,7 @@ _KEY = "copilot:gate:held:"
 # 100,000-character output cap plus the wrapper), so nothing is cut here.
 _MAX_RESULT_CHARS = 120_000
 
-Outcome = Literal["approved", "rejected", "expired", "closed"]
+Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 _RESEND = (
@@ -258,7 +258,7 @@ async def _recover(
             "The approved action may have run, but its result was lost before it "
             "reached you. Tell the user, and check the outcome before relying "
             "on it.",
-            "approved",
+            "unknown",
         )
     ]
 

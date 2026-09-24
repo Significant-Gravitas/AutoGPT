@@ -23758,6 +23758,12 @@
             "title": "Priority"
           },
           "title": { "type": "string", "title": "Title" },
+          "headline": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeHeadline" },
+              { "type": "null" }
+            ]
+          },
           "description": { "type": "string", "title": "Description" },
           "why_it_matters": { "type": "string", "title": "Why It Matters" },
           "expert": {
@@ -23982,6 +23988,18 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeHeadline": {
+        "properties": {
+          "ask": { "type": "string", "title": "Ask" },
+          "object": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Object"
+          }
+        },
+        "type": "object",
+        "required": ["ask"],
+        "title": "HomeHeadline"
       },
       "HomeRecentWork": {
         "properties": {

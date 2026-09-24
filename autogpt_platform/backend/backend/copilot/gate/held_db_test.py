@@ -300,6 +300,7 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
         [delivered] = await held.resolve_answered(test_user_id, session)
 
     assert "may have run" in delivered.content
+    assert delivered.metadata["held_call"]["outcome"] == "unknown"
     assert await held.answered(test_user_id, session.session_id) == []
 
 

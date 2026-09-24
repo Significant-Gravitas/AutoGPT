@@ -492,6 +492,8 @@ def test_a_held_call_reads_as_its_card_on_home() -> None:
     item = _one(_gate_review())
 
     assert item.title == "Create folder “Q3 reports”"
+    assert item.headline is not None
+    assert (item.headline.ask, item.headline.object) == ("Create folder", "Q3 reports")
     # The mode's own reason is the chat's, not this call's.
     assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
     # The headline already names it.
@@ -529,5 +531,6 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
     )
     item = _one(review)
     assert item.title == "Create folder “Q3 reports”"
+    assert item.headline is None
     assert item.primary_action is not None
     assert item.primary_action.label == "Review"

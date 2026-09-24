@@ -10,6 +10,7 @@ export type HeldState =
   | "rejected"
   | "expired"
   | "closed"
+  | "unknown"
   | "not-run";
 
 export interface HeldRowInfo {
@@ -44,6 +45,10 @@ export function applyHeldOutcome(
       requiresAction: true,
       held: { state: "waiting", reviewId },
     };
+  }
+  // It may have run; claim neither success nor a refusal.
+  if (outcome.outcome === "unknown") {
+    return settle(row, ask, "unknown", reviewId);
   }
   if (outcome.outcome !== "approved") {
     return settle(row, didnt, outcome.outcome, reviewId);
