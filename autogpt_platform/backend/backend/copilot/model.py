@@ -63,6 +63,7 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
+AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -122,6 +123,8 @@ class ChatSessionMetadata(BaseModel):
     # falls — see ``blocks/autopilot.py`` (legacy resumes) and
     # ``autopilot_session_guard`` (legacy cannot staff).
     origin: ChatSessionOrigin | None = None
+    # The chat's approval mode; None means the default (``copilot/gate``).
+    autopilot_mode: AutopilotMode | None = None
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -155,6 +158,12 @@ class ChatSessionMetadata(BaseModel):
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
     pending_question: PendingQuestion | None = None
+
+    @property
+    def pauses_irreversible_actions(self) -> bool:
+        """Whether a workflow this chat starts pauses before irreversible blocks."""
+        # A legacy row cannot prove nobody is watching, so it pauses too.
+        return self.origin != "automation"
 
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
@@ -1007,6 +1016,7 @@ async def upsert_chat_session(
         # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
+            cache_it = True
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
@@ -1015,22 +1025,30 @@ async def upsert_chat_session(
                 # finishing after the user switched connection would otherwise
                 # put the old one back in Redis while the database holds the
                 # new one, and bill the next turn to the connection they just
-                # left. Only the two route keys are taken from the cache; the
-                # rest of this session's metadata is this turn's own.
-                cached_route = existing_cached.metadata
-                if (
-                    cached_route.llm_auth_provider != session.metadata.llm_auth_provider
-                    or cached_route.llm_credential_id
-                    != session.metadata.llm_credential_id
-                ):
-                    updates["metadata"] = session.metadata.model_copy(
-                        update={
-                            "llm_auth_provider": cached_route.llm_auth_provider,
-                            "llm_credential_id": cached_route.llm_credential_id,
-                        }
-                    )
+                # left. The approval mode is changed the same way mid-turn, and
+                # a stale one would run the next turn under the mode the user
+                # just left. Only these keys are taken from the cache; the rest
+                # of this session's metadata is this turn's own.
+                cached_meta = existing_cached.metadata
+                from_cache = {
+                    "llm_auth_provider": cached_meta.llm_auth_provider,
+                    "llm_credential_id": cached_meta.llm_credential_id,
+                    "autopilot_mode": cached_meta.autopilot_mode,
+                }
+                merged = session.metadata.model_copy(update=from_cache)
+                if merged != session.metadata:
+                    updates["metadata"] = merged
                 session = session.model_copy(update=updates)
-            await cache_chat_session(session)
+            else:
+                # With no cached copy the database holds the mode, which this
+                # upsert never writes, so it cannot be stale there.
+                stored = await _with_stored_autopilot_mode(session)
+                # Without the stored mode this turn's copy could be stale, so
+                # leave the cache empty and let the next read go to the database.
+                cache_it = stored is not None
+                session = stored or session
+            if cache_it:
+                await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
             if db_error is None:
@@ -1752,6 +1770,62 @@ async def update_session_llm_route(
                 f"(non-critical): {e}"
             )
         return True
+
+
+async def update_session_autopilot_mode(
+    session_id: str, user_id: str, mode: AutopilotMode
+) -> bool:
+    """Set the chat's approval mode from the next tool call on.
+
+    Written through the cache under the session lock, as the route change is,
+    so a stale cached copy cannot put the chat back on its old mode.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize mode update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_autopilot_mode(
+            session_id, user_id, mode
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.autopilot_mode = mode
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache mode update failed for session {session_id}; "
+                f"evicting so the next read takes the database's mode: {e}"
+            )
+            await invalidate_session_cache(session_id)
+        return True
+
+
+async def _with_stored_autopilot_mode(session: ChatSession) -> ChatSession | None:
+    """``session`` with the database's mode, or None if that could not be read."""
+    try:
+        stored = await chat_db().get_chat_session_metadata(session.session_id)
+    except Exception as e:
+        logger.warning(
+            f"Could not read the stored mode for session {session.session_id}: {e}"
+        )
+        return None
+    if stored is None or stored.metadata.autopilot_mode == (
+        session.metadata.autopilot_mode
+    ):
+        return session
+    return session.model_copy(
+        update={
+            "metadata": session.metadata.model_copy(
+                update={"autopilot_mode": stored.metadata.autopilot_mode}
+            )
+        }
+    )
 
 
 async def update_session_pinned(

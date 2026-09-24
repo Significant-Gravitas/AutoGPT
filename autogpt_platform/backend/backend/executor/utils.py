@@ -28,6 +28,7 @@ from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
+from backend.data.db_accessors import chat_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
@@ -1256,6 +1257,7 @@ async def add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
 
@@ -1285,6 +1287,7 @@ async def add_graph_execution(
             bypass_paywall=bypass_paywall,
             trigger=trigger,
             trigger_ref=trigger_ref,
+            pause_irreversible_actions=pause_irreversible_actions,
         )
     except GraphValidationError:
         record_graph_execution(
@@ -1321,6 +1324,7 @@ async def _add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1356,6 +1360,9 @@ async def _add_graph_execution(
             in REQUEUE mode, where the original row is authoritative.
         trigger_ref: Identifier of what started the run for that trigger
             (schedule id, webhook id, chat session id, API key id, UI surface).
+        pause_irreversible_actions: Pause before every irreversible block
+            whatever the graph's ``sensitive_action_safe_mode`` setting. On
+            resume it is re-derived from the chat that started the run.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1414,6 +1421,13 @@ async def _add_graph_execution(
 
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # A resume rebuilds its context from the graph settings, which would
+        # drop the pause the chat that started this run asked for.
+        pause_irreversible_actions = (
+            pause_irreversible_actions
+            or await _started_from_attended_chat(graph_exec, user_id, edb)
+        )
 
         # The persisted row is authoritative on resume. A caller cannot turn
         # an Otto run into an expert run or swap one expert for another.
@@ -1660,6 +1674,11 @@ async def _add_graph_execution(
             }
         )
 
+    if pause_irreversible_actions:
+        execution_context = execution_context.model_copy(
+            update={"sensitive_action_safe_mode": True}
+        )
+
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(
             compiled_nodes_input_masks=compiled_nodes_input_masks,
@@ -1752,6 +1771,30 @@ async def _add_graph_execution(
         )
 
     return graph_exec
+
+
+async def _started_from_attended_chat(
+    graph_exec: GraphExecutionMeta, user_id: str, edb
+) -> bool:
+    # A sub-graph run follows its parent run's chat. A parent or chat that is
+    # gone cannot prove nobody is watching, so the run pauses.
+    while (
+        graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
+        and graph_exec.trigger_ref
+    ):
+        parent = await edb.get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec.trigger_ref
+        )
+        if parent is None:
+            return True
+        graph_exec = parent
+    if (
+        graph_exec.trigger_source != ExecutionTrigger.COPILOT
+        or not graph_exec.trigger_ref
+    ):
+        return False
+    session = await chat_db().get_chat_session_metadata(graph_exec.trigger_ref)
+    return session is None or session.metadata.pauses_irreversible_actions
 
 
 async def _spend_approval_required(user_id: str, expert_id: str):

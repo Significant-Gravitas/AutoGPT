@@ -975,6 +975,9 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 trigger=ExecutionTrigger.COPILOT,
                 trigger_ref=session_id,
+                pause_irreversible_actions=(
+                    not dry_run and session.metadata.pauses_irreversible_actions
+                ),
                 # Keeps a graph containing an AutoPilotBlock inside this turn's
                 # tree rather than letting it start a fresh, unbounded one.
                 copilot_tree=get_current_envelope(),
@@ -1223,6 +1226,7 @@ class RunAgentTool(BaseTool):
         session_id = session.session_id
 
         # Validate schedule params
+        schedule_name = schedule_name.strip()
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",

@@ -12,6 +12,7 @@ from backend.copilot.capabilities.models import (
     CapabilityEntry,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 
@@ -88,6 +89,7 @@ def _tool_entry(name: str, tool: "BaseTool", group: str | None) -> CapabilityEnt
         klass="service",
         name=name,
         purpose=clip_purpose(tool.description),
+        description=normalize_text(tool.description),
         tags=tags,
         context="direct",
         implementations=[

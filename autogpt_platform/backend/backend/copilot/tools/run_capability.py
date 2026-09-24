@@ -1,9 +1,11 @@
-"""Run one capability by id: a block, a platform tool or an MCP server.
+"""Run one capability by id: a block, a platform tool, an MCP server or a
+skill.
 
 Dispatches to the existing implementations (``RunBlockTool``,
-``RunMCPToolTool``, the tool's own ``_execute``) so credential resolution,
-pickers, human review, spend approval, dry-run and error hints all keep
-working; this module only adds the id resolution and the per-kind gates.
+``RunMCPToolTool``, ``ReadSkillTool``, the tool's own ``_execute``) so
+credential resolution, pickers, human review, spend approval, dry-run and
+error hints all keep working; this module only adds the id resolution and
+the per-kind gates.
 """
 
 import logging
@@ -15,11 +17,10 @@ from backend.copilot.capabilities.mcp_review import (
     needs_review,
     open_mcp_review,
 )
-from backend.copilot.capabilities.models import CapabilityEntry
+from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.copilot.tool_display import emit_tool_display_name
@@ -27,7 +28,7 @@ from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT
+from .describe_capability import MCP_RUN_PARAMETERS, UNKNOWN_ID_HINT, describe_skill
 from .models import (
     CapabilityDetailsResponse,
     ErrorResponse,
@@ -36,6 +37,8 @@ from .models import (
 )
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .session_registry import resolve_session_entry
+from .skills import ReadSkillTool
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,8 @@ class RunCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Run a capability by id with its input (blocks: the block's inputs; "
-            "MCP servers: {tool, arguments}; platform tools: their parameters). "
+            "MCP servers: {tool, arguments}; platform tools: their parameters; "
+            "skills: {}). "
             "Never guess ids: take them from find_capability. An unconnected "
             "capability returns a sign-in card: show it and stop. review_required "
             "means wait for approval, then resume_capability(review_id). "
@@ -117,7 +121,7 @@ class RunCapabilityTool(BaseTool):
                 message="input must be an object", session_id=session_id
             )
         payload: dict[str, Any] = dict(input or {})
-        entry = resolve_entry(get_registry(), id)
+        entry = await resolve_session_entry(user_id, session, id)
         if entry is None and id.strip().lower().startswith("https://"):
             # Open world: a server URL the catalog does not know.  The MCP
             # path validates the host; writes pause for review.
@@ -141,6 +145,8 @@ class RunCapabilityTool(BaseTool):
             return await _run_block(entry, user_id, session, payload, validate_only)
         if entry.kind == "tool":
             return await _describe_tool(entry, session)
+        if entry.kind == "skill":
+            return await _run_skill(entry, user_id, session, validate_only)
         if entry.kind == "mcp_server":
             server_url = entry.implementations[0].ref
             if not server_url:
@@ -201,6 +207,24 @@ async def _describe_tool(
     )
 
 
+async def _run_skill(
+    entry: CapabilityEntry, user_id: str, session: ChatSession, validate_only: bool
+) -> ToolResponseBase:
+    """Load a skill: running one is reading it.
+
+    The engines resolve the dispatch into the ``read_skill`` call it is
+    (``capabilities/dispatch.py``) and run that through the one tool path,
+    so this answers ``validate_only`` and any engine that did not.
+    """
+    if gate_denied(SKILL_TOOL):
+        return gate_denied_error(SKILL_TOOL, session.session_id)
+    if validate_only:
+        return describe_skill(entry, session.session_id)
+    return await ReadSkillTool()._execute(
+        user_id, session, name=entry.implementations[0].ref
+    )
+
+
 async def _run_mcp(
     entry: CapabilityEntry | None,
     server_url: str,
@@ -257,7 +281,6 @@ async def _run_mcp(
             block_id=entry.id if entry else server_url,
             block_name=f"{host}/{tool_name}",
             review_id=review_id,
-            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
             input_data=review.model_dump(),
         )
     if tool_name:

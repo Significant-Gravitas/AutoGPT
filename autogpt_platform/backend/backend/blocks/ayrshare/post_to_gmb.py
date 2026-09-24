@@ -111,6 +111,7 @@ class PostToGMBBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToGMBBlock.Input,
             output_schema=PostToGMBBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

@@ -11,7 +11,6 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ClockIcon, File02Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../../store";
 import type { ExpertIdentity } from "../../../useExpertMap";
@@ -67,14 +66,11 @@ export function ThreadHeader({
   const identityLabel = isResolving
     ? "Loading expert"
     : `${name}, ${roleLabel}`;
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   // Only the copilot chat mounts the activity card. The builder and memory
   // panels pass a live sessionId and aren't read-only, so without the host's
   // own say-so the chip would render a button whose click writes panel state
   // and fetches a file list for a card that never appears.
-  const isInteractive = Boolean(
-    canOpenActivity && isArtifactsEnabled && !readOnly && sessionId,
-  );
+  const isInteractive = Boolean(canOpenActivity && !readOnly && sessionId);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
@@ -107,13 +103,14 @@ export function ThreadHeader({
         color={expertIdentity?.color}
         isAutopilot={!expertIdentity && !isResolving}
         isLoading={isResolving}
-        size="sm"
+        size="md"
       />
       {isResolving ? (
         <Skeleton className="h-3.5 w-16 rounded" />
       ) : (
         <span className="min-w-0 max-w-[10rem]">
           <ExpertIdentityDetails
+            isOtto={!expertIdentity && !isResolving}
             name={name}
             role={role}
             jobTitle={jobTitle}

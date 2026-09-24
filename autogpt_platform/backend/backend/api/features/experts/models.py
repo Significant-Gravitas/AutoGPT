@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -18,9 +19,9 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-# Only some outward calls are actually gated for approval — is_sensitive_action
-# (backend/blocks/_base.py, checked in backend/data/graph.py:261) covers 17 of
-# 513 blocks — so this is phrased as expert behaviour, not a platform guarantee.
+# Only some outward calls are actually gated for approval — is_irreversible_action
+# (backend/blocks/_base.py) marks only the irreversible blocks — so this is
+# phrased as expert behaviour, not a platform guarantee.
 EXTERNAL_ACTION_APPROVAL_RULE = "The expert asks for approval before acting externally."
 # Dual-audience: this tuple is both Soul-drawer UI copy and injected LLM
 # instruction text. Reword for one audience without silently breaking the other.
@@ -237,6 +238,9 @@ class ExpertRoutine(BaseModel):
         return bool(self.crons)
 
 
+ExpertSetupStatus = Literal["installing", "ready", "failed"]
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -281,6 +285,10 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+    # A hire's workflows, skills and routines land after it is returned.
+    setup_status: ExpertSetupStatus = "ready"
+    # What setup could not install; re-hiring the template retries it.
+    setup_failures: list[str] = []
 
 
 class ExpertBundledSkill(BaseModel):
@@ -359,7 +367,6 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
-    failed_preloads: list[str]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
@@ -420,7 +427,7 @@ class ExpertSkillsUpdate(BaseModel):
     expert must be library skills (default or uploaded); names already on
     the expert are kept as-is so marketplace skills survive a round-trip."""
 
-    skills: list[str] = Field(max_length=50)
+    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)

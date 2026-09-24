@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
 import { useSendMessage } from "../useSendMessage";
+import {
+  MAX_ATTACHMENTS,
+  type WorkspaceAttachment,
+} from "../helpers/workspaceAttachments";
 
 const { uploadFileDirectMock, toastMock } = vi.hoisted(() => ({
   uploadFileDirectMock: vi.fn(),
@@ -125,7 +129,14 @@ describe("useSendMessage with local attachments", () => {
       void result.current.onSend(
         "compare",
         [makeFile("icon.png", "image/png")],
-        [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+        [
+          {
+            kind: "workspace" as const,
+            fileId: FILE_ID,
+            name: "notes.txt",
+            mimeType: "text/plain",
+          },
+        ],
       );
     });
 
@@ -166,7 +177,14 @@ describe("useSendMessage with local attachments", () => {
       void result.current.onSend(
         "compare",
         [makeFile("talk.pdf")],
-        [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+        [
+          {
+            kind: "workspace" as const,
+            fileId: FILE_ID,
+            name: "notes.txt",
+            mimeType: "text/plain",
+          },
+        ],
       );
     });
 
@@ -363,7 +381,7 @@ describe("useSendMessage first send failing after the session exists", () => {
   async function startFirstSend(
     text: string,
     files: File[],
-    workspaceFiles?: { fileId: string; name: string; mimeType: string }[],
+    workspaceFiles?: WorkspaceAttachment[],
   ) {
     const newChat = renderSendMessage(null);
     newChat.createSession.mockImplementation(async () => {
@@ -404,7 +422,14 @@ describe("useSendMessage first send failing after the session exists", () => {
     const created = await startFirstSend(
       "compare",
       [],
-      [{ fileId: FILE_ID, name: "notes.txt", mimeType: "text/plain" }],
+      [
+        {
+          kind: "workspace" as const,
+          fileId: FILE_ID,
+          name: "notes.txt",
+          mimeType: "text/plain",
+        },
+      ],
     );
 
     await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
@@ -467,5 +492,111 @@ describe("useSendMessage when creating the first chat's session fails", () => {
 
     expect(useCopilotStreamStore.getState().pendingUploadSends).toEqual({});
     expect(renderSendMessage(SESSION_ID).result.current.pendingSend).toBeNull();
+  });
+});
+
+function makeWorkspaceRefs(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    kind: "workspace" as const,
+    fileId: `${FILE_ID.slice(0, -1)}${i}`,
+    name: `ws-${i}.txt`,
+    mimeType: "text/plain",
+  }));
+}
+
+describe("useSendMessage send-time cap backstop", () => {
+  // The composer refuses the extra file as it is added, so this path is
+  // unreachable through the UI — it stays for any caller that is not the
+  // composer, and for a state forced past the cap.
+  it("refuses a batch over the cap without uploading or sending", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result, sendMessage } = renderSendMessage();
+
+    await act(async () => {
+      await result.current.onSend(
+        "too much",
+        Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, i) =>
+          makeFile(`over-${i}.pdf`),
+        ),
+      );
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Too many attachments" }),
+    );
+    expect(uploadFileDirectMock).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses a workspace-only batch over the cap", async () => {
+    const { result, sendMessage } = renderSendMessage();
+
+    await act(async () => {
+      await result.current.onSend(
+        "workspace only",
+        undefined,
+        makeWorkspaceRefs(MAX_ATTACHMENTS + 1),
+      );
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Too many attachments" }),
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("counts local and workspace attachments together", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result, sendMessage } = renderSendMessage();
+
+    await act(async () => {
+      await result.current.onSend(
+        "mixed",
+        // Under the cap on its own, over it once the references are counted.
+        Array.from({ length: 6 }, (_, i) => makeFile(`local-${i}.pdf`)),
+        makeWorkspaceRefs(MAX_ATTACHMENTS - 5),
+      );
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Too many attachments" }),
+    );
+    expect(uploadFileDirectMock).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("lets a mixed batch that exactly fills the cap through", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend(
+        "mixed, but fits",
+        Array.from({ length: 6 }, (_, i) => makeFile(`local-${i}.pdf`)),
+        makeWorkspaceRefs(MAX_ATTACHMENTS - 6),
+      );
+    });
+
+    await waitFor(() => expect(uploadFileDirectMock).toHaveBeenCalledTimes(6));
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it("lets exactly the cap through", async () => {
+    uploadFileDirectMock.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend(
+        "just enough",
+        Array.from({ length: MAX_ATTACHMENTS }, (_, i) =>
+          makeFile(`ok-${i}.pdf`),
+        ),
+      );
+    });
+
+    await waitFor(() =>
+      expect(uploadFileDirectMock).toHaveBeenCalledTimes(MAX_ATTACHMENTS),
+    );
+    expect(toastMock).not.toHaveBeenCalled();
   });
 });

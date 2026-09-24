@@ -53,7 +53,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5-5"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -230,7 +230,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-5",
+        default="anthropic/claude-opus-5-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -264,6 +264,19 @@ class ChatConfig(BaseSettings):
         "platform OR cost low. Auto-overridden to match "
         "``fast_standard_model`` under ``use_local`` when left at the "
         "cloud default — see ``_apply_local_aux_models``.",
+    )
+    gate_model: str = Field(
+        default="anthropic/claude-haiku-4-5",
+        description="Model backing the auto-mode action gate classifier "
+        "(``copilot/gate``). Deliberately NOT routed through "
+        "``_apply_local_aux_models``: silently swapping a security "
+        "classifier for whichever small model a local operator happens to "
+        "run is exactly the substitution nobody would notice.",
+    )
+    gate_timeout_s: float = Field(
+        default=6.0,
+        description="Hard timeout for one gate classification. Expiry is not "
+        "an error path — it resolves to 'ask'.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -1130,7 +1143,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-4-8`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-5-5`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1139,7 +1152,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-5-5`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.

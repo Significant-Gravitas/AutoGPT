@@ -25,9 +25,15 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import {
   type Attachment,
   type WorkspaceAttachment,
+  MAX_FOLDER_ATTACHMENTS,
+  appendWithinCap,
+  MAX_ATTACHMENTS,
   partitionAttachments,
+  workspaceFolderToAttachment,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
+import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
+import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
@@ -86,6 +92,8 @@ interface Props {
   stacked?: boolean;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
+  /** The chat's approval-mode selector. Absent when the flag is off. */
+  modeSelector?: ReactNode;
   /**
    * Replaces the composer's controls while voice mode is on: typing,
    * attachments and send do nothing hands-free, and a bar of its own above
@@ -98,6 +106,8 @@ interface Props {
   /** Expert the chat is scoped to. Workspace-file suggestions and the picker
    *  then only offer files from that expert's conversations. */
   expertId?: string | null;
+  /** Names that expert in the picker's filter row. */
+  expertName?: string | null;
 }
 
 export function ChatInput({
@@ -118,9 +128,11 @@ export function ChatInput({
   recipientPicker,
   stacked = false,
   voiceToggle,
+  modeSelector,
   voiceBar,
   variant = "default",
   expertId = null,
+  expertName = null,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -131,6 +143,8 @@ export function ChatInput({
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // How many files the cap turned away on the last attach; 0 hides the notice.
+  const [refusedCount, setRefusedCount] = useState(0);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
 
@@ -148,15 +162,13 @@ export function ChatInput({
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
-      setAttachments((prev) => [
-        ...prev,
-        ...droppedFiles.map((file) => ({ kind: "local" as const, file })),
-      ]);
+      addAttachments(droppedFiles.map(toLocalAttachment));
       onDroppedFilesConsumed?.();
     }
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasAttachments = attachments.length > 0;
+  const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -171,17 +183,19 @@ export function ChatInput({
     handleChange: baseHandleChange,
   } = useChatInput({
     onSend: async (message: string) => {
-      const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      const { localFiles, workspaceAttachments } =
+        partitionAttachments(attachments);
       // Chips clear eagerly for the same reason the text does (see
       // useChatInput.handleSend); a failed send restores them unless the
       // user already attached new ones in the meantime.
       const sent = attachments;
       setAttachments([]);
+      setRefusedCount(0);
       try {
         await onSend(
           message,
           localFiles.length > 0 ? localFiles : undefined,
-          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+          workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
         );
       } catch (error) {
         setAttachments((prev) => (prev.length > 0 ? prev : sent));
@@ -194,10 +208,12 @@ export function ChatInput({
   });
 
   const mentions = useChatMentions({
-    enabled: showWorkspaceFiles && !isBusy,
+    enabled: showWorkspaceFiles && !isBusy && !isAtCap,
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
+    addWorkspaceFolder: (folder, subfolderCount) =>
+      addAttachments([workspaceFolderToAttachment(folder, subfolderCount)]),
     expertId,
   });
 
@@ -269,27 +285,44 @@ export function ChatInput({
   }
 
   function handleFilesSelected(newFiles: File[]) {
-    setAttachments((prev) => [
-      ...prev,
-      ...newFiles.map((file) => ({ kind: "local" as const, file })),
-    ]);
+    addAttachments(newFiles.map(toLocalAttachment));
+  }
+
+  function addAttachments(incoming: Attachment[]) {
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { next, refused, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    setRefusedCount(refused);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
   }
 
   function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    setAttachments((prev) => {
-      if (prev.some((a) => a.kind === "workspace" && a.fileId === item.id)) {
-        return prev;
-      }
-      return [...prev, workspaceItemToAttachment(item)];
-    });
+    addAttachments([workspaceItemToAttachment(item)]);
   }
 
-  function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
-    items.forEach(handleWorkspaceFileSelected);
+  function handlePickerConfirmed(items: PickedItem[]) {
+    addAttachments(
+      items.map((item) =>
+        item.kind === "folder"
+          ? workspaceFolderToAttachment(item.folder, item.subfolderCount)
+          : workspaceItemToAttachment(item.file),
+      ),
+    );
   }
 
   function handleRemoveAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+    // Removing one frees a slot, so the count the notice quotes is now stale.
+    setRefusedCount(0);
   }
 
   const isCompact = variant === "compact";
@@ -308,7 +341,7 @@ export function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
-          files={mentions.files}
+          options={mentions.options}
           isLoading={mentions.isLoading}
           isError={mentions.isError}
           highlightedIndex={mentions.highlightedIndex}
@@ -344,6 +377,13 @@ export function ChatInput({
             className={stacked ? undefined : "mt-1.5"}
           />
         )}
+        {refusedCount > 0 && (
+          <AttachmentCapNotice
+            refusedCount={refusedCount}
+            onDismiss={() => setRefusedCount(0)}
+            className={stacked ? undefined : "mt-1.5"}
+          />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -372,6 +412,7 @@ export function ChatInput({
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              isAtCap={isAtCap}
               className={
                 stacked
                   ? cn(
@@ -430,6 +471,7 @@ export function ChatInput({
             {!stacked && !isCompact && (!hasSession || !isStreaming) && (
               <ConnectionPicker connectionLocked={hasSession} />
             )}
+            {modeSelector}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
@@ -510,10 +552,15 @@ export function ChatInput({
           key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
-          onConfirm={handleWorkspaceFilesConfirmed}
+          onConfirm={handlePickerConfirmed}
           expertId={expertId}
+          expertName={expertName}
         />
       )}
     </form>
   );
+}
+
+function toLocalAttachment(file: File): Attachment {
+  return { kind: "local", file };
 }

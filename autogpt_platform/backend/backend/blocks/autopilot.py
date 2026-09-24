@@ -170,11 +170,11 @@ class AutoPilotBlock(Block):
             default=None,
             credential_reference_only=True,
             discriminator="transport",
-            # `platform` is deliberately absent: it needs no credential at all,
-            # and an unmapped discriminator value makes the credential input
-            # hide itself rather than asking for something that does not exist.
             discriminator_mapping={
                 AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
+            credential_free_discriminator_values={
+                AutoPilotTransport.PLATFORM.value,
             },
             json_schema_extra={
                 "secret": True,

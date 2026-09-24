@@ -50,16 +50,19 @@ export function CopilotChatHost({
     loadMore,
     turnStats,
     rateLimitMessage,
+    platformLimitFailure,
     dismissRateLimit,
     providerLimit,
     dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
+    followBackendTurn,
   } = useCopilotPage();
 
   return (
@@ -81,6 +84,7 @@ export function CopilotChatHost({
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
           sessionSentFrom={sessionSentFrom}
+          sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
@@ -107,11 +111,14 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          onBackendTurn={followBackendTurn}
           hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
+        failure={platformLimitFailure}
+        sessionId={sessionId}
         onDismiss={dismissRateLimit}
       />
       <ProviderLimitDialog

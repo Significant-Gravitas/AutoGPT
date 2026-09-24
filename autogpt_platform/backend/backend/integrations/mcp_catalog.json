@@ -872,6 +872,22 @@
     }
   },
   {
+    "name": "mcp_posthog",
+    "display_name": "PostHog",
+    "description": "Query product analytics and insights, investigate errors, and manage feature flags and experiments.",
+    "mcp_server": {
+      "server_url": "https://mcp.posthog.com/mcp",
+      "documentation_url": "https://posthog.com/docs/model-context-protocol",
+      "setup_instructions": "Sign in to PostHog; your account determines the US or EU data region. Alternatively, use a personal API key with the MCP Server preset. Review the requested permissions and active project before making changes. AI-powered tools require AI data processing to be enabled and may incur PostHog AI charges.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "posthog"
+    }
+  },
+  {
     "name": "mcp_runlayer",
     "display_name": "Runlayer",
     "description": "Discover and access tools through your organization's managed MCP catalog.",
@@ -1073,6 +1089,22 @@
         "oauth"
       ],
       "icon_id": "wonder"
+    }
+  },
+  {
+    "name": "mcp_zapier",
+    "display_name": "Zapier",
+    "description": "Trigger and run actions across 8,000+ apps Zapier connects to, using natural language through Zapier's official MCP server.",
+    "mcp_server": {
+      "server_url": "https://mcp.zapier.com/api/v1/connect",
+      "documentation_url": "https://docs.zapier.com/mcp/home",
+      "setup_instructions": "Sign in with your Zapier account via OAuth to use the apps and Zaps already connected in your Zapier workspace. If your setup isn't on Zapier's supported OAuth client list, create a connection token at mcp.zapier.com instead and use it as a bearer token.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "zapier"
     }
   }
 ]

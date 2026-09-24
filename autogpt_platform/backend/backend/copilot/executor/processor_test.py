@@ -23,6 +23,7 @@ from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     _normalize_private_expert_session_tenancy,
+    _wait_for_expert_setup,
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -279,6 +280,7 @@ class TestExecuteAsyncAclose:
         expert_store.resolve_private_expert_tenancy = AsyncMock(
             return_value=("current-personal-org", "current-personal-team")
         )
+        expert_store.expert_setup_status = AsyncMock(return_value="ready")
 
         async def persist(value, *, persist_tenancy: bool = False):
             assert persist_tenancy is True
@@ -400,8 +402,10 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
     expert_store.resolve_private_expert_tenancy = AsyncMock(
         return_value=("current-personal-org", "current-personal-team")
     )
+    expert_store.expert_setup_status = AsyncMock(return_value="ready")
     session_db = MagicMock()
     session_db.get_next_sequence = AsyncMock(return_value=1)
+    session_db.get_chat_session_metadata = AsyncMock(return_value=None)
     published = _TrackedStream(events=[])
 
     with (
@@ -491,6 +495,35 @@ async def test_current_expert_session_stays_pinned_and_keeps_credentials() -> No
         "user-1", "expert-1"
     )
     upsert.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "statuses, expected_reads",
+    [
+        (["ready"], 1),
+        (["installing", "installing", "ready"], 3),
+        # A setup that never finishes: poll until the deadline, then run.
+        (["installing"] * 50, None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_expert_turn_waits_for_hire_setup(statuses, expected_reads) -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    expert_store = MagicMock()
+    expert_store.expert_setup_status = AsyncMock(side_effect=statuses)
+
+    with (
+        patch("backend.data.db_accessors.experts_db", return_value=expert_store),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_WAIT_SECONDS", 0.05),
+        patch("backend.copilot.executor.processor.EXPERT_SETUP_POLL_SECONDS", 0.005),
+    ):
+        await _wait_for_expert_setup(session)
+
+    reads = expert_store.expert_setup_status.await_count
+    if expected_reads is None:
+        assert 1 < reads < len(statuses)
+    else:
+        assert reads == expected_reads
 
 
 @pytest.mark.asyncio
