@@ -17,6 +17,7 @@ import {
   heldReview,
   mail,
   shell,
+  spendCard,
   workflow,
 } from "./__tests__/fixtures";
 
@@ -91,6 +92,9 @@ export const BlockCard: Story = {
 };
 
 export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+// A paid read over the task's spend ceiling.
+export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
 
 export const BlockChainRow: StoryObj = {
   render: () => {
