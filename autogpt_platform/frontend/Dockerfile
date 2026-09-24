@@ -17,6 +17,9 @@ ARG NEXT_PUBLIC_FRONTEND_BASE_URL
 # Keep Docker builds defaulting to false to avoid the memory hit.
 ARG NEXT_PUBLIC_SOURCEMAPS="false"
 ENV NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS
+# Allow CI's e2e build to skip Next.js's lint and type checks (CI runs them as their own jobs).
+ARG NEXT_SKIP_BUILD_CHECKS="false"
+ENV NEXT_SKIP_BUILD_CHECKS=$NEXT_SKIP_BUILD_CHECKS
 ENV NODE_ENV="production"
 # Merge env files appropriately based on environment
 RUN if [ -f .env.production ]; then \

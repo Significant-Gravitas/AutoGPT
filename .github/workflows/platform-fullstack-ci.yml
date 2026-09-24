@@ -264,8 +264,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/next-build-cache
-          key: next-build-cache-v2-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-          restore-keys: next-build-cache-v2-
+          # Next.js drops the whole cache when next.config.mjs or its dependencies change
+          key: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+          restore-keys: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-
 
       - name: Set up Platform - Load Next.js build cache into BuildKit
         if: steps.next-build-cache.outputs.cache-matched-key != ''
@@ -294,7 +295,9 @@ jobs:
         working-directory: autogpt_platform
         background: true
         run: |
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load frontend
+          # Lint and type checks run in their own jobs, so the e2e build skips them
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+            --set frontend.args.NEXT_SKIP_BUILD_CHECKS=true frontend
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
