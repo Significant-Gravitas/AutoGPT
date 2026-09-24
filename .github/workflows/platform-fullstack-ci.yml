@@ -166,7 +166,7 @@ jobs:
 
   e2e_test:
     name: end-to-end tests
-    runs-on: big-boi
+    runs-on: ubuntu-latest
     env:
       BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
