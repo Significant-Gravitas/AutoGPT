@@ -51,7 +51,7 @@ bake() { # label
   wait $b
   wait $f
   local exports cached
-  exports=$({ grep -hE "preparing build cache for export [0-9.]+s done" "$OUT/$label"-*.log || true; } | awk '{s += $(NF-1)} END {printf "%.0f", s}')
+  exports=$(grep -hE "preparing build cache for export [0-9.]+s done" "$OUT/$label"-*.log | awk '{s += $(NF-1)} END {printf "%.0f", s}')
   cached=$(cat "$OUT/$label"-*.log | grep -c ' CACHED$' || true)
   echo "| $label | $(cat "$OUT/$label-backend.secs") s | $(cat "$OUT/$label-frontend.secs") s | ${exports:-0} s | $cached |" >> "$SUMMARY"
 }
