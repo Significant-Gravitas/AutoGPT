@@ -15,8 +15,16 @@ const TAGS: Record<HeldState, { text: string; className: string }> = {
   "not-run": { text: "Not run", className: "bg-red-50 text-red-700" },
 };
 
-export function HeldTag({ state }: { state: HeldState }) {
+// A held read is released or kept out, not approved or rejected.
+const READ_TAGS: Partial<Record<HeldState, string>> = {
+  waiting: "Held",
+  approved: "Released",
+  rejected: "Kept out",
+};
+
+export function HeldTag({ state, read }: { state: HeldState; read?: boolean }) {
   const tag = TAGS[state];
+  const text = (read && READ_TAGS[state]) || tag.text;
   return (
     <span
       className={cn(
@@ -25,7 +33,7 @@ export function HeldTag({ state }: { state: HeldState }) {
       )}
     >
       {state === "approved" && <Icon icon={Tick02Icon} size={11} aria-hidden />}
-      {tag.text}
+      {text}
     </span>
   );
 }
@@ -36,6 +44,11 @@ const DETAIL: Record<Exclude<HeldState, "approved">, string> = {
   expired: `Approved, but it didn't run within an hour, so the approval lapsed. Ask ${AUTOPILOT_NAME} to try again.`,
   closed: `It couldn't be carried out, so nothing ran. Ask ${AUTOPILOT_NAME} to try again if it's still needed.`,
   "not-run": `${AUTOPILOT_NAME} couldn't open an approval for this, so nothing ran.`,
+};
+
+const READ_DETAIL: Partial<Record<HeldState, string>> = {
+  waiting: `Nothing from it has reached ${AUTOPILOT_NAME} yet. ${AUTOPILOT_NAME} carried on without it.`,
+  rejected: `You kept this out, so ${AUTOPILOT_NAME} never saw it.`,
 };
 
 export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
@@ -49,7 +62,7 @@ export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
   }
   return (
     <div className="flex flex-col items-start gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600">
-      <p>{DETAIL[held.state]}</p>
+      <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
       {held.state === "waiting" && reviewId && (
         <Button
           variant="link"

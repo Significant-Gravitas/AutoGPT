@@ -568,6 +568,7 @@ class BaseTool:
                 decision.reason,
                 review_id=decision.review_id,
                 args=kwargs,
+                subject_name=decision.subject_name,
             ),
             False,
         )
@@ -644,14 +645,19 @@ class BaseTool:
         reason: str,
         review_id: str | None = None,
         args: dict[str, Any] | None = None,
+        subject_name: str | None = None,
     ) -> StreamToolOutputAvailable:
         """``graph_exec_id`` is what mounts the chat's approval card: the
         frontend scans tool outputs for that key (``extractGraphExecId``)."""
         from backend.copilot.gate import refusal_message
-        from backend.copilot.gate.headline import headline_for
+        from backend.copilot.gate.headline import Headline, headline_for
         from backend.copilot.gate.review import session_exec_id
 
-        headline = headline_for(self.name, args or {})
+        headline = (
+            Headline(ask="Run", object=subject_name)
+            if subject_name
+            else headline_for(self.name, args or {})
+        )
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,

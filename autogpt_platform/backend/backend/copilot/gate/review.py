@@ -52,6 +52,8 @@ class Subject(BaseModel):
     name: str
     effect: str
     irreversible: bool = False
+    # A block's fields are labelled from its own input schema.
+    block_id: str | None = None
 
 
 class FieldLabel(BaseModel):
@@ -121,6 +123,10 @@ def review_payload(
 ) -> dict[str, Any]:
     """The subject is kept as decided when the card opened: what the user saw,
     not a recomputation over a tree that may have moved since."""
+    # A block's card lists the block's own inputs, each clipped on its own.
+    if subject is not None and subject.key.startswith("block:"):
+        block_input = args.get("input")
+        args = block_input if isinstance(block_input, dict) else {}
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
     # the one that matters off the card while the approval still binds it.
@@ -269,9 +275,14 @@ def _payload_subject(tool_name: str, subject: "GateSubject | None") -> Subject:
             key=tool_name, name=_label(tool_name), effect=effect_for(tool_name).value
         )
     # ``block:<id>`` or ``workflow:<graph id>``.
-    kind = subject.key.partition(":")[0] or "tool"
+    kind, _, ident = subject.key.partition(":")
     return Subject(
-        kind=kind, key=subject.key, name=subject.name, effect=subject.effect.value
+        kind=kind or "tool",
+        key=subject.key,
+        name=subject.name,
+        effect=subject.effect.value,
+        irreversible=subject.irreversible,
+        block_id=ident if kind == "block" else None,
     )
 
 

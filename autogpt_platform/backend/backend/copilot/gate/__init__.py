@@ -73,6 +73,8 @@ class Decision(BaseModel):
     review_id: str | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
+    # The block or workflow the card names, so the chain row names it too.
+    subject_name: str | None = None
 
 
 ALLOW = Decision(allowed=True)
@@ -201,7 +203,12 @@ async def _park(
         tool_call_id=call.tool_call_id,
     ):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    return Decision(allowed=False, reason=reason, review_id=call.review_id)
+    return Decision(
+        allowed=False,
+        reason=reason,
+        review_id=call.review_id,
+        subject_name=subject.name if subject is not None else None,
+    )
 
 
 def refusal_message(reason: str, review_id: str | None) -> str:

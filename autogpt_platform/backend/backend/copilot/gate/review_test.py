@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
 from backend.copilot.gate.policy import Effect, classified_tools, effect_for
 from backend.copilot.gate.review import (
@@ -16,7 +17,7 @@ from backend.copilot.gate.review import (
     review_payload,
     session_exec_id,
 )
-from backend.copilot.gate.subject import mcp_subject
+from backend.copilot.gate.subject import block_subject, mcp_subject
 
 
 def test_the_same_call_is_the_same_approval():
@@ -153,7 +154,7 @@ def test_the_reason_and_its_kind_travel_together(kind):
     assert payload["reason_kind"] == kind
 
 
-def test_the_subject_is_the_tool_until_l5a_names_one():
+def test_a_bare_tool_is_its_own_subject():
     payload = review_payload("post_to_chat_platform", {}, mode="auto")
     assert payload["subject"] == {
         "kind": "tool",
@@ -161,6 +162,7 @@ def test_the_subject_is_the_tool_until_l5a_names_one():
         "name": "Post to chat platform",
         "effect": "external",
         "irreversible": False,
+        "block_id": None,
     }
     assert payload["mode"] == "auto"
 
@@ -196,3 +198,26 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     with patch("backend.copilot.gate.review.review_db", return_value=db):
         assert await find_decision("rid", "u1", "s1") == expected
     assert db.delete_review_by_node_exec_id.await_count == (expected is None)
+
+
+def test_a_block_subject_names_the_card_marks_it_and_labels_its_fields():
+    block = GmailSendBlock()
+    payload = review_payload(
+        "run_capability",
+        {"id": block.id, "input": {"to": ["dana@acme.com"]}},
+        block_subject(block, {}),
+        reason="Runs Gmail Send, which reaches outside the platform.",
+        reason_kind="subject",
+    )
+    assert payload["subject"] == {
+        "kind": "block",
+        "key": f"block:{block.id}",
+        "name": "Gmail Send",
+        "effect": "external",
+        "irreversible": True,
+        "block_id": block.id,
+    }
+    assert payload["headline"]["ask"] == "Run"
+    assert payload["headline"]["object"] == "Gmail Send"
+    assert payload["reason_kind"] == "subject"
+    assert payload["arguments"] == {"to": ["dana@acme.com"]}

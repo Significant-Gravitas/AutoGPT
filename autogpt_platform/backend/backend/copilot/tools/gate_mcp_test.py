@@ -126,7 +126,8 @@ async def test_a_mapped_read_runs_and_a_mapped_write_asks(gate, ran, mode):
     assert _is_held(write)
     ran.assert_awaited_once()
     assert _headline(gate) == (
-        "create_branch on api.githubcopilot.com — reaches outside the platform"
+        "create_branch on api.githubcopilot.com — Runs create_branch on "
+        "api.githubcopilot.com, which reaches outside the platform."
     )
 
 
@@ -135,7 +136,8 @@ async def test_an_unmapped_tool_asks_naming_the_host_and_the_tool(gate, ran):
     assert _is_held(result)
     ran.assert_not_awaited()
     assert _headline(gate) == (
-        "brand_new_tool on api.githubcopilot.com — its effect is unknown"
+        "brand_new_tool on api.githubcopilot.com — Its effect is unknown: "
+        "brand_new_tool on api.githubcopilot.com."
     )
 
 
@@ -198,7 +200,8 @@ async def test_a_chat_judge_covers_an_irreversible_tool_too(gate, ran):
 async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
     result = await _call(_session(), _GITHUB, "merge_pull_request", {"n": 7})
     assert _is_held(result)
-    assert _headline(gate).endswith("— cannot be taken back")
+    subject = gate.open_review.await_args.args[6]
+    assert subject.irreversible
     gate.open_review.assert_awaited_once()
 
     gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.APPROVED)
