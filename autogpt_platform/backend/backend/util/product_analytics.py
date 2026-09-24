@@ -73,6 +73,8 @@ def track(
     user_id: str | None,
     event: PostHogEvent,
     properties: dict[str, Any] | None = None,
+    *,
+    dedup_key: str | None = None,
 ) -> None:
     """Send one event for *user_id*, dropping unset properties. Silently
     no-ops when analytics is off or there is no user."""
@@ -80,6 +82,7 @@ def track(
         user_id,
         event,
         {k: v for k, v in (properties or {}).items() if v is not None},
+        dedup_key=dedup_key,
     )
 
 
@@ -129,6 +132,10 @@ def track_agent_run_finished(
     status_value = _enum_value(status)
     if status_value not in ("COMPLETED", "FAILED"):
         return
+    # Keyed on the run alone: the event fires before the terminal status is
+    # persisted, so a failed persist requeues and finishes the run again,
+    # possibly with another status. COMPLETED/FAILED are absorbing, so one
+    # run never legitimately finishes twice.
     track(
         user_id,
         PostHogEvent.AGENT_RUN_FINISHED,
@@ -143,6 +150,7 @@ def track_agent_run_finished(
             "duration_seconds": duration_seconds,
             "is_subgraph_run": is_subgraph_run,
         },
+        dedup_key=graph_exec_id,
     )
 
 

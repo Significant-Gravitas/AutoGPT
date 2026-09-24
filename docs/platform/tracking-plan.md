@@ -10,8 +10,11 @@ Toran), section "What we will record". Where that plan names an event for an
 action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
 lists what is not aligned yet.
 
-In code the names live in two modules, and nothing outside them spells out an
-event name:
+In code the names live in two modules. Browser call sites may still pass a
+literal (`trackBrainDump("brain_dump_started")`), which is type-checked
+against these modules, and backend funnel `data_index` keys embed the name
+too (`briefing_generated:<id>`, `briefing_delivered:<id>`). A
+rename therefore has to search for the old string, not just edit the modules:
 
 | Sender | Module | Pin test |
 | --- | --- | --- |
@@ -194,7 +197,7 @@ differently.
 | --- | --- | --- | --- | --- |
 | `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
 | `chat_message_sent` | backend | live | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
-| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. |
+| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
 | `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `session_id` | Any schedule is registered, from any surface. |
 | `chat_tool_called` | backend | live | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
@@ -203,7 +206,7 @@ differently.
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
 | `voice_turn_sent` | browser | live | `turn_index`, `transcript_chars`, `transcribe_latency_ms` | A spoken turn is sent. |
-| `voice_turn_dropped` | browser | live | `reason`; `transcribe_latency_ms` with `reason: filler_or_empty` | A spoken turn is discarded. |
+| `voice_turn_dropped` | browser | live | `reason` (`vad_misfire`, `transcribe_failed`, `filler_or_empty`, `interrupted`); `transcribe_latency_ms` with `filler_or_empty`; `turn_index` and `first_sound_latency_ms` (null when nothing played yet) with `interrupted` | A spoken turn is discarded, or with `interrupted` a sent turn's reply is cut off by switching voice mode off or leaving the page. A sent turn ends in exactly one of `voice_turn_completed` or this. |
 | `voice_turn_completed` | browser | live | `turn_index`, `first_sound_latency_ms` (null when nothing played) | The mic reopens after the reply. |
 | `voice_transcribe_retried` | browser | live | `turn_index` | A failed transcription is retried. |
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
@@ -299,7 +302,7 @@ history PostHog already holds.
 | `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
 | `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
 | `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
-| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`. |
+| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |

@@ -142,6 +142,34 @@ def test_run_finished_completed(capture: Mock) -> None:
     assert properties["is_subgraph_run"] is False
 
 
+def test_run_finished_is_deduplicated_per_run(capture: Mock) -> None:
+    """A requeue after a failed status persist finishes the same run again,
+    maybe with another status; both sends must share one event uuid."""
+    from backend.data.execution import ExecutionStatus
+
+    for status in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+        product_analytics.track_agent_run_finished(
+            user_id="user-1",
+            graph_id="graph-1",
+            graph_exec_id="exec-1",
+            status=status,
+            trigger="manual",
+        )
+    product_analytics.track_agent_run_finished(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_exec_id="exec-2",
+        status=ExecutionStatus.COMPLETED,
+        trigger="manual",
+    )
+
+    first, retry, other = capture.call_args_list
+    assert first.kwargs["uuid"] is not None
+    assert first.kwargs["uuid"] == retry.kwargs["uuid"]
+    assert first.kwargs["properties"]["$insert_id"] == "exec-1"
+    assert other.kwargs["uuid"] != first.kwargs["uuid"]
+
+
 @pytest.mark.parametrize(
     ("parent_execution_id", "is_subgraph_run"), [(None, False), ("parent-1", True)]
 )

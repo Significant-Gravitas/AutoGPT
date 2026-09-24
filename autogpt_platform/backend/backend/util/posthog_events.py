@@ -3,7 +3,9 @@
 ``docs/platform/tracking-plan.md`` says what each event means, which side
 sends it and which properties it carries. This module is the code half of
 that plan: emitters take the name from here instead of spelling it out.
-The names follow the product analytics plan ("Every Second Counts").
+The names follow the product analytics plan ("Every Second Counts"). The
+funnel ``data_index`` keys (``briefing_generated:<id>``, ...) embed the name
+as a string, so a rename has to update those too.
 
 Never change the value of a member of ``PostHogEvent``. PostHog stores the
 raw string, so a rename orphans every insight, funnel and cohort built on the
