@@ -8,12 +8,27 @@ from backend.integrations.mcp_catalog import (
     MCPCatalogEntry,
     MCPServerMetadata,
     get_mcp_catalog,
+    get_mcp_catalog_entry_for_url,
     parse_mcp_catalog,
 )
 
 
 def test_catalog_loads_validated_entries():
     assert get_mcp_catalog()
+
+
+def test_posthog_catalog_entry_uses_hosted_authentication():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.posthog.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_posthog"
+    assert entry.display_name == "PostHog"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://posthog.com/docs/model-context-protocol"
+    )
 
 
 @pytest.mark.parametrize(
@@ -161,8 +176,6 @@ def catalog_entry(name, server):
     ],
 )
 def test_catalog_matches_only_complete_known_urls(url, matched):
-    from backend.integrations.mcp_catalog import get_mcp_catalog_entry_for_url
-
     entry = catalog_entry(
         "mcp_vendor",
         {
