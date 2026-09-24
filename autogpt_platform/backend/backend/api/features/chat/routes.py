@@ -44,6 +44,7 @@ from backend.copilot.expert_kickoff import (
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
+    AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
     create_chat_session,
@@ -52,6 +53,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_autopilot_mode,
     update_session_llm_route,
     update_session_pinned,
     update_session_title,
@@ -163,6 +165,7 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -324,6 +327,11 @@ class StreamChatRequest(BaseModel):
             "Marks the hidden, once-per-expert day-one kickoff. The server "
             "derives its owner-scoped message ID and persistence metadata."
         ),
+    )
+    autopilot_mode: AutopilotMode | None = Field(
+        default=None,
+        description="The chat's approval mode from this turn on; None keeps "
+        "the mode it already has.",
     )
 
 
@@ -1639,6 +1647,18 @@ async def cancel_session_task(
     )
 
 
+async def _apply_autopilot_mode(
+    session: ChatSessionInfo, user_id: str, mode: AutopilotMode | None
+) -> None:
+    """Persist a changed mode before the turn is scheduled, so the turn runs on it."""
+    if mode is None or mode == session.metadata.autopilot_mode:
+        return
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return
+    await update_session_autopilot_mode(session.session_id, user_id, mode)
+    session.metadata.autopilot_mode = mode
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -1731,6 +1751,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
     # Every other route can spend platform-gated premium inference, so a client

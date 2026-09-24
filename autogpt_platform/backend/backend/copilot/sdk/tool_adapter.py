@@ -32,6 +32,7 @@ from backend.copilot.context import (
     is_sdk_tool_path,
     reset_consult_budget,
 )
+from backend.copilot.gate.mcp_seam import gate_non_registry_tool
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -827,6 +828,15 @@ def _make_truncating_wrapper(
                     "For sandbox paths use bash_exec to verify the file exists first; "
                     "for workspace files use a workspace:// URI."
                 )
+
+        # Second gate seam. The file handlers from ``e2b_file_tools`` are
+        # registered straight onto the MCP server, so they are not BaseTool
+        # subclasses and never reach the seam in ``BaseTool.execute``.
+        if session is not None and name not in TOOL_REGISTRY:
+            refusal = await gate_non_registry_tool(name, args, user_id, session)
+            if refusal is not None:
+                return refusal
+
         result = await run(args)
         truncated = truncate(result, _MCP_MAX_CHARS)
 

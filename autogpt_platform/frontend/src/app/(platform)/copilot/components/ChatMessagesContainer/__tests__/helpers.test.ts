@@ -504,6 +504,17 @@ describe("extractReviewTarget", () => {
     });
   });
 
+  it("returns the chat for an action the gate parked, and not for a refusal", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ type: "approval_required", review_id: "gate-1" }),
+      ]),
+    ).toEqual({ kind: "chat" });
+    expect(
+      extractReviewTarget([toolOutput({ type: "approval_required" })]),
+    ).toBeNull();
+  });
+
   it("ignores a run that already finished", () => {
     expect(
       extractReviewTarget([

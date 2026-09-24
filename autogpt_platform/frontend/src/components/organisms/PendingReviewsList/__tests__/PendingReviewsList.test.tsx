@@ -115,10 +115,76 @@ test("a collapsed group offers no way to decide it", async () => {
   expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
 });
 
+test("action-gate approvals offer no auto-approve toggle", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          editable: false,
+        }),
+        makeReview({ node_exec_id: "ne-2", node_id: "n-2" }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getAllByText("Auto-approve future executions of this node"),
+  ).toHaveLength(1);
+});
+
+test("auto-approve on an ordinary node is sent with the approval", async () => {
+  const captured = captureReviewAction();
+
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ node_exec_id: "ne-1", node_id: "n-1" })]}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("switch"));
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body?.reviews).toEqual([
+    expect.objectContaining({
+      node_exec_id: "ne-1",
+      approved: true,
+      auto_approve_future: true,
+    }),
+  ]);
+});
+
 test("a block's group is titled by its action and names its workflow", () => {
   render(<PendingReviewsList reviews={[makeReview()]} />);
 
   expect(screen.getByText("Send Email")).toBeDefined();
   expect(screen.getByText("In workflow “Invoice follow-up”")).toBeDefined();
   expect(screen.queryByText(/SendEmailBlock/)).toBeNull();
+});
+
+test("an AutoPilot action's card neither calls it a workflow nor offers an edit", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        makeReview({
+          node_exec_id: "copilot-node-gate-bash_exec:abc",
+          node_id: "copilot-node-gate-bash_exec",
+          action: undefined,
+          agent_name: undefined,
+          instructions: "Bash exec — lists files",
+          editable: false,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Otto is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText(/edit it if needed/)).toBeNull();
+  expect(screen.queryByText(/Node #/)).toBeNull();
 });

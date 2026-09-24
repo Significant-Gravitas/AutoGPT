@@ -18969,6 +18969,16 @@
             ],
             "title": "Origin"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -28182,6 +28192,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "capability_list",
           "capability_details",
           "schedule_list",
@@ -30149,6 +30160,17 @@
             "title": "Expert Kickoff",
             "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode",
+            "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
           }
         },
         "type": "object",

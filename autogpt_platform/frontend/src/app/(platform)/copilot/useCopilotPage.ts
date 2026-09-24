@@ -143,6 +143,7 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
     expertId,
@@ -439,6 +440,7 @@ export function useCopilotPage() {
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

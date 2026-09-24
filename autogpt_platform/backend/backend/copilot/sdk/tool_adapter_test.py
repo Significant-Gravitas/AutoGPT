@@ -1492,6 +1492,34 @@ class TestEmptyArgsCircuitBreaker:
         assert "Do NOT retry" in text
 
 
+class TestNonRegistryGateSeam:
+    """The file handlers never reach ``BaseTool.execute``; this seam is their gate."""
+
+    @pytest.mark.asyncio
+    async def test_a_refused_file_write_never_reaches_its_handler(self):
+        called = False
+
+        async def handler(_args):
+            nonlocal called
+            called = True
+            return {"content": [{"type": "text", "text": "wrote"}], "isError": False}
+
+        refusal = {"content": [{"type": "text", "text": "no"}], "isError": True}
+        _init_ctx(_make_test_session())
+        with patch(
+            "backend.copilot.sdk.tool_adapter.gate_non_registry_tool",
+            new=AsyncMock(return_value=refusal),
+        ) as gate:
+            wrapper = _make_truncating_wrapper(
+                handler, "write_file", required_args=["path"]
+            )
+            result = await wrapper({"path": "a.txt", "content": "x"})
+
+        gate.assert_awaited_once()
+        assert called is False
+        assert result.get("isError") is True
+
+
 def test_set_execution_context_carries_hidden_tools():
     """The SDK engine hands its per-turn hidden tool set through this
     adapter's ``set_execution_context`` (not ``context.set_execution_context``),

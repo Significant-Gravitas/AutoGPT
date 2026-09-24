@@ -36,10 +36,14 @@ export function CopilotPendingReviews(props: Props) {
           `Use view_agent_output with execution_id="${graphExecId}" to check the result.`,
       );
     } else {
+      // Gate approvals are consumed by re-issuing the original tool call, not
+      // by resume_capability — that is only for capability reviews.
       onSend(
         `All pending reviews have been processed. ` +
-          `For any approved reviews, call resume_capability with the corresponding review_id to execute them. ` +
-          `For rejected reviews, no further action is needed.`,
+          `For an approved block or MCP review, call resume_capability with the ` +
+          `corresponding review_id. For any other approved action, retry the ` +
+          `tool call you were blocked on, with the same arguments. ` +
+          `For rejected reviews, do not retry — tell me what you could not do.`,
       );
     }
   }, [refetch, onSend, graphExecId]);

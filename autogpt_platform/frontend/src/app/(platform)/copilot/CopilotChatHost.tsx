@@ -57,6 +57,7 @@ export function CopilotChatHost({
     sessionDryRun,
     sessionChatStatus,
     sessionSentFrom,
+    sessionAutopilotMode,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
@@ -82,6 +83,7 @@ export function CopilotChatHost({
           sessionId={sessionId}
           sessionChatStatus={sessionChatStatus}
           sessionSentFrom={sessionSentFrom}
+          sessionAutopilotMode={sessionAutopilotMode}
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
