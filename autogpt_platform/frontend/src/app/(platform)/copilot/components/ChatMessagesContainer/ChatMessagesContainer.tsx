@@ -820,11 +820,14 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && reviewTarget && (
+          {!readOnly && reviewTarget?.kind === "graph" && (
             <CopilotPendingReviews
               graphExecId={reviewTarget.graphExecId}
               graphId={reviewTarget.graphId}
             />
+          )}
+          {!readOnly && reviewTarget?.kind === "chat" && sessionID && (
+            <CopilotPendingReviews chatSessionId={sessionID} />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

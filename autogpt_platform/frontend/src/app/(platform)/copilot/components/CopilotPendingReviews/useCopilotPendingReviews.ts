@@ -2,18 +2,27 @@ import { useEffect } from "react";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
-import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import {
+  usePendingReviewsForChatSession,
+  usePendingReviewsForExecution,
+} from "@/hooks/usePendingReviews";
 
+// A run the chat started, or the chat's own queue.
 interface Args {
-  graphExecId: string;
+  graphExecId?: string;
   graphId?: string;
+  chatSessionId?: string;
 }
 
 const POLL_MS = 2000;
 // A run can go minutes before it pauses, so poll it slowly until it does.
 const PRE_REVIEW_POLL_MS = 5000;
 
-export function useCopilotPendingReviews({ graphExecId, graphId }: Args) {
+export function useCopilotPendingReviews({
+  graphExecId = "",
+  graphId,
+  chatSessionId = "",
+}: Args) {
   const isRun = !!graphId;
   // A run's chat message never changes, so its live status decides polling.
   const { data: execution, isFetched } = useGetV1GetExecutionDetails(
@@ -34,18 +43,20 @@ export function useCopilotPendingReviews({ graphExecId, graphId }: Args) {
   // Without the run's status, the reviews themselves are the only signal.
   const statusUnavailable = isRun && isFetched && !status;
 
-  const { pendingReviews, refetch } = usePendingReviewsForExecution(
-    graphExecId,
-    {
-      enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
-      refetchInterval:
-        !isRun || status === AgentExecutionStatus.REVIEW
-          ? POLL_MS
-          : statusUnavailable
-            ? PRE_REVIEW_POLL_MS
-            : false,
-    },
-  );
+  const forChat = usePendingReviewsForChatSession(chatSessionId, {
+    enabled: !!chatSessionId,
+    refetchInterval: POLL_MS,
+  });
+  const forRun = usePendingReviewsForExecution(graphExecId, {
+    enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
+    refetchInterval:
+      !isRun || status === AgentExecutionStatus.REVIEW
+        ? POLL_MS
+        : statusUnavailable
+          ? PRE_REVIEW_POLL_MS
+          : false,
+  });
+  const { pendingReviews, refetch } = chatSessionId ? forChat : forRun;
 
   useEffect(() => {
     if (status) refetch();
