@@ -552,9 +552,17 @@ async def charge_credits(user_id: str | None, credits: Callable[[], int]) -> Non
     model tokens ``token_tracking`` charges there. ``credits`` is priced only
     when the turn is metered."""
     envelope = get_current_envelope()
-    if envelope is None or not await meters_spend(user_id):
+    if envelope is None:
         return
-    await charge_turn(envelope, credits() * MICRODOLLARS_PER_CREDIT)
+    try:
+        if not await meters_spend(user_id):
+            return
+        microdollars = credits() * MICRODOLLARS_PER_CREDIT
+    except Exception as e:
+        # Callers charge after billing succeeded; this must not read as a leak.
+        logger.warning(f"Could not price a charge to {envelope.tree_id}: {e}")
+        return
+    await charge_turn(envelope, microdollars)
 
 
 async def spent_past_ceiling() -> tuple[int, int] | None:

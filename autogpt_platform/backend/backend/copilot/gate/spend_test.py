@@ -5,6 +5,7 @@ Redis ``tree_test`` uses, so the ceiling read, the charges and the raise are
 the ones production runs.
 """
 
+import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -211,6 +212,34 @@ async def test_a_block_run_charges_what_it_cost(gate, ledger):
     assert (await ledger.snapshot("turn-1"))["spent"] == 70_000
 
 
+@pytest.mark.parametrize("charge_fails", [False, True])
+async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_fails):
+    """Kills: a failed flag lookup after a paid charge logged as BILLING_LEAK."""
+    lines: list[str] = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())
+    helpers_logger = logging.getLogger("backend.copilot.tools.helpers")
+    helpers_logger.addHandler(handler)
+    spend = AsyncMock(side_effect=RuntimeError("db down") if charge_fails else None)
+    try:
+        with patch.object(
+            tree, "is_feature_enabled", AsyncMock(side_effect=RuntimeError("flags"))
+        ):
+            await _charge_block_credits(
+                SimpleNamespace(spend_credits=spend),
+                user_id="user-1",
+                block_name="Pinecone Query",
+                block_id="b",
+                node_exec_id="n",
+                cost=7,
+                cost_filter={},
+                session_id="s1",
+            )
+    finally:
+        helpers_logger.removeHandler(handler)
+    assert any("BILLING_LEAK" in line for line in lines) is charge_fails
+
+
 async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, ledger):
     """Kills: charging nothing at the workflow's charge site; sub-graph nodes count."""
     await _open(ledger, ceiling=10_000_000)
@@ -264,8 +293,15 @@ async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
     assert subject.estimate > 0
 
 
-async def test_a_workspace_block_is_priced_with_the_credentials_it_will_run_with():
-    """Kills: pricing only reads with credentials (an avatar video estimates $0)."""
+@pytest.mark.parametrize(
+    "passed",
+    [{}, {"credentials": {"id": "bogus", "provider": "d_id", "type": "api_key"}}],
+)
+async def test_a_workspace_block_is_priced_with_the_credentials_it_will_run_with(
+    passed,
+):
+    """Kills: pricing only reads with credentials (an avatar video estimates $0),
+    and letting credentials the model passed outrank the resolved ones."""
     cost = BLOCK_COSTS[CreateTalkingAvatarVideoBlock][0].cost_filter
     platform = CredentialsMetaInput.model_validate(cost["credentials"])
     with patch(
@@ -277,7 +313,7 @@ async def test_a_workspace_block_is_priced_with_the_credentials_it_will_run_with
             _session(),
             {
                 "id": CreateTalkingAvatarVideoBlock().id,
-                "input": {"script_input": "Hello"},
+                "input": {"script_input": "Hello", **passed},
             },
         )
     assert subject is not None and subject.effect is Effect.WORKSPACE

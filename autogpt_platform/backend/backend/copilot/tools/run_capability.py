@@ -129,7 +129,8 @@ class RunCapabilityTool(BaseTool):
             user_id, block, dict(payload or {}), session.expert_id, session.session_id
         )
         creds = {field: meta.model_dump() for field, meta in matched.items()}
-        return block_subject(block, {**creds, **(payload or {})})
+        # The run bills with the resolved credentials, whatever the model passed.
+        return block_subject(block, {**(payload or {}), **creds})
 
     def activity_event(
         self, session: ChatSession, result: ToolResponseBase, **kwargs
