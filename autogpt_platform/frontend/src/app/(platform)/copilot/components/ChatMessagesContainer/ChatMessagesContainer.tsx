@@ -65,6 +65,10 @@ import {
   type SentFrom,
 } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
+import {
+  WORKSPACE_FOLDER_PART_TYPE,
+  type WorkspaceFolderPartData,
+} from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -144,16 +148,17 @@ interface Props {
   showThreadHeader?: boolean;
 }
 
+type ReviewTarget = { kind: "chat" } | { kind: "graph"; graphExecId: string };
+
 /**
- * Extract graph_exec_id from tool outputs that need review.
- * Handles both:
- * - run_block ReviewRequiredResponse (has graph_exec_id directly)
- * - run_agent ExecutionStartedResponse with status "REVIEW" (has execution_id)
+ * Which review queue the latest tool output that needs review belongs to:
+ * the chat's own (a `review_required` output) or an agent run's (run_agent
+ * with status "REVIEW").
  */
-function extractGraphExecId(
+function extractReviewTarget(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): string | null {
-  // Scan backwards — the most recent review output has the ID
+): ReviewTarget | null {
+  // Scan backwards — the most recent review output decides
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     for (const part of msg.parts) {
@@ -169,17 +174,18 @@ function extractGraphExecId(
               })()
             : part.output;
         if (out && typeof out === "object") {
-          // run_block: ReviewRequiredResponse has graph_exec_id
-          if ("graph_exec_id" in out) {
-            return (out as { graph_exec_id: string }).graph_exec_id;
+          if ((out as { type?: unknown }).type === "review_required") {
+            return { kind: "chat" };
           }
-          // run_agent: ExecutionStartedResponse with status "REVIEW"
           if (
             "execution_id" in out &&
             "status" in out &&
             (out as { status: string }).status === "REVIEW"
           ) {
-            return (out as { execution_id: string }).execution_id;
+            return {
+              kind: "graph",
+              graphExecId: (out as { execution_id: string }).execution_id,
+            };
           }
         }
       }
@@ -383,7 +389,7 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
+  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
@@ -668,6 +674,11 @@ export function ChatMessagesContainer({
             const fileParts = renderableParts.filter(
               (p): p is FileUIPart => p.type === "file",
             );
+            const folderParts = renderableParts.flatMap((p) =>
+              p.type === WORKSPACE_FOLDER_PART_TYPE
+                ? [(p as { data: WorkspaceFolderPartData }).data]
+                : [],
+            );
 
             const sentFrom = readOnly
               ? null
@@ -778,9 +789,10 @@ export function ChatMessagesContainer({
                     />
                   </MessageActions>
                 )}
-                {fileParts.length > 0 && (
+                {(fileParts.length > 0 || folderParts.length > 0) && (
                   <MessageAttachments
                     files={fileParts}
+                    folders={folderParts}
                     isUser={message.role === "user"}
                     filePattern={filePattern}
                     readOnly={readOnly}
@@ -853,8 +865,11 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && graphExecId && (
-            <CopilotPendingReviews graphExecId={graphExecId} />
+          {!readOnly && reviewTarget?.kind === "graph" && (
+            <CopilotPendingReviews graphExecId={reviewTarget.graphExecId} />
+          )}
+          {!readOnly && reviewTarget?.kind === "chat" && sessionID && (
+            <CopilotPendingReviews chatSessionId={sessionID} />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

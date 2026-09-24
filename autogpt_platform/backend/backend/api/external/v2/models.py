@@ -874,6 +874,9 @@ class AgentRunReview(BaseModel):
 
     @classmethod
     def from_internal(cls, review: PendingHumanReviewModel) -> Self:
+        # Chat reviews are not run reviews; callers list with graph_runs_only.
+        assert review.graph_exec_id and review.graph_id
+        assert review.graph_version is not None
         return cls(
             node_exec_id=review.node_exec_id,
             run_id=review.graph_exec_id,

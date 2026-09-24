@@ -1150,6 +1150,13 @@ model Expert {
   // identical to a fresh expert and re-seed the grant straight back.
   credentialsSeededAt DateTime?
 
+  // A hire returns once its row exists; its preloads, skills and routines are
+  // installed after the response. setupStartedAt is the running job's lease.
+  setupStatus    ExpertSetupStatus @default(READY)
+  setupStartedAt DateTime?
+  // What the last setup run could not install, by display name.
+  setupFailures  String[]          @default([])
+
   Workflows       ExpertWorkflow[]
   Credentials     ExpertCredential[]
   ChatSessions    ChatSession[]
@@ -1207,6 +1214,12 @@ model ExpertWorkflow {
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@index([expertId, createdAt, id])
+}
+
+enum ExpertSetupStatus {
+  INSTALLING
+  READY
+  FAILED
 }
 
 // Where a routine's turn lands each time it fires.
@@ -1655,9 +1668,12 @@ enum ReviewStatus {
 model PendingHumanReview {
   nodeExecId    String       @id
   userId        String
-  graphExecId   String
-  graphId       String
-  graphVersion  Int
+  // A review belongs to a graph execution (the three graph columns) or to a
+  // chat (chatSessionId); a check constraint enforces exactly one.
+  graphExecId   String?
+  graphId       String?
+  graphVersion  Int?
+  chatSessionId String?
   payload       Json // The actual payload data to be reviewed
   instructions  String? // Instructions/message for the reviewer
   editable      Boolean      @default(true) // Whether the reviewer can edit the data
@@ -1678,6 +1694,7 @@ model PendingHumanReview {
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
+  @@index([chatSessionId, status])
   @@index([organizationId])
 }
 
@@ -1889,6 +1906,8 @@ model PlatformCostLog {
   userId       String?
   User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   graphExecId  String?
+  // The AutoPilot chat the cost came from, when it did not come from a graph run.
+  chatSessionId String?
   nodeExecId   String?
   graphId      String?
   nodeId       String?
@@ -2288,6 +2307,10 @@ model SkillListingVersion {
   // Integrations the skill's instructions assume the installer has connected;
   // provider names as used by the credentials system.
   requiredProviders String[] @default([])
+
+  // SHA-256 of each exact file an install wrote after it passed the virus
+  // scan; a later install writing the same bytes skips the scan.
+  scannedSha256 String[] @default([])
 
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.

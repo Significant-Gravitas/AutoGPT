@@ -33,7 +33,7 @@ class BriefingRunItem(BaseModel):
 
 class BriefingDecisionItem(BaseModel):
     node_exec_id: str
-    graph_exec_id: str
+    graph_exec_id: str | None
     title: str
     expert_id: str | None
     expert_name: str | None

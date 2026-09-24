@@ -25,11 +25,14 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import {
   type Attachment,
   type WorkspaceAttachment,
+  MAX_FOLDER_ATTACHMENTS,
   appendWithinCap,
   MAX_ATTACHMENTS,
   partitionAttachments,
+  workspaceFolderToAttachment,
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
+import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
@@ -101,6 +104,8 @@ interface Props {
   /** Expert the chat is scoped to. Workspace-file suggestions and the picker
    *  then only offer files from that expert's conversations. */
   expertId?: string | null;
+  /** Names that expert in the picker's filter row. */
+  expertName?: string | null;
 }
 
 export function ChatInput({
@@ -124,6 +129,7 @@ export function ChatInput({
   voiceBar,
   variant = "default",
   expertId = null,
+  expertName = null,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -174,7 +180,8 @@ export function ChatInput({
     handleChange: baseHandleChange,
   } = useChatInput({
     onSend: async (message: string) => {
-      const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      const { localFiles, workspaceAttachments } =
+        partitionAttachments(attachments);
       // Chips clear eagerly for the same reason the text does (see
       // useChatInput.handleSend); a failed send restores them unless the
       // user already attached new ones in the meantime.
@@ -185,7 +192,7 @@ export function ChatInput({
         await onSend(
           message,
           localFiles.length > 0 ? localFiles : undefined,
-          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+          workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
         );
       } catch (error) {
         setAttachments((prev) => (prev.length > 0 ? prev : sent));
@@ -202,6 +209,8 @@ export function ChatInput({
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
+    addWorkspaceFolder: (folder, subfolderCount) =>
+      addAttachments([workspaceFolderToAttachment(folder, subfolderCount)]),
     expertId,
   });
 
@@ -276,24 +285,41 @@ export function ChatInput({
     addAttachments(newFiles.map(toLocalAttachment));
   }
 
-  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
-    handleWorkspaceFilesConfirmed([item]);
+  function addAttachments(incoming: Attachment[]) {
+    // Outside the updater: React re-invokes an updater (twice under
+    // StrictMode), which would toast the refusal more than once.
+    const { next, refused, refusedFolders } = appendWithinCap(
+      attachments,
+      incoming,
+    );
+    setAttachments(next);
+    setRefusedCount(refused);
+    if (refusedFolders > 0) {
+      toast({
+        title: `Up to ${MAX_FOLDER_ATTACHMENTS} folders per message`,
+        description: `${refusedFolders} not added.`,
+      });
+    }
   }
 
-  function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
-    addAttachments(items.map(workspaceItemToAttachment));
+  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
+    addAttachments([workspaceItemToAttachment(item)]);
+  }
+
+  function handlePickerConfirmed(items: PickedItem[]) {
+    addAttachments(
+      items.map((item) =>
+        item.kind === "folder"
+          ? workspaceFolderToAttachment(item.folder, item.subfolderCount)
+          : workspaceItemToAttachment(item.file),
+      ),
+    );
   }
 
   function handleRemoveAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
     // Removing one frees a slot, so the count the notice quotes is now stale.
     setRefusedCount(0);
-  }
-
-  function addAttachments(incoming: Attachment[]) {
-    const { next, refused } = appendWithinCap(attachments, incoming);
-    setAttachments(next);
-    setRefusedCount(refused);
   }
 
   const isCompact = variant === "compact";
@@ -312,7 +338,7 @@ export function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
-          files={mentions.files}
+          options={mentions.options}
           isLoading={mentions.isLoading}
           isError={mentions.isError}
           highlightedIndex={mentions.highlightedIndex}
@@ -522,8 +548,9 @@ export function ChatInput({
           key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
-          onConfirm={handleWorkspaceFilesConfirmed}
+          onConfirm={handlePickerConfirmed}
           expertId={expertId}
+          expertName={expertName}
         />
       )}
     </form>

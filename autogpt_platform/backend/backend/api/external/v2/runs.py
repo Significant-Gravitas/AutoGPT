@@ -79,6 +79,7 @@ async def list_reviews(
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,
+        graph_runs_only=True,
     )
 
     return page.paged(
@@ -156,6 +157,7 @@ async def submit_reviews(
         if not still_has_pending:
             first_review = next(iter(results.values()))
             try:
+                assert first_review.graph_id
                 user = await get_user_by_id(auth.user_id)
                 settings = await get_graph_settings(
                     user_id=auth.user_id, graph_id=first_review.graph_id
