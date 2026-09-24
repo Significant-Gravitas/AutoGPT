@@ -512,12 +512,17 @@ class BaseTool:
                 session,
                 "This action could not be checked against your approval "
                 "settings, so nothing ran. Tell the user and stop.",
+                args=kwargs,
             )
 
         if decision.allowed:
             return None
         return self._refusal(
-            tool_call_id, session, decision.reason, review_id=decision.review_id
+            tool_call_id,
+            session,
+            decision.reason,
+            review_id=decision.review_id,
+            args=kwargs,
         )
 
     def _refusal(
@@ -526,9 +531,12 @@ class BaseTool:
         session: ChatSession,
         reason: str,
         review_id: str | None = None,
+        args: dict[str, Any] | None = None,
     ) -> StreamToolOutputAvailable:
         from backend.copilot.gate import refusal_message
+        from backend.copilot.gate.headline import headline_for
 
+        headline = headline_for(self.name, args or {})
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
@@ -538,6 +546,8 @@ class BaseTool:
                 tool_name=self.name,
                 reason=reason,
                 review_id=review_id,
+                ask=headline.ask,
+                object=headline.object,
             ).model_dump_json(),
             success=False,
         )

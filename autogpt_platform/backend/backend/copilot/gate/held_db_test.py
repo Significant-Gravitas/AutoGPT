@@ -170,6 +170,7 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     assert len(delivered) == 1
     assert "posted hello team" in delivered[0].content
     assert 'tool_call_id="call-1"' in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "approved"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -230,6 +231,8 @@ async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
 
     assert post_tool.runs == [{"text": "from the card"}]
     assert "posted from the card" in delivered.content
+    # The card kept the call's id, so the chain row still finds its result.
+    assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -246,6 +249,7 @@ async def test_a_lost_held_call_the_card_cannot_rebuild_asks_for_a_resend(
 
     assert post_tool.runs == []
     assert "send the request again" in delivered.content
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -331,6 +335,7 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
         [delivered] = await held.resolve_answered(test_user_id, session)
 
     assert "may have run" in delivered.content
+    assert delivered.metadata["held_call"]["outcome"] == "unknown"
     assert await held.answered(test_user_id, session.session_id) == []
 
 
@@ -388,6 +393,7 @@ async def test_a_stale_approval_delivers_a_refusal_not_a_run(
 
     assert post_tool.runs == []
     assert "expired" in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "expired"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -407,6 +413,7 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
 
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "rejected"
     assert await chat_rules.ask_reason(session.session_id, _TOOL) == chat_rules.DECLINED
 
 
@@ -442,3 +449,20 @@ async def test_an_answer_on_an_idle_chat_starts_its_turn(
 
     dispatch.assert_awaited_once()
     assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_chain_row_and_the_card_name_the_call_alike(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The tool output labels the chain row; the row's payload heads the card."""
+    session = await _new_session(test_user_id, "ask_first")
+
+    result = await post_tool.execute(test_user_id, session, "call-9", text="hi")
+
+    output = json.loads(result.output)
+    row = await _row(output["review_id"], test_user_id)
+    assert row is not None
+    assert output["type"] == "approval_required"
+    assert (output["ask"], output["object"]) == ("Post a message", None)
+    assert row.payload["headline"]["ask"] == output["ask"]

@@ -1032,6 +1032,9 @@ class ApprovalRequiredResponse(ToolResponseBase):
     tool_name: str
     reason: str
     review_id: str | None = None
+    # The chain row's label, from the same table as the card's headline.
+    ask: str | None = None
+    object: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

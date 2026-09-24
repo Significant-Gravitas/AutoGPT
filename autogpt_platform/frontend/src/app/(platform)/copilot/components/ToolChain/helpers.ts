@@ -1,5 +1,4 @@
 import type { ToolUIPart } from "ai";
-import { beautifyString } from "@/lib/utils";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
@@ -10,6 +9,8 @@ import {
 } from "../../tools/GenericTool/helpers";
 import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
+import type { HeldRowInfo } from "./heldRow";
+import { heldAskText, heldToolName } from "./heldRow";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
@@ -34,6 +35,8 @@ export interface ChainRow {
    *  row line but renders no card, so one delegation never stacks
    *  duplicate cards down the chain. */
   supersededSubSession?: boolean;
+  /** A call the action gate held: whether it waits, ran or was turned down. */
+  held?: HeldRowInfo;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -127,12 +130,8 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
       ? `Review ${name.trim()}`
       : "Review this action";
   }
-  if (data.type === "approval_required") {
-    const name = data.tool_name;
-    return typeof name === "string" && name.trim()
-      ? `Approve ${beautifyString(name.trim())}`
-      : "Approve this action";
-  }
+  if (data.type === "approval_required")
+    return heldAskText(data, heldToolName(data, toolName));
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
