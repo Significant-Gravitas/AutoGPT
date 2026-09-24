@@ -103,14 +103,19 @@ async def check_approval(
     graph_exec_id, session_id = _review_scope(graph_exec_id, session_id)
     scope_id = graph_exec_id or session_id
     assert scope_id
-    auto_approve_key = get_auto_approve_key(scope_id, node_id)
+    auto_approve_keys = [get_auto_approve_key(scope_id, node_id)]
+    if session_id:
+        # Records made before chat reviews had a session of their own.
+        auto_approve_keys.append(
+            get_auto_approve_key(f"{COPILOT_SESSION_PREFIX}{session_id}", node_id)
+        )
 
     # Check for either normal approval or auto-approval in a single query
     existing_review = await PendingHumanReview.prisma().find_first(
         where={
             "OR": [
                 {"nodeExecId": node_exec_id},
-                {"nodeExecId": auto_approve_key},
+                *({"nodeExecId": key} for key in auto_approve_keys),
             ],
             "status": ReviewStatus.APPROVED,
             "userId": user_id,
@@ -118,7 +123,7 @@ async def check_approval(
     )
 
     if existing_review:
-        is_auto_approval = existing_review.nodeExecId == auto_approve_key
+        is_auto_approval = existing_review.nodeExecId in auto_approve_keys
         logger.info(
             f"Found {'auto-' if is_auto_approval else ''}approval for node {node_id} "
             f"(exec: {node_exec_id}) in {scope_id}"
