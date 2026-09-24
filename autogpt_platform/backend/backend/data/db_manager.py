@@ -560,6 +560,7 @@ class DatabaseManager(AppService):
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
+    add_expert_skill_names = _(experts_db.add_expert_skill_names)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
@@ -967,6 +968,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
     add_expert_skill_name = d.add_expert_skill_name
+    add_expert_skill_names = d.add_expert_skill_names
     remove_expert_skill_name = d.remove_expert_skill_name
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
