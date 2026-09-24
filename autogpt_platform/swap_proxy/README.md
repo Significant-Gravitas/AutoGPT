@@ -291,7 +291,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   stored at a provider and served back so encoded; one stored there by other
   means (by the user, say) is not caught.
 - A text response over 5 MiB from a bound host is refused, not delivered, for a
-  box that gets swaps.
+  box that gets swaps. That includes content hosts: a text file over 5 MiB
+  fetched from `raw.githubusercontent.com` (served as `text/plain`) does not
+  reach such a box; cloning the repository still works, since git's packs are
+  binary. Lifting this needs a scrub that works on a stream, not a held body.
 - A compressed text response from a bound host that decodes to more than
   20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
   several at once), is refused for a box that gets swaps; a request body like
