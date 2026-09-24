@@ -264,8 +264,8 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /tmp/next-build-cache
-          key: next-build-cache-v1-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
-          restore-keys: next-build-cache-v1-
+          key: next-build-cache-v2-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+          restore-keys: next-build-cache-v2-
 
       - name: Set up Platform - Load Next.js build cache into BuildKit
         if: steps.next-build-cache.outputs.cache-matched-key != ''
@@ -333,8 +333,10 @@ jobs:
         background: true
         run: |
           rm -rf /tmp/next-build-cache
-          docker buildx build --progress=plain --no-cache --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
+          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
+          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
           FROM node:24.18-alpine3.23 AS export
+          ARG RUN_ID
           RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
               mkdir /out && cp -a /app/.next/cache/. /out/
           FROM scratch
