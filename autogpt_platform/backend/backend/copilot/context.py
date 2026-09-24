@@ -129,6 +129,12 @@ _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
 _current_envelope: "ContextVar[TurnEnvelope | None]" = ContextVar(
     "_current_envelope", default=None
 )
+# Short tool names this turn hid from the model (permission-denied, group-
+# disabled, kickoff-narrowed).  ``run_capability`` refuses to reach them, so
+# hiding stays an enforcement boundary once tools are reachable by id.
+_current_hidden_tools: ContextVar[frozenset[str]] = ContextVar(
+    "_current_hidden_tools", default=frozenset()
+)
 
 
 def encode_cwd_for_cli(cwd: str) -> str:
@@ -152,6 +158,7 @@ def set_execution_context(
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
     envelope: "TurnEnvelope | None" = None,
+    hidden_tools: frozenset[str] = frozenset(),
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -161,6 +168,7 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
     _current_envelope.set(envelope)
+    _current_hidden_tools.set(hidden_tools)
     reset_consult_budget()
 
 
@@ -177,6 +185,11 @@ def get_current_permissions() -> "CopilotPermissions | None":
 def get_current_envelope() -> "TurnEnvelope | None":
     """The running turn's tree envelope; None outside an executor turn."""
     return _current_envelope.get()
+
+
+def get_current_hidden_tools() -> frozenset[str]:
+    """Short tool names hidden from the model this turn."""
+    return _current_hidden_tools.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":

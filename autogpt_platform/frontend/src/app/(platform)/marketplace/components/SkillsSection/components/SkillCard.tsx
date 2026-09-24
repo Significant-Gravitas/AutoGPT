@@ -83,6 +83,12 @@ export function SkillCard({ skill, isInstalled }: Props) {
               </Avatar>
               by {skill.creator ?? "AutoGPT"}
             </span>
+            {skill.source_repo ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>·</span>
+                From {skill.source_repo}
+              </span>
+            ) : null}
             {providers.length > 0 ? (
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden>·</span>

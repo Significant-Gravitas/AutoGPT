@@ -186,7 +186,7 @@ async def open_chat_spend_review(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> str:
-    """Park a paid ``run_block`` on the session's review rails and return the
+    """Park a paid ``run_capability`` block run on the session's review rails and return the
     review id. An open row for the same expert is reused so a model retry
     does not stack cards."""
     synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"

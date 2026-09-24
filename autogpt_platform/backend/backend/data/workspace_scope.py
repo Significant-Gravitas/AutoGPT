@@ -2,9 +2,9 @@
 
 Resolved from persisted session attribution, never from tool arguments. An
 expert session may read and write under its own conversations and its own
-skills folder, and read under conversations it delegated. ``None`` scope
-means unrestricted: the account owner acting through personal
-Otto, REST endpoints, or system paths.
+skills folder, read under conversations it delegated, and read the owner's
+own files. ``None`` scope means unrestricted: the account owner acting
+through personal Otto, REST endpoints, or system paths.
 """
 
 import posixpath
@@ -26,9 +26,10 @@ SKILLS_ROOT = "/skills/"
 SHARED_ROOTS = (SESSIONS_ROOT, SKILLS_ROOT, EXPERTS_ROOT)
 
 EXPERT_FILE_ACCESS_DENIED = (
-    "This file is outside this expert's scope. Experts can only access files "
-    "from their own conversations and their own skills. Open a chat with Otto "
-    "to work with other files."
+    "This file is outside this expert's scope. Experts can read your own files "
+    "and their own conversations, and can only write to their own "
+    "conversations and skills. Open a chat with Otto to work with another "
+    "expert's files."
 )
 EXPERT_SKILL_SCOPE_DENIED = (
     "Experts can only use and manage their own skills. Open a chat with Otto "
@@ -48,6 +49,17 @@ def expert_skills_folder(expert_id: str) -> str:
     return f"{EXPERTS_ROOT}{expert_id}/skills"
 
 
+def is_user_file_path(path: str) -> bool:
+    """Whether *path* is one of the owner's own files.
+
+    Everything outside the three managed roots: what the user uploads on the
+    Files page, at the workspace root or in a folder. A predicate over the
+    roots rather than a ``/`` prefix, which ``allows_path``'s ``startswith``
+    would match against every path in the workspace.
+    """
+    return not path.startswith(SHARED_ROOTS)
+
+
 class WorkspaceScope(BaseModel):
     """Grants for one acting session. Safe for RPC transport.
 
@@ -58,10 +70,13 @@ class WorkspaceScope(BaseModel):
     expert_id: str | None = None
     session_ids: list[str] = Field(default_factory=list)
     delegated_session_ids: list[str] = Field(default_factory=list)
-    # A carried grant, never inferred from ``expert_id``: this model crosses an
-    # RPC boundary and is rebuilt as this class, so a subclass that withheld the
-    # folder would come back granting it.
+    # Carried grants, never inferred from ``expert_id``: this model crosses an
+    # RPC boundary and is rebuilt as this class, so a subclass that withheld a
+    # grant would come back granting it. Defaulting to False also keeps the
+    # unattributed scope (``WorkspaceScope(session_ids=[sid])``) fail-closed.
     owns_skills_folder: bool = False
+    # Read-only: the owner's own files, shared by every expert they hire.
+    reads_user_files: bool = False
 
     def with_session(self, session_id: str) -> "WorkspaceScope":
         if session_id in self.session_ids:
@@ -88,6 +103,8 @@ class WorkspaceScope(BaseModel):
     def allows_path(self, path: str, *, write: bool = False) -> bool:
         if not path.startswith("/") or "\\" in path or posixpath.normpath(path) != path:
             return False
+        if not write and self.reads_user_files and is_user_file_path(path):
+            return True
         prefixes = self.write_prefixes if write else self.read_prefixes
         return any(path.startswith(prefix) for prefix in prefixes)
 
@@ -98,9 +115,11 @@ async def resolve_expert_workspace_scope(
     """Resolve the grants for *expert_id* owned by *user_id*.
 
     Own conversations are every session attributed to the expert, so a new
-    conversation keeps reaching files from earlier ones. Fails closed: a
-    missing, archived, or foreign expert yields no session grants at all
-    (callers add the current session explicitly). The ``visibility`` filter
+    conversation keeps reaching files from earlier ones, and the owner's own
+    files are readable so an expert can work on what the owner uploaded.
+    Fails closed: a missing, archived, or foreign expert yields no grants at
+    all, user files included (callers add the current session explicitly,
+    which grants nothing beyond that one conversation). The ``visibility`` filter
     mirrors ``experts_db.get_expert``: hired experts are PRIVATE in v1, and
     a TEAM/ORG expert must not read files until sharing rules exist for it.
     """
@@ -131,6 +150,7 @@ async def resolve_expert_workspace_scope(
     return WorkspaceScope(
         expert_id=expert_id,
         owns_skills_folder=True,
+        reads_user_files=True,
         session_ids=[row.id for row in own_sessions],
         delegated_session_ids=[
             row.id for row in delegated_sessions if row.expertId != expert_id

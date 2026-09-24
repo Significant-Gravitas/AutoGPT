@@ -96,6 +96,7 @@ class TestPersistAndSummarize:
         call_kwargs = mock_manager.write_file.call_args
         assert call_kwargs.kwargs["content"] == raw.encode("utf-8")
         assert call_kwargs.kwargs["path"] == "tool-outputs/tc-123.json"
+        assert call_kwargs.kwargs["metadata"] == {"purpose": "tool-output"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_workspace_error(self):
@@ -226,7 +227,7 @@ class TestSummarizeBinaryFields:
 
 
 # ---------------------------------------------------------------------------
-# AUTOPILOT_CONTEXT_TRIMMING digest
+# Large-output digest (always on)
 # ---------------------------------------------------------------------------
 
 
@@ -307,18 +308,13 @@ def _workspace_patches(manager):
 
 
 async def _execute_with_flag(tool, flag_on: bool, manager=None):
+    """The digest used to sit behind a feature flag; it is now always on, so
+    ``flag_on`` is kept only so the call sites read as before."""
+    assert flag_on
     session = MagicMock()
     session.session_id = "s-1"
     db_patch, mgr_patch = _workspace_patches(manager or AsyncMock())
-    with (
-        db_patch,
-        mgr_patch,
-        patch(
-            "backend.copilot.tools.base.is_feature_enabled",
-            new_callable=AsyncMock,
-            return_value=flag_on,
-        ),
-    ):
+    with db_patch, mgr_patch:
         return await tool.execute("user-1", session, "tc-digest")
 
 
@@ -327,15 +323,6 @@ class TestDigestThreshold:
         """Between 80K and 95K the legacy preview makes the context bigger;
         deriving the budget from the trigger makes that unrepresentable."""
         assert _DIGEST_PREVIEW_CHARS < _DIGEST_THRESHOLD
-
-    @pytest.mark.asyncio
-    async def test_flag_off_leaves_a_mid_sized_output_byte_identical(self):
-        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3)
-        result = await _execute_with_flag(tool, flag_on=False)
-        expected = (await tool._execute("user-1", MagicMock())).model_dump_json(
-            exclude_none=True
-        )
-        assert result.output == expected
 
     @pytest.mark.asyncio
     async def test_flag_on_digests_a_mid_sized_output(self):
@@ -433,18 +420,6 @@ class TestDigestThreshold:
         assert window, result.output
         start, length = int(window[1]), int(window[2])
         assert json.loads(written[start : start + length]) == ["field_0"]
-
-    @pytest.mark.asyncio
-    async def test_a_small_output_never_consults_the_flag(self):
-        tool = _SchemaOutputTool(output_size=200)
-        with patch(
-            "backend.copilot.tools.base.is_feature_enabled",
-            new_callable=AsyncMock,
-        ) as flag:
-            session = MagicMock()
-            session.session_id = "s-1"
-            await tool.execute("user-1", session, "tc-small")
-        flag.assert_not_awaited()
 
 
 def _outline_of(data, budget: int) -> tuple[str, str]:

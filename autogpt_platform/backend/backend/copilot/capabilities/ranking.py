@@ -41,14 +41,18 @@ def resolve_connected(
     if connection.key_type == "provider":
         return connection.key in state.providers
     if connection.key_type == "server_url":
-        return _normalize_url(connection.key) in {
-            _normalize_url(url) for url in state.server_urls
+        return normalize_server_url(connection.key) in {
+            normalize_server_url(url) for url in state.server_urls
         }
     return None
 
 
 def tier(entry: CapabilityEntry, connected: bool | None) -> int:
     """0 = connected service ... 3 = bare primitive; used for tie-breaks."""
+    if entry.kind == "skill":
+        # The owner's own procedure: nothing to connect, written for this
+        # user, so it ranks with the services they have connected.
+        return 0
     if entry.klass == "service":
         return 0 if connected else 1
     # A host-keyed primitive resolves its credential from the request URL at
@@ -68,5 +72,11 @@ def class_weight(entry: CapabilityEntry, connected: bool | None) -> float:
     }[tier(entry, connected)]
 
 
-def _normalize_url(url: str) -> str:
+def normalize_server_url(url: str) -> str:
+    """Compare MCP server URLs the way the catalog and the user write them.
+
+    Catalog keys are stored both ways (``https://mcp.miro.com/`` alongside
+    ``https://mcp.linear.app/mcp``), so a raw ``==`` against whatever the
+    model passes decides "is this a catalog server" on a trailing slash.
+    """
     return url.strip().lower().rstrip("/")

@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -71,6 +72,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    job_title: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
     tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
@@ -89,7 +91,10 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
+        return (
+            EXPERT_CREATION_COPY_POLICY
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -98,30 +103,32 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "Personal first name, not a job title (use role for that)."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short title for what they own.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
+                },
+                "job_title": {
+                    "type": "string",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": ("Accent token for the avatar and chat theme."),
+                    "description": "Avatar/chat accent token.",
                 },
                 "avatar_glasses": {
                     "type": "string",
                     "enum": list(AVATAR_GLASSES),
                     "description": (
-                        "Eyewear suited to their role; omit for a name-seeded choice."
+                        "Role-appropriate eyewear; omit for name-seeded choice."
                     ),
                 },
                 "avatar_beard": {
@@ -137,7 +144,7 @@ class RaiseExpertTool(BaseTool):
                 "about": {
                     "type": "string",
                     "description": (
-                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {
@@ -166,6 +173,7 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        job_title: str = "",
         tagline: str = "",
         color: str = "",
         avatar_glasses: str = "",
@@ -215,6 +223,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                job_title=" ".join(job_title.split()),
                 tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
@@ -254,7 +263,7 @@ class RaiseExpertTool(BaseTool):
                     f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
                     "do not raise them again. Delegate work to them with "
                     "delegate_to_expert, or change their charter with "
-                    "update_expert. Only propose a differently-named expert "
+                    "tool:update_expert. Only propose a differently-named expert "
                     "if the user truly wants a second, separate one."
                 ),
                 session_id=session_id,
@@ -266,6 +275,7 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
             avatar_url=build_avatar_url(
@@ -297,7 +307,7 @@ class RaiseExpertTool(BaseTool):
                 "a card with Approve and Decline buttons — do not repeat any "
                 "of it in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
+                "tool:confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,

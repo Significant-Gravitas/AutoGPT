@@ -12,6 +12,7 @@ import {
 
 export type RaiseStep =
   | "role"
+  | "jobTitle"
   | "name"
   | "avatar"
   | "about"
@@ -23,6 +24,7 @@ export type RaiseStep =
 
 export const STEP_ORDER: RaiseStep[] = [
   "role",
+  "jobTitle",
   "name",
   "avatar",
   "about",
@@ -58,8 +60,9 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm Otto. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Otto. I'll help you create your own AI Expert.",
   roleQuestion: "First — what should your expert do for you?",
+  jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
   avatarQuestion: (name: string) =>
     `Now give ${name || "them"} a face and a color. Shuffle until one feels right, or upload a picture.`,
@@ -85,6 +88,7 @@ export interface RaiseDraft {
   step: RaiseStep;
   hasStarted: boolean;
   role: string | null;
+  jobTitle: string | null;
   name: string;
   color: string | null;
   // "" once the user skips, so the question is not asked again on restore.
@@ -102,6 +106,7 @@ export const EMPTY_DRAFT: RaiseDraft = {
   step: "role",
   hasStarted: false,
   role: null,
+  jobTitle: null,
   name: "",
   color: null,
   avatarUrl: null,
@@ -123,6 +128,9 @@ export function loadDraft(): RaiseDraft {
     const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
       step?: string;
     };
+    if (parsed.role && parsed.jobTitle == null) {
+      return reopenedAtJobTitle(parsed.role);
+    }
     const step = migrateStep(parsed.step);
     return backfillSkippedVoice({
       ...EMPTY_DRAFT,
@@ -132,6 +140,12 @@ export function loadDraft(): RaiseDraft {
   } catch {
     return EMPTY_DRAFT;
   }
+}
+
+// A draft written before the job title beat existed has a role and no title.
+// Every later beat waits on the title, so the draft resumes there.
+function reopenedAtJobTitle(role: string): RaiseDraft {
+  return { ...EMPTY_DRAFT, hasStarted: true, role, step: "jobTitle" };
 }
 
 // A draft written by an earlier build recorded a skipped voice as a null
@@ -197,7 +211,7 @@ export function isEmptyDraft(draft: RaiseDraft): boolean {
 }
 
 /** `/raise?role=…` from the greeting page's raise door: answers the role
- *  beat exactly as `pickRole` would, so the flow opens on the name
+ *  beat exactly as `pickRole` would, so the flow opens on the job title
  *  question instead of asking again for something already chosen. */
 export function draftWithPrefilledRole(
   draft: RaiseDraft,
@@ -210,7 +224,7 @@ export function draftWithPrefilledRole(
     ...draft,
     hasStarted: true,
     role: preset ? preset.id : normalizeCustomRole(role),
-    step: "name",
+    step: "jobTitle",
   };
 }
 
@@ -237,7 +251,7 @@ export function resolveVoicePreferences(
 
 export function raisedIdentity(name: string): string {
   // Keep this preview copy aligned with backend experts_db._raised_identity.
-  return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
+  return `I'm ${name}, an AI Expert created by you. I use your instructions to help with your work.`;
 }
 
 export function kitBudgetLabel(kit: RaiseKit | null): string | null {

@@ -41,6 +41,14 @@ from backend.copilot.model import ChatSession
 from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
 from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import SKILL_ORIGIN_LABELS as _ORIGIN_LABELS
+from backend.data.skill_capacity import SKILL_ORIGIN_MARKETPLACE
+from backend.data.skill_capacity import SKILL_ORIGIN_METADATA_KEY as _META_SKILL_ORIGIN
+from backend.data.skill_capacity import SKILL_ORIGIN_USER
+from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
+from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
+from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -48,7 +56,6 @@ from backend.data.workspace_scope import (
     expert_skills_folder,
 )
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.mcp_guide import render_mcp_guide
 from backend.util.exceptions import ConflictError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
@@ -70,13 +77,15 @@ logger = logging.getLogger(__name__)
 # Limits — keep the per-turn <available_skills> index small enough that it
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
-# (~50 tok), so 50 entries ≈ 2.5k tokens.  Filling every description and
-# trigger to the per-field caps below is roughly 22k tokens under the same
+# (~50 tok), so 150 entries ≈ 7.5k tokens.  Filling every description and
+# trigger to the per-field caps below is roughly 66k tokens under the same
 # estimate; actual token cost varies by content and tokenizer.
+# The cap is per owner folder and per origin: what the owner saves and what
+# the platform installs (a hire's bundle, a marketplace install) each get
+# MAX_SKILLS_PER_EXPERT, so a template's size never eats the owner's own room.
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
-MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 # Loaded only on activation, so it costs nothing per turn; 50k clears
@@ -122,7 +131,9 @@ def skill_folder(expert_id: str | None) -> str:
 # 60s TTL with explicit invalidation gives near-zero index latency on warm
 # turns without unbounded staleness for cross-instance edits.
 SKILLS_INDEX_CACHE_TTL_S = 60
-SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:{user_id}"
+# Versioned: an entry cached before origins were recorded would count every
+# installed skill as the owner's for a TTL after deploy.
+SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:v2:{user_id}"
 
 # A skill name on an expert's row that resolves to no folder in Otto's
 # library — a marketplace attachment, or a skill deleted after assignment —
@@ -143,6 +154,11 @@ _META_VERSION = "version"
 # The workspace has no mode bits, so a script's executable bit survives
 # store → copy → sandbox as this flag.
 _META_EXECUTABLE = "executable"
+# Where a skill in an owner's folder came from.  Kept in the row's metadata
+# (server-written; the frontmatter is the author's to edit) so the per-owner
+# cap counts what the owner saved apart from what the platform installed.
+# The built-in defaults: never stored, never counted, so not a storable origin.
+SKILL_ORIGIN_PLATFORM = "platform"
 
 # Skill names are slug-like — lowercase letters, digits, dashes, underscores.
 # Must start and end with [a-z0-9] (no trailing/leading punctuation) so the
@@ -153,8 +169,8 @@ _NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 
 # ---------------------------------------------------------------------------
-# Default skills — migrated from the legacy ``get_agent_building_guide`` /
-# ``get_mcp_guide`` tools so users get a uniform discovery surface.  These
+# Default skills — migrated from the legacy ``get_agent_building_guide``
+# tool so users get a uniform discovery surface.  These
 # are *read-only* — store_skill / delete_skill refuse to touch them.  Body
 # is loaded from disk lazily so adding more defaults is a drop-in.
 # ---------------------------------------------------------------------------
@@ -185,15 +201,6 @@ DEFAULT_SKILLS: tuple[_DefaultSkill, ...] = (
             "fix_agent_graph",
         ),
     ),
-    _DefaultSkill(
-        name="mcp_tool_guide",
-        description=(
-            "MCP server URLs and auth setup — load before calling "
-            "run_mcp_tool when you need server URLs or auth details."
-        ),
-        body_path=_SDK_DIR / "mcp_tool_guide.md",
-        triggers=("run_mcp_tool",),
-    ),
 )
 
 _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_SKILLS}
@@ -206,9 +213,16 @@ _DEFAULT_SKILLS_BY_NAME: dict[str, _DefaultSkill] = {s.name: s for s in DEFAULT_
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
-# Spec frontmatter the platform has no use for.  Dropping it rewrites the
-# author's SKILL.md on every store, so it rides through parse and render.
-_CARRIED_FRONTMATTER_KEYS = ("license", "compatibility", "allowed-tools", "metadata")
+# Frontmatter outside the core skill fields. Dropping it rewrites the author's
+# SKILL.md on every store, so it rides through parse and render.
+_CARRIED_FRONTMATTER_KEYS = (
+    "license",
+    "compatibility",
+    "allowed-tools",
+    "metadata",
+    "source",
+    "source_url",
+)
 
 
 @dataclass(frozen=True)
@@ -221,6 +235,17 @@ class ParsedSkill:
     triggers: tuple[str, ...] = ()
     version: str | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
+    # Recorded on the row at store time, never parsed from the file.  ``None``
+    # is a row stored before origins were recorded: it counts against the
+    # owner's budget (see :func:`budget_origin`) but is nobody's to defend,
+    # so a platform install may claim it.
+    origin: str | None = None
+
+
+def budget_origin(skill: ParsedSkill) -> str:
+    """The budget a stored skill fills: its recorded origin, or the owner's
+    for a row that has none."""
+    return skill.origin or SKILL_ORIGIN_USER
 
 
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
@@ -291,6 +316,37 @@ def _validate_name(name: str) -> str | None:
     return None
 
 
+def validate_skill_content(
+    description: str, body: str, triggers: Iterable[str]
+) -> None:
+    trigger_list = list(triggers)
+    if not description:
+        raise ValueError("description is required")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValueError(
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
+            "(it appears in every turn's skills index)"
+        )
+    if not body:
+        raise ValueError("body is required")
+    if len(body) > MAX_BODY_CHARS:
+        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
+    if len(trigger_list) > MAX_TRIGGERS:
+        raise ValueError(
+            f"triggers must be ≤{MAX_TRIGGERS} entries "
+            "(they are inlined in <available_skills> every turn)"
+        )
+    oversized_trigger = next(
+        (trigger for trigger in trigger_list if len(trigger) > MAX_TRIGGER_CHARS),
+        None,
+    )
+    if oversized_trigger is not None:
+        raise ValueError(
+            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Workspace registry — read/write/delete user skills as folders under
 # ``/skills/{slug}/SKILL.md``.  We construct a *session-less*
@@ -356,12 +412,8 @@ async def resolve_skill_owner(
     return SkillOwner(expert_id=expert.id, scope=None)
 
 
-# Redis lock key for serialising store_skill writes per user. A per-user
-# distributed lock turns the otherwise-racy "count existing skills, then
-# write a new one" into an atomic critical section so two concurrent
-# ``store_skill`` calls cannot both pass the MAX_USER_SKILLS check.
-# Held only for the duration of the count + write; skill reads stay
-# lock-free.
+# Best-effort package-write coordination. Root publication enforces capacity
+# in PostgreSQL independently of this lease or the cached skill index.
 _SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
 _SKILL_WRITE_LOCK_TTL_SECONDS = 30
 
@@ -374,7 +426,7 @@ def _load_default_body(skill: _DefaultSkill) -> str:
     """Read a default skill's body from disk (cached at module level
     via :func:`functools.lru_cache` would re-read on test reloads, so
     we hit the disk each call — these files are small)."""
-    return render_mcp_guide(skill.body_path.read_text(encoding="utf-8"))
+    return skill.body_path.read_text(encoding="utf-8")
 
 
 def get_default_skill_with_body(name: str) -> ParsedSkill | None:
@@ -396,6 +448,7 @@ def get_default_skill_with_body(name: str) -> ParsedSkill | None:
         description=default.description,
         body=body,
         triggers=default.triggers,
+        origin=SKILL_ORIGIN_PLATFORM,
     )
 
 
@@ -529,10 +582,6 @@ class BuiltInSkillError(Exception):
     """Raised by :func:`delete_user_skill` for default seeded skills."""
 
 
-class SkillLimitError(Exception):
-    """Raised by :func:`store_user_skill` when the per-user cap is reached."""
-
-
 async def delete_user_skill(
     user_id: str,
     name: str,
@@ -638,6 +687,7 @@ async def store_user_skill(
     files: list[SkillFile] | None = None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    origin: str = SKILL_ORIGIN_USER,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -645,9 +695,15 @@ async def store_user_skill(
     ``None``) and becomes that owner's skill. Shared by the ``store_skill``
     copilot tool and the REST ``POST /skills`` upload endpoint so both honour
     the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
-    failure, :class:`SkillLimitError` when the per-user cap is reached, and
-    propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
-    workspace write error) to the caller.
+    failure, :class:`SkillLimitError` when the owner's cap for skills of
+    *origin* is reached, and propagates ``VirusDetectedError`` /
+    ``VirusScanError`` (and any other workspace write error) to the caller.
+
+    *origin* says who put the skill there — the owner
+    (``SKILL_ORIGIN_USER``, the default) or the platform
+    (``SKILL_ORIGIN_MARKETPLACE``: a hire's bundle, a marketplace install).
+    Each origin has a cap of its own, so a template's bundle never takes a
+    slot from the skills the owner saves to that expert.
 
     *files* is the whole package: it replaces the folder's contents, so a
     file the caller leaves out is deleted.  ``None`` — every single-file
@@ -672,28 +728,9 @@ async def store_user_skill(
     name_err = _validate_name(name)
     if name_err:
         raise ValueError(name_err)
-    if not description:
-        raise ValueError("description is required")
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        raise ValueError(
-            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
-            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
-            "(it appears in every turn's skills index)"
-        )
-    if not body:
-        raise ValueError("body is required")
-    if len(body) > MAX_BODY_CHARS:
-        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
-    if len(triggers) > MAX_TRIGGERS:
-        raise ValueError(
-            f"triggers must be ≤{MAX_TRIGGERS} entries "
-            "(they are inlined in <available_skills> every turn)"
-        )
-    oversized_trigger = next((t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None)
-    if oversized_trigger is not None:
-        raise ValueError(
-            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
-        )
+    if origin not in _SKILL_ORIGINS:
+        raise ValueError(f"origin must be one of {', '.join(sorted(_SKILL_ORIGINS))}")
+    validate_skill_content(description, body, triggers)
 
     parsed = ParsedSkill(
         name=name,
@@ -702,6 +739,7 @@ async def store_user_skill(
         triggers=tuple(triggers),
         version=version,
         extra=dict(extra or {}),
+        origin=origin,
     )
     rendered = render_skill_markdown(parsed)
     if files is not None:
@@ -709,14 +747,7 @@ async def store_user_skill(
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=files))
 
-    # Serialise the count-then-write critical section per-user so two
-    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
-    # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
-    # ~1s before falling back to the strict-cap unlocked path below — without
-    # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
-    # both see N<MAX, and both write (cap overruns by 1).  Lock failure
-    # (Redis unavailable) still falls back to the unlocked write but the
-    # cap-enforcement branch below refuses any at-cap write in that case.
+    # Coordinate ordinary package writes; the database owns the hard cap.
     lock: AsyncClusterLock | None = None
     lock_held = False
     try:
@@ -740,35 +771,28 @@ async def store_user_skill(
         )
     try:
         manager = await _get_user_skill_manager(user_id, scope)
-        # Enforce the per-owner cap *before* we write.  When the lock IS held
-        # this is a true atomic check-then-write — an upsert at-cap is safe
-        # because no new slot is consumed.  When the lock FAILED to acquire,
-        # the check is no longer atomic, so refuse any write at-or-above the
-        # cap defensively (the caller can retry; a Redis blip is rare).
-        # No healing here: this call runs inside the per-owner write lock that
-        # the copy would need, so it would stall on itself for every name.
-        existing = await list_user_skills(user_id, expert_id, scope, heal_missing=False)
-        existing_slugs = {s.name for s in existing}
-        at_cap = len(existing_slugs) >= MAX_USER_SKILLS
-        is_new = name not in existing_slugs
-        if at_cap and (is_new or not lock_held):
-            if not lock_held:
-                logger.warning(
-                    "[skills] refusing at-cap unlocked write for user %s "
-                    "(is_new=%s) — concurrent write could otherwise overrun "
-                    "the cap",
-                    user_id,
-                    is_new,
-                )
+        existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
+        same_origin = {s.name for s in existing if budget_origin(s) == origin}
+        if origin == SKILL_ORIGIN_MARKETPLACE and any(
+            s.name == name and s.origin == SKILL_ORIGIN_USER for s in existing
+        ):
+            raise SkillOwnedError(
+                f"'{name}' is one of the owner's own skills; rename or delete "
+                "it before installing a skill by that name."
+            )
+        at_cap = len(same_origin) >= MAX_SKILLS_PER_EXPERT
+        is_new = name not in same_origin
+        if at_cap and is_new:
             raise SkillLimitError(
-                f"Skill limit reached ({MAX_USER_SKILLS}). "
-                "Delete an unused skill first."
+                f"Skill limit reached ({MAX_SKILLS_PER_EXPERT} {_ORIGIN_LABELS[origin]} "
+                "skills). Delete an unused skill first."
             )
 
         metadata: dict[str, Any] = {
             _META_KIND: _META_KIND_VALUE,
             _META_DESCRIPTION: description,
             _META_TRIGGERS: list(triggers),
+            _META_SKILL_ORIGIN: origin,
         }
         if version:
             metadata[_META_VERSION] = version
@@ -798,20 +822,20 @@ async def store_user_skill(
                         {_META_EXECUTABLE: True} if entry.is_executable else None
                     ),
                 )
+            await manager.write_file(
+                content=rendered.encode("utf-8"),
+                filename="SKILL.md",
+                path=_skill_md_path(name, expert_id),
+                mime_type="text/markdown",
+                overwrite=True,
+                metadata=metadata,
+            )
         except Exception:
             # Not a rollback: a file already here keeps the new bytes, so an
             # upsert can fail mixed. Undo only what this call created — deleting
             # the rest would turn a failed write into a lost file.
             await _delete_paths(manager, written - existing_paths)
             raise
-        await manager.write_file(
-            content=rendered.encode("utf-8"),
-            filename="SKILL.md",
-            path=_skill_md_path(name, expert_id),
-            mime_type="text/markdown",
-            overwrite=True,
-            metadata=metadata,
-        )
         await _delete_paths(
             manager, {f.path for f in stale if f.path not in written}, stale
         )
@@ -896,7 +920,13 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
         body="",
         triggers=triggers,
         version=str(version) if version else None,
+        origin=_skill_origin(meta),
     )
+
+
+def _skill_origin(meta: Mapping[str, Any]) -> str | None:
+    """The origin recorded on a row, or ``None`` when none was."""
+    return _normalize_origin(meta.get(_META_SKILL_ORIGIN))
 
 
 async def _list_user_skills_from_workspace(
@@ -921,25 +951,26 @@ async def _list_user_skills_from_workspace(
     folder = skill_folder(expert_id)
 
     skills: list[ParsedSkill] = []
-    needs_read: list[Any] = []
+    needs_read: list[tuple[Any, dict[str, Any]]] = []
     for f, slug in await _list_skill_roots(manager, folder):
         meta = f.metadata if isinstance(f.metadata, dict) else {}
         entry = _index_entry_from_metadata(slug, meta)
         if entry is not None:
             skills.append(entry)
         else:
-            needs_read.append(f)
+            needs_read.append((f, meta))
 
     if needs_read:
         parsed = await asyncio.gather(
-            *(_parse_skill_from_workspace(manager, f.path) for f in needs_read),
+            *(_parse_skill_from_workspace(manager, f.path) for f, _ in needs_read),
         )
-        for p in parsed:
+        for (_, meta), p in zip(needs_read, parsed):
             if p is None:
                 continue
             # Index never needs the body — drop it so the cache payload
             # stays small (defaults are already body-less, fast-path
-            # entries are body-less, keep the contract uniform).
+            # entries are body-less, keep the contract uniform).  The
+            # origin is the row's, whatever the file says.
             skills.append(
                 ParsedSkill(
                     name=p.name,
@@ -947,6 +978,7 @@ async def _list_user_skills_from_workspace(
                     body="",
                     triggers=p.triggers,
                     version=p.version,
+                    origin=_skill_origin(meta),
                 )
             )
 
@@ -981,6 +1013,7 @@ async def _read_skills_cache(
                 body="",
                 triggers=tuple(str(t) for t in item.get("triggers", [])),
                 version=item.get("version"),
+                origin=_normalize_origin(item.get("origin")),
             )
             for item in payload
             if isinstance(item, dict) and "name" in item and "description" in item
@@ -1002,6 +1035,7 @@ async def _write_skills_cache(
                     "description": s.description,
                     "triggers": list(s.triggers),
                     "version": s.version,
+                    "origin": s.origin,
                 }
                 for s in skills
             ]
@@ -1334,6 +1368,10 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
     source = await read_user_skill_with_body(user_id, slug)
     if source is None:
         return None
+    # The origin lives on the row, not in the file the parse above read; a
+    # bundled skill copied into an expert stays a bundled one there.
+    root = await manager.get_file_info_by_path(_skill_md_path(slug))
+    meta = root.metadata if root is not None and isinstance(root.metadata, dict) else {}
     stored = await store_user_skill(
         user_id,
         name=slug,
@@ -1344,6 +1382,7 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         extra=source.extra,
         files=await _read_package_files(manager, SKILL_FOLDER, slug),
         expert_id=expert_id,
+        origin=_skill_origin(meta) or SKILL_ORIGIN_USER,
     )
     return stored.name
 
@@ -1416,6 +1455,7 @@ def get_default_skills_for_index() -> list[ParsedSkill]:
             description=default.description,
             body="",
             triggers=default.triggers,
+            origin=SKILL_ORIGIN_PLATFORM,
         )
         for default in DEFAULT_SKILLS
     ]
@@ -1446,6 +1486,7 @@ def get_default_skills() -> list[ParsedSkill]:
                 description=default.description,
                 body=body,
                 triggers=default.triggers,
+                origin=SKILL_ORIGIN_PLATFORM,
             )
         )
     return result
@@ -1527,10 +1568,11 @@ async def build_skills_context(
     if not index:
         return ""
     return (
-        "Skills are reusable procedures available via `read_skill(name)`. "
+        "Skills are reusable procedures loaded with "
+        '`run_capability(id="tool:read_skill", input={"name": ...})`. '
         "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and call `read_skill(name=...)` to load the "
-        "full body before acting; distill a new one with `store_skill` "
+        "close paraphrase) and load the "
+        "full body before acting; distill a new one with `tool:store_skill` "
         "after you complete a non-trivial procedure worth reusing.\n"
         f"{index}"
     )
@@ -1613,8 +1655,8 @@ async def build_skills_update_notice(
     if removed:
         lines.append(f"Removed skills: {_names(removed)}.")
     lines.append(
-        "Call `list_skills` to see the current list, then "
-        "`read_skill(name=...)` to load a new skill's body before using it."
+        "Call `tool:list_skills` to see the current list, then "
+        "`tool:read_skill` to load a new skill's body before using it."
     )
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
@@ -1696,7 +1738,7 @@ class StoreSkillTool(BaseTool):
     def description(self) -> str:
         return (
             "Save a reusable procedure as a skill. Surfaces in "
-            "<available_skills> next turn; loads via read_skill(name)."
+            "<available_skills> next turn; loads via tool:read_skill."
         )
 
     @property
@@ -1783,7 +1825,7 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
-        except (ValueError, SkillLimitError, ConflictError) as exc:
+        except (ValueError, SkillLimitError, SkillOwnedError, ConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] failed to store skill %s", name)
@@ -1927,7 +1969,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (non-UTF-8 contents). "
-                    "Re-create it with store_skill."
+                    "Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -1936,7 +1978,7 @@ class ReadSkillTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"Skill '{name}' is malformed (missing/invalid "
-                    "frontmatter). Re-create it with store_skill."
+                    "frontmatter). Re-create it with tool:store_skill."
                 ),
                 session_id=session_id,
             )
@@ -2137,6 +2179,7 @@ class ListSkillsTool(BaseTool):
                 "description": s.description,
                 "triggers": list(s.triggers),
                 "is_default": s.name in _DEFAULT_SKILLS_BY_NAME,
+                "origin": budget_origin(s),
             }
             for s in skills
         ]
@@ -2158,7 +2201,9 @@ class ListSkillsTool(BaseTool):
 # the query but depth cannot, so a page of newest-first rows can be entirely
 # nested SKILL.md files and yield no roots at all; the bound is the most a
 # compliant folder can hold, every allowed skill carrying a full package.
-_MAX_ROOT_SCAN = MAX_USER_SKILLS * (MAX_PACKAGE_FILES + 1)
+# Roots one folder can hold: a full budget for every origin.
+_MAX_ROOTS_PER_FOLDER = MAX_SKILLS_PER_EXPERT * len(_SKILL_ORIGINS)
+_MAX_ROOT_SCAN = _MAX_ROOTS_PER_FOLDER * (MAX_PACKAGE_FILES + 1)
 
 
 async def _list_skill_roots(
@@ -2171,10 +2216,10 @@ async def _list_skill_roots(
     the page and hide older skills, which is the defect this listing exists
     to avoid.
     """
-    page = MAX_USER_SKILLS * 4  # over-fetch in case of strays
+    page = _MAX_ROOTS_PER_FOLDER * 4  # over-fetch in case of strays
     roots: list[tuple[Any, str]] = []
     offset = 0
-    while offset < _MAX_ROOT_SCAN and len(roots) <= MAX_USER_SKILLS:
+    while offset < _MAX_ROOT_SCAN and len(roots) <= _MAX_ROOTS_PER_FOLDER:
         rows = await manager.list_files(
             path=f"{folder}/",
             limit=page,

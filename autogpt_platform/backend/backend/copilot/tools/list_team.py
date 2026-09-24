@@ -67,8 +67,8 @@ class ListTeamTool(BaseTool):
         if not active:
             return TeamRosterResponse(
                 message=(
-                    "The team is empty — no experts exist yet. hire_expert or "
-                    "raise_expert (with user approval) is how one joins."
+                    "The team is empty — no experts exist yet. tool:hire_expert or "
+                    "tool:raise_expert (with user approval) is how one joins."
                 ),
                 session_id=session.session_id,
             )

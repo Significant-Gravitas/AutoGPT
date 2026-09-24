@@ -14,6 +14,11 @@ from backend.util.settings import set_service_name
 
 logger = logging.getLogger(__name__)
 
+# How long ``AppProcess.stop`` waits for a child to act on a signal before
+# escalating. Long enough for an orderly shutdown, short enough that a wedged
+# child cannot hold the parent open indefinitely.
+STOP_TIMEOUT_SECONDS = 30
+
 
 class AppProcess(ABC):
     """
@@ -146,12 +151,26 @@ class AppProcess(ABC):
     def stop(self):
         """
         Stop the background process.
+
+        Both joins are bounded. An unbounded ``join()`` here wedges whoever is
+        shutting the service down when the child does not act on the SIGTERM —
+        in a test session that is the session fixture's teardown, so the run
+        finishes every test and then never prints its summary line.
         """
         if not self.process:
             return
 
+        pid = self.process.pid
         self.process.terminate()
-        self.process.join()
+        self.process.join(timeout=STOP_TIMEOUT_SECONDS)
 
-        logger.info(f"[{self.service_name}] with PID {self.process.pid} stopped")
+        if self.process.is_alive():
+            logger.warning(
+                f"[{self.service_name}] with PID {pid} ignored SIGTERM "
+                f"for {STOP_TIMEOUT_SECONDS}s; killing it"
+            )
+            self.process.kill()
+            self.process.join(timeout=STOP_TIMEOUT_SECONDS)
+
+        logger.info(f"[{self.service_name}] with PID {pid} stopped")
         self.process = None

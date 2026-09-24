@@ -901,9 +901,10 @@ async def mark_session_completed(
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
         skip_error_publish: If True, still marks the session as "failed" but
-            does NOT publish a StreamError event. Use this when the error has
-            already been published to the stream (e.g. via stream_and_publish)
-            to avoid duplicate error delivery to the frontend.
+            does NOT publish a StreamError event. Use this for a user-initiated
+            cancel, which the frontend would otherwise render as "the assistant
+            encountered an error", and when the error has already been
+            published to the stream (e.g. via stream_and_publish).
 
     Returns:
         True if session was newly marked completed, False if already completed/failed

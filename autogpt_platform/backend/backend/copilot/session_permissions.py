@@ -14,7 +14,7 @@ from backend.copilot.permissions import CopilotPermissions
 # Tools hidden from builder-bound sessions: ``create_agent`` /
 # ``customize_agent`` would mint a new graph (panel is bound to one),
 # and ``get_agent_building_guide`` duplicates bytes already in the
-# system-prompt suffix. Everything else (find_block, find_agent, …)
+# system-prompt suffix. Everything else (find_capability, find_agent, …)
 # stays available so the LLM can look up ids instead of hallucinating.
 BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
     "create_agent",

@@ -62,6 +62,7 @@ import {
 import { format, subDays } from "date-fns";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -145,6 +146,7 @@ const maria: Expert = {
   bio: "Maria is a senior marketing strategist.",
   skills: ["Content strategy"],
   tagline: "Grows your brand while you sleep",
+  job_title: "Marketing Manager",
   identity: "You are Maria, a senior marketing strategist.",
   voice_preferences: "Warm, concise, and direct.",
   boundaries: "Never invent customer evidence.",
@@ -324,7 +326,9 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
-    expect(screen.getByText("Marketing Strategist")).toBeDefined();
+    expect(screen.getByText("Marketing Manager")).toBeDefined();
+    expect(screen.queryByText("Marketing Strategist")).toBeNull();
+    expect(screen.getAllByText(maria.tagline!)).toHaveLength(1);
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
@@ -351,7 +355,7 @@ describe("ExpertDetailPage", () => {
     expect(within(workflowRows[1]).getByText("Needs setup")).toBeDefined();
   });
 
-  test("shows the expert's integrations as logos after the role pill", async () => {
+  test("shows the expert's integrations beside the name", async () => {
     server.use(
       getGetExpertMockHandler(() => ({
         ...maria,
@@ -371,9 +375,9 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const pill = within(header).getByText("Marketing Strategist");
+    const name = within(header).getByRole("heading", { name: "Maria" });
     expect(
-      pill.compareDocumentPosition(integrations) &
+      name.compareDocumentPosition(integrations) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -1066,9 +1070,9 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
+      name: "Change Maria's appearance",
     });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
+    const fileInput = screen.getByLabelText("Upload Maria appearance");
     expect(button.contains(fileInput)).toBe(false);
     const pickerClick = vi.spyOn(fileInput, "click");
     fireEvent.click(button);
@@ -1078,7 +1082,7 @@ describe("ExpertDetailPage", () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalled());
-    expect(uploadAvatarSpy).toHaveBeenCalledWith(file);
+    expect(uploadAvatarSpy).toHaveBeenCalledWith(file, "expert-avatar");
     const body = await updateSpy.mock.results[0].value.json();
     expect(body).toEqual({ avatar_url: "https://cdn.example.com/maria.png" });
   });
@@ -1093,12 +1097,17 @@ describe("ExpertDetailPage", () => {
       }),
     );
 
-    render(<ExpertDetailPage />);
+    render(
+      <>
+        <ExpertDetailPage />
+        <Toaster />
+      </>,
+    );
 
     const button = await screen.findByRole("button", {
-      name: "Change Maria's photo",
+      name: "Change Maria's appearance",
     });
-    const fileInput = screen.getByLabelText("Upload Maria photo");
+    const fileInput = screen.getByLabelText("Upload Maria appearance");
     expect(button.contains(fileInput)).toBe(false);
     fireEvent.change(fileInput, {
       target: { files: [new File(["x"], "maria.png", { type: "image/png" })] },
@@ -1107,6 +1116,8 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(uploadAvatarSpy).toHaveBeenCalled());
     await waitFor(() => expect(button).not.toHaveProperty("disabled", true));
     expect(updateSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText("Couldn't update appearance")).toBeDefined();
+    expect(await screen.findByText("Unauthorized")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {

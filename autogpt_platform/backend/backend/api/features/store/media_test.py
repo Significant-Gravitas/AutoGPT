@@ -305,3 +305,55 @@ async def test_upload_media_invalid_signature(mock_settings, mock_storage_client
     assert "Could not detect a valid image or video file signature" in str(
         exc_info.value
     )
+
+
+@pytest.mark.parametrize("local", [False, True])
+async def test_expert_avatar_upload_works_without_moderation(
+    mock_settings, mock_storage_client, mocker, local
+):
+    mock_settings.config.automod_api_url = ""
+    mock_settings.secrets.automod_api_key = ""
+    if local:
+        mock_settings.config.media_gcs_bucket_name = ""
+    local_upload = mocker.patch.object(
+        local_media,
+        "store_media",
+        new_callable=AsyncMock,
+        return_value="/api/store/media/owner/images/avatar.png",
+    )
+    scan = mocker.patch.object(store_media, "scan_content_safe", new_callable=AsyncMock)
+    content = b"\x89PNG\r\n\x1a\nimage"
+    upload = fastapi.UploadFile(
+        filename="existing-avatar.png",
+        file=io.BytesIO(content),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+    url = await store_media.upload_media(
+        "owner", upload, use_file_name=True, is_avatar=True
+    )
+    assert url
+    scan.assert_awaited_once()
+    assert scan.await_args.args[0] == content
+    assert "existing-avatar" not in scan.await_args.kwargs["filename"]
+    (local_upload if local else mock_storage_client.upload).assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "content_type, content, status",
+    [
+        ("image/gif", b"GIF89a", 400),
+        ("image/png", b"\x89PNG\r\n\x1a\n" + b"x" * (5 * 1024 * 1024), 413),
+    ],
+)
+async def test_expert_avatar_still_enforces_type_and_size(
+    mock_settings, mock_storage_client, content_type, content, status
+):
+    upload = fastapi.UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(content),
+        headers=starlette.datastructures.Headers({"content-type": content_type}),
+    )
+    with pytest.raises(fastapi.HTTPException) as error:
+        await store_media.upload_media("owner", upload, is_avatar=True)
+    assert error.value.status_code == status
+    mock_storage_client.upload.assert_not_awaited()

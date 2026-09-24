@@ -9,7 +9,6 @@ from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .helpers import (
@@ -42,12 +41,12 @@ class RunBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a block. IMPORTANT: Always get block_id from find_block first "
+            "Execute a block. IMPORTANT: Always get block_id from find_capability first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
             "Pass `validate_only: true` to inspect a block without running it "
             "(safe pre-flight — returns schema + detected missing inputs). "
-            "If review_required, use continue_run_block."
+            "If review_required, use resume_capability."
         )
 
     @property
@@ -57,7 +56,7 @@ class RunBlockTool(BaseTool):
             "properties": {
                 "block_id": {
                     "type": "string",
-                    "description": "Block ID from find_block results.",
+                    "description": "Block ID from find_capability results.",
                 },
                 "input_data": {
                     "type": "object",
@@ -186,7 +185,7 @@ class RunBlockTool(BaseTool):
                 message=(
                     f"Block '{prep.block.name}' ({block_id}) is not permitted "
                     f"by the current execution permissions. {available_hint}"
-                    "Use find_block to discover blocks that are allowed."
+                    "Use find_capability to discover blocks that are allowed."
                 ),
                 session_id=session_id,
             )
@@ -246,11 +245,8 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
-            if await is_feature_enabled(
-                Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
-            ):
-                llm_input_schema = _strip_presentation_annotations(llm_input_schema)
-                output_schema = _strip_presentation_annotations(output_schema)
+            llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+            output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
                     f"Block '{prep.block.name}' — all required inputs "

@@ -14,6 +14,7 @@ import { useMCPConnectPanel } from "./useMCPConnectPanel";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 import { MCPServerURLField } from "./MCPServerURLField";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
+import { noPasswordManager } from "./helpers";
 
 interface Props {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
@@ -95,6 +96,8 @@ export function McpConnectPanel({
             onChange={(e) => state.handleTokenChange(e.target.value)}
             disabled={state.isSubmitting}
             hint={mcpAuthTokenHint(state.authScheme)}
+            {...noPasswordManager}
+            autoComplete="new-password"
           />
         </>
       )}

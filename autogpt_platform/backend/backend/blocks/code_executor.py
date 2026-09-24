@@ -23,6 +23,12 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.e2b_network import (
+    EgressOwner,
+    connect_sandbox,
+    create_sandbox,
+    kill_sandbox,
+)
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -144,6 +150,10 @@ class BaseE2BExecutorMixin:
         """  # noqa
         sandbox = None
         files: list[SandboxFileOutput] = []
+        owner_user_id = execution_context.user_id if execution_context else None
+        egress_owner = EgressOwner(
+            kind="block", id=owner_user_id or "anonymous", user_id=owner_user_id
+        )
         try:
             if sandbox_id:
                 # Connect to existing sandbox (ExecuteCodeStepBlock case).  The
@@ -158,12 +168,14 @@ class BaseE2BExecutorMixin:
                     raise PermissionError(
                         f"Sandbox {sandbox_id} does not belong to this user"
                     )
-                sandbox = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
+                sandbox = await connect_sandbox(
+                    AsyncSandbox, sandbox_id, egress_owner, api_key=api_key
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
-                sandbox = await AsyncSandbox.create(
+                sandbox = await create_sandbox(
+                    AsyncSandbox,
+                    egress_owner,
                     api_key=api_key,
                     template=template_id,
                     timeout=timeout,
@@ -184,7 +196,7 @@ class BaseE2BExecutorMixin:
                 code,
                 language=language.value,
                 envs=envs or {},
-                on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error
+                on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
             if execution.error:
@@ -216,7 +228,7 @@ class BaseE2BExecutorMixin:
         finally:
             # Dispose of sandbox if requested to reduce usage costs
             if dispose_sandbox and sandbox:
-                await sandbox.kill()
+                await kill_sandbox(sandbox)
 
     def process_execution_results(
         self, results: list[E2BExecutionResult]
@@ -518,6 +530,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 api_key=credentials.api_key.get_secret_value(),
                 code=input_data.setup_code,
                 language=input_data.language,
+                execution_context=execution_context,
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,

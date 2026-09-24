@@ -255,7 +255,6 @@ export function PlanCard({
             )}
             <Button
               variant={plan.buttonVariant}
-              size={hl ? "large" : "small"}
               onClick={() => onSelect(plan.key)}
               className="w-full"
               loading={loading}

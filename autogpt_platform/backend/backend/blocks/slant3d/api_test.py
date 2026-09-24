@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from backend.blocks.slant3d.order import (
     Slant3DEstimateOrderBlock,
 )
 from backend.data.execution import ExecutionContext
+from backend.util import file as file_module
 
 CUSTOMER = {
     "name": "John Doe",
@@ -33,6 +35,15 @@ DRAFT = {
 
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(user_id="user-1", graph_exec_id="run-1")
+
+
+def _stage_exec_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Stage model.stl where store_media_file leaves it for this execution."""
+    monkeypatch.setattr(file_module, "TEMP_DIR", tmp_path)
+    source = tmp_path / "exec_file" / "run-1" / "model.stl"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"STL bytes")
+    return source
 
 
 async def test_v2_auth_and_response_envelope():
@@ -179,9 +190,10 @@ async def test_platform_selection_is_unambiguous(platforms, expected):
                 await block._resolve_platform_id("", "key")
 
 
-async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_path):
-    source = tmp_path / "model.stl"
-    source.write_bytes(b"STL bytes")
+async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(
+    tmp_path, monkeypatch
+):
+    source = _stage_exec_file(tmp_path, monkeypatch)
     uploaded = []
 
     async def put(url, **kwargs):
@@ -240,9 +252,8 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_
     assert api.await_args_list[1].kwargs["json"]["filePlaceholder"] is placeholder
 
 
-async def test_failed_upload_is_not_confirmed(tmp_path):
-    source = tmp_path / "model.stl"
-    source.write_bytes(b"STL bytes")
+async def test_failed_upload_is_not_confirmed(tmp_path, monkeypatch):
+    source = _stage_exec_file(tmp_path, monkeypatch)
     block = Slant3DFilamentBlock()
     with patch.object(
         block,

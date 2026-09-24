@@ -69,7 +69,10 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
 
 
 async def upload_media(
-    user_id: str, file: fastapi.UploadFile, use_file_name: bool = False
+    user_id: str,
+    file: fastapi.UploadFile,
+    use_file_name: bool = False,
+    is_avatar: bool = False,
 ) -> str:
     # Get file content for deeper validation
     try:
@@ -141,6 +144,16 @@ async def upload_media(
             logger.error(f"Error reading file chunks: {str(e)}")
             raise store_exceptions.FileReadError("Failed to read uploaded file") from e
 
+        if is_avatar:
+            if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise fastapi.HTTPException(
+                    400, "Choose a PNG, JPEG, or WebP image for your appearance."
+                )
+            if file_size > 5 * 1024 * 1024:
+                raise fastapi.HTTPException(
+                    413, "Appearance images must be 5 MB or smaller."
+                )
+
         # Reset file pointer
         await file.seek(0)
 
@@ -148,7 +161,7 @@ async def upload_media(
         filename = file.filename or ""
         file_base = os.path.splitext(filename)[0]
         file_ext = CONTENT_TYPE_EXTENSIONS[content_type]
-        if use_file_name:
+        if use_file_name and not is_avatar:
             unique_filename = f"{file_base}{file_ext}" if file_base else file_ext
         else:
             unique_filename = f"{uuid.uuid4()}{file_ext}"
@@ -158,7 +171,7 @@ async def upload_media(
 
         if use_local_storage:
             unique_filename = local_media.stored_filename(
-                unique_filename, content_type, use_file_name
+                unique_filename, content_type, use_file_name and not is_avatar
             )
             file_bytes = await file.read()
             await scan_content_safe(file_bytes, filename=unique_filename)
@@ -175,26 +188,27 @@ async def upload_media(
                 file_bytes = await file.read()
                 await scan_content_safe(file_bytes, filename=unique_filename)
 
+                public_url = (
+                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
+                )
+
                 # Upload using pure async client
                 await async_client.upload(
                     bucket_name, storage_path, file_bytes, content_type=content_type
                 )
 
-                # Construct public URL
-                public_url = (
-                    f"https://storage.googleapis.com/{bucket_name}/{storage_path}"
-                )
-
                 logger.info(f"Successfully uploaded file to: {storage_path}")
                 return public_url
 
+        except fastapi.HTTPException:
+            raise
         except Exception as e:
             logger.error(f"GCS storage error: {str(e)}")
             raise store_exceptions.StorageUploadError(
                 "Failed to upload file to storage"
             ) from e
 
-    except store_exceptions.MediaUploadError:
+    except (store_exceptions.MediaUploadError, fastapi.HTTPException):
         raise
     except Exception as e:
         logger.exception("Unexpected error in upload_media")

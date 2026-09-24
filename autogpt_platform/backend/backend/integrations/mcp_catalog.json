@@ -43,7 +43,8 @@
       "icon_id": "agent_mail",
       "auth_methods": [
         "oauth"
-      ]
+      ],
+      "provider": "agent_mail"
     }
   },
   {
@@ -70,7 +71,8 @@
         "data.records:write",
         "schema.bases:write",
         "data.recordComments:write"
-      ]
+      ],
+      "provider": "airtable"
     }
   },
   {
@@ -197,7 +199,8 @@
       "oauth_write_scopes": [
         "contact_write",
         "contact_update"
-      ]
+      ],
+      "provider": "apollo"
     }
   },
   {
@@ -578,7 +581,8 @@
       "auth_methods": [
         "bearer"
       ],
-      "icon_id": "github"
+      "icon_id": "github",
+      "provider": "github"
     }
   },
   {
@@ -736,7 +740,8 @@
       "oauth_write_scopes": [
         "write"
       ],
-      "icon_id": "linear"
+      "icon_id": "linear",
+      "provider": "linear"
     }
   },
   {
@@ -807,7 +812,8 @@
       ],
       "oauth_scopes": [
         "default"
-      ]
+      ],
+      "provider": "notion"
     }
   },
   {
@@ -924,7 +930,8 @@
         "oauth",
         "bearer"
       ],
-      "icon_id": "stripe"
+      "icon_id": "stripe",
+      "provider": "stripe"
     }
   },
   {
@@ -992,7 +999,8 @@
       "auth_methods": [
         "oauth"
       ],
-      "icon_id": "tavily"
+      "icon_id": "tavily",
+      "provider": "tavily"
     }
   },
   {
@@ -1010,7 +1018,8 @@
       "oauth_scopes": [
         "data:read_write"
       ],
-      "icon_id": "todoist"
+      "icon_id": "todoist",
+      "provider": "todoist"
     }
   },
   {
@@ -1064,6 +1073,22 @@
         "oauth"
       ],
       "icon_id": "wonder"
+    }
+  },
+  {
+    "name": "mcp_zapier",
+    "display_name": "Zapier",
+    "description": "Trigger and run actions across 8,000+ apps Zapier connects to, using natural language through Zapier's official MCP server.",
+    "mcp_server": {
+      "server_url": "https://mcp.zapier.com/api/v1/connect",
+      "documentation_url": "https://docs.zapier.com/mcp/home",
+      "setup_instructions": "Sign in with your Zapier account via OAuth to use the apps and Zaps already connected in your Zapier workspace. If your setup isn't on Zapier's supported OAuth client list, create a connection token at mcp.zapier.com instead and use it as a bearer token.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "zapier"
     }
   }
 ]

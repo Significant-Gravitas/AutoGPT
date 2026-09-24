@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
+from backend.copilot.capabilities.registry import configure_tools
+from backend.copilot.capabilities.sources import EAGER_CORE
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -23,11 +26,11 @@ from .chat_platform import (
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .consult_teammate import ConsultTeammateTool
-from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
+from .describe_capability import DescribeCapabilityTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
@@ -43,13 +46,12 @@ from .expert_resources import (
 )
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
-from .find_block import FindBlockTool
+from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
 from .find_session import FindSessionTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
-from .get_mcp_guide import GetMCPGuideTool
 from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
@@ -77,9 +79,10 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .resume_capability import ResumeCapabilityTool
+from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
-from .run_block import RunBlockTool
-from .run_mcp_tool import RunMCPToolTool
+from .run_capability import RunCapabilityTool
 from .run_sub_session import RunSubSessionTool
 from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
@@ -113,8 +116,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "decompose_goal": DecomposeGoalTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
-    "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Capability registry: one discovery/execution surface for blocks, MCP
+    # servers and the deferred platform tools (see EAGER_CORE).
+    "find_capability": FindCapabilityTool(),
+    "describe_capability": DescribeCapabilityTool(),
+    "run_capability": RunCapabilityTool(),
+    "resume_capability": ResumeCapabilityTool(),
     # Graphiti memory tools
     "memory_forget_confirm": MemoryForgetConfirmTool(),
     "memory_forget_search": MemoryForgetSearchTool(),
@@ -146,8 +154,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "list_presets": ListPresetsTool(),
     "update_preset": UpdatePresetTool(),
     "delete_preset": DeletePresetTool(),
-    "run_block": RunBlockTool(),
-    "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "consult_teammate": ConsultTeammateTool(),
@@ -156,8 +162,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delegate_to_expert": DelegateToExpertTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
-    "run_mcp_tool": RunMCPToolTool(),
-    "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
     "get_doc_page": GetDocPageTool(),
@@ -216,6 +220,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "install_expert_workflow": InstallExpertWorkflowTool(),
     "remove_expert_workflow": RemoveExpertWorkflowTool(),
     "list_expert_workflows": ListExpertWorkflowsTool(),
+    # Standing work: what the expert offers to do unattended, and the round
+    # trip that turns one of those offers into a real cadence.
+    "list_routines": ListRoutinesTool(),
+    "schedule_routine": ScheduleRoutineTool(),
     "list_expert_credentials": ListExpertCredentialsTool(),
     "grant_expert_credential": GrantExpertCredentialTool(),
     "revoke_expert_credential": RevokeExpertCredentialTool(),
@@ -225,6 +233,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
 # Export individual tool instances for backwards compatibility
 find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
+
+# Tools the model does not see in its tool list; they are reached by id
+# through ``run_capability`` (their schema arrives via ``describe_capability``).
+# Keeping the prefix to the eager core is what makes the cold prompt cheap.
+DEFERRED_TOOL_NAMES: frozenset[str] = frozenset(TOOL_REGISTRY) - EAGER_CORE
 
 
 # Capability groups a tool may belong to.  The service layer can hide all
@@ -277,6 +290,11 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "install_expert_workflow": "expert_resources",
     "remove_expert_workflow": "expert_resources",
     "list_expert_workflows": "expert_resources",
+    # Routines ride the same gate as workflow installs: an expert manages its
+    # own standing work, and personal AutoPilot manages any expert's — and,
+    # with no expert named, the account's own.
+    "list_routines": "expert_resources",
+    "schedule_routine": "expert_resources",
     "list_expert_credentials": "expert_resources",
     "grant_expert_credential": "expert_admin",
     "revoke_expert_credential": "expert_admin",
@@ -286,6 +304,11 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # team to list.
     "list_team": "delegation",
 }
+
+
+# The capability registry indexes this registry; hand it over now that both
+# exist (the registry package cannot import them without a cycle).
+configure_tools(TOOL_REGISTRY, TOOL_GROUPS)
 
 
 def expert_tool_disabled_groups(
@@ -364,6 +387,7 @@ def get_available_tools(
     *,
     disabled_groups: Iterable[ToolGroup] = (),
     disabled_tools: Iterable[str] = (),
+    include_deferred: bool = False,
 ) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
@@ -374,8 +398,12 @@ def get_available_tools(
     ``graphiti`` when the memory backend is off for the current user).
     *disabled_tools* hides individual tools for gates that don't follow the
     group split, e.g. ``kickoff_turn_disabled_tools`` on a hire's first turn.
+    ``DEFERRED_TOOL_NAMES`` are left out unless *include_deferred*: the model
+    reaches them through ``run_capability``.
     """
     hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    if not include_deferred:
+        hidden |= DEFERRED_TOOL_NAMES
     return [
         tool.as_openai_tool()
         for name, tool in TOOL_REGISTRY.items()
@@ -386,6 +414,35 @@ def get_available_tools(
 def get_tool(tool_name: str) -> BaseTool | None:
     """Get a tool instance by name."""
     return TOOL_REGISTRY.get(tool_name)
+
+
+def reachable_tool_names(
+    *,
+    disabled_groups: Iterable[ToolGroup] = (),
+    disabled_tools: Iterable[str] = (),
+) -> frozenset[str]:
+    """Names this turn can actually run, declared or reached by id.
+
+    Since the swap, a tool being absent from the schema list no longer means
+    the turn cannot run it: 57 of them are reached through ``run_capability``
+    instead, bounded by the same hidden set. Gate tests that ask "can this
+    session still do X" want this, not ``get_available_tools``; asking the
+    schema list alone reads every deferred tool as removed.
+    """
+    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    declared = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.is_available and name not in hidden and name not in DEFERRED_TOOL_NAMES
+    }
+    if "run_capability" not in declared:
+        # Nothing reaches a deferred tool without the tool that runs them.
+        return frozenset(declared)
+    return frozenset(declared) | frozenset(
+        name
+        for name in DEFERRED_TOOL_NAMES
+        if name not in hidden and TOOL_REGISTRY[name].is_available
+    )
 
 
 async def execute_tool(
@@ -407,6 +464,10 @@ async def execute_tool(
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
 
+    ``DEFERRED_TOOL_NAMES`` are refused when the model names one directly:
+    they are reached by id through ``run_capability``, whose dispatch this
+    function resolves back into a call to the tool itself.
+
     ``disabled_groups`` and ``disabled_tools`` are keyword-only and have no
     default on purpose: they are an enforcement boundary, so a new call site
     must state its gate rather than silently inherit "nothing is disabled"
@@ -418,8 +479,14 @@ async def execute_tool(
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
 
-    if tool_name in tool_names_in_groups(disabled_groups) or tool_name in frozenset(
-        disabled_tools
+    # A deferred tool is absent from every schema list, but a model that
+    # names one anyway reached it here and ran it -- routing around
+    # ``run_capability`` and the permission and envelope gates it applies.
+    # Deferred-ness is a property of the tool, not of the turn, so it is
+    # refused here rather than left to each caller's gate.
+    if tool_name in DEFERRED_TOOL_NAMES or (
+        tool_name in tool_names_in_groups(disabled_groups)
+        or tool_name in frozenset(disabled_tools)
     ):
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
@@ -437,6 +504,12 @@ async def execute_tool(
             ).model_dump_json(),
             success=False,
         )
+
+    # A dispatch of a platform tool IS a call to that tool, so it runs the rest
+    # of this path under its own name: the refusal above still answers the model
+    # that named a deferred tool directly, because it ran before the resolve.
+    if dispatch := resolve_tool_dispatch(tool_name, parameters):
+        tool, tool_name, parameters = dispatch
 
     # Track tool call in PostHog
     logger.info(
