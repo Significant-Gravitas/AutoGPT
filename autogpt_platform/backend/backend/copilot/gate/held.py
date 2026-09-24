@@ -13,11 +13,12 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
+from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db, review_db
@@ -27,6 +28,9 @@ from . import chat_rules
 from . import review as review_store
 
 if TYPE_CHECKING:
+    from backend.api.features.graph_executions.review.model import (
+        PendingHumanReviewModel,
+    )
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,10 @@ _KEY = "copilot:gate:held:"
 _MAX_RESULT_CHARS = 120_000
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+_RESEND = (
+    "Nothing ran: the approved action's details were lost before it could run. "
+    "Tell the user, and ask them to send the request again if it is still needed."
+)
 
 
 class HeldResult(PendingMessage):
@@ -55,6 +63,8 @@ class HeldCall(BaseModel):
     tool_call_id: str
     args: dict[str, Any]
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Rebuilt from a card whose stored copy of the arguments no longer binds.
+    lost: bool = False
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
@@ -122,11 +132,16 @@ async def resolve_answered(
     return delivered
 
 
-async def wake(user_id: str, session_id: str) -> None:
+async def wake(
+    user_id: str,
+    session_id: str,
+    answered_rows: "Iterable[PendingHumanReviewModel]" = (),
+) -> None:
     """Start a turn to carry answered cards, if the chat is idle.
 
     Best effort: a running turn's end calls this again, and any later turn
-    folds the results in anyway.
+    folds the results in anyway. ``answered_rows`` are the cards just
+    answered; one whose held call is gone from Redis is restored from its row.
     """
     # Deferred: the executor utilities import the tool registry.
     from backend.copilot.active_turns import (
@@ -140,6 +155,7 @@ async def wake(user_id: str, session_id: str) -> None:
     from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
     try:
+        await _restore(user_id, session_id, answered_rows)
         calls = await answered(user_id, session_id)
         if not calls:
             return
@@ -283,6 +299,9 @@ async def _outcome(
             "Nothing ran: the approval expired an hour after it was given. "
             "Propose the call again if it is still needed."
         )
+    if call.lost:
+        await review_store.consume(call.review_id, user_id)
+        return _RESEND
     if tool is None:
         await review_store.consume(call.review_id, user_id)
         return "Nothing ran: this tool no longer exists."
@@ -294,6 +313,46 @@ async def _outcome(
     if isinstance(result.output, str):
         return result.output
     return json.dumps(result.output, default=str)
+
+
+async def _restore(
+    user_id: str, session_id: str, rows: "Iterable[PendingHumanReviewModel]"
+) -> None:
+    gate_prefix = review_store.node_id_for("")
+    rows = [r for r in rows if r.node_exec_id.startswith(gate_prefix)]
+    if not rows:
+        return
+    held = await _held(session_id)
+    for row in rows:
+        if row.node_exec_id not in held:
+            logger.warning(f"Held call {row.node_exec_id} restored from its card")
+            await remember(session_id, _from_row(user_id, session_id, row))
+
+
+def _from_row(
+    user_id: str, session_id: str, row: "PendingHumanReviewModel"
+) -> HeldCall:
+    """The card stores a redacted, clipped copy; the review id is a hash of the
+    exact arguments, so only a copy that hashes back to it may run."""
+    tool_name = row.node_exec_id.removeprefix(review_store.node_id_for("")).rsplit(
+        COPILOT_NODE_EXEC_ID_SEPARATOR, 1
+    )[0]
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    args = payload.get("arguments")
+    if not isinstance(args, dict):
+        args = {}
+    intact = (
+        review_store.review_id_for(session_id, user_id, tool_name, args)
+        == row.node_exec_id
+    )
+    return HeldCall(
+        review_id=row.node_exec_id,
+        tool_name=tool_name,
+        tool_call_id="",
+        args=args if intact else {},
+        held_at=row.created_at,
+        lost=not intact,
+    )
 
 
 async def _held(session_id: str) -> dict[str, HeldCall]:

@@ -172,6 +172,48 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     assert await _row(review_id, test_user_id) is None
 
 
+async def _approve_after_losing_the_held_call(
+    session: ChatSession, user_id: str, review_id: str
+) -> None:
+    """Redis lost the entry (eviction, flush) while the card sat in Postgres."""
+    assert await held._claim(session.session_id, review_id)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+    with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
+        await held.wake(user_id, session.session_id, rows.values())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "from the card")
+    await _approve_after_losing_the_held_call(session, test_user_id, review_id)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [{"text": "from the card"}]
+    assert "posted from the card" in delivered.content
+    assert await _row(review_id, test_user_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_lost_held_call_the_card_cannot_rebuild_asks_for_a_resend(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The card holds a clipped copy, which must never run in the call's place."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "clipped " + "x" * 5_000)
+    await _approve_after_losing_the_held_call(session, test_user_id, review_id)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
+    assert await _row(review_id, test_user_id) is None
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_large_late_result_arrives_as_the_direct_result_would(
     setup_test_user, test_user_id, gate_on, post_tool
