@@ -13821,6 +13821,54 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Pending Reviews for Chat Session",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
+        "operationId": "getV2Get pending reviews for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the chat session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -18640,7 +18688,10 @@
       "BriefingDecisionItem": {
         "properties": {
           "node_exec_id": { "type": "string", "title": "Node Exec Id" },
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
           "title": { "type": "string", "title": "Title" },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -19677,6 +19728,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
           },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Node Exec Id"
@@ -20344,6 +20399,11 @@
           "usage_execution_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
+          },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
           },
           "usage_node_count": {
             "type": "integer",
@@ -26549,19 +26609,24 @@
             "description": "User ID associated with the review"
           },
           "graph_exec_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id",
-            "description": "Graph execution ID"
+            "description": "Graph execution ID; None for a chat review"
           },
           "graph_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id",
             "description": "Graph ID"
           },
           "graph_version": {
-            "type": "integer",
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session ID; None for a graph review"
           },
           "payload": {
             "anyOf": [
@@ -26618,11 +26683,6 @@
             "title": "Library Agent Id",
             "description": "For run deep links"
           },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id",
-            "description": "Chat session id for copilot run_capability reviews"
-          },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Was Edited",
@@ -26661,9 +26721,6 @@
         "required": [
           "node_exec_id",
           "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
           "payload",
           "editable",
           "status",
