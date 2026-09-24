@@ -808,6 +808,16 @@ async def store_user_skills(
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
         stored: list[tuple[int, str]] = []
         for index, skill in prepared:
+            # A batch outlasts one lease, so renew it before each skill. Once
+            # it is lost another writer may hold the key: finish best-effort,
+            # as when it could not be acquired, and never release it.
+            if lock is not None and lock_held and not await lock.refresh():
+                lock_held = False
+                logger.warning(
+                    "[skills] lost the write lock for user %s mid-batch — "
+                    "continuing as an unlocked best-effort write",
+                    user_id,
+                )
             try:
                 is_new = skill.parsed.name not in same_origin
                 checksums = await _write_skill(

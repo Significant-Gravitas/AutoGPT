@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+import time
+from collections import OrderedDict
 
 from prisma.enums import ContentType
 
@@ -24,12 +27,24 @@ from backend.api.features.search.embeddings import (
     get_content_embedding,
     store_content_embedding,
 )
-from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
 # See ``library/embeddings.py`` for why we hold a strong ref to the task.
 _background_tasks: set[asyncio.Task[None]] = set()
+
+_EMBED_TTL_SECONDS = 86_400
+_EMBED_CACHE_SIZE = 256
+# Finished vectors, oldest first. Keyed by the text, which is all that is
+# embedded: every installed skill is "SKILL.md SKILL", so a hire of 8 skills
+# asked for one vector 8 times.
+_embedded: OrderedDict[tuple[str, str], tuple[float, list[float]]] = OrderedDict()
+_embedded_lock = threading.Lock()
+# Requests in flight, per event loop: callers wanting the same text share one
+# request, and a request for other text never waits behind it.
+_in_flight: dict[
+    tuple[asyncio.AbstractEventLoop, str, str], asyncio.Future[list[float]]
+] = {}
 
 
 async def _run_embedding(file_id: str, user_id: str, name: str, path: str) -> None:
@@ -60,11 +75,31 @@ async def _run_embedding(file_id: str, user_id: str, name: str, path: str) -> No
         )
 
 
-# Keyed by the text, which is all that is embedded: every installed skill is
-# "SKILL.md SKILL", so a hire of 8 skills asked for one vector 8 times.
-@cached(ttl_seconds=86_400, maxsize=256)
 async def _embed(model: str, text: str) -> list[float]:
-    return await generate_embedding(text)
+    """*text*'s vector, requested at most once per process a day."""
+    with _embedded_lock:
+        hit = _embedded.get((model, text))
+    if hit is not None and time.monotonic() - hit[0] < _EMBED_TTL_SECONDS:
+        return hit[1]
+    key = (asyncio.get_running_loop(), model, text)
+    request = _in_flight.get(key)
+    if request is None:
+        request = asyncio.ensure_future(_request_embedding(model, text))
+        _in_flight[key] = request
+        request.add_done_callback(
+            lambda done: _in_flight.pop(key) if _in_flight.get(key) is done else None
+        )
+    return await asyncio.shield(request)
+
+
+async def _request_embedding(model: str, text: str) -> list[float]:
+    vector = await generate_embedding(text)
+    with _embedded_lock:
+        _embedded[(model, text)] = (time.monotonic(), vector)
+        _embedded.move_to_end((model, text))
+        while len(_embedded) > _EMBED_CACHE_SIZE:
+            _embedded.popitem(last=False)
+    return vector
 
 
 def schedule_workspace_file_embedding(

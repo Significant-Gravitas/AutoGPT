@@ -44,6 +44,8 @@ from backend.copilot.tools.skills import (
     SkillOwnedError,
     SkillPackage,
     SkillPackageError,
+    SkillWrite,
+    StoredSkill,
     StoreSkillResponse,
     StoreSkillTool,
     _is_safe_relative,
@@ -66,6 +68,7 @@ from backend.copilot.tools.skills import (
     render_skill_markdown,
     render_skills_index,
     store_user_skill,
+    store_user_skills,
     validate_package,
 )
 from backend.util.exceptions import ConflictError
@@ -356,7 +359,9 @@ class _patch_skills_path:
         fake_lock = MagicMock()
         fake_lock.owner_id = "test-owner"
         fake_lock.try_acquire = AsyncMock(return_value="test-owner")
+        fake_lock.refresh = AsyncMock(return_value=True)
         fake_lock.release = AsyncMock()
+        self.lock = fake_lock
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
             patch(
@@ -775,6 +780,30 @@ async def test_store_user_skill_rejects_an_unknown_origin():
         await store_user_skill(
             "user-1", name="x", description="ok", body="ok", origin="platform"
         )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_renews_its_write_lock_before_each_skill():
+    writes = [
+        SkillWrite(name=f"batch-{i}", description="d", body="b") for i in range(3)
+    ]
+    with _patch_skills_path(_FakeWorkspaceManager()) as patched:
+        outcomes = await store_user_skills("user-1", writes)
+    assert all(isinstance(o, StoredSkill) for o in outcomes)
+    # Kills: holding one 30 s lease across a whole batch.
+    assert patched.lock.refresh.await_count == 3
+    patched.lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_batch_that_lost_its_lock_finishes_without_releasing_it():
+    writes = [SkillWrite(name=f"lost-{i}", description="d", body="b") for i in range(2)]
+    with _patch_skills_path(_FakeWorkspaceManager()) as patched:
+        patched.lock.refresh.return_value = False
+        outcomes = await store_user_skills("user-1", writes)
+    assert all(isinstance(o, StoredSkill) for o in outcomes)
+    # Kills: releasing a key another writer may hold by now.
+    patched.lock.release.assert_not_awaited()
 
 
 @pytest.mark.asyncio
