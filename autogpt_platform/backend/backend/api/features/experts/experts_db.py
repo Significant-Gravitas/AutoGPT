@@ -925,7 +925,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     whose setup failed or was abandoned starts that setup again.
     """
     try:
-        result, state = await _hire_expert_impl(user_id, template_id, name)
+        return await _hire_expert_impl(user_id, template_id, name)
     except Exception:
         emit_funnel_event(
             user_id,
@@ -933,22 +933,11 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
             {"template_id": template_id, "failed_preloads_count": 0},
         )
         raise
-    # A created hire is counted by its setup job, once its preloads are known;
-    # an idempotent re-hire of an already-active expert is not a hire.
-    if state == "revived":
-        emit_funnel_event(
-            user_id,
-            "hire_completed",
-            {"template_id": template_id, "failed_preloads_count": 0},
-        )
-    return result
 
 
 async def _hire_expert_impl(
     user_id: str, template_id: str, name: str | None
-) -> tuple[HireResult, Literal["existing", "revived", "created"]]:
-    """The hire result plus which transition produced it, so the funnel can
-    count a genuine hire once and stay silent on an idempotent retry."""
+) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
         include=_WORKFLOW_INCLUDE,
@@ -996,16 +985,24 @@ async def _hire_expert_impl(
 
     if state == "revived":
         expert = await _resume_revived_hire(expert)
+    # A hire that runs setup is counted by its job, once its preloads are
+    # known; an idempotent re-hire of an already-active expert is not a hire.
     if state == "created" or await _claim_setup(expert.id):
         spawn_background_task(
             _run_hire_setup(
-                user_id, expert.id, template.id, count_hire=state == "created"
+                user_id, expert.id, template.id, count_hire=state != "existing"
             ),
             name=f"hire-setup-{expert.id}",
         )
         if state != "created":
             expert = await _reload_expert(expert)
-    return HireResult(expert=_to_model(expert)), state
+    elif state == "revived":
+        emit_funnel_event(
+            user_id,
+            "hire_completed",
+            {"template_id": template.id, "failed_preloads_count": 0},
+        )
+    return HireResult(expert=_to_model(expert))
 
 
 async def _reload_expert(row: prisma.models.Expert) -> prisma.models.Expert:

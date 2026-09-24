@@ -1465,4 +1465,24 @@ describe("TeamPage - setup needed card", () => {
       expect(hires).toEqual([{ template_id: "template-maria" }]),
     );
   });
+
+  test("a failed setup with no template offers no retry", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          source_template_id: null,
+          setup_status: "failed",
+          setup_failures: ["SEO Audit"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    expect(
+      await screen.findByText("Couldn't install: SEO Audit"),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Retry setup" })).toBeNull();
+  });
 });

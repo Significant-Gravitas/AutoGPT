@@ -6199,6 +6199,32 @@ async def test_reviving_archived_expert_emits_hire_completed(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_reviving_a_failed_setup_counts_the_hire_once_setup_settles(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+        assert hired.expert.setup_status == "failed"
+        await experts_db.archive_expert(test_user.id, hired.expert.id)
+        with patch.object(experts_db, "emit_funnel_event") as emit:
+            await experts_db.hire_expert(test_user.id, template.id, None)
+
+    # Kills: emitting from the request before the re-claimed setup has run.
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_revival_emits_hire_completed_once(
     server: SpinTestServer, test_user
 ):
