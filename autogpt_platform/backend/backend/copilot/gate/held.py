@@ -104,7 +104,15 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
     """The subject each held card named; a bare tool or a held read names none."""
     if not review_ids:
         return {}
-    held = await _held(session_id)
+    try:
+        held = await _held(session_id)
+    except Exception:
+        # The approval still lands; only the rule is lost.
+        logger.warning(
+            f"Held calls unreadable for session {session_id}; approving without a rule",
+            exc_info=True,
+        )
+        return {}
     return {
         review_id: call.rule_key
         for review_id in review_ids
