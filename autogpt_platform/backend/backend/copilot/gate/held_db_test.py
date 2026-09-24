@@ -29,6 +29,7 @@ from backend.copilot.model import (
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.data.db_accessors import review_db
+from backend.data.redis_client import get_redis_async
 
 _TOOL = "post_to_chat_platform"
 
@@ -182,6 +183,24 @@ async def _approve_after_losing_the_held_call(
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
     with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
         await held.wake(user_id, session.session_id, rows.values())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """They can hold a credential, and live in Redis until the card is answered."""
+    session = await _new_session(test_user_id)
+    secret = "sk-live-not-for-redis-0123456789"
+    review_id = await _hold(session, test_user_id, f"token {secret}")
+
+    redis = await get_redis_async()
+    stored = await redis.hgetall(held._key(session.session_id))
+    assert stored and all(secret not in str(v) for v in stored.values())
+
+    await _answer(review_id, ReviewStatus.APPROVED)
+    await held.resolve_answered(test_user_id, session)
+    assert post_tool.runs == [{"text": f"token {secret}"}]
 
 
 @pytest.mark.asyncio(loop_scope="session")
