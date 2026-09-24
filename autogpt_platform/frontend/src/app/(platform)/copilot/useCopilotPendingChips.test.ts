@@ -12,6 +12,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 }));
 
 type Messages = UIMessage<unknown, UIDataTypes, UITools>[];
+type ChatStatus = Parameters<typeof useCopilotPendingChips>[0]["status"];
 
 const mockGetPending = vi.mocked(getV2GetPendingMessages);
 
@@ -831,6 +832,68 @@ describe("useCopilotPendingChips", () => {
       await waitFor(() =>
         expect(view.result.current.queuedMessages).toEqual(["typed meanwhile"]),
       );
+    });
+
+    it("restores a buffer the turn-start peek finds when it superseded the load peek", async () => {
+      const peeks = deferBufferPeeks("from before");
+      const setMessages = vi.fn();
+      const view = renderHook(
+        ({ status }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: [],
+            setMessages,
+          }),
+        { initialProps: { status: "ready" as ChatStatus } },
+      );
+      // The user sends a prompt before the load peek has answered.
+      view.rerender({ status: "submitted" });
+      view.rerender({ status: "streaming" });
+      expect(peeks.count()).toBe(2);
+
+      // The turn-start peek answers first and wins; the load peek's answer
+      // is stale and dropped. The buffered message must still reach the
+      // strip, or nothing would poll for it during the whole turn.
+      await peeks.resolveWith(1, ["from before"]);
+      await peeks.resolveWith(0, ["from before"]);
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual(["from before"]),
+      );
+      expect(setMessages).not.toHaveBeenCalled();
+    });
+
+    it("restores only the buffered messages the strip does not already hold", async () => {
+      const peeks = deferBufferPeeks("from before");
+      const setMessages = vi.fn();
+      const view = renderHook(
+        ({ status }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: [],
+            setMessages,
+          }),
+        { initialProps: { status: "ready" as ChatStatus } },
+      );
+      view.rerender({ status: "submitted" });
+      act(() => {
+        view.result.current.queueMessage("typed now");
+      });
+      view.rerender({ status: "streaming" });
+      expect(peeks.count()).toBe(2);
+
+      await peeks.resolveWith(1, ["from before", "typed now"]);
+      await peeks.resolveWith(0, ["from before"]);
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual([
+          "from before",
+          "typed now",
+        ]),
+      );
+      expect(setMessages).not.toHaveBeenCalled();
     });
 
     it("keeps a message typed during the peek window", async () => {

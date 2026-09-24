@@ -197,6 +197,21 @@ function usePeekOnBoundary({
             }
             return current.filter((entry) => !inFlightIds.has(entry.id));
           });
+          return;
+        }
+        // The backend holds more than the strip knows about: a session-load
+        // peek this one superseded would have restored them, and the
+        // mid-turn polls only run once the strip is non-empty.  Prepend the
+        // surplus (the buffer is FIFO, so the unknown ones are the oldest).
+        // Local entries keep their ids: a turn-start drain hint can already
+        // have a promotion in flight for them, and rebasing them to fresh
+        // ids would leave that promotion's copy stuck in the strip.
+        const unknownCount = res.data.count - inFlightIds.size;
+        if (unknownCount > 0) {
+          const restored = res.data.messages
+            .slice(0, unknownCount)
+            .map((text) => ({ id: uuidv4({}), text }));
+          setQueue((current) => [...restored, ...current]);
         }
         return;
       }
