@@ -31,6 +31,7 @@ from cachetools import TTLCache
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.redis_client import get_redis_async
 from backend.integrations.creds_events import listen_creds_changed
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
@@ -46,6 +47,10 @@ logger = logging.getLogger(__name__)
 PROVIDER_ENV_VARS: dict[str, list[str]] = {
     slug: entry["env_vars"] for slug, entry in SUPPORTED_PROVIDERS.items()
 }
+
+_GRANT_KEY_PREFIX = "e2b:egress:grant:"
+# As long as a paused box can keep a placeholder (E2B's paused-sandbox life).
+_GRANT_TTL = 48 * 3600
 
 # 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
 # (a Redis blip drops the message), so the TTL is the floor on how long a stale
@@ -208,6 +213,7 @@ async def get_provider_token(
     credential_id: str | None = None,
     *,
     strict: bool = False,
+    lock: bool = False,
 ) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -224,6 +230,9 @@ async def get_provider_token(
     token to fall back to raises ``ProviderTokenUnavailable`` instead of
     returning ``None``: for a caller to whom "not connected" means something
     (the swap proxy scrubs against it), a failure must not look like one.
+    *lock* takes the credentials manager's lock around an OAuth refresh, so two
+    concurrent callers cannot both spend a single-use refresh token; only for
+    a process whose callers share one event loop (see ``refresh_if_needed``).
     """
     _ensure_cache_invalidation_listener()
     cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
@@ -256,7 +265,8 @@ async def get_provider_token(
     # Credentials covering the requested scopes come first, then ones with
     # "repo" (full git access, where a public-data-only token lacks push/pull).
     # The sort is stable, so ties keep their stored order, as the card does.
-    # lock=False — background injection; not worth a distributed lock acquisition.
+    # lock=False by default — background injection across the executor's
+    # per-thread event loops, where the manager's lock cannot be taken.
     def rank(creds: OAuth2Credentials) -> tuple[int, int]:
         granted = set(creds.scopes or [])
         return (
@@ -272,7 +282,7 @@ async def get_provider_token(
     for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
-                fresh = await manager.refresh_if_needed(user_id, creds, lock=False)
+                fresh = await manager.refresh_if_needed(user_id, creds, lock=lock)
                 token = fresh.access_token.get_secret_value()
             except Exception:
                 logger.warning(
@@ -365,42 +375,17 @@ async def get_provider_credential_id(
     return None
 
 
-async def get_provider_tokens_by_credential(
-    user_id: str, provider: str
-) -> dict[str, str]:
-    """Credential id to token, for each of the user's stored credentials for
-    *provider* that yields one (refreshed as ``get_provider_token`` does)."""
-    try:
-        stored = await _manager.store.get_creds_by_provider(user_id, provider)
-    except Exception:
-        logger.warning(
-            "Failed to fetch %s credentials for user %s",
-            provider,
-            user_id,
-            exc_info=True,
-        )
-        return {}
-    tokens: dict[str, str] = {}
-    for creds in stored:
-        token = await get_provider_token(user_id, provider, credential_id=creds.id)
-        if token:
-            tokens[creds.id] = token
-    return tokens
-
-
-def swap_placeholder(provider: str, credential_id: str | None = None) -> str:
+def swap_placeholder(provider: str, credential_id: str) -> str:
     """What a box whose egress goes through the credential swap proxy holds
-    instead of *provider*'s token.
+    instead of *provider*'s token: ``hsurr:<provider>:<credential id>``.
 
-    ``hsurr:<provider>`` is the proxy's name for the user's default credential
-    for the provider; ``hsurr:<provider>:<credential id>`` for one stored
-    credential in particular.  The proxy puts the real value in on the way
-    out, in the ``Authorization`` header of a request to one of the
-    provider's hosts only (``autogpt_platform/swap_proxy``).  Outside that it
-    is an inert string: printed, sent elsewhere or copied off the box, it
-    authenticates nothing.
+    The proxy puts that credential's value in on the way out, in the
+    ``Authorization`` header of a request to one of the provider's hosts, and
+    only if the credential was granted to that box (``grant_to_box``).
+    Anywhere else it is an inert string: printed, sent elsewhere or copied off
+    the box, it authenticates nothing.
     """
-    return f"hsurr:{provider}" + (f":{credential_id}" if credential_id else "")
+    return f"hsurr:{provider}:{credential_id}"
 
 
 # ``git`` does not read GH_TOKEN; ``gh`` does.  This helper, set through git's
@@ -423,45 +408,79 @@ def git_credential_helper_env() -> dict[str, str]:
     }
 
 
-async def get_integration_placeholder_env(
+async def placeholder_grants(
     user_id: str,
     required_scopes: Mapping[str, frozenset[str]] | None = None,
     selected: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """``get_integration_env_vars`` for a box behind the swap proxy: each
-    connected provider's variables hold a placeholder naming the credential
-    that call would have injected, never its value.
-
-    With GitHub connected, git is also pointed at ``GH_TOKEN`` for github.com
-    (``git_credential_helper_env``), so ``git push`` over HTTPS works through
-    the proxy the way ``gh`` does.
-    """
-    env: dict[str, str] = {}
-    for provider, var_names in PROVIDER_ENV_VARS.items():
+    """Provider to credential id: for each provider, the credential
+    ``get_integration_env_vars`` would have injected with the same arguments
+    (the chat's pick, else the best match for the requested scopes).  A
+    provider with none (not connected, the pick deleted, a failed refresh) is
+    left out."""
+    grants: dict[str, str] = {}
+    for provider in PROVIDER_ENV_VARS:
         scopes = (required_scopes or {}).get(provider, frozenset())
         credential_id = await get_provider_credential_id(
             user_id, provider, scopes, (selected or {}).get(provider)
         )
         if credential_id:
-            for var in var_names:
-                env[var] = swap_placeholder(provider, credential_id)
-    if "GH_TOKEN" in env:
-        env.update(git_credential_helper_env())
-    return env
+            grants[provider] = credential_id
+    return grants
 
 
-async def get_default_placeholder_env(user_id: str) -> dict[str, str]:
-    """Placeholders for the user's default credential of each connected
-    provider (``hsurr:<provider>``), and git's helper with GitHub: for a box's
-    own environment, where no chat's pick applies."""
+def placeholder_env(grants: Mapping[str, str]) -> dict[str, str]:
+    """The variables for a box behind the swap proxy: each granted provider's
+    placeholder, and every other provider's variables set empty.
+
+    Empty rather than absent: a command's variables are laid over the box's
+    own, so an absent one would fall back to what the box was created with,
+    and a command whose chat has no usable credential would quietly act as
+    another account instead of failing as it does without the proxy.  For the
+    same reason git's helper is switched off (``GIT_CONFIG_COUNT=0``) when
+    GitHub has no placeholder.
+    """
     env: dict[str, str] = {}
     for provider, var_names in PROVIDER_ENV_VARS.items():
-        if await get_provider_token(user_id, provider):
-            for var in var_names:
-                env[var] = swap_placeholder(provider)
-    if "GH_TOKEN" in env:
+        credential_id = grants.get(provider)
+        value = swap_placeholder(provider, credential_id) if credential_id else ""
+        for var in var_names:
+            env[var] = value
+    if env.get("GH_TOKEN"):
         env.update(git_credential_helper_env())
+    else:
+        env["GIT_CONFIG_COUNT"] = "0"
     return env
+
+
+def _grant_key(sandbox_id: str, provider: str) -> str:
+    return f"{_GRANT_KEY_PREFIX}{sandbox_id}:{provider}"
+
+
+async def grant_to_box(sandbox_id: str, grants: Mapping[str, str]) -> None:
+    """Record that *sandbox_id* was handed these credentials' placeholders.
+
+    The swap service resolves a placeholder only for a credential granted to
+    the box asking (``swap_credentials.resolve_swap_credential``), so a box
+    can use the accounts its chats were given and no other of the user's,
+    whatever id it types.  A grant outlives the command that made it (a
+    process it started may still hold the placeholder) and lasts as long as a
+    paused box can.
+    """
+    if not grants:
+        return
+    redis = await get_redis_async()
+    for provider, credential_id in grants.items():
+        key = _grant_key(sandbox_id, provider)
+        await redis.sadd(key, credential_id)
+        await redis.expire(key, _GRANT_TTL)
+
+
+async def granted_to_box(sandbox_id: str, provider: str) -> set[str]:
+    """The credential ids of *provider* granted to *sandbox_id*."""
+    redis = await get_redis_async()
+    members = await redis.smembers(_grant_key(sandbox_id, provider))
+    return {m.decode() if isinstance(m, bytes) else m for m in members}
 
 
 async def get_integration_env_vars(

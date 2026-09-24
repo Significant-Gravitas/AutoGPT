@@ -48,31 +48,47 @@ async def test_resolve_names_the_user_and_the_host_and_is_cached_briefly():
     source, calls = _backend(_ok)
     credential = None
     for _ in range(3):
-        credential = await source.resolve("user-a", "github", "api.github.com")
+        credential = await source.resolve("user-a", "github", "api.github.com", "box-1")
     assert credential is not None
     assert credential.values == {"access_token": TOKEN}
     assert credential.allowed_hosts == ("github.com", "api.github.com")
     assert calls == [
         (
             "/resolve_swap_credential",
-            {"user_id": "user-a", "name": "github", "host": "api.github.com"},
+            {
+                "user_id": "user-a",
+                "name": "github",
+                "host": "api.github.com",
+                "box": "box-1",
+            },
         )
     ]
 
 
 async def test_one_users_answer_is_never_anothers():
     source, _ = _backend(_ok)
-    assert await source.resolve("user-a", "github", "api.github.com") is not None
-    assert await source.resolve("user-b", "github", "api.github.com") is None
+    assert (
+        await source.resolve("user-a", "github", "api.github.com", "box-1") is not None
+    )
+    assert await source.resolve("user-b", "github", "api.github.com", "box-1") is None
+
+
+async def test_one_boxs_answer_is_never_anothers():
+    """The backend answers per box (its ceiling, whether it is still live), so
+    a cached answer for one box is not served to another of the same user's."""
+    source, calls = _backend(_ok)
+    await source.resolve("user-a", "github", "api.github.com", "box-1")
+    await source.resolve("user-a", "github", "api.github.com", "box-2")
+    assert [body["box"] for _, body in calls] == ["box-1", "box-2"]
 
 
 async def test_the_cache_expires(monkeypatch):
     source, calls = _backend(_ok)
     now = [1000.0]
     monkeypatch.setattr(source_module.time, "monotonic", lambda: now[0])
-    await source.resolve("user-a", "github", "api.github.com")
+    await source.resolve("user-a", "github", "api.github.com", "box-1")
     now[0] += source_module._CREDENTIAL_TTL + 1
-    await source.resolve("user-a", "github", "api.github.com")
+    await source.resolve("user-a", "github", "api.github.com", "box-1")
     assert len(calls) == 2
 
 
@@ -80,6 +96,7 @@ async def test_the_cache_expires(monkeypatch):
     "response",
     [
         httpx.Response(500, json={"type": "RuntimeError"}),
+        httpx.Response(404, json={"type": "NoLiveBox"}),  # a stale or foreign box
         httpx.Response(200, content=b"not json"),
         httpx.Response(200, json={"name": "github"}),  # no values
     ],
@@ -88,7 +105,7 @@ async def test_anything_but_a_clean_answer_is_unavailable_and_not_cached(respons
     source, calls = _backend(lambda path, body: response)
     for _ in range(2):
         with pytest.raises(SourceUnavailable):
-            await source.resolve("user-a", "github", "api.github.com")
+            await source.resolve("user-a", "github", "api.github.com", "box-1")
     assert len(calls) == 2
 
 

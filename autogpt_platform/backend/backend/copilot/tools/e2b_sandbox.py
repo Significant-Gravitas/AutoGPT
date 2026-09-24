@@ -88,7 +88,11 @@ from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
-from backend.copilot.integration_creds import get_default_placeholder_env
+from backend.copilot.integration_creds import (
+    grant_to_box,
+    placeholder_env,
+    placeholder_grants,
+)
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
     EgressOwner,
@@ -606,22 +610,21 @@ async def _release_turn(owner: SandboxOwner) -> bool:
         return False
 
 
-async def _placeholder_env(egress_owner: EgressOwner) -> dict[str, str]:
-    """The box's own environment at creation: a placeholder for each account
-    its user has connected, when the box egresses through the swap proxy.
+async def _placeholder_grants(egress_owner: EgressOwner) -> dict[str, str]:
+    """The credentials a new box starts with in its own environment, when it
+    egresses through the swap proxy: the user's default for each connected
+    provider (no chat's pick applies to the box itself).
 
     Commands get their variables per call as well (``bash_exec``); these are
     for what does not start through a command, the desktop's browser and
-    terminal among them.  They name the user's default credential, which
-    follows the account across the box's life; a command's own variables name
-    the one its chat picked.  Nothing without the proxy: the real token is
-    never put in the box's environment.
+    terminal among them.  Nothing without the proxy: the real token is never
+    put in the box's environment.
     """
     if proxy_address() is None or not egress_owner.swaps:
         return {}
     assert egress_owner.user_id is not None  # ``swaps`` requires one
     try:
-        return await get_default_placeholder_env(egress_owner.user_id)
+        return await placeholder_grants(egress_owner.user_id)
     except Exception as exc:
         # Commands still get theirs; a box without them is no less safe.
         logger.warning("[E2B] No placeholder env for %s: %s", egress_owner, exc)
@@ -752,7 +755,8 @@ async def get_or_create_owner_sandbox(
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
-            box_env = await _placeholder_env(owner.egress_owner(user_id))
+            box_grants = await _placeholder_grants(owner.egress_owner(user_id))
+            box_env = placeholder_env(box_grants) if box_grants else {}
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
@@ -809,6 +813,17 @@ async def get_or_create_owner_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
+            if box_grants:
+                try:
+                    await grant_to_box(sandbox.sandbox_id, box_grants)
+                except Exception as exc:
+                    # Its own placeholders then resolve to nothing; commands
+                    # grant theirs again, so the box stays usable.
+                    logger.warning(
+                        "[E2B] Could not grant credentials to %.12s: %s",
+                        sandbox.sandbox_id,
+                        exc,
+                    )
             if mounts:
                 with contextlib.suppress(Exception):
                     await sandbox.commands.run(

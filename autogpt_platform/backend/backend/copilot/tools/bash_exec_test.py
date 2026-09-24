@@ -379,8 +379,17 @@ class TestBashExecBehindTheSwapProxy:
             integration_creds._null_cache.clear()
             integration_creds._credential_id_cache.clear()
 
+    @pytest.fixture(autouse=True)
+    def grants(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()
+        ) as grant:
+            self.grant = grant
+            yield grant
+
     async def _run(self, sandbox: MagicMock) -> BashExecResponse:
         session = make_session(user_id=_USER)
+        sandbox.sandbox_id = "sb-1"
         with patch(
             "backend.copilot.tools.bash_exec.get_github_user_git_identity",
             new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "Ada"}),
@@ -412,6 +421,45 @@ class TestBashExecBehindTheSwapProxy:
         assert all(self._REAL not in value for value in envs.values())
         # Nothing in the box may drive E2B itself (read its rules, reconnect it).
         assert not any("E2B" in name for name in envs)
+        # Granted to this box before the command ran, or it would not resolve.
+        self.grant.assert_awaited_once_with("sb-1", {"github": "cred-picked"})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_deleted_pick_blanks_the_variables_instead_of_falling_back(
+        self,
+    ):
+        """The box's own environment may hold the default account's
+        placeholder; left unset, the command would quietly act as it."""
+        sandbox = _make_sandbox(stdout="ok")
+        with patch(
+            "backend.copilot.tools.bash_exec.selected_credentials",
+            new=AsyncMock(return_value={"github": "cred-deleted"}),
+        ):
+            session = make_session(user_id=_USER)
+            sandbox.sandbox_id = "sb-1"
+            with patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ):
+                await _make_tool()._execute_on_e2b(
+                    sandbox=sandbox,
+                    command="git push",
+                    timeout=10,
+                    session_id=session.session_id,
+                    user_id=_USER,
+                )
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == ""
+        assert envs["GIT_CONFIG_COUNT"] == "0"
+        self.grant.assert_awaited_once_with("sb-1", {})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_grant_that_fails_does_not_stop_the_command(self):
+        sandbox = _make_sandbox(stdout="ok")
+        self.grant.side_effect = ConnectionError("redis down")
+        result = await self._run(sandbox)
+        assert result.exit_code == 0
+        sandbox.commands.run.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_placeholder_in_the_output_is_not_redacted(self):
@@ -430,9 +478,7 @@ class TestBashExecWithoutTheSwapProxy:
                 "backend.copilot.tools.bash_exec.get_integration_env_vars",
                 new=AsyncMock(return_value={"GH_TOKEN": "gh-secret"}),
             ),
-            patch(
-                "backend.copilot.tools.bash_exec.get_integration_placeholder_env"
-            ) as placeholders,
+            patch("backend.copilot.tools.bash_exec.placeholder_grants") as placeholders,
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
                 new=AsyncMock(return_value=None),
