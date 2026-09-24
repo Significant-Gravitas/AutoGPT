@@ -5,21 +5,32 @@ import pytest
 from swap_proxy.quota import RequestQuota
 
 
+def run_take_script(counts: dict, ttls: dict, numkeys: int, keys_and_args) -> int:
+    """``_TAKE_SCRIPT`` step for step, as Redis would run it (no Lua here)."""
+    keys = list(keys_and_args[:numkeys])
+    window, limits = keys_and_args[numkeys], keys_and_args[numkeys + 1 :]
+    for i, key in enumerate(keys):
+        if int(counts.get(key, 0)) >= int(limits[i]):
+            return i + 1
+    for key in keys:
+        counts[key] = int(counts.get(key, 0)) + 1
+        if counts[key] == 1:
+            ttls[key] = window
+    return 0
+
+
 class Counter:
     def __init__(self, fail: bool = False):
         self.counts: dict[str, int] = {}
         self.ttls: dict[str, int] = {}
         self.fail = fail
+        self.scripts: list[str] = []
 
     async def eval(self, script, numkeys, *keys_and_args):
-        name, window = keys_and_args
-        """What the script does, in one step."""
         if self.fail:
             raise ConnectionError("redis down")
-        self.counts[name] = self.counts.get(name, 0) + 1
-        if self.counts[name] == 1:
-            self.ttls[name] = window
-        return self.counts[name]
+        self.scripts.append(script)
+        return run_take_script(self.counts, self.ttls, numkeys, keys_and_args)
 
 
 NOW = 7200.0 + 600  # 600 s into a window of an hour
@@ -86,3 +97,25 @@ async def test_zero_turns_a_limit_off(per_box, per_user):
     redis = Counter(fail=True)  # never asked
     q = quota(redis, per_box=per_box, per_user=per_user)
     assert (await q.take("session:s-1", "user-a", now=NOW)).allowed
+
+
+async def test_a_request_refused_on_the_user_quota_spends_nothing_on_the_box():
+    redis = Counter()
+    q = quota(redis, per_box=5, per_user=1)
+    assert (await q.take("session:s-1", "user-a", now=NOW)).allowed
+    before = dict(redis.counts)
+    verdict = await q.take("session:s-2", "user-a", now=NOW)
+    assert (verdict.reason, verdict.scope) == ("quota-exceeded", "user")
+    # Neither counter moved: not the refused user's, not the new box's.
+    assert redis.counts == before
+    assert not any("session:s-2" in key for key in redis.counts)
+
+
+async def test_both_scopes_are_counted_in_one_script_on_one_cluster_slot():
+    redis = Counter()
+    await quota(redis).take("session:s-1", "user-a", now=NOW)
+    assert len(redis.scripts) == 1
+    keys = list(redis.counts)
+    assert len(keys) == 2
+    # One hash tag, so Redis Cluster runs the script on one slot.
+    assert all("{user-a}" in key for key in keys)

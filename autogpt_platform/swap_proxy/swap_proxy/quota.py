@@ -22,12 +22,20 @@ logger = logging.getLogger(__name__)
 KEY_PREFIX = "swap:quota:"
 
 
-# One round trip, atomic: the key is created with its expiry or not at all,
-# so a failure between the two can never leave a count that outlives its window.
-_INCR_SCRIPT = """
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
-return count
+# One round trip, atomic, over every scope at once: each counter is checked
+# first, and only if all are under their limit are all incremented (a new key
+# gets its expiry in the same step).  A request refused on one scope spends
+# nothing on another.  Returns 0, or the 1-based index of the scope that
+# refused.  KEYS[i] pairs with ARGV[i + 1] (its limit); ARGV[1] is the window.
+_TAKE_SCRIPT = """
+for i, key in ipairs(KEYS) do
+  local count = tonumber(redis.call('GET', key) or '0')
+  if count >= tonumber(ARGV[i + 1]) then return i end
+end
+for _, key in ipairs(KEYS) do
+  if redis.call('INCR', key) == 1 then redis.call('EXPIRE', key, ARGV[1]) end
+end
+return 0
 """
 
 
@@ -93,24 +101,33 @@ class RequestQuota:
         now = time.time() if now is None else now
         index = int(now) // self._window
         retry_after = self._window - int(now) % self._window
-        scopes = [("box", owner_label, self._per_box)]
+        # The user id is the hash tag of both keys: a script may only touch
+        # keys of one cluster slot, and it is what both scopes share.
+        tag = "{" + (user_id or owner_label) + "}"
+        scopes = [("box", f"{tag}:box:{owner_label}", self._per_box)]
         if user_id:
-            scopes.append(("user", user_id, self._per_user))
-        for scope, ident, limit in scopes:
-            if limit <= 0:
-                continue
-            key = f"{KEY_PREFIX}{scope}:{ident}:{index}"
-            try:
-                count = int(await self._redis.eval(_INCR_SCRIPT, 1, key, self._window))
-            except Exception:
-                logger.warning("Quota count failed; refusing the swap", exc_info=True)
-                return QuotaVerdict(reason="quota-unavailable")
-            if count > limit:
-                return QuotaVerdict(
-                    reason="quota-exceeded",
-                    scope=scope,
-                    limit=limit,
-                    window=self._window,
-                    retry_after=retry_after,
+            scopes.append(("user", f"{tag}:user", self._per_user))
+        scopes = [scope for scope in scopes if scope[2] > 0]
+        if not scopes:
+            return QuotaVerdict()
+        keys = [f"{KEY_PREFIX}{key}:{index}" for _, key, _ in scopes]
+        limits = [limit for _, _, limit in scopes]
+        try:
+            refused = int(
+                await self._redis.eval(
+                    _TAKE_SCRIPT, len(keys), *keys, self._window, *limits
                 )
+            )
+        except Exception:
+            logger.warning("Quota count failed; refusing the swap", exc_info=True)
+            return QuotaVerdict(reason="quota-unavailable")
+        if refused:
+            scope, _, limit = scopes[refused - 1]
+            return QuotaVerdict(
+                reason="quota-exceeded",
+                scope=scope,
+                limit=limit,
+                window=self._window,
+                retry_after=retry_after,
+            )
         return QuotaVerdict()
