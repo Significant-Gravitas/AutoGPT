@@ -7,6 +7,7 @@ const { posthog } = vi.hoisted(() => ({
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 import {
+  markTrialCheckoutStarted,
   trackBillingPortalOpened,
   trackCheckoutAbandoned,
   trackPaywallViewed,
@@ -70,6 +71,19 @@ describe("monetization analytics", () => {
     trackTrialCheckoutAbandoned("billing");
 
     expect(eventsNamed("checkout_abandoned")).toEqual([
+      ["checkout_abandoned", { checkout_kind: "trial", surface: "billing" }],
+    ]);
+  });
+
+  it("counts a second trial abandonment after a new checkout starts", () => {
+    trackTrialCheckoutAbandoned("billing");
+    markTrialCheckoutStarted("billing");
+    trackTrialCheckoutAbandoned("billing");
+    // The refresh after the second return is still guarded.
+    trackTrialCheckoutAbandoned("billing");
+
+    expect(eventsNamed("checkout_abandoned")).toEqual([
+      ["checkout_abandoned", { checkout_kind: "trial", surface: "billing" }],
       ["checkout_abandoned", { checkout_kind: "trial", surface: "billing" }],
     ]);
   });

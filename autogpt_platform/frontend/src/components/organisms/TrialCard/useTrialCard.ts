@@ -3,6 +3,7 @@ import {
   usePostTrialsStartTrialCheckout,
 } from "@/app/api/__generated__/endpoints/trials/trials";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { markTrialCheckoutStarted } from "@/services/analytics/monetization-analytics";
 import { TrialEvent } from "@/services/analytics/posthog-events";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
@@ -49,6 +50,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200)
         throw new Error("Unable to start trial checkout.");
+      markTrialCheckoutStarted(returnTo);
       window.location.assign(response.data.url);
     } catch (error) {
       setFailure({

@@ -56,7 +56,9 @@ export function trackCheckoutAbandoned(properties: {
 const TRIAL_ABANDONED_KEY_PREFIX = "posthog_trial_checkout_abandoned_";
 
 // The trial's cancel URL (`?trial=cancelled`) is not cleaned up after the
-// return, so a refresh must not report the same abandonment twice.
+// return, so a refresh must not report the same abandonment twice. Starting
+// another trial checkout clears the guard (`markTrialCheckoutStarted`), so a
+// second real abandonment in the same tab still counts.
 export function trackTrialCheckoutAbandoned(surface: PaywallSurface) {
   const sentKey = `${TRIAL_ABANDONED_KEY_PREFIX}${surface}`;
   try {
@@ -66,6 +68,14 @@ export function trackTrialCheckoutAbandoned(surface: PaywallSurface) {
     // In-app browsers may block sessionStorage — double-counting beats dropping.
   }
   trackCheckoutAbandoned({ checkout_kind: "trial", surface });
+}
+
+export function markTrialCheckoutStarted(surface: PaywallSurface) {
+  try {
+    sessionStorage.removeItem(`${TRIAL_ABANDONED_KEY_PREFIX}${surface}`);
+  } catch {
+    // In-app browsers may block sessionStorage; the guard is then unset anyway.
+  }
 }
 
 function capture(

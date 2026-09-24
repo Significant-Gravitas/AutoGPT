@@ -119,6 +119,30 @@ test.each([
   },
 );
 
+test("re-arms trial abandonment tracking when a new trial checkout starts", async () => {
+  // Left by an earlier abandonment in this tab: without clearing it, backing
+  // out of this checkout too would go unreported.
+  sessionStorage.setItem("posthog_trial_checkout_abandoned_onboarding", "1");
+  mockStatus();
+  server.use(
+    getPostTrialsStartTrialCheckoutMockHandler200({
+      url: "https://checkout.stripe.com/trial",
+    }),
+  );
+  render(<SubscriptionStep />);
+  const card = within(
+    await screen.findByRole("region", { name: "Pro plan" }),
+  );
+  fireEvent.click(
+    await card.findByRole("button", { name: "Start 7-day trial" }),
+  );
+
+  await waitFor(() => expect(checkoutLocation.assign).toHaveBeenCalled());
+  expect(
+    sessionStorage.getItem("posthog_trial_checkout_abandoned_onboarding"),
+  ).toBeNull();
+});
+
 test("uses the server's duration, currency, renewal cycle, and terms", async () => {
   mockStatus(
     eligible({
