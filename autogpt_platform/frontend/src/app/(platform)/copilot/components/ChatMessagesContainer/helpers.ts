@@ -458,9 +458,7 @@ export function extractReviewTarget(
             })()
           : part.output;
       if (!out || typeof out !== "object") continue;
-      if ((out as { type?: unknown }).type === "review_required") {
-        return { kind: "chat" };
-      }
+      if (isChatReview(out)) return { kind: "chat" };
       if ("execution_id" in out && "status" in out) {
         const { execution_id, status, graph_id } = out as {
           execution_id: string;
@@ -478,6 +476,15 @@ export function extractReviewTarget(
     }
   }
   return null;
+}
+
+// A block review, or an action the auto-mode gate parked for approval.
+function isChatReview(out: object) {
+  const { type, review_id } = out as { type?: unknown; review_id?: unknown };
+  return (
+    type === "review_required" ||
+    (type === "approval_required" && typeof review_id === "string")
+  );
 }
 
 const REVIEWABLE_STATUSES = new Set([

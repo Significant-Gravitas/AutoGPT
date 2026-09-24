@@ -18,7 +18,6 @@ from prisma.enums import ReviewStatus
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
 )
 from backend.copilot.model import ChatSession
 
@@ -36,10 +35,6 @@ _MAX_ARG_CHARS = 4_000
 # An approval the model never came back for must not run the same call days
 # later; the normal retry follows the click within seconds.
 _APPROVAL_TTL = timedelta(hours=1)
-
-
-def session_exec_id(session_id: str) -> str:
-    return f"{COPILOT_SESSION_PREFIX}{session_id}"
 
 
 def node_id_for(tool_name: str) -> str:
@@ -109,7 +104,7 @@ async def find_decision(
         logger.warning(f"Gate could not read review {review_id}", exc_info=True)
         return None
     review = reviews.get(review_id)
-    if review is None or review.graph_exec_id != session_exec_id(session_id):
+    if review is None or review.session_id != session_id:
         return None
     approved_at = review.reviewed_at or review.updated_at or review.created_at
     if (
@@ -145,8 +140,8 @@ async def has_open_review(user_id: str, session_id: str) -> bool | None:
     keeps one turn from firing five "Needs You" alerts.
     """
     try:
-        pending = await review_db().get_pending_reviews_for_execution(
-            session_exec_id(session_id), user_id
+        pending = await review_db().get_pending_reviews_for_chat_session(
+            session_id, user_id
         )
     except Exception:
         logger.warning(
@@ -172,9 +167,7 @@ async def open_review(
         await review_db().get_or_create_human_review(
             user_id=user_id,
             node_exec_id=review_id,
-            graph_exec_id=session_exec_id(session.session_id),
-            graph_id=session_exec_id(session.session_id),
-            graph_version=1,
+            chat_session_id=session.session_id,
             input_data=review_payload(tool_name, args),
             message=instructions_for(tool_name, reason),
             editable=False,
