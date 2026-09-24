@@ -131,7 +131,7 @@ poetry run swap-proxy
 | Variable | Default | |
 | --- | --- | --- |
 | `SWAP_PROXY_LISTEN_HOST` / `SWAP_PROXY_LISTEN_PORT` | `0.0.0.0` / `1080` | SOCKS5 listener |
-| `SWAP_PROXY_BACKEND_URL` | `http://localhost:8005` | the backend's internal `DatabaseManager` service |
+| `SWAP_PROXY_BACKEND_URL` | `http://localhost:8012` | the backend's swap service (`SwapCredentialService`), which serves only the two calls the proxy makes |
 | `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
 | `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
@@ -170,18 +170,19 @@ as every box losing either its egress or its TLS to bound hosts.
 
 The same step sets the network policy around the proxy, and that policy is a
 security boundary, not housekeeping. The proxy calls one backend service
-(`SWAP_PROXY_BACKEND_URL`, the internal `DatabaseManager`) and must be able to
-reach that and nothing else in the backend: the policy is what keeps a
-compromised proxy away from every other backend service.
+(`SWAP_PROXY_BACKEND_URL`) and must be able to reach that and nothing else in
+the backend: the policy is what keeps a compromised proxy away from every other
+backend service.
 
-It cannot do more than that. `DatabaseManager` serves every method it exposes
-on the same port, with no caller authentication or per-caller allowlist, and
-the proxy uses only two of them (`get_swap_bindings`,
-`resolve_swap_credential`). A proxy that can reach it can call all of them,
-reading any user's credentials among them. Restricting it to the two swap
-methods needs a dedicated service or a per-caller allowlist (SECRT-2742);
-until then that is an accepted gap, and one more reason the proxy's own host
-is to be treated as holding every user's credentials.
+That service is `SwapCredentialService` (`backend/copilot/swap_service.py`),
+and it answers the two calls the proxy makes (`get_swap_bindings`,
+`resolve_swap_credential`) and nothing else: every other backend method is on
+another service's port, so a proxy that can reach only this port cannot call
+it, whatever it sends. It runs beside `DatabaseManager` in the backend's `db`
+entrypoint, on its own port (`SWAP_CREDENTIAL_SERVICE_PORT`, default 8012); the
+policy should let the proxy reach that port and not `DatabaseManager`'s. What
+the service does answer is any user's credential for a bound host, so the
+proxy's own host is still to be treated as holding every user's credentials.
 
 ### What one message costs the event loop
 
