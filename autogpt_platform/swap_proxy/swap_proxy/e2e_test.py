@@ -12,6 +12,7 @@ import json
 import logging
 from typing import Optional
 
+import fakeredis
 import pytest
 
 from swap_proxy.__main__ import build_master
@@ -19,7 +20,6 @@ from swap_proxy.addon import MAX_BODY_BYTES, SwapProxyAddon
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import CREDENTIAL_KEY_PREFIX, OwnerDirectory
 from swap_proxy.quota import RequestQuota
-from swap_proxy.quota_test import run_take_script
 from swap_proxy.source import SourceUnavailable
 from swap_proxy.swap import Credential, host_in_list
 
@@ -31,13 +31,14 @@ UPSTREAM_HOST = "localhost"
 class FakeRedis:
     def __init__(self):
         self.store: dict[str, str] = {}
-        self.counts: dict[str, int] = {}
+        self.lua = fakeredis.FakeAsyncRedis()
 
     async def get(self, name):
         return self.store.get(name)
 
     async def eval(self, script, numkeys, *keys_and_args):
-        return run_take_script(self.counts, {}, numkeys, keys_and_args)
+        # The quota's script, run as Lua.
+        return await self.lua.eval(script, numkeys, *keys_and_args)
 
     def add_box(
         self,

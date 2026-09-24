@@ -1,28 +1,17 @@
 """The request quota: counted per box and per user, failing closed."""
 
+import fakeredis
 import pytest
 
 from swap_proxy.quota import RequestQuota
 
 
-def run_take_script(counts: dict, ttls: dict, numkeys: int, keys_and_args) -> int:
-    """``_TAKE_SCRIPT`` step for step, as Redis would run it (no Lua here)."""
-    keys = list(keys_and_args[:numkeys])
-    window, limits = keys_and_args[numkeys], keys_and_args[numkeys + 1 :]
-    for i, key in enumerate(keys):
-        if int(counts.get(key, 0)) >= int(limits[i]):
-            return i + 1
-    for key in keys:
-        counts[key] = int(counts.get(key, 0)) + 1
-        if counts[key] == 1:
-            ttls[key] = window
-    return 0
-
-
 class Counter:
+    """A Redis that runs the real ``_TAKE_SCRIPT`` (fakeredis evaluates Lua),
+    recording the scripts it is sent; *fail* makes every call fail."""
+
     def __init__(self, fail: bool = False):
-        self.counts: dict[str, int] = {}
-        self.ttls: dict[str, int] = {}
+        self.redis = fakeredis.FakeAsyncRedis(decode_responses=True)
         self.fail = fail
         self.scripts: list[str] = []
 
@@ -30,7 +19,15 @@ class Counter:
         if self.fail:
             raise ConnectionError("redis down")
         self.scripts.append(script)
-        return run_take_script(self.counts, self.ttls, numkeys, keys_and_args)
+        return await self.redis.eval(script, numkeys, *keys_and_args)
+
+    async def counts(self) -> dict[str, int]:
+        keys = await self.redis.keys("*")
+        return {str(k): int(str(await self.redis.get(k))) for k in keys}
+
+    async def ttls(self) -> dict[str, int]:
+        keys = await self.redis.keys("*")
+        return {str(k): await self.redis.ttl(k) for k in keys}
 
 
 NOW = 7200.0 + 600  # 600 s into a window of an hour
@@ -72,7 +69,8 @@ async def test_the_window_is_fixed_and_the_count_expires_with_it():
     assert (await q.take("session:s-1", "user-a", now=NOW)).allowed
     assert not (await q.take("session:s-1", "user-a", now=NOW)).allowed
     assert (await q.take("session:s-1", "user-a", now=NOW + 3600)).allowed
-    assert set(redis.ttls.values()) == {3600}
+    # Set by the script on first increment, and only then.
+    assert set((await redis.ttls()).values()) == {3600}
 
 
 async def test_a_count_that_cannot_be_taken_refuses():
@@ -103,19 +101,32 @@ async def test_a_request_refused_on_the_user_quota_spends_nothing_on_the_box():
     redis = Counter()
     q = quota(redis, per_box=5, per_user=1)
     assert (await q.take("session:s-1", "user-a", now=NOW)).allowed
-    before = dict(redis.counts)
+    before = await redis.counts()
     verdict = await q.take("session:s-2", "user-a", now=NOW)
     assert (verdict.reason, verdict.scope) == ("quota-exceeded", "user")
     # Neither counter moved: not the refused user's, not the new box's.
-    assert redis.counts == before
-    assert not any("session:s-2" in key for key in redis.counts)
+    after = await redis.counts()
+    assert after == before
+    assert not any("session:s-2" in key for key in after)
 
 
 async def test_both_scopes_are_counted_in_one_script_on_one_cluster_slot():
     redis = Counter()
     await quota(redis).take("session:s-1", "user-a", now=NOW)
     assert len(redis.scripts) == 1
-    keys = list(redis.counts)
+    keys = list(await redis.counts())
     assert len(keys) == 2
     # One hash tag, so Redis Cluster runs the script on one slot.
     assert all("{user-a}" in key for key in keys)
+
+
+async def test_the_script_runs_as_lua_and_refuses_at_the_limit_not_past_it():
+    """The real script, no Python stand-in: with a limit of 2 the third
+    request is refused and the counters stop at 2."""
+    redis = Counter()
+    q = quota(redis, per_box=2, per_user=0)
+    results = [
+        (await q.take("session:s-1", "user-a", now=NOW)).allowed for _ in range(3)
+    ]
+    assert results == [True, True, False]
+    assert list((await redis.counts()).values()) == [2]
