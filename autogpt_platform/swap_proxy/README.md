@@ -159,12 +159,17 @@ as every box losing either its egress or its TLS to bound hosts.
 The same step sets the network policy around the proxy, and that policy is a
 security boundary, not housekeeping. The proxy calls one backend service
 (`SWAP_PROXY_BACKEND_URL`, the internal `DatabaseManager`) and must be able to
-reach that and nothing else in the backend. That service exposes far more than
-the two methods the proxy uses (`get_swap_bindings`, `resolve_swap_credential`),
-with no caller authentication or per-caller allowlist of its own, so until the
-swap methods move to a dedicated service or gain such an allowlist
-(SECRT-2742), the network policy is what keeps a compromised proxy from calling
-the rest.
+reach that and nothing else in the backend: the policy is what keeps a
+compromised proxy away from every other backend service.
+
+It cannot do more than that. `DatabaseManager` serves every method it exposes
+on the same port, with no caller authentication or per-caller allowlist, and
+the proxy uses only two of them (`get_swap_bindings`,
+`resolve_swap_credential`). A proxy that can reach it can call all of them,
+reading any user's credentials among them. Restricting it to the two swap
+methods needs a dedicated service or a per-caller allowlist (SECRT-2742);
+until then that is an accepted gap, and one more reason the proxy's own host
+is to be treated as holding every user's credentials.
 
 ### What one message costs the event loop
 
