@@ -143,7 +143,7 @@ what replaced them.
 | `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
 | `tour_cta_clicked` | browser | live | `label` (`pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one | A tour call to action is clicked. |
-| `signup_completed` | backend | live | `signup_method` (the auth provider from the token's `app_metadata.provider`, e.g. `email`, `google`; omitted when absent) | The user row is created (`data/user.py`), whichever request creates it. |
+| `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
 
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with

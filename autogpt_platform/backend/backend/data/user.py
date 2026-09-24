@@ -13,7 +13,7 @@ from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import UniqueViolationError
-from prisma.models import AuthUser
+from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
 from prisma.types import (
     JsonFilter,
@@ -89,7 +89,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
             )
             was_created = True
             track_signup_completed(
-                user_id=user.id, signup_method=_signup_method(user_data)
+                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
             )
         else:
             was_created = False
@@ -125,8 +125,35 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         ) from e
 
 
-def _signup_method(user_data: dict) -> str | None:
-    """The auth provider the account was created with (``email``, ``google``, ...)."""
+# Better Auth's providerId for an email + password account.
+_BETTER_AUTH_EMAIL_PROVIDER = "credential"
+
+
+async def _signup_method(user_id: str, user_data: dict) -> str | None:
+    """The auth provider the account was created with (``email``, ``google``, ...).
+
+    Better Auth's token carries no provider, so it is read from the user's
+    first ``AuthAccount`` row, which Better Auth writes before it issues the
+    token. A Supabase token carries it in ``app_metadata`` instead; that is
+    the fallback for a user with no account row.
+    """
+    try:
+        account = await AuthAccount.prisma().find_first(
+            where={"userId": user_id}, order={"createdAt": "asc"}
+        )
+    except Exception:
+        # Analytics only: a failed lookup must not fail the signup.
+        logger.warning("Failed to read the auth account of %s", user_id, exc_info=True)
+        account = None
+    if account is not None and account.providerId:
+        if account.providerId == _BETTER_AUTH_EMAIL_PROVIDER:
+            return "email"
+        return account.providerId
+    return _legacy_signup_method(user_data)
+
+
+def _legacy_signup_method(user_data: dict) -> str | None:
+    """The provider from a Supabase token's ``app_metadata``."""
     app_metadata = user_data.get("app_metadata")
     if not isinstance(app_metadata, dict):
         return None
