@@ -34,6 +34,8 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
     PreconditionFailed,
+    WebhookRegistrationError,
+    WebhookSetupUnavailableError,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,8 +70,10 @@ def add_v2_exception_handlers(app: fastapi.FastAPI) -> None:
         ConflictError: status.HTTP_409_CONFLICT,
         FolderValidationError: status.HTTP_400_BAD_REQUEST,
         GraphActivationError: status.HTTP_400_BAD_REQUEST,
+        WebhookRegistrationError: status.HTTP_400_BAD_REQUEST,
         ValueError: status.HTTP_400_BAD_REQUEST,
         MissingConfigError: status.HTTP_503_SERVICE_UNAVAILABLE,
+        WebhookSetupUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
         PrismaError: status.HTTP_500_INTERNAL_SERVER_ERROR,
         Exception: status.HTTP_500_INTERNAL_SERVER_ERROR,
     }.items():

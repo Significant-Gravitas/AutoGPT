@@ -448,6 +448,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    trusted_proxy_count: int = Field(
+        default=1,
+        ge=0,
+        description="How many proxies between the client and this app append to "
+        "X-Forwarded-For. The client IP is that many entries from the right; "
+        "everything further left is caller-controlled and must not be trusted. "
+        "0 ignores the header and uses the socket peer.",
+    )
+
     e2b_egress_proxy_address: str = Field(
         default="",
         description="host:port of the SOCKS5 credential swap proxy every E2B box "

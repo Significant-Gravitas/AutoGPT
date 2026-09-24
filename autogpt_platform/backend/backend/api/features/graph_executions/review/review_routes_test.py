@@ -5,6 +5,7 @@ import httpx
 import pytest
 import pytest_asyncio
 import pytest_mock
+from fastapi import HTTPException
 from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
@@ -16,7 +17,8 @@ from backend.data.execution import (
 )
 from backend.data.graph import GraphSettings
 
-from .model import PendingHumanReviewModel
+from .model import PendingHumanReviewModel, ReviewItem
+from .service import process_reviews
 
 # Using a fixed timestamp for reproducible tests
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
@@ -155,6 +157,7 @@ async def test_get_pending_reviews_for_execution_not_available(
 
 
 _ROUTES = "backend.api.features.graph_executions.review.routes"
+_SERVICE = "backend.api.features.graph_executions.review.service"
 
 
 def _chat_review(user_id: str, status: ReviewStatus) -> PendingHumanReviewModel:
@@ -218,18 +221,18 @@ async def test_approving_a_chat_review_resumes_no_graph_and_scopes_auto_approval
 ) -> None:
     waiting = _chat_review(test_user_id, ReviewStatus.WAITING)
     mocker.patch(
-        f"{_ROUTES}.get_reviews_by_node_exec_ids",
+        f"{_SERVICE}.get_reviews_by_node_exec_ids",
         return_value={waiting.node_exec_id: waiting},
     )
     mocker.patch(
-        f"{_ROUTES}.process_all_reviews_for_execution",
+        f"{_SERVICE}.process_all_reviews_for_execution",
         return_value={
             waiting.node_exec_id: _chat_review(test_user_id, ReviewStatus.APPROVED)
         },
     )
-    auto_approve = mocker.patch(f"{_ROUTES}.create_auto_approval_record")
-    graph_exec_meta = mocker.patch(f"{_ROUTES}.get_graph_execution_meta")
-    resume = mocker.patch(f"{_ROUTES}.add_graph_execution")
+    auto_approve = mocker.patch(f"{_SERVICE}.create_auto_approval_record")
+    graph_exec_meta = mocker.patch(f"{_SERVICE}.get_graph_execution_meta")
+    resume = mocker.patch(f"{_SERVICE}.add_graph_execution")
 
     response = await client.post(
         "/api/review/action",
@@ -272,10 +275,10 @@ async def test_one_request_cannot_act_on_reviews_from_two_scopes(
     chat = _chat_review(test_user_id, ReviewStatus.WAITING)
     second = chat.model_copy(update={"node_exec_id": "second", **other})
     mocker.patch(
-        f"{_ROUTES}.get_reviews_by_node_exec_ids",
+        f"{_SERVICE}.get_reviews_by_node_exec_ids",
         return_value={chat.node_exec_id: chat, second.node_exec_id: second},
     )
-    process = mocker.patch(f"{_ROUTES}.process_all_reviews_for_execution")
+    process = mocker.patch(f"{_SERVICE}.process_all_reviews_for_execution")
 
     response = await client.post(
         "/api/review/action",
@@ -292,6 +295,30 @@ async def test_one_request_cannot_act_on_reviews_from_two_scopes(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_pinned_request_cannot_act_on_a_chat_review(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    chat = _chat_review(test_user_id, ReviewStatus.WAITING)
+    mocker.patch(
+        f"{_SERVICE}.get_reviews_by_node_exec_ids",
+        return_value={chat.node_exec_id: chat},
+    )
+    mocker.patch(f"{_SERVICE}._assert_awaiting_review")
+    process = mocker.patch(f"{_SERVICE}.process_all_reviews_for_execution")
+
+    with pytest.raises(HTTPException) as exc:
+        await process_reviews(
+            test_user_id,
+            [ReviewItem(node_exec_id=chat.node_exec_id, approved=True)],
+            graph_exec_id="ge-1",
+        )
+
+    assert exc.value.status_code == 404
+    process.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_process_review_action_approve_success(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
@@ -303,7 +330,7 @@ async def test_process_review_action_approve_success(
 
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
@@ -313,7 +340,7 @@ async def test_process_review_action_approve_success(
     mock_get_reviews_for_execution.return_value = [sample_pending_review]
 
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     # Create approved review for return
     approved_review = PendingHumanReviewModel(
@@ -337,19 +364,19 @@ async def test_process_review_action_approve_success(
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
     mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     mocker.patch(
-        "backend.api.features.graph_executions.review.routes.add_graph_execution"
+        "backend.api.features.graph_executions.review.service.add_graph_execution"
     )
 
     request_data = {
@@ -385,13 +412,13 @@ async def test_process_review_action_reject_success(
 
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -403,7 +430,7 @@ async def test_process_review_action_reject_success(
     mock_get_reviews_for_execution.return_value = [sample_pending_review]
 
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     rejected_review = PendingHumanReviewModel(
         node_exec_id="test_node_123",
@@ -425,7 +452,7 @@ async def test_process_review_action_reject_success(
     mock_process_all_reviews.return_value = {"test_node_123": rejected_review}
 
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
@@ -480,7 +507,7 @@ async def test_process_review_action_mixed_success(
 
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {
         "test_node_123": sample_pending_review,
@@ -493,7 +520,7 @@ async def test_process_review_action_mixed_success(
     mock_get_reviews_for_execution.return_value = [sample_pending_review, second_review]
 
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     # Create approved version of first review
     approved_review = PendingHumanReviewModel(
@@ -538,14 +565,14 @@ async def test_process_review_action_mixed_success(
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
     mock_get_graph_exec.return_value = mock_graph_exec_meta
 
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
@@ -604,14 +631,14 @@ async def test_process_review_action_review_not_found(
     """Test error when review is not found"""
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     # Return empty dict to simulate review not found
     mock_get_reviews_for_user.return_value = {}
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -625,7 +652,7 @@ async def test_process_review_action_review_not_found(
 
     # Mock process_all_reviews to simulate not finding reviews
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     # This should raise a ValueError with "Reviews not found" message based on the data/human_review.py logic
     mock_process_all_reviews.side_effect = ValueError(
@@ -658,13 +685,13 @@ async def test_process_review_action_partial_failure(
     """Test handling of partial failures in review processing"""
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -678,7 +705,7 @@ async def test_process_review_action_partial_failure(
 
     # Mock partial failure in processing
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     mock_process_all_reviews.side_effect = ValueError("Some reviews failed validation")
 
@@ -708,14 +735,14 @@ async def test_process_review_action_invalid_node_exec_id(
     """Test failure when trying to process review with invalid node execution ID"""
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     # Return empty dict to simulate review not found
     mock_get_reviews_for_user.return_value = {}
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -748,13 +775,13 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
     """Test that auto_approve_future_actions flag creates auto-approval records"""
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     approved_review = PendingHumanReviewModel(
         node_exec_id="test_node_123",
@@ -777,7 +804,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock get_node_executions to return node_id mapping
     mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_node_executions"
+        "backend.api.features.graph_executions.review.service.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
     mock_node_exec.node_exec_id = "test_node_123"
@@ -786,12 +813,12 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.create_auto_approval_record"
+        "backend.api.features.graph_executions.review.service.create_auto_approval_record"
     )
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -799,13 +826,13 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     # Mock get_graph_settings to return custom settings
     mock_get_settings = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_settings"
+        "backend.api.features.graph_executions.review.service.get_graph_settings"
     )
     mock_get_settings.return_value = GraphSettings(
         human_in_the_loop_safe_mode=True,
@@ -814,7 +841,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock get_user_by_id to prevent database access
     mock_get_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_user_by_id"
+        "backend.api.features.graph_executions.review.service.get_user_by_id"
     )
     mock_user = mocker.Mock()
     mock_user.timezone = "UTC"
@@ -822,7 +849,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.add_graph_execution"
+        "backend.api.features.graph_executions.review.service.add_graph_execution"
     )
 
     request_data = {
@@ -879,13 +906,13 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
     """Test that execution context is created with settings even without auto-approve"""
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     mock_get_reviews_for_user.return_value = {"test_node_123": sample_pending_review}
 
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     approved_review = PendingHumanReviewModel(
         node_exec_id="test_node_123",
@@ -908,12 +935,12 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
 
     # Mock create_auto_approval_record - should NOT be called when auto_approve is False
     mock_create_auto_approval = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.create_auto_approval_record"
+        "backend.api.features.graph_executions.review.service.create_auto_approval_record"
     )
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -921,13 +948,13 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     # Mock get_graph_settings with sensitive_action_safe_mode enabled
     mock_get_settings = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_settings"
+        "backend.api.features.graph_executions.review.service.get_graph_settings"
     )
     mock_get_settings.return_value = GraphSettings(
         human_in_the_loop_safe_mode=False,
@@ -936,7 +963,7 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
 
     # Mock get_user_by_id to prevent database access
     mock_get_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_user_by_id"
+        "backend.api.features.graph_executions.review.service.get_user_by_id"
     )
     mock_user = mocker.Mock()
     mock_user.timezone = "UTC"
@@ -944,7 +971,7 @@ async def test_process_review_action_without_auto_approve_still_loads_settings(
 
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.add_graph_execution"
+        "backend.api.features.graph_executions.review.service.add_graph_execution"
     )
 
     # Request WITHOUT auto_approve_future (defaults to False)
@@ -1027,7 +1054,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock get_reviews_by_node_exec_ids (called to find the graph_exec_id)
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
     # Need to return both reviews in WAITING state (before processing)
     approved_review_waiting = PendingHumanReviewModel(
@@ -1067,7 +1094,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock process_all_reviews
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     mock_process_all_reviews.return_value = {
         "node_exec_approved": approved_review,
@@ -1076,7 +1103,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock get_node_executions to return node_id mapping
     mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_node_executions"
+        "backend.api.features.graph_executions.review.service.get_node_executions"
     )
     mock_node_exec = mocker.Mock(spec=NodeExecutionResult)
     mock_node_exec.node_exec_id = "node_exec_approved"
@@ -1085,12 +1112,12 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.create_auto_approval_record"
+        "backend.api.features.graph_executions.review.service.create_auto_approval_record"
     )
 
     # Mock get_graph_execution_meta to return execution in REVIEW status
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -1098,19 +1125,19 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     # Mock get_graph_settings
     mock_get_settings = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_settings"
+        "backend.api.features.graph_executions.review.service.get_graph_settings"
     )
     mock_get_settings.return_value = GraphSettings()
 
     # Mock get_user_by_id to prevent database access
     mock_get_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_user_by_id"
+        "backend.api.features.graph_executions.review.service.get_user_by_id"
     )
     mock_user = mocker.Mock()
     mock_user.timezone = "UTC"
@@ -1118,7 +1145,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
 
     # Mock add_graph_execution
     mock_add_execution = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.add_graph_execution"
+        "backend.api.features.graph_executions.review.service.add_graph_execution"
     )
 
     request_data = {
@@ -1174,7 +1201,7 @@ async def test_process_review_action_per_review_auto_approve_granularity(
     """Test that auto-approval can be set per-review (granular control)"""
     # Mock get_reviews_by_node_exec_ids - return different reviews based on node_exec_id
     mock_get_reviews_for_user = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_reviews_by_node_exec_ids"
+        "backend.api.features.graph_executions.review.service.get_reviews_by_node_exec_ids"
     )
 
     # Create a mapping of node_exec_id to review
@@ -1231,7 +1258,7 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
     # Mock process_all_reviews - return 3 approved reviews
     mock_process_all_reviews = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.process_all_reviews_for_execution"
+        "backend.api.features.graph_executions.review.service.process_all_reviews_for_execution"
     )
     mock_process_all_reviews.return_value = {
         "node_1_auto": PendingHumanReviewModel(
@@ -1289,7 +1316,7 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
     # Mock get_node_executions to return batch node data
     mock_get_node_executions = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_node_executions"
+        "backend.api.features.graph_executions.review.service.get_node_executions"
     )
     # Create mock node executions for each review
     mock_node_execs = []
@@ -1302,12 +1329,12 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
     # Mock create_auto_approval_record
     mock_create_auto_approval = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.create_auto_approval_record"
+        "backend.api.features.graph_executions.review.service.create_auto_approval_record"
     )
 
     # Mock get_graph_execution_meta
     mock_get_graph_exec = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_execution_meta"
+        "backend.api.features.graph_executions.review.service.get_graph_execution_meta"
     )
     mock_graph_exec_meta = mocker.Mock()
     mock_graph_exec_meta.status = ExecutionStatus.REVIEW
@@ -1315,22 +1342,22 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
     # Mock has_pending_reviews_for_graph_exec
     mock_has_pending = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.has_pending_reviews_for_graph_exec"
+        "backend.api.features.graph_executions.review.service.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     # Mock settings and execution
     mock_get_settings = mocker.patch(
-        "backend.api.features.graph_executions.review.routes.get_graph_settings"
+        "backend.api.features.graph_executions.review.service.get_graph_settings"
     )
     mock_get_settings.return_value = GraphSettings(
         human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
     )
 
     mocker.patch(
-        "backend.api.features.graph_executions.review.routes.add_graph_execution"
+        "backend.api.features.graph_executions.review.service.add_graph_execution"
     )
-    mocker.patch("backend.api.features.graph_executions.review.routes.get_user_by_id")
+    mocker.patch("backend.api.features.graph_executions.review.service.get_user_by_id")
 
     # Request with granular auto-approval:
     # - node_1_auto: auto_approve_future=True
@@ -1390,7 +1417,7 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
     review = sample_pending_review.model_copy(
         update={"graph_exec_id": graph_exec_id, "session_id": session_id}
     )
-    routes = "backend.api.features.graph_executions.review.routes"
+    routes = _SERVICE
     mocker.patch(
         f"{routes}.get_reviews_by_node_exec_ids",
         return_value={"test_node_123": review},

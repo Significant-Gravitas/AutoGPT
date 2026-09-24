@@ -559,7 +559,9 @@ async def test_preset_and_review_listing_are_scoped_to_the_key_org(
     )
 
     await list_presets(graph_id=None, page=_page(), auth=_key_for(ORG_A))
-    await list_reviews(run_id=None, status=None, page=_page(), auth=_key_for(ORG_A))
+    await list_reviews(
+        run_id=None, review_status=None, page=_page(), auth=_key_for(ORG_A)
+    )
 
     assert presets.await_args.kwargs["organization_id"] == ORG_A
     assert reviews.await_args.kwargs["organization_id"] == ORG_A
