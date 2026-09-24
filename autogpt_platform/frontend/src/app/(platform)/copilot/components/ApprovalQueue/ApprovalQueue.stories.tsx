@@ -16,6 +16,7 @@ import {
   heldRead,
   heldReview,
   mail,
+  mcpTool,
   shell,
   workflow,
 } from "./__tests__/fixtures";
@@ -91,6 +92,9 @@ export const BlockCard: Story = {
 };
 
 export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+// The Approve menu: the chat rules the server allows on this subject.
+export const RuleMenu: Story = { args: queueOf([mcpTool()]) };
 
 export const BlockChainRow: StoryObj = {
   render: () => {
