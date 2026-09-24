@@ -1,16 +1,11 @@
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
-import {
-  notionConfigForName,
-  type NotionColorId,
-} from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { motion } from "framer-motion";
 
 interface Member {
   name: string;
-  /** Otto keeps his own drawing; everyone else gets a name-seeded face. */
-  color?: NotionColorId;
+  category?: string;
   status: AvatarStatus;
   size: number;
   x: number;
@@ -32,7 +27,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Ops",
-    color: "emerald",
+    category: "operations",
     status: "working",
     size: 84,
     x: 105,
@@ -41,7 +36,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Research",
-    color: "sky",
+    category: "research",
     status: "thinking",
     size: 84,
     x: 210,
@@ -50,7 +45,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Marketing",
-    color: "orange",
+    category: "marketing",
     status: "done",
     size: 84,
     x: 315,
@@ -59,7 +54,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Finance",
-    color: "amber",
+    category: "finance",
     status: "idle",
     size: 72,
     x: 52,
@@ -68,7 +63,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Support",
-    color: "rose",
+    category: "support",
     status: "working",
     size: 72,
     x: 158,
@@ -77,7 +72,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Sales",
-    color: "indigo",
+    category: "sales",
     status: "idle",
     size: 72,
     x: 262,
@@ -86,7 +81,7 @@ const TEAM: Member[] = [
   },
   {
     name: "Design",
-    color: "yellow",
+    category: "content",
     status: "thinking",
     size: 72,
     x: 368,
@@ -171,15 +166,12 @@ export function TeamScene() {
                 ease: EASE,
               }}
             >
-              {member.color ? (
-                <NotionAvatarImage
-                  config={{
-                    ...notionConfigForName(member.name),
-                    color: member.color,
-                  }}
+              {member.category ? (
+                <ExpertAvatar
+                  name={member.name}
+                  avatarUrl={`/experts/clay/v1/${member.category}.png`}
                   status={member.status}
                   size={member.size}
-                  title={member.name}
                 />
               ) : (
                 <AutopilotAvatar size={member.size} />

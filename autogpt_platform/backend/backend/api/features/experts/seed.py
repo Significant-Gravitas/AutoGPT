@@ -25,6 +25,7 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 from backend.api.features.experts.models import (
     ExpertDayOneItem,
     VoiceSample,
@@ -2462,7 +2463,7 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "role": entry["role"],
         "jobTitle": entry["job_title"],
         "tagline": entry["tagline"],
-        "avatarUrl": entry["avatar_url"],
+        "avatarUrl": resolve_avatar_url(entry["avatar_url"]),
         "identity": entry["identity"],
         "voicePreferences": encode_voice_preferences(
             entry["voice_preferences"], entry.get("voice_samples") or []

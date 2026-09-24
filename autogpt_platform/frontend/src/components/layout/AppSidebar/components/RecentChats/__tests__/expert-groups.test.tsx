@@ -198,13 +198,11 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(
-      expertGroup.querySelector('img[data-testid="notion-avatar-image"]'),
-    ).not.toBe(null);
+    expect(expertGroup.querySelector("img")).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
-  it("colours a generated sidebar avatar with the expert's owner token", async () => {
+  it("uses a stable warm-stone fallback independent of the accent", async () => {
     const novaExpert: Expert = {
       ...mariaExpert,
       id: "expert-nova",
@@ -222,16 +220,10 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Nova chats",
     });
-    const avatar = expertGroup.querySelector(
-      'img[data-testid="notion-avatar-image"]',
-    );
+    const avatar = expertGroup.querySelector("img");
     expect(avatar?.getAttribute("width")).toBe("32");
     expect(avatar?.getAttribute("height")).toBe("32");
-    expect(avatar?.classList.contains("border")).toBe(true);
-    expect(avatar?.classList.contains("border-zinc-400")).toBe(true);
-    expect(avatar?.getAttribute("data-avatar")).toMatch(
-      /\.violet\.svg\?v=\d+$/,
-    );
+    expect(avatar?.getAttribute("src")).toContain("content.png");
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

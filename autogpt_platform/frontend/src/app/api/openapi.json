@@ -6644,6 +6644,80 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/avatars/generations": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Generate Expert Avatar",
+        "operationId": "generate_expert_avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertAvatarRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations/{job_id}": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Get Expert Avatar Generation",
+        "operationId": "get_expert_avatar_generation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid", "title": "Job Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/identities": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -21660,6 +21734,62 @@
         "required": ["day", "sessions", "runs"],
         "title": "ExpertActivityDay",
         "description": "One calendar day, in the owner's timezone, of expert activity."
+      },
+      "ExpertAvatarJob": {
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "complete", "failed"],
+            "title": "Status",
+            "default": "pending"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "created_at": { "type": "number", "title": "Created At" }
+        },
+        "type": "object",
+        "title": "ExpertAvatarJob"
+      },
+      "ExpertAvatarRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "marketing",
+              "sales",
+              "finance",
+              "support",
+              "operations",
+              "research",
+              "content",
+              "development"
+            ],
+            "title": "Category",
+            "default": "content"
+          },
+          "shape": {
+            "type": "string",
+            "enum": ["pebble", "slab", "wedge", "dome"],
+            "title": "Shape",
+            "default": "pebble"
+          },
+          "expression": {
+            "type": "string",
+            "enum": ["friendly", "curious", "focused", "pleased"],
+            "title": "Expression",
+            "default": "friendly"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpertAvatarRequest"
       },
       "ExpertAvatarUpdate": {
         "properties": {

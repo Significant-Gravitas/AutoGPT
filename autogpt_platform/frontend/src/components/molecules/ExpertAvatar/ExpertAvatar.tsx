@@ -1,14 +1,12 @@
-import { Robot01Icon } from "@hugeicons/core-free-icons";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
-import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
 import { cn } from "@/lib/utils";
+import { resolveExpertAvatarUrl } from "./helpers";
 
 interface Props {
   name: string | null;
@@ -19,56 +17,40 @@ interface Props {
   className?: string;
 }
 
-/**
- * Expert avatar shared by the copilot home surfaces (briefing card, team
- * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated Notion-style face — as a flat image unless there
- * is something to animate.
- */
 export function ExpertAvatar({
   name,
   avatarUrl,
-  color,
   status = "idle",
   size = 40,
   className,
 }: Props) {
-  const style = { width: size, height: size };
-
-  if (!name) {
-    return (
-      <div
-        style={style}
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-zinc-100",
-          className,
-        )}
-      >
-        <Icon icon={Robot01Icon} size={size / 2} className="text-zinc-500" />
-      </div>
-    );
-  }
-
-  const config = expertNotionConfig({ name, avatarUrl, color });
-  if (config) {
-    return (
-      <NotionAvatarImage
-        config={config}
-        status={status}
-        size={size}
-        title={name}
-        className={className}
-      />
-    );
-  }
-
+  const src = resolveExpertAvatarUrl(avatarUrl);
   return (
-    <Avatar
-      style={style}
-      className={cn("shrink-0 border border-stone-500", className)}
+    <span
+      style={{ width: size, height: size }}
+      className={cn("relative inline-flex shrink-0", className)}
     >
-      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-      <AvatarFallback>{name}</AvatarFallback>
-    </Avatar>
+      <Avatar className="size-full rounded-none">
+        <AvatarImage
+          src={src}
+          alt={name ?? "Expert"}
+          width={size}
+          height={size}
+          className="object-contain"
+        />
+        <AvatarFallback>
+          <span className="text-sm">
+            {name?.slice(0, 1).toUpperCase() ?? "?"}
+          </span>
+        </AvatarFallback>
+      </Avatar>
+      {status !== "idle" && (
+        <StatusDot
+          status={status}
+          size={Math.round(size * 0.34)}
+          className="absolute -bottom-0.5 -right-0.5"
+        />
+      )}
+    </span>
   );
 }
