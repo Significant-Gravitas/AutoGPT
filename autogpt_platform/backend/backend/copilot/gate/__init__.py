@@ -167,6 +167,7 @@ async def _park(
         tool_call_id=call.tool_call_id,
     )
     if headline is None:
+        await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
         allowed=False, reason=reason, review_id=call.review_id, headline=headline

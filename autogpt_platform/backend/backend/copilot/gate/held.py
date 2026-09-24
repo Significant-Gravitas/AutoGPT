@@ -92,6 +92,11 @@ async def remember(session_id: str, call: HeldCall) -> bool:
         return False
 
 
+async def forget(session_id: str, review_id: str) -> None:
+    """Drop a call whose card was never opened; nothing can answer it."""
+    await _claim(session_id, review_id)
+
+
 async def answered(user_id: str, session_id: str) -> list[HeldCall]:
     """Held calls whose card has been answered, oldest first."""
     held = await _held(session_id)
