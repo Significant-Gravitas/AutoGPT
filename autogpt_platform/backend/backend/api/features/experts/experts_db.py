@@ -1391,6 +1391,13 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Record a skill the expert now owns; idempotent, and a display name and
     its slug count as one name."""
+    await add_expert_skill_names(user_id, expert_id, [name])
+
+
+async def add_expert_skill_names(
+    user_id: str, expert_id: str, names: list[str]
+) -> None:
+    """:func:`add_expert_skill_name` for several names in one row write."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1398,12 +1405,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isTemplate": False,
             "isArchived": False,
         },
-        lambda names: (
-            names
-            if skill_name_key(name) in {skill_name_key(n) for n in names}
-            else [*names, name]
-        ),
+        lambda current: _with_names(current, names),
     )
+
+
+def _with_names(current: list[str], names: list[str]) -> list[str]:
+    merged = list(current)
+    keys = {skill_name_key(n) for n in merged}
+    for name in names:
+        if skill_name_key(name) not in keys:
+            keys.add(skill_name_key(name))
+            merged.append(name)
+    return merged
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:

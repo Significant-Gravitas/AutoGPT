@@ -815,11 +815,13 @@ async def store_user_skills(
             outcomes[index] = StoredSkill(skill.parsed, is_new)
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
-        if expert_id is not None:
-            for index, name in stored:
-                try:
-                    await experts_db().add_expert_skill_name(user_id, expert_id, name)
-                except Exception as e:
+        if expert_id is not None and stored:
+            try:
+                await experts_db().add_expert_skill_names(
+                    user_id, expert_id, [name for _, name in stored]
+                )
+            except Exception as e:
+                for index, _ in stored:
                     outcomes[index] = e
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
