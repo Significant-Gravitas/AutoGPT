@@ -10,8 +10,11 @@ Toran), section "What we will record". Where that plan names an event for an
 action, this list uses its name; [Differences from the analytics plan](#differences-from-the-analytics-plan)
 lists what is not aligned yet.
 
-In code the names live in two modules, and nothing outside them spells out an
-event name:
+In code the names live in two modules. Browser call sites may still pass a
+literal (`trackBrainDump("brain_dump_started")`), which is type-checked
+against these modules, and backend funnel `data_index` keys embed the name
+too (`briefing_generated:<id>`, `expert_run_completed:<graph_exec_id>`). A
+rename therefore has to search for the old string, not just edit the modules:
 
 | Sender | Module | Pin test |
 | --- | --- | --- |
