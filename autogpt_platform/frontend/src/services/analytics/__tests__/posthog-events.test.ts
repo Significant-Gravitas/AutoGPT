@@ -35,6 +35,7 @@ const LIVE_EVENT_NAMES = [
   "expert_recommended",
   "expert_thread_created",
   "experts_section_viewed",
+  "feature_flag_mismatched",
   "hire_flow_abandoned",
   "hire_started",
   "hire_step_continued",
@@ -75,6 +76,8 @@ const PLANNED_EVENT_NAMES: string[] = [];
 // splice a different action onto the history PostHog already holds for it.
 const RETIRED_EVENT_NAMES = [
   "experiment_exposed",
+  // Renamed to feature_flag_mismatched before it reached production.
+  "feature_flag_mismatch",
   "finalize_latency_ms",
   "hire_flow_completed",
   "intro_card_dismissed",

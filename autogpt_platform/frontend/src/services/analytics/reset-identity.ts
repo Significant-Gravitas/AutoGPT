@@ -1,3 +1,4 @@
+import { syncPostHogConsent } from "@/providers/posthog/posthog-consent";
 import posthog from "posthog-js";
 import { resetAnonymousID } from "./anonymous-id";
 import { getPostHogBaseProperties } from "./posthog-base-properties";
@@ -16,6 +17,15 @@ export function resetAnalyticsIdentity(): void {
   }
   if (didReset) restoreBaseProperties();
   resetAnonymousID(anonymousID);
+  // reset() also drops PostHog's own opt-in, which opts a consenting visitor
+  // out until the next page load unless it is restored here.
+  if (didReset) {
+    try {
+      syncPostHogConsent();
+    } catch {
+      // Analytics must never block an account change.
+    }
+  }
 }
 
 // reset() wipes the super properties along with the identity.

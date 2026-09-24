@@ -55,7 +55,8 @@ export function AutopilotCard({
         <div className="flex w-full items-start gap-3 px-2">
           <AutopilotAvatar
             size={88}
-            className="relative z-10 -mt-12 ml-1 ring-4 ring-white"
+            transparent={false}
+            className="relative z-10 -mt-12 ml-1 rounded-full"
           />
         </div>
 

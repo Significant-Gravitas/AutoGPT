@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 import stripe
 from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth.service import frontend_service_claims
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
 )
+from backend.data.subscription_trial_capacity import trial_seat_available
 from backend.data.subscription_trial_checkout import (
     TrialUnavailable,
     confirm_trial_checkout,
@@ -75,15 +77,48 @@ class TrialCheckoutResponse(BaseModel):
     url: str
 
 
+CLIENT_COUNTRY_SCOPE = "client-country"
+
+
+async def attested_country(
+    token: Annotated[
+        str | None, Header(alias="X-Client-Country-Token", include_in_schema=False)
+    ] = None,
+) -> str | None:
+    """The visitor's country, as the frontend proxy vouches for it, or None.
+
+    The backend is reachable directly -- the browser already calls it with
+    its own bearer token -- so a plain country header would be whatever the
+    caller typed. The proxy instead sends what Vercel's edge geolocated inside
+    a short-lived frontend service token, signed with the JWKS key only the
+    frontend holds. Anything else -- no token, a forged or expired one, a
+    user token -- is no country at all, which the offer's country rule treats
+    as unknown and withholds. Hidden from the schema: it is proxy-to-backend
+    plumbing, not API surface.
+    """
+    if not token:
+        return None
+    claims = await frontend_service_claims(token, CLIENT_COUNTRY_SCOPE)
+    country = claims.get("country") if claims else None
+    return country if isinstance(country, str) else None
+
+
+ClientCountry = Annotated[str | None, Depends(attested_country)]
+
+
 @router.get("")
-async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
+async def get_trial_status(
+    user_id: CurrentUser, country: ClientCountry = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if trial:
         return TrialStatusResponse(
             eligible=(
                 trial.status == "checkout_pending"
                 and trial.consumed_at is None
-                and await get_trial_offer(user_id) is not None
+                and (offer := await get_trial_offer(user_id, country=country))
+                is not None
+                and await trial_seat_available(offer, trial_id=trial.id)
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
@@ -99,8 +134,8 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
         )
-    offer = await get_trial_offer(user_id)
-    if offer is None:
+    offer = await get_trial_offer(user_id, country=country)
+    if offer is None or not await trial_seat_available(offer):
         return TrialStatusResponse()
     user = await get_user_by_id(user_id)
     has_history = False
@@ -142,6 +177,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
 async def start_trial_checkout(
     body: TrialCheckoutRequest,
     user_id: CurrentUser,
+    country: ClientCountry = None,
     x_datafast_visitor_id: Annotated[str | None, Header()] = None,
     x_datafast_session_id: Annotated[str | None, Header()] = None,
 ) -> TrialCheckoutResponse:
@@ -160,6 +196,7 @@ async def start_trial_checkout(
             success_url=f"{destination}?trial=success",
             cancel_url=f"{destination}?trial=cancelled",
             metadata=_datafast_metadata(x_datafast_visitor_id, x_datafast_session_id),
+            country=country,
         )
     except TrialUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc

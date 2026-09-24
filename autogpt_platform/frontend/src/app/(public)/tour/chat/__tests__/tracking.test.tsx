@@ -13,6 +13,8 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
   DotDistortionShader: () => null,
 }));
 
+import { configureCookiebot } from "@/tests/integrations/cookiebot";
+
 const { posthog } = vi.hoisted(() => ({
   posthog: { __loaded: true, capture: vi.fn() },
 }));
@@ -55,6 +57,10 @@ async function pressEnterToSend() {
 describe("Tour DataFast tracking", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // /tour sends DataFast events without consent, but only on the tour
+    // itself and only when a consent banner is configured.
+    configureCookiebot();
+    window.history.pushState({}, "", "/tour/chat");
     window.datafast = datafast;
     datafast.mockClear();
     posthog.capture.mockClear();
@@ -71,6 +77,8 @@ describe("Tour DataFast tracking", () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
+    window.history.pushState({}, "", "/");
   });
 
   test("fires tour_start once per session and tour_scenario_start per scenario run", async () => {

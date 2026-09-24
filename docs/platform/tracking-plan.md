@@ -76,6 +76,11 @@ something else now use `hire_started.surface`,
   (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
   bootstrap `distinctID`. `identify` merges it into the user at login, and
   `resetAnalyticsIdentity` mints a fresh one at logout.
+- **The browser waits for analytics consent** (Cookiebot,
+  `src/providers/posthog/posthog-consent.ts`). PostHog starts opted out:
+  without consent, browser events are dropped, `identify` is not called and
+  the anonymous id lasts only for the page load. Backend events do not
+  depend on it.
 - **No synthetic ids.** A backend event with no user is dropped
   (`posthog_client.capture` does it for every emitter), since a made-up id
   creates a person nobody can merge.
@@ -140,7 +145,10 @@ what replaced them.
 The tour funnel also goes to DataFast (`tour_start`, `tour_scenario_start`,
 `tour_scenario_complete`, `tour_cta_click`); the PostHog events mirror it with
 the same properties and nothing identifying in them: `/tour` is public and
-pre-signup, so they land on the visitor's anonymous id.
+pre-signup, so they land on the visitor's anonymous id. `/tour` sends the
+DataFast goals without consent (SECRT-2713), but the PostHog events wait for
+analytics consent like every browser event, so the two funnels count
+differently.
 
 ## Onboarding and activation
 
@@ -270,6 +278,7 @@ Return visits are `$pageview`; account-level retention is computed in
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
+| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
@@ -326,6 +335,7 @@ new one.
 | `subscription_payment_success` | `payment_succeeded` | — |
 | `credit_topup_success` | `topup_completed` | — |
 | `subscription_tier_reconciliation_discrepancy` | `subscription_tier_reconciled` | — |
+| `feature_flag_mismatch` | `feature_flag_mismatched` | — (not in the analytics plan; renamed to the `object_action` past-tense form before it reached production) |
 
 ## Differences from the analytics plan
 

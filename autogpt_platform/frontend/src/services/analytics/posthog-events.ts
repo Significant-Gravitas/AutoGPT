@@ -16,6 +16,12 @@ export const PageEvent = {
   PAGEVIEW: "$pageview",
 } as const;
 
+// Ops signal from the dual flag backend, not a user action: LaunchDarkly and
+// PostHog resolved the same flag to different values.
+export const FeatureFlagEvent = {
+  FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
+} as const;
+
 export const ExpertsFunnelEvent = {
   EXPERTS_SECTION_VIEWED: "experts_section_viewed",
   HOME_VIEWED: "home_viewed",
@@ -64,7 +70,7 @@ export const BrainDumpEvent = {
   INTRO_FOLLOWUP_SENT: "intro_followup_sent",
   LATER_DUMP_COMPLETED: "later_dump_completed",
   // The team Otto proposed on the greeting page: one event per card
-  // shown, then the doors out of it — hire, raise your own, talk it
+  // shown, then the doors out of it — hire, create your own, talk it
   // through, or skip straight to the builder.
   EXPERT_RECOMMENDED: "expert_recommended",
   EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
@@ -155,6 +161,7 @@ export const MonetizationEvent = {
 
 export const PostHogEvent = {
   ...PageEvent,
+  ...FeatureFlagEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,

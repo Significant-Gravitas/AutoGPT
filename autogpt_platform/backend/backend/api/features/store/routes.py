@@ -569,10 +569,13 @@ def get_store_media(
 async def upload_submission_media(
     file: fastapi.UploadFile,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    purpose: Literal["submission", "expert-avatar"] = "submission",
 ) -> str:
-    """Upload media for a marketplace listing submission"""
-    media_url = await store_media.upload_media(user_id=user_id, file=file)
-    return media_url
+    """Upload media for a marketplace listing submission or Expert appearance."""
+
+    return await store_media.upload_media(
+        user_id=user_id, file=file, is_avatar=purpose == "expert-avatar"
+    )
 
 
 class ImageURLResponse(BaseModel):

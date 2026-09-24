@@ -24,7 +24,8 @@ export function AutopilotHeader() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <AutopilotAvatar
           size={96}
-          className="relative z-10 -mt-12 ml-14 ring-4 ring-white"
+          transparent={false}
+          className="relative z-10 -mt-12 ml-14 rounded-full"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
