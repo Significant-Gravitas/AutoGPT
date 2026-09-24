@@ -14,6 +14,7 @@ import {
 } from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
 import {
+  getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
 } from "../SubscriptionStep/helpers";
@@ -140,6 +141,15 @@ describe("subscription pricing experiment helpers", () => {
       badge: null,
       buttonVariant: "primary",
     });
+  });
+
+  test("reports a pricing arm only once PostHog has assigned a real one", () => {
+    expect(getReportedPricingVariant("yearly-max", true)).toBe("yearly-max");
+    expect(getReportedPricingVariant("control", true)).toBe("control");
+    // Still loading flags, not enrolled, or an arm this page does not know.
+    expect(getReportedPricingVariant("yearly-max", false)).toBeUndefined();
+    expect(getReportedPricingVariant(null, true)).toBeUndefined();
+    expect(getReportedPricingVariant("annual-team", true)).toBeUndefined();
   });
 });
 
@@ -400,6 +410,28 @@ describe("SubscriptionStep", () => {
       billing_cycle: "yearly",
       surface: "onboarding",
       pricing_variant: "yearly-max",
+    });
+  });
+
+  // PostHog answers `false` for a user outside the rollout. They see the
+  // control layout but are not in the control arm.
+  test("reports no pricing arm for a user the experiment did not enrol", async () => {
+    postHog.variant = false;
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Upgrade to Max/i }));
+
+    await waitFor(() => {
+      expect(posthogJS.capture).toHaveBeenCalledWith("plan_selected", {
+        subscription_tier: "MAX",
+        billing_cycle: "monthly",
+        surface: "onboarding",
+      });
     });
   });
 

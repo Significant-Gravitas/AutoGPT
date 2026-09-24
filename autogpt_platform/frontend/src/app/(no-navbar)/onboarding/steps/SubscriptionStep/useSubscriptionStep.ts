@@ -47,7 +47,8 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
-  const { billing, plans, variant } = useSubscriptionPricingExperiment();
+  const { billing, plans, pricingVariant } =
+    useSubscriptionPricingExperiment();
   const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is
@@ -79,7 +80,7 @@ export function useSubscriptionStep() {
       subscription_tier: planKey === PLAN_KEYS.TEAM ? "BUSINESS" : planKey,
       billing_cycle: isYearly ? "yearly" : "monthly",
       surface: "onboarding",
-      pricing_variant: variant,
+      ...(pricingVariant && { pricing_variant: pricingVariant }),
     });
   }
 
