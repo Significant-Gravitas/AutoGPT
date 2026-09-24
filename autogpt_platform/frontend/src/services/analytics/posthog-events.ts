@@ -8,7 +8,8 @@
 // backfilled. __tests__/posthog-events.test.ts pins the values.
 //
 // Plain `as const` objects rather than enums so a string literal at a call
-// site still type-checks against the list.
+// site still type-checks against the list. Call sites do pass literals, so
+// a rename has to search for the old string beyond this file.
 
 export const PageEvent = {
   PAGEVIEW: "$pageview",
