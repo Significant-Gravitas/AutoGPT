@@ -263,9 +263,7 @@ class WebFetchTool(BaseTool):
                 "to render its content. Use the 'tool:browser_navigate' tool instead.]"
             )
             text = f"{hint}\n\n{text}".strip()
-            message = (
-                f"Fetched {url} — warning: content not rendered (use tool:browser_navigate)"
-            )
+            message = f"Fetched {url} — warning: content not rendered (use tool:browser_navigate)"
 
         if text_truncated and raw_truncated:
             message += f" (download capped at {_MAX_DOWNLOAD_BYTES:,} bytes, text truncated to {_MAX_TEXT_CHARS:,} chars)"
