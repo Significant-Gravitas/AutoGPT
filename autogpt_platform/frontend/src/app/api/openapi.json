@@ -5956,6 +5956,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -13813,6 +13821,54 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Pending Reviews for Chat Session",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
+        "operationId": "getV2Get pending reviews for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the chat session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -15920,17 +15976,31 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["submission", "expert-avatar"],
+              "type": "string",
+              "default": "submission",
+              "title": "Purpose"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -15955,8 +16025,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
@@ -18632,7 +18701,10 @@
       "BriefingDecisionItem": {
         "properties": {
           "node_exec_id": { "type": "string", "title": "Node Exec Id" },
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
           "title": { "type": "string", "title": "Title" },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -19669,6 +19741,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
           },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Node Exec Id"
@@ -20353,6 +20429,11 @@
           },
           "user_id": { "type": "string", "title": "User Id" },
           "id": { "type": "string", "title": "Id", "default": "" },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
+          },
           "activity_type": {
             "type": "string",
             "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
@@ -21633,6 +21714,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           }
         },
         "type": "object",
@@ -22197,6 +22290,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           },
           "bundled_skills": {
             "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
@@ -23573,16 +23678,9 @@
         "title": "HireRequest"
       },
       "HireResult": {
-        "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "failed_preloads": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Failed Preloads"
-          }
-        },
+        "properties": { "expert": { "$ref": "#/components/schemas/Expert" } },
         "type": "object",
-        "required": ["expert", "failed_preloads"],
+        "required": ["expert"],
         "title": "HireResult"
       },
       "HomeAction": {
@@ -26554,19 +26652,24 @@
             "description": "User ID associated with the review"
           },
           "graph_exec_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id",
-            "description": "Graph execution ID"
+            "description": "Graph execution ID; None for a chat review"
           },
           "graph_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id",
             "description": "Graph ID"
           },
           "graph_version": {
-            "type": "integer",
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session ID; None for a graph review"
           },
           "payload": {
             "anyOf": [
@@ -26623,11 +26726,6 @@
             "title": "Library Agent Id",
             "description": "For run deep links"
           },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id",
-            "description": "Chat session id for copilot run_capability reviews"
-          },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Was Edited",
@@ -26666,9 +26764,6 @@
         "required": [
           "node_exec_id",
           "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
           "payload",
           "editable",
           "status",

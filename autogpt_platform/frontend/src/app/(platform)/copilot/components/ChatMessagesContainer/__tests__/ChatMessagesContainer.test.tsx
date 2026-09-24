@@ -131,7 +131,9 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: () => null,
+  CopilotPendingReviews: (props: object) => (
+    <span data-testid="pending-reviews" data-props={JSON.stringify(props)} />
+  ),
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
@@ -1445,5 +1447,89 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     );
 
     expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
+  });
+});
+
+describe("ChatMessagesContainer — pending reviews", () => {
+  function withToolOutput(output: object): Message[] {
+    return [
+      {
+        id: "assistant-review",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_capability",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: {},
+            output: JSON.stringify(output),
+          },
+        ],
+      } as Message,
+    ];
+  }
+
+  function mountedProps() {
+    const el = screen.queryByTestId("pending-reviews");
+    return el ? JSON.parse(el.getAttribute("data-props") ?? "{}") : null;
+  }
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("finds a chat review by the chat's session, with no graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          block_id: "blk",
+          block_name: "Create Folder",
+          input_data: {},
+        })}
+      />,
+    );
+
+    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
+  });
+
+  it("finds a chat review stored before it had a session id of its own", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          graph_exec_id: "copilot-session-sess-123",
+        })}
+      />,
+    );
+
+    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
+  });
+
+  it("finds an agent run's reviews by its graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({ execution_id: "exec-9", status: "REVIEW" })}
+      />,
+    );
+
+    expect(mountedProps()).toEqual({ graphExecId: "exec-9" });
+  });
+
+  it("mounts nothing in a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={withToolOutput({ type: "review_required", review_id: "r" })}
+      />,
+    );
+
+    expect(mountedProps()).toBeNull();
   });
 });

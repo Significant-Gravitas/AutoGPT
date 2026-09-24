@@ -896,6 +896,9 @@ class CreditHistoryRelatedExecution(BaseModel):
 
 class CreditTransactionItem(UserCreditTransaction):
     id: str = ""
+    usage_chat_session_id: str | None = Field(
+        default=None, description="The AutoPilot chat the usage came from"
+    )
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
         "other"
     )

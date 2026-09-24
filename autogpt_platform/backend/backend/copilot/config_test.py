@@ -601,7 +601,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
-        assert cfg.fast_advanced_model == "anthropic/claude-opus-5"
+        assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
 
 
 class TestLocalRequirementsValidator:

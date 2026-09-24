@@ -88,7 +88,7 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
@@ -115,13 +115,13 @@ _webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
-def launch_darkly_context():
+def feature_flag_context():
     if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_launchdarkly()
+        initialize_feature_flags()
         try:
             yield
         finally:
-            shutdown_launchdarkly()
+            shutdown_feature_flags()
     else:
         yield
 
@@ -188,7 +188,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with launch_darkly_context():
+    with feature_flag_context():
         yield
 
     try:

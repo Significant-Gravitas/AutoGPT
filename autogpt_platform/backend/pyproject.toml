@@ -93,7 +93,7 @@ setuptools = "^80.9.0"
 gcloud-aio-storage = "^9.5.0"
 pandas = "^2.3.1"
 firecrawl-py = "^4.3.6"
-exa-py = "^1.14.20"
+exa-py = ">=1.14.20,<3.0.0"
 croniter = "^6.0.0"
 stagehand = "^3.4.0"
 gravitas-md2gdocs = "^0.1.0"
@@ -206,7 +206,11 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+# The floor the code needs, not what CI or the image run: ExceptionGroup and
+# TaskGroup are 3.11 builtins and py310 flagged them as undefined names. Kept
+# at the minimum so ruff still reports 3.12+ syntax, which would break the
+# 3.11 leg of the CI matrix.
+target-version = "py311"
 extend-exclude = ["test/fixtures"]
 # `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
 # the vendored fixture it walks into.

@@ -21,6 +21,7 @@ def sample_db_review():
     mock_review.nodeExecId = "test_node_123"
     mock_review.userId = "test-user-123"
     mock_review.graphExecId = "test_graph_exec_456"
+    mock_review.chatSessionId = None
     mock_review.graphId = "test_graph_789"
     mock_review.graphVersion = 1
     mock_review.payload = {"data": "test payload"}
@@ -218,6 +219,7 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.nodeExecId = "test_node_123"
     updated_review.userId = "test-user-123"
     updated_review.graphExecId = "test_graph_exec_456"
+    updated_review.chatSessionId = None
     updated_review.graphId = "test_graph_789"
     updated_review.graphVersion = 1
     updated_review.payload = {"data": "modified"}
@@ -316,6 +318,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.nodeExecId = "test_node_456"
     second_review.userId = "test-user-123"
     second_review.graphExecId = "test_graph_exec_456"
+    second_review.chatSessionId = None
     second_review.graphId = "test_graph_789"
     second_review.graphVersion = 1
     second_review.payload = {"data": "original"}
@@ -340,6 +343,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.nodeExecId = "test_node_123"
     approved_review.userId = "test-user-123"
     approved_review.graphExecId = "test_graph_exec_456"
+    approved_review.chatSessionId = None
     approved_review.graphId = "test_graph_789"
     approved_review.graphVersion = 1
     approved_review.payload = {"data": "modified"}
@@ -357,6 +361,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.nodeExecId = "test_node_456"
     rejected_review.userId = "test-user-123"
     rejected_review.graphExecId = "test_graph_exec_456"
+    rejected_review.chatSessionId = None
     rejected_review.graphId = "test_graph_789"
     rejected_review.graphVersion = 1
     rejected_review.payload = {"data": "original"}
@@ -396,3 +401,55 @@ async def test_process_all_reviews_mixed_approval_rejection(
     assert "test_node_456" in result
     assert result["test_node_123"].node_id == "test_node_def_789"
     assert result["test_node_456"].node_id == "test_node_def_789"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_chat_with_legacy_and_new_rows_syncs_one_alert(
+    mocker: pytest_mock.MockFixture,
+):
+    def row(node_exec_id, graph_exec_id, graph_id, session_id):
+        r = Mock()
+        r.nodeExecId = node_exec_id
+        r.userId = "u1"
+        r.graphExecId = graph_exec_id
+        r.graphId = graph_id
+        r.graphVersion = 1 if graph_id else None
+        r.chatSessionId = session_id
+        r.payload = {}
+        r.instructions = "Review"
+        r.editable = True
+        r.status = ReviewStatus.WAITING
+        r.reviewMessage = None
+        r.wasEdited = False
+        r.processed = False
+        r.createdAt = r.updatedAt = r.reviewedAt = datetime.datetime.now(
+            datetime.timezone.utc
+        )
+        return r
+
+    rows = [
+        row("copilot-node-a:1", "copilot-session-s1", "copilot-session-s1", None),
+        row("copilot-node-b:2", None, None, "s1"),
+        row("copilot-node-c:3", "copilot-session-s1", "copilot-session-s1", "s1"),
+        row("node-exec-g", "ge-1", "g1", None),
+    ]
+    mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma.return_value.find_many = AsyncMock(return_value=rows)
+    mock_prisma.return_value.update = AsyncMock()
+    mocker.patch(
+        "backend.data.human_review.asyncio.gather", new=AsyncMock(return_value=[])
+    )
+    sync = mocker.patch(
+        "backend.data.human_review._sync_awaiting_review_safely", new=AsyncMock()
+    )
+
+    await process_all_reviews_for_execution(
+        user_id="u1",
+        review_decisions={
+            r.nodeExecId: (ReviewStatus.APPROVED, None, None) for r in rows
+        },
+    )
+
+    calls = [c.args for c in sync.await_args_list]
+    assert len(calls) == 2
+    assert set(calls) == {("u1", None, "s1"), ("u1", "g1", None)}

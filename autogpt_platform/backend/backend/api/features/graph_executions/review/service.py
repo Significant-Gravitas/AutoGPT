@@ -12,10 +12,7 @@ from fastapi import HTTPException, status
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
-from backend.copilot.constants import (
-    is_copilot_synthetic_id,
-    parse_node_id_from_exec_id,
-)
+from backend.copilot.constants import parse_node_id_from_exec_id
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -42,7 +39,9 @@ logger = logging.getLogger(__name__)
 class ReviewOutcome(BaseModel):
     """What processing a batch of review decisions did."""
 
-    graph_exec_id: str
+    graph_exec_id: Optional[str] = Field(
+        description="The run the reviews belonged to; None for an AutoPilot chat's"
+    )
     approved_count: int
     rejected_count: int
     auto_approval_failed_count: int = Field(
@@ -80,9 +79,8 @@ async def process_reviews(
             detail=f"Review(s) not found: {', '.join(sorted(missing_ids))}",
         )
 
-    graph_exec_id = _one_execution(reviews_map.values(), graph_exec_id)
-    is_copilot = is_copilot_synthetic_id(graph_exec_id)
-    if not is_copilot:
+    graph_exec_id = _one_scope(reviews_map.values(), graph_exec_id)
+    if graph_exec_id is not None:
         await _assert_awaiting_review(user_id, graph_exec_id)
 
     # An auto-approved review takes the original data: approving future runs of
@@ -104,11 +102,10 @@ async def process_reviews(
         {r.node_exec_id: r.auto_approve_future for r in reviews},
         updated_reviews,
         graph_exec_id,
-        is_copilot,
     )
 
-    # CoPilot sessions resume when the LLM retries run_block, not from here.
-    if not is_copilot and updated_reviews:
+    # A chat resumes when the LLM calls resume_capability, not from here.
+    if graph_exec_id is not None and updated_reviews:
         await _resume_if_nothing_pending(
             user_id,
             graph_exec_id,
@@ -129,24 +126,23 @@ async def process_reviews(
     )
 
 
-def _one_execution(reviews, graph_exec_id: Optional[str]) -> str:
-    """The single run every decision in the request belongs to."""
-    graph_exec_ids = {review.graph_exec_id for review in reviews}
+def _one_scope(reviews, graph_exec_id: Optional[str]) -> Optional[str]:
+    """The single run every decision belongs to, or None for one chat's reviews."""
+    scopes = {(review.graph_exec_id, review.session_id) for review in reviews}
     if graph_exec_id is not None:
-        outside = graph_exec_ids - {graph_exec_id}
-        if outside:
+        if {g for g, _ in scopes} != {graph_exec_id}:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Review(s) not found for run {graph_exec_id}",
             )
         return graph_exec_id
 
-    if len(graph_exec_ids) > 1:
+    if len(scopes) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
-    return next(iter(graph_exec_ids))
+    return next(iter(scopes))[0]
 
 
 async def _assert_awaiting_review(user_id: str, graph_exec_id: str) -> None:
@@ -175,8 +171,7 @@ async def _record_auto_approvals(
     user_id: str,
     requested: dict[str, bool],
     updated_reviews: dict[str, Any],
-    graph_exec_id: str,
-    is_copilot: bool,
+    graph_exec_id: Optional[str],
 ) -> int:
     """Save one auto-approval per node, returning how many could not be saved."""
     node_exec_ids = [
@@ -184,7 +179,7 @@ async def _record_auto_approvals(
         for node_exec_id, review in updated_reviews.items()
         if review.status == ReviewStatus.APPROVED and requested.get(node_exec_id, False)
     ]
-    node_id_map = await _resolve_node_ids(node_exec_ids, graph_exec_id, is_copilot)
+    node_id_map = await _resolve_node_ids(node_exec_ids, graph_exec_id)
 
     # Deduplicate by node_id — concurrent reviews of one node would otherwise race.
     by_node: dict[str, Any] = {}
@@ -212,6 +207,7 @@ async def _create_auto_approval(user_id: str, node_id: str, review) -> bool:
             graph_version=review.graph_version,
             node_id=node_id,
             payload=review.payload,
+            chat_session_id=review.session_id,
         )
         return True
     except Exception as e:
@@ -222,15 +218,15 @@ async def _create_auto_approval(user_id: str, node_id: str, review) -> bool:
 
 
 async def _resolve_node_ids(
-    node_exec_ids: list[str], graph_exec_id: str, is_copilot: bool
+    node_exec_ids: list[str], graph_exec_id: Optional[str]
 ) -> dict[str, str]:
     """Resolve node_exec_id -> node_id for auto-approval records.
 
-    CoPilot synthetic IDs encode node_id in the format "{node_id}:{random}".
+    A chat review's id encodes its node id as "{node_id}:{random}".
     """
     if not node_exec_ids:
         return {}
-    if is_copilot:
+    if graph_exec_id is None:
         return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
 
     node_execs = await get_node_executions(
@@ -254,6 +250,7 @@ async def _resume_if_nothing_pending(
         return
 
     first_review = next(iter(updated_reviews.values()))
+    assert first_review.graph_id and first_review.graph_version is not None
     try:
         user = await get_user_by_id(user_id)
         settings = await get_graph_settings(

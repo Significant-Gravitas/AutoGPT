@@ -4,9 +4,10 @@ from typing import List
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 
-from backend.copilot.constants import is_copilot_synthetic_id
+from backend.copilot.constants import legacy_chat_session_id
 from backend.data.execution import get_graph_execution_meta
 from backend.data.human_review import (
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
 )
@@ -96,19 +97,42 @@ async def list_pending_reviews_for_execution(
         Reviews with invalid status are excluded with warning logs.
     """
 
-    # Verify user owns the graph execution before returning reviews
-    # (CoPilot synthetic IDs don't have graph execution records)
-    if not is_copilot_synthetic_id(graph_exec_id):
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    # Clients built before chat reviews had their own route ask for a chat
+    # under its old synthetic id.
+    if session_id := legacy_chat_session_id(graph_exec_id):
+        return await get_pending_reviews_for_chat_session(session_id, user_id)
+
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
         )
-        if not graph_exec:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
+
+
+@router.get(
+    "/session/{chat_session_id}",
+    summary="Get Pending Reviews for Chat Session",
+    response_model=List[PendingHumanReviewModel],
+    responses={
+        200: {"description": "List of pending reviews for the chat session"},
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_pending_reviews_for_chat_session(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> List[PendingHumanReviewModel]:
+    """Get the reviews an AutoPilot chat is waiting on, oldest first.
+
+    Only the caller's own reviews are returned, so another user's chat session
+    id yields an empty list.
+    """
+    return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
 @router.post("/action", response_model=ReviewResponse)

@@ -79,6 +79,7 @@ async def list_reviews(
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,
+        graph_runs_only=True,
     )
 
     return page.paged(
