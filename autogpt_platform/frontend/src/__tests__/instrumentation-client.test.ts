@@ -20,7 +20,7 @@ vi.mock("@sentry/nextjs", () => {
     extraErrorDataIntegration: stubIntegration("ExtraErrorData"),
     browserProfilingIntegration: stubIntegration("BrowserProfiling"),
     httpClientIntegration: stubIntegration("HttpClient"),
-    launchDarklyIntegration: stubIntegration("LaunchDarkly"),
+    featureFlagsIntegration: stubIntegration("FeatureFlags"),
     replayIntegration: stubIntegration("Replay"),
     replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),

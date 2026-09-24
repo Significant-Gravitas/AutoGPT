@@ -91,7 +91,7 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart());
 
     expect(screen.getByText("Ada")).toBeDefined();
-    expect(screen.getByText("Social media")).toBeDefined();
+    expect(screen.getByText("Social Media Manager")).toBeDefined();
     expect(screen.queryByText("Social & Content Repurposing")).toBeNull();
     expect(
       screen.getByText("Hi, I'm Ada — good to be working with you."),
