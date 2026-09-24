@@ -1,8 +1,11 @@
+import {
+  expertPastel,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getExpertAccent } from "../helpers";
 import {
@@ -21,6 +24,7 @@ interface Props {
  *  shared and opened directly. */
 export function ExpertCard({ expert, isHired }: Props) {
   const accent = getExpertAccent(expert.role);
+  const topicColor = getExpertTopicHex(expert.role, expert.categories);
   const skills = expert.bundled_skills ?? [];
 
   return (
@@ -29,16 +33,17 @@ export function ExpertCard({ expert, isHired }: Props) {
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-28 opacity-60 transition-opacity duration-200 group-hover:opacity-100",
-          accent.wash,
-        )}
+        className="pointer-events-none absolute inset-x-0 top-0 h-28 opacity-60 transition-opacity duration-200 group-hover:opacity-100"
+        style={{
+          background: `linear-gradient(to bottom, ${expertPastel(topicColor)}, transparent)`,
+        }}
       />
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={88}
+          backgroundColor={topicColor}
         />
 
         <div>

@@ -43,6 +43,8 @@ test("generates a preview and only saves the selected PNG after confirmation", a
       base: "compact",
       tilt: "level",
       inlay: "sweep",
+      accent_placement: "body",
+      accent_count: "one",
       expression: "friendly",
     },
   ]);
@@ -180,6 +182,8 @@ test.each([
       base: "compact",
       tilt: "level",
       inlay: "sweep",
+      accent_placement: "body",
+      accent_count: "one",
       expression: "friendly",
     },
   ]);

@@ -15,6 +15,7 @@ from backend.api.features.experts.avatar_catalog import (
     AvatarColor,
 )
 from backend.api.features.experts.avatar_design import (
+    ACCENT_PLACEMENTS,
     BASES,
     INLAYS,
     SHAPES,
@@ -31,7 +32,9 @@ class ExpertAvatarRequest(BaseModel):
     shape: AvatarShape = "pebble"
     base: Literal["compact", "wide", "tall"] = "compact"
     tilt: Literal["level", "left", "right"] = "level"
-    inlay: Literal["sweep", "pool", "curl"] = "sweep"
+    inlay: Literal["sweep", "pool", "curl", "patch", "cap", "teardrop"] = "sweep"
+    accent_placement: Literal["body", "head", "both"] = "body"
+    accent_count: Literal["one", "two", "three"] = "one"
     expression: Literal["friendly", "curious", "focused", "pleased"] = "friendly"
 
 
@@ -77,13 +80,16 @@ def avatar_prompt(request: ExpertAvatarRequest) -> str:
         "Replace its color, base, tilt and inlay with the choices below. "
         f"Main mineral hue: {color.label} {color.hex} across head and base. "
         f"Head outline: {SHAPES[request.shape]}. Base: {BASES[request.base]}. "
-        f"Tilt: {TILTS[request.tilt]}. Cream path: {INLAYS[request.inlay]}. "
+        f"Tilt: {TILTS[request.tilt]}. Accent shape: {INLAYS[request.inlay]}. "
+        f"Accent placement: {ACCENT_PLACEMENTS[request.accent_placement]}. "
+        f"Use {request.accent_count} separate cream accents on each selected part. "
         f"Face: {EXPRESSIONS[request.expression]}. "
         "Exactly two irregular masses: head 55–65% of total height, touching one "
         "stable base. Smooth matte clay, very fine grain, rounded corners. "
-        "One small broad flowing cream #EAE2D5 inlay entirely on the LOWER BASE, "
-        "8–20% of visible area, rounded boundaries with a narrow recessed material groove. "
-        "Head stays wholly main color. No cream head patches, sharp wedges, thin piping, "
+        "Cream #EAE2D5 accents occupy 8–25% of the visible figure in total, "
+        "with rounded boundaries and a narrow recessed material groove. "
+        "Replace the reference markings with the specified shape, count and placement. "
+        "Keep the face clear and the main mineral hue dominant. No sharp wedges, thin piping, "
         "black collar, open gap, limbs, neck, octopus anatomy, purple, lavender, props, "
         "clothes, accessories, logos or text. Small charcoal eyes, brows and mouth only. "
         "No teeth, blush, highlights or theatrical reactions. Soft upper-left studio light, "

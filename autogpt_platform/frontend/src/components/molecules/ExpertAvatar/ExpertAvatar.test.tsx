@@ -51,3 +51,17 @@ describe("ExpertAvatar saved appearance", () => {
     expect(container.querySelector('[src*="autogpt-characters"]')).toBeNull();
   });
 });
+
+test("uses transparent managed artwork on a topic background", () => {
+  render(
+    <ExpertAvatar
+      name="Mina"
+      avatarUrl="/autogpt-characters/v1.1/expert-mina/neutral/128.webp"
+      backgroundColor="#A5B09A"
+      size={88}
+    />,
+  );
+  expect(screen.getByRole("img").getAttribute("src")).toContain(
+    "/experts/transparent/mina.webp",
+  );
+});

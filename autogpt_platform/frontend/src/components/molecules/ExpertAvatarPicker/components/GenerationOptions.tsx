@@ -1,3 +1,5 @@
+import { ExpertAvatarRequestAccentPlacement } from "@/app/api/__generated__/models/expertAvatarRequestAccentPlacement";
+import { ExpertAvatarRequestAccentCount } from "@/app/api/__generated__/models/expertAvatarRequestAccentCount";
 import { Select } from "@/components/atoms/Select/Select";
 import { ExpertAvatarRequestShape } from "@/app/api/__generated__/models/expertAvatarRequestShape";
 import { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
@@ -14,6 +16,10 @@ interface Props {
   base: ExpertAvatarRequestBase;
   tilt: ExpertAvatarRequestTilt;
   inlay: ExpertAvatarRequestInlay;
+  accentPlacement: ExpertAvatarRequestAccentPlacement;
+  accentCount: ExpertAvatarRequestAccentCount;
+  setAccentPlacement: (value: ExpertAvatarRequestAccentPlacement) => void;
+  setAccentCount: (value: ExpertAvatarRequestAccentCount) => void;
   isBusy: boolean;
   setShape: (value: ExpertAvatarRequestShape) => void;
   setExpression: (value: ExpertAvatarRequestExpression) => void;
@@ -57,10 +63,24 @@ export function GenerationOptions(props: Props) {
         disabled={props.isBusy}
       />
       <Choice
-        label="Cream inlay"
+        label="Accent shape"
         value={props.inlay}
         values={Object.values(ExpertAvatarRequestInlay)}
         onChange={props.setInlay}
+        disabled={props.isBusy}
+      />
+      <Choice
+        label="Accent placement"
+        value={props.accentPlacement}
+        values={Object.values(ExpertAvatarRequestAccentPlacement)}
+        onChange={props.setAccentPlacement}
+        disabled={props.isBusy}
+      />
+      <Choice
+        label="Accents per part"
+        value={props.accentCount}
+        values={Object.values(ExpertAvatarRequestAccentCount)}
+        onChange={props.setAccentCount}
         disabled={props.isBusy}
       />
       <Choice

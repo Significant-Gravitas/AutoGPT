@@ -1,3 +1,5 @@
+import type { ExpertAvatarRequestAccentPlacement } from "@/app/api/__generated__/models/expertAvatarRequestAccentPlacement";
+import type { ExpertAvatarRequestAccentCount } from "@/app/api/__generated__/models/expertAvatarRequestAccentCount";
 import { uploadSubmissionMediaDirect } from "@/lib/direct-upload";
 import { useMutation } from "@tanstack/react-query";
 import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
@@ -55,6 +57,10 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
   const [base, setBase] = useState<ExpertAvatarRequestBase>("compact");
   const [tilt, setTilt] = useState<ExpertAvatarRequestTilt>("level");
   const [inlay, setInlay] = useState<ExpertAvatarRequestInlay>("sweep");
+  const [accentPlacement, setAccentPlacement] =
+    useState<ExpertAvatarRequestAccentPlacement>("body");
+  const [accentCount, setAccentCount] =
+    useState<ExpertAvatarRequestAccentCount>("one");
   const [shape, setShape] = useState<ExpertAvatarRequestShape>("pebble");
   const [expression, setExpression] =
     useState<ExpertAvatarRequestExpression>("friendly");
@@ -134,6 +140,8 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
       base,
       tilt,
       inlay,
+      accent_placement: accentPlacement,
+      accent_count: accentCount,
       expression,
     });
   }
@@ -154,6 +162,10 @@ export function useExpertAvatarPicker({ avatarUrl, color, onPick }: Args) {
     setTilt,
     inlay,
     setInlay,
+    accentPlacement,
+    setAccentPlacement,
+    accentCount,
+    setAccentCount,
     expression,
     setExpression,
     selectPreset,

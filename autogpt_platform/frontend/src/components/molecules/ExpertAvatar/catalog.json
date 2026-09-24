@@ -1,5 +1,5 @@
 {
-  "revision": 2,
+  "revision": 3,
   "avatars": [
     {
       "id": "marketing",
@@ -68,22 +68,22 @@
   ],
   "legacy": {
     "/experts/maria.svg": "/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
-    "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg": "/experts/clay/v2/jules.png",
+    "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg": "/experts/clay/v3/jules.png",
     "/avatars/notion/15-10-3-12-4-6-22-0-0-0.indigo.svg": "/experts/clay/v2/nadia.png",
-    "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg": "/experts/clay/v2/remy.png",
+    "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg": "/experts/clay/v3/remy.png",
     "/avatars/notion/10-8-2-6-1-0-51-9-0-0.violet.svg": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
     "/avatars/notion/12-13-6-13-10-0-19-0-0-0.lime.svg": "/experts/clay/v2/theo.png",
-    "/avatars/notion/14-1-3-4-9-2-51-0-0-0.red.svg": "/experts/clay/v2/quinn.png",
+    "/avatars/notion/14-1-3-4-9-2-51-0-0-0.red.svg": "/experts/clay/v3/quinn.png",
     "/experts/max.svg": "/experts/clay/v2/max.png",
     "/avatars/notion/12-5-0-1-13-0-29-0-0-0.green.svg": "/experts/clay/v2/devon.png",
     "/avatars/notion/11-3-7-5-7-7-57-0-0-0.emerald.svg": "/experts/clay/v2/riley.png",
     "/avatars/notion/12-9-10-2-11-0-1-0-0-0.yellow.svg": "/experts/clay/v2/jordan.png",
     "/experts/frankie.svg": "/experts/clay/v2/frankie.png",
-    "/avatars/notion/9-3-14-3-15-10-36-0-0-0.teal.svg": "/experts/clay/v2/harper.png",
-    "/avatars/notion/1-7-3-5-2-1-11-0-0-0.amber.svg": "/experts/clay/v2/vera.png",
+    "/avatars/notion/9-3-14-3-15-10-36-0-0-0.teal.svg": "/experts/clay/v3/harper.png",
+    "/avatars/notion/1-7-3-5-2-1-11-0-0-0.amber.svg": "/experts/clay/v3/vera.png",
     "/avatars/notion/15-11-17-8-6-8-30-13-0-0.indigo.svg": "/experts/clay/v2/ellis.png",
     "/avatars/notion/12-6-14-7-11-12-36-0-0-14.emerald.svg": "/experts/clay/v2/robin.png",
-    "/avatars/notion/9-3-17-5-14-0-51-4-6-0.violet.svg": "/experts/clay/v2/anika.png",
+    "/avatars/notion/9-3-17-5-14-0-51-4-6-0.violet.svg": "/experts/clay/v3/anika.png",
     "/avatars/notion/3-9-11-6-13-7-28-9-8-5.sky.svg": "/experts/clay/v2/alex.png",
     "/avatars/notion/4-2-8-9-12-3-17-6-5-11.amber.svg": "/experts/clay/v2/daniel.png",
     "/avatars/notion/9-3-17-5-12-14-48-0-0-0.teal.svg": "/experts/clay/v2/sofia.png",
@@ -92,12 +92,12 @@
     "/avatars/notion/13-2-5-3-7-0-0-0-0-0.orange.svg": "/experts/clay/v2/zara.png",
     "/avatars/notion/13-1-8-1-9-0-49-11-0-0.orange.svg": "/experts/clay/v2/sasha.png",
     "/avatars/notion/2-12-18-1-15-2-55-11-0-0.blue.svg": "/experts/clay/v2/priya.png",
-    "/avatars/notion/11-7-17-4-4-0-30-0-0-0.amber.svg": "/experts/clay/v2/marco.png",
+    "/avatars/notion/11-7-17-4-4-0-30-0-0-0.amber.svg": "/experts/clay/v3/marco.png",
     "/avatars/notion/2-2-15-8-2-0-27-0-0-0.sky.svg": "/experts/clay/v2/noor.png",
     "/avatars/notion/12-6-14-7-11-3-36-0-0-0.emerald.svg": "/experts/clay/v2/casey.png",
     "/avatars/notion/4-1-19-1-11-0-34-5-0-0.teal.svg": "/experts/clay/v2/ines.png",
     "/avatars/notion/0-13-13-2-0-0-36-0-0-0.rose.svg": "/experts/clay/v2/omar.png",
-    "/avatars/notion/1-11-13-6-2-3-21-0-0-0.cyan.svg": "/experts/clay/v2/lena.png",
+    "/avatars/notion/1-11-13-6-2-3-21-0-0-0.cyan.svg": "/experts/clay/v3/lena.png",
     "/avatars/notion/6-0-15-1-9-0-58-11-0-0.violet.svg": "/experts/clay/v2/kai.png"
   },
   "colors": [
@@ -243,9 +243,10 @@
     {
       "id": "jules",
       "name": "Jules",
-      "url": "/experts/clay/v2/jules.png",
+      "url": "/experts/clay/v3/jules.png",
       "color_id": "terracotta",
-      "previous_url": "/experts/clay/v1/marketing.png"
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": ["/experts/clay/v2/jules.png"]
     },
     {
       "id": "nadia",
@@ -257,9 +258,10 @@
     {
       "id": "remy",
       "name": "Remy",
-      "url": "/experts/clay/v2/remy.png",
+      "url": "/experts/clay/v3/remy.png",
       "color_id": "seaglass",
-      "previous_url": "/experts/clay/v1/marketing.png"
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": ["/experts/clay/v2/remy.png"]
     },
     {
       "id": "mina",
@@ -278,9 +280,10 @@
     {
       "id": "quinn",
       "name": "Quinn",
-      "url": "/experts/clay/v2/quinn.png",
+      "url": "/experts/clay/v3/quinn.png",
       "color_id": "olive",
-      "previous_url": "/experts/clay/v1/research.png"
+      "previous_url": "/experts/clay/v1/research.png",
+      "previous_urls": ["/experts/clay/v2/quinn.png"]
     },
     {
       "id": "max",
@@ -320,16 +323,18 @@
     {
       "id": "harper",
       "name": "Harper",
-      "url": "/experts/clay/v2/harper.png",
+      "url": "/experts/clay/v3/harper.png",
       "color_id": "denim",
-      "previous_url": "/experts/clay/v1/operations.png"
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": ["/experts/clay/v2/harper.png"]
     },
     {
       "id": "vera",
       "name": "Vera",
-      "url": "/experts/clay/v2/vera.png",
+      "url": "/experts/clay/v3/vera.png",
       "color_id": "pine",
-      "previous_url": "/experts/clay/v1/operations.png"
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": ["/experts/clay/v2/vera.png"]
     },
     {
       "id": "ellis",
@@ -348,9 +353,10 @@
     {
       "id": "anika",
       "name": "Anika",
-      "url": "/experts/clay/v2/anika.png",
+      "url": "/experts/clay/v3/anika.png",
       "color_id": "apricot",
-      "previous_url": "/experts/clay/v1/sales.png"
+      "previous_url": "/experts/clay/v1/sales.png",
+      "previous_urls": ["/experts/clay/v2/anika.png"]
     },
     {
       "id": "alex",
@@ -411,9 +417,10 @@
     {
       "id": "marco",
       "name": "Marco",
-      "url": "/experts/clay/v2/marco.png",
+      "url": "/experts/clay/v3/marco.png",
       "color_id": "rust",
-      "previous_url": "/experts/clay/v1/marketing.png"
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": ["/experts/clay/v2/marco.png"]
     },
     {
       "id": "noor",
@@ -446,9 +453,10 @@
     {
       "id": "lena",
       "name": "Lena",
-      "url": "/experts/clay/v2/lena.png",
+      "url": "/experts/clay/v3/lena.png",
       "color_id": "stone",
-      "previous_url": "/experts/clay/v1/operations.png"
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": ["/experts/clay/v2/lena.png"]
     },
     {
       "id": "kai",

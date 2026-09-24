@@ -38,6 +38,10 @@ export function ExpertAvatarPicker({ name, ...props }: Props) {
         setTilt={picker.setTilt}
         inlay={picker.inlay}
         setInlay={picker.setInlay}
+        accentPlacement={picker.accentPlacement}
+        setAccentPlacement={picker.setAccentPlacement}
+        accentCount={picker.accentCount}
+        setAccentCount={picker.setAccentCount}
         shape={picker.shape}
         expression={picker.expression}
         isBusy={picker.isBusy}

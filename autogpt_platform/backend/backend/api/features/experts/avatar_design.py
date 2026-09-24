@@ -40,7 +40,15 @@ TILTS = {
     "right": "head tilted gently right about ten degrees while touching the base",
 }
 INLAYS = {
-    "sweep": "one broad flowing S-shaped cream sweep across the lower base, no straight edges",
-    "pool": "one rounded cream pool rising from a lower side of the base, no stripe",
-    "curl": "one broad cream curl from a lower corner of the base, no thin piping",
+    "sweep": "broad flowing S-shaped cream sweep with rounded ends",
+    "pool": "rounded cream pool with an uneven organic boundary",
+    "curl": "broad cream curl, no thin piping",
+    "patch": "rounded irregular patch, like a smooth pebble inset",
+    "cap": "rounded cream cap following the outer top edge",
+    "teardrop": "soft cream teardrop with a blunt rounded tip",
+}
+ACCENT_PLACEMENTS = {
+    "body": "BODY ONLY; keep the head entirely main color",
+    "head": "HEAD ONLY; keep the body entirely main color",
+    "both": "BOTH head and body; distribute accents across both parts",
 }

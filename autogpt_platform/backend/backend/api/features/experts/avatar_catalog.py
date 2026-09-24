@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 AvatarCategory = Literal[
     "marketing",
@@ -52,6 +52,7 @@ class AvatarColorOption(BaseModel):
 
 
 class BuiltinAvatar(BaseModel):
+    previous_urls: list[str] = Field(default_factory=list)
     previous_url: str
     id: str
     name: str
@@ -96,6 +97,9 @@ def resolve_avatar_url(url: str | None) -> str | None:
 
 def resolve_builtin_avatar_url(name: str, url: str | None) -> str | None:
     avatar = next((a for a in CATALOG.identities if a.name == name), None)
-    if avatar and (url == avatar.previous_url or resolve_avatar_url(url) == avatar.url):
+    if avatar and (
+        url in [avatar.previous_url, *avatar.previous_urls]
+        or resolve_avatar_url(url) == avatar.url
+    ):
         return avatar.url
     return url

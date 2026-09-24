@@ -1,3 +1,4 @@
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
@@ -17,6 +18,7 @@ export function ExpertPageHeader({ expert, actions }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           color={expert.color}
+          backgroundColor={getExpertTopicHex(expert.role, expert.categories)}
           size={96}
         />
         <div className="min-w-0 flex-1">

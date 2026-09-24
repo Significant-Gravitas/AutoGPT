@@ -1,3 +1,4 @@
+import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
 import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -42,6 +43,11 @@ export function ExpertCover({ className, color, status, art }: Props) {
 
   return (
     <div
+      style={
+        color?.startsWith("#")
+          ? { backgroundColor: expertPastel(color) }
+          : undefined
+      }
       className={cn(
         "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
         coverClassFor(color ?? null),

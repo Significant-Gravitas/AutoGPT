@@ -77,3 +77,20 @@ def test_builtin_assets_are_distinct_and_palette_matches_request_schema():
                 assert image.getchannel("A").getextrema() == (0, 255)
                 assert image.size == (512, 512)
     assert len(hashes) == len(CATALOG.identities)
+
+
+def test_accent_refresh_handles_each_known_default_and_preserves_other_choices():
+    from backend.api.features.experts.avatar_catalog import (
+        CATALOG,
+        resolve_builtin_avatar_url,
+    )
+
+    for avatar in CATALOG.identities:
+        for old in [avatar.previous_url, *avatar.previous_urls]:
+            assert resolve_builtin_avatar_url(avatar.name, old) == avatar.url
+        for custom in [
+            "https://cdn.test/custom.png",
+            "/experts/clay/v1/development.png",
+        ]:
+            if custom != avatar.previous_url:
+                assert resolve_builtin_avatar_url(avatar.name, custom) == custom

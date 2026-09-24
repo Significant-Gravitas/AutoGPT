@@ -40,8 +40,16 @@ test("sends shape and expression choices, then polls until the preview is ready"
   await userEvent.click(screen.getByRole("option", { name: "Wide" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Tilt" }));
   await userEvent.click(screen.getByRole("option", { name: "Left" }));
-  await userEvent.click(screen.getByRole("combobox", { name: "Cream inlay" }));
-  await userEvent.click(screen.getByRole("option", { name: "Curl" }));
+  await userEvent.click(screen.getByRole("combobox", { name: "Accent shape" }));
+  await userEvent.click(screen.getByRole("option", { name: "Patch" }));
+  await userEvent.click(
+    screen.getByRole("combobox", { name: "Accent placement" }),
+  );
+  await userEvent.click(screen.getByRole("option", { name: "Head" }));
+  await userEvent.click(
+    screen.getByRole("combobox", { name: "Accents per part" }),
+  );
+  await userEvent.click(screen.getByRole("option", { name: "Three" }));
   await userEvent.click(screen.getByRole("combobox", { name: "Expression" }));
   await userEvent.click(screen.getByRole("option", { name: "Focused" }));
   await userEvent.click(
@@ -56,7 +64,9 @@ test("sends shape and expression choices, then polls until the preview is ready"
       shape: "bean",
       base: "wide",
       tilt: "left",
-      inlay: "curl",
+      inlay: "patch",
+      accent_placement: "head",
+      accent_count: "three",
       expression: "focused",
     },
   ]);

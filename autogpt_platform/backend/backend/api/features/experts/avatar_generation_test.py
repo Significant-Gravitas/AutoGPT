@@ -35,7 +35,7 @@ def test_generation_accepts_only_brand_choices():
     )
     assert "#A5B09A" in prompt
     assert "one raised brow" in prompt
-    assert "LOWER BASE" in prompt
+    assert "BODY ONLY" in prompt
 
 
 def test_png_validation_keeps_alpha_and_rejects_wrong_outputs():
@@ -212,3 +212,20 @@ def test_every_shape_has_a_distinct_transparent_reference():
             assert image.size == (256, 256)
             assert image.mode == "RGBA"
             assert image.getchannel("A").getextrema() == (0, 255)
+
+
+def test_accents_can_move_to_head_and_repeat():
+    prompt = avatar_prompt(
+        ExpertAvatarRequest.model_validate(
+            {
+                "accent_placement": "head",
+                "accent_count": "three",
+                "inlay": "patch",
+            }
+        )
+    )
+    assert "HEAD ONLY" in prompt
+    assert "three separate" in prompt
+    assert "rounded irregular patch" in prompt
+    assert "Head stays wholly main color" not in prompt
+    assert "LOWER BASE" not in prompt

@@ -21865,9 +21865,21 @@
           },
           "inlay": {
             "type": "string",
-            "enum": ["sweep", "pool", "curl"],
+            "enum": ["sweep", "pool", "curl", "patch", "cap", "teardrop"],
             "title": "Inlay",
             "default": "sweep"
+          },
+          "accent_placement": {
+            "type": "string",
+            "enum": ["body", "head", "both"],
+            "title": "Accent Placement",
+            "default": "body"
+          },
+          "accent_count": {
+            "type": "string",
+            "enum": ["one", "two", "three"],
+            "title": "Accent Count",
+            "default": "one"
           },
           "expression": {
             "type": "string",

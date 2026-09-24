@@ -5,6 +5,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
+import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
 import { getManagedAvatar, resolveExpertAvatarUrl } from "./helpers";
 
@@ -17,6 +18,7 @@ interface Props {
   status?: AvatarStatus;
   size?: number;
   className?: string;
+  backgroundColor?: string;
 }
 
 export function ExpertAvatar({
@@ -25,10 +27,11 @@ export function ExpertAvatar({
   status = "idle",
   size = 40,
   className,
+  backgroundColor,
 }: Props) {
   const src = resolveExpertAvatarUrl(avatarUrl);
   const managed = getManagedAvatar(src, size);
-  if (managed) {
+  if (managed && !backgroundColor) {
     return (
       <ManagedExpertImage
         key={`${managed.base}:${size}`}
@@ -43,12 +46,26 @@ export function ExpertAvatar({
   }
   return (
     <span
-      style={{ width: size, height: size }}
-      className={cn("relative inline-flex shrink-0", className)}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: backgroundColor
+          ? expertPastel(backgroundColor)
+          : undefined,
+      }}
+      className={cn(
+        "relative inline-flex shrink-0",
+        backgroundColor && "rounded-full",
+        className,
+      )}
     >
-      <Avatar className="size-full rounded-none">
+      <Avatar className="size-full rounded-[inherit]">
         <AvatarImage
-          src={src}
+          src={
+            managed && backgroundColor
+              ? `/experts/transparent/${managed.assetID.replace("expert-", "")}.webp`
+              : src
+          }
           alt={name ?? "Expert"}
           width={size}
           height={size}

@@ -1,5 +1,7 @@
 "use client";
 
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
+
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertAvatarPicker } from "@/components/molecules/ExpertAvatarPicker/ExpertAvatarPicker";
@@ -26,6 +28,7 @@ export function ExpertAvatarButton({ expert }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
+          backgroundColor={getExpertTopicHex(expert.role, expert.categories)}
         />
       </button>
       <Dialog

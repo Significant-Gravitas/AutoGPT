@@ -15,11 +15,7 @@ import {
   AUTOPILOT_PILL_CLASS,
   AUTOPILOT_ROLE,
 } from "../helpers";
-import {
-  AUTOPILOT_COVER_COLOR,
-  AUTOPILOT_COVER_URL,
-  AUTOPILOT_NAME,
-} from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -46,16 +42,12 @@ export function AutopilotCard({
         aria-label={`View ${AUTOPILOT_NAME}`}
         className="flex flex-1 flex-col items-start p-2 pb-4"
       >
-        <ExpertCover
-          color={AUTOPILOT_COVER_COLOR}
-          status="built-in"
-          art={AUTOPILOT_COVER_URL}
-        />
+        <ExpertCover color="#B6A4C8" status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
           <AutopilotAvatar
             size={88}
-            transparent={false}
+            backgroundColor="#B6A4C8"
             className="relative z-10 -mt-12 ml-1 rounded-full"
           />
         </div>
