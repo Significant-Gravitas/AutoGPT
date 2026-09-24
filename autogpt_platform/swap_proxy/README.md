@@ -50,6 +50,18 @@ users at once.
    (`refused-message`), rather than passed on unscrubbed: a value can come back
    in a response that did not ask for it, from wherever it is stored at the
    provider.
+   The scrub also runs over the body's bytes, with each value as UTF-8 and as
+   UTF-16, whatever charset the body declares: a body that does not decode as
+   declared is scrubbed that way instead of being let through, and one the box
+   reads in another charset than the proxy did is covered too.
+6. **Only what can be scrubbed.** For a box that gets swaps: no swap for
+   `TRACE` / `TRACK`, whose response is the request itself (`message/http`,
+   not a type the scrub reads); a `101` that is not a websocket is refused
+   (`unscrubbable-upgrade`); and anything but HTTP inside a connection the
+   proxy opened is closed (`refused-connection` / `not-http`) rather than
+   relayed as raw bytes, which nothing scrubs. A swap also needs an HTTP/1
+   absolute-form target, when one is sent, to name the verified host. Plain
+   protocols the proxy never opens (ssh in the clear, say) still pass.
 
 Every swap, scrub and refusal is one JSON line on the `swap_proxy.audit` logger,
 with names and reasons, never values. A swap is recorded only for bytes that had
