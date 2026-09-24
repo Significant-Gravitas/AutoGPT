@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
 import prisma
@@ -292,6 +293,65 @@ async def test_a_batch_install_looks_up_listings_and_the_owners_skills_once(mock
         where={"id": {"in": [listing.id for listing in listings]}}
     )
     assert [c.installCount for c in counts] == [1, 1, 1]
+
+
+async def test_an_install_skips_the_scan_only_for_bytes_an_earlier_install_scanned(
+    mocker,
+):
+    listing = await _make_listing("scan-once-one", body="# v1\n")
+    assert listing.activeVersionId is not None
+    workspace = _FakeWorkspaceManager()
+    experts = MagicMock()
+    experts.add_expert_skill_names = AsyncMock()
+    mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
+
+    def install_and_read(expert_id: str) -> tuple[str, frozenset[str]]:
+        path = f"/experts/{expert_id}/skills/{listing.slug}/SKILL.md"
+        written = hashlib.sha256(workspace.files[path]).hexdigest()
+        return written, workspace.scanned[path]
+
+    with _patch_skills_path(workspace):
+        await skill_db.install_marketplace_skill("u", listing.slug, expert_id="a")
+        first, first_skip = install_and_read("a")
+        await skill_db.install_marketplace_skill("u", listing.slug, expert_id="b")
+        second, second_skip = install_and_read("b")
+        await prisma.models.SkillListingVersion.prisma().update(
+            where={"id": listing.activeVersionId}, data={"body": "# v2\n"}
+        )
+        await skill_db.install_marketplace_skill("u", listing.slug, expert_id="c")
+        changed, changed_skip = install_and_read("c")
+
+    version = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": listing.activeVersionId}
+    )
+    assert version is not None
+    # Kills: recording nothing, or recording anything but the bytes written.
+    assert first not in first_skip
+    assert second == first and second in second_skip
+    assert changed != first and changed not in changed_skip
+    assert set(version.scannedSha256) == {first, changed}
+
+
+async def test_a_failed_scan_record_does_not_fail_the_install(mocker):
+    listing = await _make_listing("scan-once-record-fails")
+    workspace = _FakeWorkspaceManager()
+    experts = MagicMock()
+    experts.add_expert_skill_names = AsyncMock()
+    mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
+    mocker.patch.object(
+        prisma.actions.SkillListingVersionActions,
+        "update",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    )
+
+    with _patch_skills_path(workspace):
+        result = await skill_db.install_marketplace_skill(
+            "u", listing.slug, expert_id="a"
+        )
+
+    # Kills: letting the scan cache's write fail the install it follows.
+    assert result.name == listing.slug
+    assert f"/experts/a/skills/{listing.slug}/SKILL.md" in workspace.files
 
 
 async def test_install_of_a_listing_with_no_files_passes_an_empty_package(mocker):

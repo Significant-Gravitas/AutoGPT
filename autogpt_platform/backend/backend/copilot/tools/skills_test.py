@@ -252,12 +252,23 @@ class _FakeWorkspaceManager:
         self.files: dict[str, bytes] = {}
         self.metadata: dict[str, dict] = {}
         self.reads: list[str] = []
+        # Per path, the hashes the write was told need no scan.
+        self.scanned: dict[str, frozenset[str]] = {}
 
     async def write_file(
-        self, *, content, filename, path, mime_type, overwrite, metadata=None
+        self,
+        *,
+        content,
+        filename,
+        path,
+        mime_type,
+        overwrite,
+        metadata=None,
+        scanned_checksums=(),
     ):
         self.files[path] = content
         self.metadata[path] = metadata or {}
+        self.scanned[path] = frozenset(scanned_checksums)
 
     async def read_file(self, path: str) -> bytes:
         if path not in self.files:
