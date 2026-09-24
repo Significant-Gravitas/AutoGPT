@@ -1019,27 +1019,19 @@ class ReviewRequiredResponse(ToolResponseBase):
     block_id: str
     block_name: str
     review_id: str = Field(description="The review ID for tracking approval status")
-    graph_exec_id: str = Field(
-        description="The graph execution ID for fetching review status"
-    )
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
 
 
 class ApprovalRequiredResponse(ToolResponseBase):
-    """An action the auto-mode gate parked for the user to approve.
-
-    Carries ``graph_exec_id`` because the chat mounts its approval card off any
-    tool output containing that key (``extractGraphExecId``), so the existing
-    review UI picks this up with no frontend wiring.
-    """
+    """An action the auto-mode gate parked for the user to approve; with a
+    ``review_id`` it mounts the chat's approval card."""
 
     type: ResponseType = ResponseType.APPROVAL_REQUIRED
     tool_name: str
     reason: str
     review_id: str | None = None
-    graph_exec_id: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

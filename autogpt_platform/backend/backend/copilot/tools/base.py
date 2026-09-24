@@ -527,10 +527,7 @@ class BaseTool:
         reason: str,
         review_id: str | None = None,
     ) -> StreamToolOutputAvailable:
-        """``graph_exec_id`` is what mounts the chat's approval card: the
-        frontend scans tool outputs for that key (``extractGraphExecId``)."""
         from backend.copilot.gate import refusal_message
-        from backend.copilot.gate.review import session_exec_id
 
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
@@ -541,9 +538,6 @@ class BaseTool:
                 tool_name=self.name,
                 reason=reason,
                 review_id=review_id,
-                graph_exec_id=(
-                    session_exec_id(session.session_id) if review_id else None
-                ),
             ).model_dump_json(),
             success=False,
         )

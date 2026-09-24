@@ -95,12 +95,11 @@ async def answered(user_id: str, session_id: str) -> list[HeldCall]:
             f"Gate could not read held calls for session {session_id}", exc_info=True
         )
         return []
-    exec_id = review_store.session_exec_id(session_id)
     return sorted(
         (
             held[review_id]
             for review_id, row in rows.items()
-            if row.graph_exec_id == exec_id and row.status != ReviewStatus.WAITING
+            if row.session_id == session_id and row.status != ReviewStatus.WAITING
         ),
         key=lambda call: call.held_at,
     )
