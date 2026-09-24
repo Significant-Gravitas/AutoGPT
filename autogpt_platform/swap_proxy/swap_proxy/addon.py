@@ -14,9 +14,12 @@ One connection's life:
    Only hosts that can receive a credential are opened.  spark-vm intercepts
    everything; serving many users, we decrypt only what we must.
 4. ``request``: placeholders are swapped for the owner's values (``swap.py``),
-   fetched from the backend for this user and this host (``source.py``).
+   fetched from the backend for this user and this host (``source.py``).  By
+   default only in the ``Authorization`` header; anywhere else only for a
+   credential with ``swap_anywhere``, which nothing sets yet.
 5. ``response``: known values are scrubbed back into placeholders.  Websocket
-   messages get the same two steps, one per direction.
+   messages get the same two steps, one per direction (the swap into a
+   message only with ``swap_anywhere``).
 
 Bodies and streaming.  mitmproxy streams a body larger than ``MAX_BODY_BYTES``
 instead of holding it, and a streamed message's head is on the wire before
@@ -24,17 +27,19 @@ instead of holding it, and a streamed message's head is on the wire before
 and scrub nothing.  ``requestheaders`` and ``responseheaders`` therefore decide
 first, for any body not known to fit:
 
-- The head of a request (headers, path, query) is swapped in ``requestheaders``,
+- The head of a request (the ``Authorization`` header; with ``swap_anywhere``
+  also other headers, path and query) is swapped in ``requestheaders``,
   before anything is sent.  A large ``git push`` authenticates this way while
   its pack streams through.
 - A text body of unknown length (chunked, or HTTP/2 without a length) is held
   back by ``BufferedBody`` up to ``MAX_BODY_BYTES`` and swapped or scrubbed
-  whole.
+  whole.  A request body only if a credential for the host has
+  ``swap_anywhere``: otherwise nothing can be swapped into it, and it streams.
 - A text *response* that is, or turns out to be, larger than that is refused:
   the flow is killed and the refusal audited.  It is never passed on
   unscrubbed.
 - A text *request* body larger than that goes out as it is, its placeholders
-  literal, and the audit says so.  That is the safe direction: the request
+  literal, and (with ``swap_anywhere``) the audit says so.  That is the safe direction: the request
   fails at the provider and nothing leaks.
 - Binary bodies stream untouched in both directions; they are neither swapped
   nor scrubbed at any size.
@@ -67,7 +72,7 @@ import ipaddress
 import json
 import logging
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Union
@@ -111,8 +116,10 @@ MAX_BODY_BYTES = 5 * 1024 * 1024
 MAX_DECODED_BYTES = 4 * MAX_BODY_BYTES
 
 _HEAD_SWAPPED = "swap_proxy_head_swapped"
-# The credentials whose values went into this flow, by name.
+# The credentials whose values went into this flow, by name, and the swapped
+# Basic pairs (``RequestSwap.encoded``).
 _SWAPPED = "swap_proxy_swapped"
+_ENCODED = "swap_proxy_encoded"
 
 
 class BufferedBody:
@@ -193,6 +200,11 @@ class _Lookup:
             )
             for name in sorted(names - self.credentials.keys())
         ]
+
+
+def _any_anywhere(lookup: _Lookup) -> bool:
+    """Could a value of these go into a request body?"""
+    return any(c.swap_anywhere for c in lookup.credentials.values())
 
 
 _NOT_READABLE = {
@@ -381,12 +393,14 @@ class SwapProxyAddon:
             lookup = await self._lookup(flow, owner, host, names)
             swap = RequestSwap(lookup.credentials, host, request.method, request.path)
             swap.head(request)
-            self._record_swap(flow, owner, host, lookup, names, swap.events)
+            self._record_swap(flow, owner, host, lookup, names, swap)
         if not is_scrubbable(request.headers.get("content-type", "")):
             return  # binary: streams through as it is
         # Every credential the body could name: it is not here to be read yet.
+        # Only one that may be swapped into a body (``swap_anywhere``) is worth
+        # holding the body back for; by default none is.
         lookup = await self._lookup(flow, owner, host, None)
-        if not lookup.credentials:
+        if not _any_anywhere(lookup):
             return
         if size is not None:
             self._audit(owner, host, "body-not-swapped", reason="body-too-large")
@@ -405,7 +419,7 @@ class SwapProxyAddon:
             swap = RequestSwap(lookup.credentials, host, method, path)
             swap.body(plain)
             named = placeholder_names(plain, head=False)
-            self._record_swap(flow, owner, host, lookup, named, swap.events)
+            self._record_swap(flow, owner, host, lookup, named, swap)
             if plain.raw_content == before:
                 return body
             put_back(whole, plain)
@@ -439,7 +453,7 @@ class SwapProxyAddon:
             # Without decoding it nobody can say whether it names a credential.
             # It goes out as it is, which is the safe direction, and the audit
             # says so whenever this owner has anything that could have gone in.
-            if (await self._lookup(flow, owner, host, None)).credentials:
+            if _any_anywhere(await self._lookup(flow, owner, host, None)):
                 self._audit(
                     owner, host, "body-not-swapped", reason=_NOT_READABLE[type(e)]
                 )
@@ -454,7 +468,7 @@ class SwapProxyAddon:
             swap.body(plain)
             if plain.raw_content != before:
                 put_back(request, plain)
-        self._record_swap(flow, owner, host, lookup, names, swap.events)
+        self._record_swap(flow, owner, host, lookup, names, swap)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
         owner = self._owners.get(flow.client_conn)
@@ -475,7 +489,7 @@ class SwapProxyAddon:
                 message.drop()
                 self._audit(owner, host, "refused-message", reason=_UNAVAILABLE)
                 return
-            scrubbed = scrub_text(text, credentials)
+            scrubbed = scrub_text(text, credentials, flow.metadata.get(_ENCODED, ()))
             if scrubbed != text:
                 message.content = scrubbed.encode("utf-8")
                 self._audit(owner, host, "scrubbed")
@@ -489,7 +503,7 @@ class SwapProxyAddon:
         new_text = swap.text(text)
         if new_text != text:
             message.content = new_text.encode("utf-8")
-        self._record_swap(flow, owner, host, lookup, names, swap.events)
+        self._record_swap(flow, owner, host, lookup, names, swap)
 
     async def responseheaders(self, flow: http.HTTPFlow) -> None:
         """Before the body arrives: a text response that may echo a value is
@@ -523,7 +537,7 @@ class SwapProxyAddon:
             whole = response.copy()
             whole.raw_content = body
             try:
-                if self._scrub(whole, credentials):
+                if self._scrub(whole, credentials, flow.metadata.get(_ENCODED, ())):
                     self._audit(owner, host, "scrubbed")
             except (DecodedTooLarge, Undecodable) as e:
                 refuse(_NOT_READABLE[type(e)])
@@ -550,7 +564,7 @@ class SwapProxyAddon:
             self._refuse_response(flow, owner, _UNAVAILABLE)
             return
         try:
-            if self._scrub(response, credentials):
+            if self._scrub(response, credentials, flow.metadata.get(_ENCODED, ())):
                 self._audit(owner, flow.request.pretty_host, "scrubbed")
         except (DecodedTooLarge, Undecodable) as e:
             # A body that cannot be read cannot be vouched for: the box could
@@ -608,18 +622,24 @@ class SwapProxyAddon:
         host: str,
         lookup: _Lookup,
         names: set[str],
-        events: list[SwapEvent],
+        swap: RequestSwap,
     ) -> None:
-        """Audit a swap and remember which credentials went into the flow."""
-        self._audit_events(owner, host, lookup.refusals(names) + events)
+        """Audit a swap and remember which credentials went into the flow, and
+        the Basic pairs they went into, for the scrub of its response."""
+        self._audit_events(owner, host, lookup.refusals(names) + swap.events)
+        flow.metadata.setdefault(_ENCODED, []).extend(swap.encoded)
         swapped = flow.metadata.setdefault(_SWAPPED, {})
-        for event in events:
+        for event in swap.events:
             name = event.placeholder.split(":")[1]
             if event.kind == "swapped" and name in lookup.credentials:
                 swapped[name] = lookup.credentials[name]
 
     @staticmethod
-    def _scrub(message: Union[http.Response, http.Request], credentials) -> bool:
+    def _scrub(
+        message: Union[http.Response, http.Request],
+        credentials: list[Credential],
+        encoded: Iterable[tuple[str, str]] = (),
+    ) -> bool:
         """Scrub a whole text body in place; ``True`` if a value was in it.
         Raises ``DecodedTooLarge`` or ``Undecodable`` for a body it cannot read."""
         if not credentials or not message.raw_content:
@@ -631,7 +651,7 @@ class SwapProxyAddon:
             return False
         if text is None:
             return False
-        scrubbed = scrub_text(text, credentials)
+        scrubbed = scrub_text(text, credentials, encoded)
         if scrubbed == text:
             return False
         plain.text = scrubbed

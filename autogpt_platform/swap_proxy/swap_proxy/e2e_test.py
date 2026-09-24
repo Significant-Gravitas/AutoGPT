@@ -6,6 +6,7 @@ cannot get by presenting credentials that are wrong, stale, or another's.
 """
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -58,6 +59,7 @@ class FakeSource:
         self.tokens = {"user-a": TOKEN_A, "user-b": TOKEN_B}
         self.hosts: tuple[str, ...] = (UPSTREAM_HOST,)
         self.down = False
+        self.anywhere = False  # the credential's ``swap_anywhere``
         self.asked: list[tuple[str, str, str]] = []
 
     async def bound_names(self, host):
@@ -72,7 +74,9 @@ class FakeSource:
         token = self.tokens.get(user_id)
         if name != "github" or token is None or not host_in_list(host, self.hosts):
             return None
-        return Credential("github", {"access_token": token}, self.hosts)
+        return Credential(
+            "github", {"access_token": token}, self.hosts, swap_anywhere=self.anywhere
+        )
 
 
 class Upstream:
@@ -223,14 +227,18 @@ def http_get(path="/user", headers=None, host=UPSTREAM_HOST) -> bytes:
 
 
 def http_post(
-    body: bytes, content_type: str, *, chunks: Optional[list[bytes]] = None
+    body: bytes,
+    content_type: str,
+    *,
+    chunks: Optional[list[bytes]] = None,
+    authorization: str = "Bearer hsurr:github",
 ) -> bytes:
     """With a length, or (given *chunks*) chunked and without one."""
     lines = [
         "POST /repo.git/git-receive-pack HTTP/1.1",
         f"Host: {UPSTREAM_HOST}",
         "Connection: close",
-        "Authorization: Bearer hsurr:github",
+        f"Authorization: {authorization}",
         f"Content-Type: {content_type}",
     ]
     if chunks is None:
@@ -459,19 +467,30 @@ async def test_a_token_split_across_two_chunks_of_a_response_is_scrubbed(stack, 
     assert [line["event"] for line in audit_lines(caplog)] == ["swapped", "scrubbed"]
 
 
+GIT_BASIC = "Basic " + base64.b64encode(b"x-access-token:hsurr:github").decode()
+
+
 @pytest.mark.parametrize("chunked", [False, True], ids=["with a length", "chunked"])
 async def test_a_large_push_authenticates_while_its_pack_streams(
     stack, caplog, chunked
 ):
-    """The body is binary and is not touched; the header must still be swapped
-    before it leaves, and the audit must be about what reached the wire."""
+    """As git sends it: HTTP Basic (also for a token in the remote URL, which
+    git turns into this header).  The body is binary and is not touched; the
+    header must still be swapped before it leaves, and the audit must be about
+    what reached the wire."""
     proxy, upstream, _ = stack
     pack = b"PACK\x00\xff" + b"\x00" * OVER
     chunks = [pack[: len(pack) // 2], pack[len(pack) // 2 :]] if chunked else None
-    request = http_post(pack, "application/x-git-receive-pack-request", chunks=chunks)
+    request = http_post(
+        pack,
+        "application/x-git-receive-pack-request",
+        chunks=chunks,
+        authorization=GIT_BASIC,
+    )
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
         await socks5_request(proxy.port, *BOX_A, UPSTREAM_HOST, upstream.port, request)
-    assert upstream.seen[0]["headers"]["authorization"] == f"Bearer {TOKEN_A}"
+    sent = upstream.seen[0]["headers"]["authorization"]
+    assert base64.b64decode(sent.split()[1]) == f"x-access-token:{TOKEN_A}".encode()
     assert len(upstream.seen[0]["body"]) == len(pack)
     # One swap, then the scrub of the header the upstream echoed back.
     assert [line["event"] for line in audit_lines(caplog)] == ["swapped", "scrubbed"]
@@ -481,7 +500,9 @@ async def test_a_large_push_authenticates_while_its_pack_streams(
 async def test_a_text_body_too_large_to_hold_goes_out_literally_and_the_audit_says_so(
     stack, caplog, chunked
 ):
-    proxy, upstream, _ = stack
+    """For a credential that may go into a body at all (``swap_anywhere``)."""
+    proxy, upstream, source = stack
+    source.anywhere = True
     body = b'{"token": "hsurr:github", "pad": "' + b"x" * OVER + b'"}'
     chunks = [body[:20], body[20:]] if chunked else None
     request = http_post(body, "application/json", chunks=chunks)
@@ -502,7 +523,9 @@ async def test_a_text_body_too_large_to_hold_goes_out_literally_and_the_audit_sa
 async def test_a_placeholder_split_across_two_chunks_of_a_request_is_swapped(
     stack, caplog
 ):
-    proxy, upstream, _ = stack
+    """For a credential that may go into a body at all (``swap_anywhere``)."""
+    proxy, upstream, source = stack
+    source.anywhere = True
     body = b'{"token": "hsurr:github"}'
     request = http_post(body, "application/json", chunks=[body[:15], body[15:]])
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
@@ -533,3 +556,39 @@ async def test_private_address_space_is_out_of_reach(tmp_path):
     finally:
         await proxy.stop()
         await upstream.stop()
+
+
+@pytest.mark.parametrize("chunked", [False, True], ids=["with a length", "chunked"])
+async def test_by_default_a_body_goes_out_literally_and_only_the_header_is_swapped(
+    stack, caplog, chunked
+):
+    """A value swapped into a body could be stored at the provider and read
+    back in any encoding it offers; so by default it is not."""
+    proxy, upstream, _ = stack
+    body = b'{"files": {"a.txt": {"content": "hsurr:github"}}}'
+    chunks = [body[:15], body[15:]] if chunked else None
+    request = http_post(body, "application/json", chunks=chunks)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await socks5_request(proxy.port, *BOX_A, UPSTREAM_HOST, upstream.port, request)
+    seen = upstream.seen[0]
+    assert seen["headers"]["authorization"] == f"Bearer {TOKEN_A}"
+    assert seen["body"] == body.decode()
+    events = [(line["event"], line.get("reason")) for line in audit_lines(caplog)]
+    # Under the streaming limit mitmproxy holds even a chunked body, so the
+    # literal placeholder is seen and audited either way.
+    assert events == [
+        ("swapped", None),
+        ("refused", "outside-authorization"),
+        ("scrubbed", None),
+    ]
+
+
+async def test_gh_style_token_authorization_is_swapped(stack):
+    """``gh`` sends ``Authorization: token ...``."""
+    proxy, upstream, _ = stack
+    request = http_get(headers={"Authorization": "token hsurr:github"})
+    raw = await socks5_request(
+        proxy.port, *BOX_A, UPSTREAM_HOST, upstream.port, request
+    )
+    assert upstream.seen[0]["headers"]["authorization"] == f"token {TOKEN_A}"
+    assert body_of(raw)["headers"]["authorization"] == "token hsurr:github"

@@ -20,9 +20,17 @@ from swap_proxy.swap import (
 )
 
 HOST = "api.github.com"
+
+
+def Anywhere(*args, **kwargs) -> Credential:
+    """The conformance suite below is spark-vm's, where a value is swapped
+    everywhere: its credentials opt in.  The default is ``TestAuthorizationOnly``."""
+    return Credential(*args, swap_anywhere=True, **kwargs)
+
+
 TOKEN = 'ghp_"quoted"\\and&reserved=chars%'
-GITHUB = Credential("github", {"access_token": TOKEN}, (HOST, ".githubusercontent.com"))
-ACME = Credential(
+GITHUB = Anywhere("github", {"access_token": TOKEN}, (HOST, ".githubusercontent.com"))
+ACME = Anywhere(
     "acme",
     {
         "username": "someone@example.com",
@@ -76,7 +84,7 @@ class TestHeaders:
         r = make_request(headers={"Cookie": "session=hsurr:github"})
         swap(r, GITHUB)
         assert r.headers["Cookie"] == "session=hsurr:github"
-        cookie = Credential("github", {"access_token": "abc"}, (HOST,), cookie=True)
+        cookie = Anywhere("github", {"access_token": "abc"}, (HOST,), cookie=True)
         swap(r, cookie)
         assert r.headers["Cookie"] == "session=abc"
 
@@ -95,7 +103,7 @@ class TestBinding:
 
     def test_a_credential_with_no_hosts_never_swaps(self):
         r = make_request(headers={"Authorization": "Bearer hsurr:github"})
-        swap(r, Credential("github", {"access_token": "abc"}, ()))
+        swap(r, Anywhere("github", {"access_token": "abc"}, ()))
         assert r.headers["Authorization"] == "Bearer hsurr:github"
 
     def test_leading_dot_binds_subdomains_only(self):
@@ -207,12 +215,12 @@ class TestUrl:
 
     def test_path_segment_cannot_be_escaped_by_the_value(self):
         r = make_request(path="/hooks/hsurr:github/fire")
-        swap(r, Credential("github", {"access_token": "a/b?c"}, (HOST,)))
+        swap(r, Anywhere("github", {"access_token": "a/b?c"}, (HOST,)))
         assert r.path == "/hooks/a%2Fb%3Fc/fire"
 
     def test_unchanged_segments_stay_byte_identical(self):
         r = make_request(path="/a%25b/%2F~:@/hsurr:github")
-        swap(r, Credential("github", {"access_token": "tok"}, (HOST,)))
+        swap(r, Anywhere("github", {"access_token": "tok"}, (HOST,)))
         assert r.path == "/a%25b/%2F~:@/tok"
 
     def test_a_query_no_value_of_which_changed_stays_byte_identical(self):
@@ -220,12 +228,12 @@ class TestUrl:
         escaping: ``%20`` would become ``+`` and a signed URL would break."""
         query = "?sig=a%20b%2Fc&exp=1~2&flag&empty="
         r = make_request(path="/hooks/hsurr:github/fire" + query)
-        swap(r, Credential("github", {"access_token": "tok"}, (HOST,)))
+        swap(r, Anywhere("github", {"access_token": "tok"}, (HOST,)))
         assert r.path == "/hooks/tok/fire" + query
 
     def test_a_query_with_a_swapped_value_is_rebuilt(self):
         r = make_request(path="/hsurr:github?t=hsurr:github&keep=a%20b")
-        swap(r, Credential("github", {"access_token": "t/k"}, (HOST,)))
+        swap(r, Anywhere("github", {"access_token": "t/k"}, (HOST,)))
         assert r.path == "/t%2Fk?t=t%2Fk&keep=a+b"
 
 
@@ -253,14 +261,14 @@ class TestEntriesAndTotp:
         assert totp_code(seed, at=1111111109) == "081804"
 
     def test_a_bad_seed_is_refused_not_raised(self):
-        bad = Credential("acme", {"totp": "not base32!"}, (HOST,))
+        bad = Anywhere("acme", {"totp": "not base32!"}, (HOST,))
         r = make_request(headers={"X-C": "hsurr:acme:totp"})
         assert swap(r, bad).events[0].reason == "bad-totp-seed"
 
 
 class TestMethodAndPathLimits:
     def limited(self, **limits):
-        return Credential("github", {"access_token": "tok"}, (HOST,), **limits)
+        return Anywhere("github", {"access_token": "tok"}, (HOST,), **limits)
 
     def attempt(self, credential, method="GET", path="/"):
         r = make_request(path=path, method=method, headers={"X-K": "hsurr:github"})
@@ -351,8 +359,8 @@ class TestScrub:
         assert text == f"code hsurr:acme:totp, order 9{code}9"
 
     def test_the_longer_of_two_overlapping_values_wins(self):
-        a = Credential("a", {"access_token": "secretvalue"}, (HOST,))
-        b = Credential("b", {"access_token": "secretvalue-extended"}, (HOST,))
+        a = Anywhere("a", {"access_token": "secretvalue"}, (HOST,))
+        b = Anywhere("b", {"access_token": "secretvalue-extended"}, (HOST,))
         assert scrub_text("x secretvalue-extended", [a, b]) == "x hsurr:b"
 
 
@@ -390,3 +398,101 @@ HOST_BINDING_TABLE = [
 @pytest.mark.parametrize("host, entries, bound", HOST_BINDING_TABLE)
 def test_host_binding_is_the_table_the_backend_is_held_to(host, entries, bound):
     assert host_in_list(host, entries) is bound
+
+
+class TestAuthorizationOnly:
+    """The default: a value goes into the ``Authorization`` header and nowhere
+    else.  Swapped into a body it could be stored at the provider and read back
+    in an encoding no scrub matches (a base64 blob, a packfile)."""
+
+    PLAIN = Credential("github", {"access_token": TOKEN}, (HOST,))
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "Bearer hsurr:github",  # curl -H, most API clients
+            "token hsurr:github",  # gh
+        ],
+    )
+    def test_the_authorization_header_is_swapped(self, header):
+        r = make_request(headers={"Authorization": header})
+        s = swap(r, self.PLAIN)
+        assert r.headers["Authorization"] == header.replace("hsurr:github", TOKEN)
+        assert [e.kind for e in s.events] == ["swapped"]
+
+    def test_basic_as_git_sends_it_is_swapped(self):
+        """git sends Basic, also for a token it was given in the URL: the
+        userinfo becomes this header and never goes out in the URL itself."""
+        pair = base64.b64encode(b"x-access-token:hsurr:github").decode()
+        r = make_request(
+            path="/o/r.git/git-receive-pack",
+            method="POST",
+            headers={
+                "Authorization": f"Basic {pair}",
+                "Content-Type": "application/x-git-receive-pack-request",
+            },
+            content=b"PACK\x00hsurr:github",
+        )
+        swap(r, self.PLAIN)
+        decoded = base64.b64decode(r.headers["Authorization"].split()[1]).decode()
+        assert decoded == f"x-access-token:{TOKEN}"
+        assert r.content == b"PACK\x00hsurr:github"
+
+    @pytest.mark.parametrize(
+        "where",
+        [
+            {"headers": {"X-Api-Key": "hsurr:github"}},
+            {"headers": {"Cookie": "s=hsurr:github"}},
+            {"path": "/hooks/hsurr:github"},
+            {"path": "/x?access_token=hsurr:github"},
+            {
+                "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "content": b'{"files": {"a": {"content": "hsurr:github"}}}',
+            },
+            {
+                "method": "POST",
+                "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+                "content": b"token=hsurr%3Agithub",
+            },
+            {"method": "POST", "content": b"hsurr:github"},
+        ],
+        ids=["header", "cookie", "path", "query", "json", "form", "text"],
+    )
+    def test_anywhere_else_it_goes_out_literally_and_says_why(self, where):
+        r = make_request(**where)
+        before = (dict(r.headers), r.path, r.content)
+        s = swap(r, self.PLAIN)
+        assert (dict(r.headers), r.path, r.content) == before
+        # Cookie has a rule of its own, which says so in its own words.
+        reason = (
+            "cookie-not-allowed"
+            if "Cookie" in where.get("headers", {})
+            else ("outside-authorization")
+        )
+        assert [(e.kind, e.placeholder, e.reason) for e in s.events] == [
+            ("refused", "hsurr:github", reason)
+        ]
+
+    def test_a_websocket_message_is_not_swapped(self):
+        s = RequestSwap({"github": self.PLAIN}, HOST)
+        assert s.text('{"auth": "hsurr:github"}') == '{"auth": "hsurr:github"}'
+        assert [e.reason for e in s.events] == ["outside-authorization"]
+
+    def test_a_binding_refusal_still_names_the_binding(self):
+        r = make_request(headers={"X-Api-Key": "hsurr:github"})
+        s = swap(r, self.PLAIN, host="evil.test")
+        assert [e.reason for e in s.events] == ["unbound-host"]
+
+    def test_an_echoed_basic_header_goes_back_to_what_the_box_sent(self):
+        """A server that echoes the header returns the base64 of the real pair,
+        which no value matches; the swap remembers exactly that string."""
+        original = base64.b64encode(b"x-access-token:hsurr:github").decode()
+        r = make_request(headers={"Authorization": f"Basic {original}"})
+        s = swap(r, self.PLAIN)
+        swapped = r.headers["Authorization"].split()[1]
+        assert s.encoded == [(swapped, original)]
+        echo = f'{{"authorization": "Basic {swapped}"}}'
+        assert scrub_text(echo, [self.PLAIN], s.encoded) == (
+            f'{{"authorization": "Basic {original}"}}'
+        )

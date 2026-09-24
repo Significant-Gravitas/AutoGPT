@@ -2,8 +2,9 @@
 
 The proxy every AutoPilot sandbox egresses through. Code the model writes never
 holds a real credential: it holds a placeholder such as `hsurr:github`, and this
-proxy replaces the placeholder with the user's real token on the way out, only
-for requests going to a host that credential is bound to.
+proxy replaces the placeholder with the user's real token on the way out, in
+the `Authorization` header only, and only for requests going to a host that
+credential is bound to.
 
 Ported from the credential-swapping proxy in spark-vm, adapted to serve many
 users at once.
@@ -22,21 +23,33 @@ users at once.
    agree. (`swap_proxy/egress.py`)
 3. **Open it or not?** Only hosts some credential is bound to are intercepted.
    Everything else is passed through as opaque bytes, never decrypted.
-4. **Swap.** Placeholders in headers (including inside HTTP Basic), query, path,
-   text bodies and websocket messages become the owner's values. The backend is
-   asked for them per user and per host, and refuses hosts a credential is not
-   bound to. (`swap_proxy/swap.py`, `swap_proxy/source.py`)
+4. **Swap.** A placeholder in the `Authorization` header becomes the owner's
+   value: `Bearer` and `token` (curl, `gh`) and HTTP Basic, which is what git
+   sends, also for a token in the remote URL (git and curl turn URL userinfo
+   into this header; it never goes out as part of the URL). A placeholder
+   anywhere else (another header, the path, the query, a body, a websocket
+   message) goes out literally and is audited as `refused` /
+   `outside-authorization`. A body is where a provider stores things: a value
+   swapped into one could be written to a gist, an issue or a blob and read
+   back later in whatever encoding the provider offers (base64, hex, a git
+   packfile), which no scrub can match. A value in `Authorization` is used,
+   not stored. The swap everywhere else is kept (`swap_anywhere` on a
+   credential) for providers that need it, and arrives with the binding
+   table (SECRT-2616); nothing sets it yet. The backend is asked for values
+   per user and per host, and refuses hosts a credential is not bound to.
+   (`swap_proxy/swap.py`, `swap_proxy/source.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
-   from the server, is turned back into its placeholder before the box sees it.
-   The values scrubbed are the user's current ones for that host plus any
-   swapped into that very request. The host is the one the request and the
+   from the server, is turned back into its placeholder before the box sees it,
+   and so is the exact base64 of an HTTP Basic pair the proxy built, which a
+   server echoing the header would send back. The values scrubbed are the
+   user's current ones for that host plus any swapped into that very request. The host is the one the request and the
    connection name, proven or not: over plain http too, since removing a value
    never sends one. If the backend cannot say what the user's
    values are, a text response with a body is refused (`refused-response` /
    `resolver-unavailable`) and a server websocket message dropped
-   (`refused-message`), rather than passed on unscrubbed: a value the box once
-   swapped into something the provider stores can come back from a later read
-   that carried no placeholder.
+   (`refused-message`), rather than passed on unscrubbed: a value can come back
+   in a response that did not ask for it, from wherever it is stored at the
+   provider.
 
 Every swap, scrub and refusal is one JSON line on the `swap_proxy.audit` logger,
 with names and reasons, never values. A swap is recorded only for bytes that had
@@ -51,8 +64,8 @@ so the size must never decide whether a credential is protected:
 
 | | up to 5 MiB | over 5 MiB, or growing past it |
 | --- | --- | --- |
-| request head (headers, path, query) | swapped | swapped, before anything is sent |
-| text request body | swapped | sent as it is, placeholders literal; audited `body-not-swapped` |
+| request head (the `Authorization` header) | swapped | swapped, before anything is sent |
+| text request body | not swapped (audited); with `swap_anywhere`, swapped | streamed, not swapped; with `swap_anywhere`, sent as it is and audited `body-not-swapped` |
 | text response body | scrubbed | **refused**: the flow is killed; audited `refused-response` |
 | binary body, either way | streamed, untouched | streamed, untouched |
 
@@ -63,7 +76,7 @@ while decoding (`decode.py` asks each decoder for at most that much), never by
 decoding the whole body and measuring it, so a few kilobytes of gzip standing
 for gigabytes cost the proxy no more than 20 MiB and are then turned away:
 
-| a held text body that… | request | response |
+| a held text body that… | request (with `swap_anywhere` only) | response |
 | --- | --- | --- |
 | decodes to more than 20 MiB | sent as it is; audited `body-not-swapped` / `decoded-too-large` | **refused**; audited `refused-response` / `decoded-too-large` |
 | is in an encoding that cannot be decoded within a bound (anything but `gzip`, `deflate`, `br`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
@@ -76,10 +89,11 @@ only apply to a box that gets swaps and a user with a credential for the host:
 for anyone else there is nothing to swap or scrub and the body is not read.
 
 So a `git push` with a large pack authenticates (its body is binary and
-streams), a large text upload fails at the provider the same loud way an
-unbound placeholder does, and a text response too large to scrub never reaches
-the box. A body with no declared length (chunked, HTTP/2) is held until it ends
-or passes the limit, so a value split across chunks is still caught.
+streams), and a text response too large to scrub never reaches the box. A
+request body is held back only for a credential with `swap_anywhere`; by
+default nothing can be swapped into it, and it streams. A body with no declared
+length (chunked, HTTP/2) that is held is held until it ends or passes the
+limit, so a value split across chunks is still caught.
 
 A value is only ever swapped into an https request whose upstream certificate
 mitmproxy verified for the very host the request names. If the backend cannot
@@ -190,12 +204,22 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 - Images and binary bodies are neither swapped (above 5 MiB) nor scrubbed (at
   any size). What counts as text is the content type the sender declares.
+- A value goes into the `Authorization` header and nowhere else. A provider
+  that takes its key in another header, the query or a body cannot be used
+  until the binding table opts that credential in (`swap_anywhere`,
+  SECRT-2616).
+- Only literal values are scrubbed, and the exact Basic pairs the proxy built.
+  The same value in another encoding (base64, hex, inside an archive) is not
+  recognised. With the swap confined to `Authorization`, no value is written
+  into a request body through the proxy, which is how one would come to be
+  stored at a provider and served back so encoded; one stored there by other
+  means (by the user, say) is not caught.
 - A text response over 5 MiB from a bound host is refused, not delivered, for a
-  box that gets swaps. A text request body over 5 MiB is not swapped.
+  box that gets swaps.
 - A compressed text response from a bound host that decodes to more than
   20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
   several at once), is refused for a box that gets swaps; a request body like
-  that is not swapped.
+  that is not swapped (with `swap_anywhere`; otherwise it is never swapped).
 - The decoded-size limit covers HTTP bodies. Websocket messages are
   decompressed by mitmproxy before the addon sees them, with no limit of ours.
 - A text response with no declared length is held until it is complete, so an
@@ -211,9 +235,9 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   tell bound hosts from others: a swapping box's TLS connections are then
   opened whatever their host, and the same refusals apply to all of them until
   the backend first answers.
-- Only bound hosts are scrubbed. A value the box wrote to a provider through a
-  bound host and that the provider serves back from a host that is not bound
-  (a raw-content domain, say) passes through unread. The name is the box's to
+- Only bound hosts are scrubbed. A value stored at a provider and served back
+  from a host that is not bound (a raw-content domain, say) passes through
+  unread. The name is the box's to
   choose: TLS to a provider's address under an SNI that is not bound, or plain
   http with such a `Host`, is the same case. For a box that gets swaps, TLS
   with no SNI at all and plain http to a bare address are refused

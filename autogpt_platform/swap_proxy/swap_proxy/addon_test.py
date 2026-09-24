@@ -36,6 +36,7 @@ class Source:
     def __init__(self):
         self.token: str | None = TOKEN
         self.down = self.bindings_down = False
+        self.anywhere = False  # the credential's ``swap_anywhere``
 
     async def bound_names(self, host):
         if self.bindings_down:
@@ -47,7 +48,12 @@ class Source:
             raise SourceUnavailable("resolve")
         if self.token is None:
             return None
-        return Credential("github", {"access_token": self.token}, (HOST,))
+        return Credential(
+            "github",
+            {"access_token": self.token},
+            (HOST,),
+            swap_anywhere=self.anywhere,
+        )
 
 
 class NoRedis:
@@ -56,9 +62,14 @@ class NoRedis:
 
 
 def addon_for(
-    flow: http.HTTPFlow, swaps: bool = True, source: Source | None = None
+    flow: http.HTTPFlow,
+    swaps: bool = True,
+    source: Source | None = None,
+    anywhere: bool = False,
 ) -> SwapProxyAddon:
-    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source or Source(), EgressGuard())
+    source = source or Source()
+    source.anywhere = anywhere
+    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source, EgressGuard())
     addon._owners[flow.client_conn] = Owner("session:s-a", "user-a", "sb-1", swaps)
     flow.request.host, flow.request.scheme = HOST, "https"
     flow.request.headers["host"] = HOST
@@ -95,7 +106,7 @@ def last_message(flow: http.HTTPFlow) -> str:
 
 async def test_a_placeholder_in_a_frame_from_the_box_is_swapped(caplog):
     flow = websocket_flow('{"auth": "hsurr:github"}', from_client=True)
-    addon = addon_for(flow)
+    addon = addon_for(flow, anywhere=True)
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
         await addon.websocket_message(flow)
     assert last_message(flow) == '{"auth": "%s"}' % TOKEN
@@ -216,7 +227,7 @@ async def test_an_http2_upload_without_a_length_is_swapped_head_first_then_body(
     caplog,
 ):
     flow = tflow.tflow()
-    addon = addon_for(flow)
+    addon = addon_for(flow, anywhere=True)
     flow.request.http_version = "HTTP/2.0"
     flow.request.headers.pop("content-length", None)
     flow.request.headers["authorization"] = "Bearer hsurr:github"
@@ -411,7 +422,7 @@ async def test_a_request_body_that_decodes_past_the_cap_goes_out_as_it_is(
     caplog, no_unbounded_decode
 ):
     flow = bombed_request(chunked=False)
-    addon = addon_for(flow)
+    addon = addon_for(flow, anywhere=True)
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
         await addon.requestheaders(flow)
         await addon.request(flow)
@@ -428,7 +439,7 @@ async def test_a_held_request_body_that_decodes_past_the_cap_goes_out_as_it_is(
     caplog, no_unbounded_decode
 ):
     flow = bombed_request(chunked=True)
-    addon = addon_for(flow)
+    addon = addon_for(flow, anywhere=True)
     with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
         await addon.requestheaders(flow)
         stream = flow.request.stream
@@ -445,7 +456,7 @@ async def test_a_gzipped_request_body_within_the_cap_is_swapped_inside_its_encod
     caplog, no_unbounded_decode
 ):
     flow = tflow.tflow()
-    addon = addon_for(flow)
+    addon = addon_for(flow, anywhere=True)
     flow.request.method = "POST"
     flow.request.headers["content-type"] = "application/json"
     flow.request.headers["content-encoding"] = "gzip"
@@ -669,3 +680,49 @@ async def test_plain_http_by_address_is_refused_for_a_box_that_swaps(
         await addon.requestheaders(flow)
     assert (flow.error is not None) is killed
     assert audit(caplog) == ([("refused-request", "no-sni")] if killed else [])
+
+
+# ------------------------------------------------------------ Authorization only
+#
+# The default.  Nothing sets ``swap_anywhere`` yet, so this is what runs.
+
+
+async def test_a_frame_from_the_box_is_not_swapped_by_default(caplog):
+    flow = websocket_flow('{"auth": "hsurr:github"}', from_client=True)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow).websocket_message(flow)
+    assert last_message(flow) == '{"auth": "hsurr:github"}'
+    assert audit(caplog) == [("refused", "hsurr:github")]
+
+
+async def test_a_request_body_is_not_swapped_by_default_and_the_header_is(caplog):
+    flow = tflow.tflow()
+    flow.request.method = "POST"
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.content = b'{"content": "hsurr:github"}'
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow).request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert flow.request.content == b'{"content": "hsurr:github"}'
+    lines = [
+        json.loads(r.message) for r in caplog.records if r.name == "swap_proxy.audit"
+    ]
+    assert [(x["event"], x.get("reason")) for x in lines] == [
+        ("swapped", None),
+        ("refused", "outside-authorization"),
+    ]
+
+
+async def test_a_request_body_is_not_held_back_by_default():
+    """Nothing can be swapped into it, so it streams as it arrives."""
+    flow = tflow.tflow()
+    flow.request.method = "POST"
+    flow.request.http_version = "HTTP/2.0"
+    flow.request.headers.pop("content-length", None)
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.raw_content = None
+    await addon_for(flow).requestheaders(flow)
+    assert not isinstance(flow.request.stream, BufferedBody)
+    await addon_for(flow, anywhere=True).requestheaders(flow)
+    assert isinstance(flow.request.stream, BufferedBody)

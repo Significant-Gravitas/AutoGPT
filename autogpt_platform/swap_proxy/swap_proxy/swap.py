@@ -11,12 +11,27 @@ it means ``access_token``.  It is replaced only when the credential is bound
 to the request's host, and within that to its method and path if the
 credential limits them.  A credential with no host binding never swaps.
 
-Where it swaps, and how the value is protected in each place:
+Where it swaps.  By default in the ``Authorization`` header only, which is
+where ``git`` (HTTP Basic, also for a token in the URL: git and curl turn URL
+userinfo into that header, it never goes on the wire as part of the URL),
+``gh`` (``token ...``) and ``curl -H`` / ``curl -u`` put a token.  A
+placeholder anywhere else (another header, the path, the query, a body, a
+websocket message) goes out literally and is audited as ``refused`` /
+``outside-authorization``.  The reason is what a provider does with a request
+body: a write-capable credential swapped into one can be stored there (a
+gist, an issue, a blob) and read back later in any encoding the provider
+offers (base64, hex, a git packfile), which no scrub of the response can
+match.  A value in the ``Authorization`` header is used, not stored.
+
+A credential that sets ``swap_anywhere`` (spark-vm's behaviour, and what the
+rules below were written for) is swapped everywhere the swap looks, and how
+the value is protected in each place:
 
 - Headers.  ``Authorization: Basic`` is base64-decoded first (git and
   ``curl -u`` hide the placeholder inside it).  ``Referer`` and ``Origin`` are
   never touched: a swapped one would hand the value to the server's access log
-  on every later request.  ``Cookie`` only for a credential that says so.
+  on every later request.  ``Cookie`` only for a credential that says so, and
+  then without ``swap_anywhere`` too.
 - Query string, per value, re-encoded.
 - Path, per segment.  A segment whose decoded form did not change stays
   byte-identical, so existing escapes survive and a value cannot leave its
@@ -37,11 +52,11 @@ residual, not a solved one.
 
 Nothing here ever logs or returns a value: events carry names and reasons.
 
-Not reachable in this deployment yet: ``allowed_methods``, ``allowed_paths``,
-``cookie``, ``no_scrub`` and TOTP entries.  The only producer of a
-``Credential`` (``source.py``) fills in a name, its values and its hosts, so
-the method and path limits, the Cookie rule and the TOTP path keep their
-defaults.  They are ported and tested as they were and start to matter when
+Not reachable in this deployment yet: ``swap_anywhere``, ``allowed_methods``,
+``allowed_paths``, ``cookie``, ``no_scrub`` and TOTP entries.  The only
+producer of a ``Credential`` (``source.py``) fills in a name, its values and
+its hosts, so the swap outside ``Authorization``, the method and path limits,
+the Cookie rule and the TOTP path keep their defaults.  They are ported and tested as they were and start to matter when
 bindings become per-user (SECRT-2616, SECRT-2618).
 """
 
@@ -83,6 +98,9 @@ class Credential:
 
     *allowed_methods* and *allowed_paths* are static limits within the bound
     hosts: ``None`` means unrestricted, an empty tuple fails closed.
+    *swap_anywhere* lets the value go outside the ``Authorization`` header
+    (see the module docstring for why that is off); it arrives with the
+    binding table (SECRT-2616), and nothing sets it yet.
     """
 
     name: str
@@ -92,6 +110,7 @@ class Credential:
     allowed_paths: Optional[tuple[str, ...]] = None
     cookie: bool = False
     no_scrub: frozenset[str] = frozenset()
+    swap_anywhere: bool = False
 
     def __repr__(self) -> str:  # a value must not reach a log through repr
         return f"Credential(name={self.name!r}, entries={sorted(self.values)})"
@@ -204,6 +223,9 @@ class RequestSwap:
     method: Optional[str] = None
     path: Optional[str] = None
     events: list[SwapEvent] = field(default_factory=list)
+    # ``(swapped, original)`` base64 of every HTTP Basic pair swapped: what a
+    # server that echoes the header sends back, which no value matches.
+    encoded: list[tuple[str, str]] = field(default_factory=list)
 
     def allows(self, credential: Credential) -> tuple[bool, str]:
         """Host binding first, then the credential's method and path limits."""
@@ -228,7 +250,9 @@ class RequestSwap:
                 return False, "path-not-allowed"
         return True, ""
 
-    def resolve(self, name: str, entry: str) -> Optional[str]:
+    def resolve(
+        self, name: str, entry: str, *, outside_authorization: bool = True
+    ) -> Optional[str]:
         """The value for a placeholder, or ``None`` to leave it as it is."""
         credential = self.credentials.get(name)
         if credential is None:
@@ -236,6 +260,9 @@ class RequestSwap:
         ok, reason = self.allows(credential)
         if not ok:
             self._refuse(name, reason)
+            return None
+        if outside_authorization and not credential.swap_anywhere:
+            self._refuse(name, "outside-authorization")
             return None
         if entry == TOTP_ENTRY:
             seed = credential.values.get(TOTP_ENTRY)
@@ -264,15 +291,22 @@ class RequestSwap:
         *,
         encode: Optional[Callable[[str], str]] = None,
         only: Optional[set[str]] = None,
+        outside_authorization: bool = True,
     ) -> str:
         """Substitute placeholders; *encode* is applied to each value only,
-        *only* limits which credentials may swap (the Cookie rule)."""
+        *only* limits which credentials may swap (the Cookie rule).  Outside
+        the ``Authorization`` header (the default) only a credential with
+        ``swap_anywhere`` swaps."""
 
         def repl(m: re.Match[str]) -> str:
             name, entry = m.group(1), m.group(2) or DEFAULT_ENTRY
             if only is not None and name not in only:
+                if name in self.credentials:
+                    self._refuse(name, "cookie-not-allowed")
                 return m.group(0)
-            value = self.resolve(name, entry)
+            value = self.resolve(
+                name, entry, outside_authorization=outside_authorization
+            )
             if value is None:
                 return m.group(0)
             self.events.append(SwapEvent("swapped", m.group(0)))
@@ -298,10 +332,12 @@ class RequestSwap:
         decoded = basic_decoded(value)
         if decoded is None:
             return value
-        new_decoded = self.text(decoded)
+        new_decoded = self.text(decoded, outside_authorization=False)
         if new_decoded == decoded:
             return value
-        return "Basic " + base64.b64encode(new_decoded.encode()).decode("ascii")
+        swapped = base64.b64encode(new_decoded.encode()).decode("ascii")
+        self.encoded.append((swapped, value.partition(" ")[2].strip()))
+        return "Basic " + swapped
 
     def headers(self, request: Any) -> None:
         cookie_names = {n for n, c in self.credentials.items() if c.cookie}
@@ -314,10 +350,15 @@ class RequestSwap:
                 new_values = [self.basic_auth(v) for v in values]
                 # Not Basic (e.g. ``Bearer <placeholder>``): plain text.
                 new_values = [
-                    self.text(v) if nv == v else nv for v, nv in zip(values, new_values)
+                    self.text(v, outside_authorization=False) if nv == v else nv
+                    for v, nv in zip(values, new_values)
                 ]
             elif lowered == "cookie":
-                new_values = [self.text(v, only=cookie_names) for v in values]
+                # ``cookie`` is an opt-in of its own.
+                new_values = [
+                    self.text(v, only=cookie_names, outside_authorization=False)
+                    for v in values
+                ]
             else:
                 new_values = [self.text(v) for v in values]
             if new_values != values:
@@ -412,8 +453,15 @@ def scrub_replacements(
     return triples
 
 
-def scrub_text(text: str, credentials: Iterable[Credential]) -> str:
-    """Replace every known value in *text* with its placeholder."""
+def scrub_text(
+    text: str,
+    credentials: Iterable[Credential],
+    encoded: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Replace every known value in *text* with its placeholder, and every
+    swapped Basic pair in *encoded* with the one the box sent."""
+    for swapped, original in encoded:
+        text = text.replace(swapped, original)
     for value, placeholder, whole_token in scrub_replacements(credentials):
         if whole_token:
             text = re.sub(r"(?<!\d)" + re.escape(value) + r"(?!\d)", placeholder, text)
