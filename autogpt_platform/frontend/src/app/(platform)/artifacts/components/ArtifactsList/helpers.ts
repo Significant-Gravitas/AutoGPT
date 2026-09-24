@@ -342,12 +342,23 @@ export function hasImageThumbnail(kind: PreviewKind): boolean {
 export function getEmptyMessage(opts: {
   hasSearchTerm: boolean;
   isInFolder: boolean;
+  /** Child folders are listed above the empty files area. */
   hasFolders: boolean;
   hasExpertFilter?: boolean;
+  expertName?: string | null;
 }): string {
   if (opts.hasSearchTerm) return "No files match your search";
-  if (opts.hasExpertFilter) return "No files from this expert yet";
-  if (opts.isInFolder) return "This folder is empty";
+  if (opts.hasExpertFilter) {
+    // "yet" is only true of a workspace with nowhere else to look; anywhere
+    // with folders or inside one, the files may simply be elsewhere.
+    if (!opts.isInFolder && !opts.hasFolders)
+      return "No files from this expert yet";
+    return `No files from ${opts.expertName ?? "this expert"} here`;
+  }
+  if (opts.isInFolder)
+    return opts.hasFolders
+      ? "No files directly in this folder"
+      : "This folder is empty";
   if (opts.hasFolders) return "No files at the root yet";
   return "No files yet";
 }
@@ -373,6 +384,7 @@ export function getEmptyState(opts: {
     isInFolder: opts.isInFolder,
     hasFolders: opts.hasFolders,
     hasExpertFilter: opts.expert !== null,
+    expertName: opts.expert?.name,
   });
   const base: EmptyStateContent = {
     title,

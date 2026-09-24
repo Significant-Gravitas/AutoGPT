@@ -94,6 +94,8 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         seen_context.append(get_execution_context())
         return [_RESULT]
 
+    persist = AsyncMock(return_value=True)
+
     async def model_loop(*, messages, **_kwargs):
         sent.append(list(messages))
         raise _StopAtFold
@@ -132,7 +134,7 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
         patch(f"{svc}.extract_context_messages", new=AsyncMock(return_value=[])),
         patch(f"{svc}._compress_session_messages", new=AsyncMock(return_value=[])),
         patch(f"{svc}.resolve_answered", new=resolve),
-        patch(f"{svc}.persist_pending_as_user_rows", new=AsyncMock(return_value=True)),
+        patch(f"{svc}.persist_pending_as_user_rows", new=persist),
         patch(f"{svc}.tool_call_loop", new=model_loop),
     ):
         try:
@@ -152,3 +154,5 @@ async def test_the_baseline_engine_opens_its_turn_with_the_held_result():
     assert seen_context == [("user-1", session)]
     assert len(sent) == 1
     assert sent[0][-1] == {"role": "user", "content": _RESULT.content}
+    # The uploaded transcript must carry it too, or the next turn loses it.
+    assert persist.await_args.args[1] is not None

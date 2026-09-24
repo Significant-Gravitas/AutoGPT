@@ -19,7 +19,9 @@ from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     AutopilotMode,
+    ChatMessage,
     ChatSession,
+    append_and_save_message,
     get_chat_session,
     update_session_autopilot_mode,
     upsert_chat_session,
@@ -111,6 +113,47 @@ async def test_two_held_calls_in_one_turn_both_wait(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_retry_of_a_waiting_call_keeps_the_first_call(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "again")
+
+    retry = await check_action(
+        _TOOL, {"text": "again"}, test_user_id, session, tool_call_id="call-2"
+    )
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    assert not retry.allowed and retry.review_id == review_id
+    [call] = await held.answered(test_user_id, session.session_id)
+    assert call.tool_call_id == "call-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_wake_is_not_repeated_for_the_same_cards(
+    setup_test_user, test_user_id, gate_on
+):
+    """Even after an error reply, which lets an identical user row through."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "wake once")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    dispatch = AsyncMock(side_effect=RuntimeError("queue down"))
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id)
+        await append_and_save_message(
+            session.session_id, ChatMessage(role="assistant", content="error")
+        )
+        await held.wake(test_user_id, session.session_id)
+
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    wakes = [m for m in reloaded.messages if m.content == held.WAKE_MESSAGE]
+    assert len(wakes) == 1
+    assert dispatch.await_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_approval_runs_the_call_with_its_stored_arguments(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
@@ -126,6 +169,52 @@ async def test_an_approval_runs_the_call_with_its_stored_arguments(
     assert len(delivered) == 1
     assert "posted hello team" in delivered[0].content
     assert 'tool_call_id="call-1"' in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "approved"
+    assert await _row(review_id, test_user_id) is None
+
+
+async def _approve_after_losing_the_held_call(
+    session: ChatSession, user_id: str, review_id: str
+) -> None:
+    """Redis lost the entry (eviction, flush) while the card sat in Postgres."""
+    assert await held._claim(session.session_id, review_id)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+    with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
+        await held.wake(user_id, session.session_id, rows.values())
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "from the card")
+    await _approve_after_losing_the_held_call(session, test_user_id, review_id)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [{"text": "from the card"}]
+    assert "posted from the card" in delivered.content
+    # The card kept the call's id, so the chain row still finds its result.
+    assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
+    assert await _row(review_id, test_user_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_lost_held_call_the_card_cannot_rebuild_asks_for_a_resend(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The card holds a clipped copy, which must never run in the call's place."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "clipped " + "x" * 5_000)
+    await _approve_after_losing_the_held_call(session, test_user_id, review_id)
+
+    [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -169,6 +258,68 @@ async def test_a_failure_after_the_claim_keeps_the_call_for_the_next_turn(
     assert "posted flaky" in delivered.content
 
 
+@pytest.mark.parametrize(
+    "status, expect",
+    [(ReviewStatus.APPROVED, "posted keep"), (ReviewStatus.REJECTED, "declined")],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_cap_still_delivers_the_real_outcome(
+    setup_test_user, test_user_id, gate_on, post_tool, status, expect
+):
+    """A refusal stays a refusal, and a run is reported with its result."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "keep")
+    await _answer(review_id, status)
+
+    def broken_cap(_text: str) -> str:
+        raise RuntimeError("cap failed")
+
+    [delivered] = await held.resolve_answered(test_user_id, session, cap=broken_cap)
+
+    assert expect in delivered.content
+    assert "may have run" not in delivered.content
+    assert post_tool.runs == (
+        [{"text": "keep"}] if status == ReviewStatus.APPROVED else []
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Re-storing it would report "no longer open" for a call that reached the gate."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "spent")
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    async def spend_then_fail(user_id, *_args):
+        await review_store.consume(review_id, user_id)
+        raise RuntimeError("lost after the gate")
+
+    with patch.object(held, "_outcome", spend_then_fail):
+        [delivered] = await held.resolve_answered(test_user_id, session)
+
+    assert "may have run" in delivered.content
+    assert await held.answered(test_user_id, session.session_id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_run_with_the_flag_off_is_still_spent(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "flag off")
+    await _answer(review_id, ReviewStatus.APPROVED)
+
+    with patch(
+        "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
+    ):
+        await held.resolve_answered(test_user_id, session)
+
+    assert post_tool.runs == [{"text": "flag off"}]
+    assert await _row(review_id, test_user_id) is None
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_row_approved_and_resolved_four_times_at_once_runs_once(
     setup_test_user, test_user_id, gate_on, post_tool
@@ -206,6 +357,7 @@ async def test_a_stale_approval_delivers_a_refusal_not_a_run(
 
     assert post_tool.runs == []
     assert "expired" in delivered[0].content
+    assert delivered[0].metadata["held_call"]["outcome"] == "expired"
     assert await _row(review_id, test_user_id) is None
 
 
@@ -225,7 +377,8 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
 
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
-    assert await chat_rules.asks(session.session_id, _TOOL)
+    assert delivered[0].metadata["held_call"]["outcome"] == "rejected"
+    assert await chat_rules.ask_reason(session.session_id, _TOOL) == chat_rules.DECLINED
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -260,3 +413,20 @@ async def test_an_answer_on_an_idle_chat_starts_its_turn(
 
     dispatch.assert_awaited_once()
     assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_chain_row_and_the_card_name_the_call_alike(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The tool output labels the chain row; the row's payload heads the card."""
+    session = await _new_session(test_user_id, "ask_first")
+
+    result = await post_tool.execute(test_user_id, session, "call-9", text="hi")
+
+    output = json.loads(result.output)
+    row = await _row(output["review_id"], test_user_id)
+    assert row is not None
+    assert output["type"] == "approval_required"
+    assert (output["ask"], output["object"]) == ("Post a message", None)
+    assert row.payload["headline"]["ask"] == output["ask"]

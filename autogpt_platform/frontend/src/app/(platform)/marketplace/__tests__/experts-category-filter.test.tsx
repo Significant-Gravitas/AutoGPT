@@ -127,7 +127,7 @@ describe("Marketplace category filter over experts", () => {
     render(<MainMarkeplacePage />);
 
     const chips = await screen.findByRole("group", {
-      name: "Browse by category",
+      name: "Browse experts by category",
     });
     const shelf = await screen.findByRole("link", { name: /Maria/ });
 
@@ -181,7 +181,7 @@ describe("Marketplace category filter over experts", () => {
     );
     // Not the empty-roster fallback either: a filtered shelf offers no
     // invitation to raise an expert.
-    expect(screen.queryByRole("link", { name: "Raise your own" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create an Expert" })).toBeNull();
   });
 
   test("a failed roster request under a category still offers the raise link", async () => {
@@ -199,20 +199,22 @@ describe("Marketplace category filter over experts", () => {
 
     await userEvent.click(await findCategoryChip("Sales"));
 
-    // The header carries its own "Raise your own" link, so wait for it to go:
+    // The header carries its own "Create an Expert" link, so wait for it to go:
     // a failure is not an answer about the category, so the fallback stays.
     await waitFor(() =>
       expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
     );
     expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Create an Expert" })
+        .getAttribute("href"),
     ).toBe("/raise");
   });
 });
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

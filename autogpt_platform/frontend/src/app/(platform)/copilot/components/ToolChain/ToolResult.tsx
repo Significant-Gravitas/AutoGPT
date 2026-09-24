@@ -1,6 +1,7 @@
 "use client";
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
+import { HeldCallDetail } from "./HeldCallRowParts";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -500,6 +501,10 @@ export function ToolResult({ row, readOnly = false }: Props) {
         diff={row.output}
       />
     );
+  }
+
+  if (row.held && row.held.state !== "approved") {
+    return <HeldCallDetail held={row.held} />;
   }
 
   const target = capabilityTargetRow(row);

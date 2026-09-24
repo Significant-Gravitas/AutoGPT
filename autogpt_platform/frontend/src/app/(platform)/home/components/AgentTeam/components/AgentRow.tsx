@@ -39,6 +39,16 @@ export function AgentRow({ agent }: Props) {
           </Text>
           <StatusBadge status={agent.status} />
         </div>
+        <Text variant="small" tone="secondary" className="break-words">
+          {agent.detail || "No status details available."}{" "}
+          {agent.status === "failed"
+            ? "Open Manage to inspect recent work."
+            : agent.status === "needs_setup"
+              ? "Open Manage to finish setup."
+              : agent.status === "paused"
+                ? "Open Manage to review settings."
+                : "Open Chat to give instructions."}
+        </Text>
         {secondLine ? (
           <Text
             variant="small"

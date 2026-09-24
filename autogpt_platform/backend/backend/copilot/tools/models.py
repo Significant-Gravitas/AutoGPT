@@ -402,6 +402,19 @@ class WorkspaceFileInfoData(BaseModel):
     size_bytes: int
 
 
+class WorkspaceFolderInfoData(BaseModel):
+    """A workspace folder as ``list_workspace_files`` reports it.
+
+    ``file_count`` counts the files directly inside; a subfolder's own files
+    are counted on that subfolder.
+    """
+
+    folder_id: str
+    name: str
+    parent_id: str | None = None
+    file_count: int
+
+
 class DelegatedExpertInfo(BaseModel):
     """Identity of the expert a delegated sub-session runs as.
 
@@ -1027,6 +1040,9 @@ class ApprovalRequiredResponse(ToolResponseBase):
     reason: str
     review_id: str | None = None
     graph_exec_id: str | None = None
+    # The chain row's label, from the same table as the card's headline.
+    ask: str | None = None
+    object: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

@@ -79,6 +79,10 @@ _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 # at least the pool worker thread isn't blocked forever.
 _FAIL_CLOSE_REDIS_TIMEOUT = 10.0
 _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS = 5.0
+# A hire's setup runs after the hire returns (~25 s for 8 skills); its first
+# turn waits this long for the skills and workflows the turn is built from.
+EXPERT_SETUP_WAIT_SECONDS = 60.0
+EXPERT_SETUP_POLL_SECONDS = 1.0
 
 
 # Module-level symbol preserved for backward-compat with callers that import
@@ -211,6 +215,27 @@ async def _normalize_private_expert_session_tenancy(
     session.team_id = team_id
     session.credentials = {}
     return await upsert_chat_session(session, persist_tenancy=True)
+
+
+async def _wait_for_expert_setup(session: "ChatSession") -> None:
+    """Hold a fresh hire's turn until its skills and workflows are installed,
+    or give up after ``EXPERT_SETUP_WAIT_SECONDS`` and run without them."""
+    if session.expert_id is None:
+        return
+    from backend.data.db_accessors import experts_db
+
+    deadline = time.monotonic() + EXPERT_SETUP_WAIT_SECONDS
+    while (
+        await experts_db().expert_setup_status(session.user_id, session.expert_id)
+        == "installing"
+    ):
+        if time.monotonic() >= deadline:
+            logger.warning(
+                f"Expert #{session.expert_id} still setting up after "
+                f"{EXPERT_SETUP_WAIT_SECONDS}s; running the turn without waiting"
+            )
+            return
+        await asyncio.sleep(EXPERT_SETUP_POLL_SECONDS)
 
 
 def execute_copilot_turn(
@@ -551,6 +576,7 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            await _wait_for_expert_setup(session)
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -756,7 +782,7 @@ class CoPilotProcessor:
             # Handle all exceptions (including CancelledError) with appropriate logging
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
-                error_msg = "Operation cancelled"
+                error_msg = stream_registry.CANCELLED_MESSAGE
             else:
                 error_msg = str(e) or type(e).__name__
                 log.error(f"Turn failed: {error_msg}")
@@ -764,7 +790,7 @@ class CoPilotProcessor:
         finally:
             # If no exception but user cancelled, still mark as cancelled
             if not error_msg and cancel.is_set():
-                error_msg = "Operation cancelled"
+                error_msg = stream_registry.CANCELLED_MESSAGE
             try:
                 if credential_lease is not None:
                     try:
