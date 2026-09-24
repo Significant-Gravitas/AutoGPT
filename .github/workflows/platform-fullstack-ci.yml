@@ -278,12 +278,23 @@ jobs:
               cp -a /seed/. /app/.next/cache/
           EOF
 
-      - name: Set up Platform - Build Docker images
-        id: platform-build
+      # The backend images finish minutes before the Next.js build, so they are
+      # baked on their own and the backend stack starts while the frontend builds.
+      - name: Set up Platform - Build backend Docker images
+        id: platform-build-backend
         working-directory: autogpt_platform
         background: true
         run: |
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
+          targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
+          echo "Baking: $targets"
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load $targets
+
+      - name: Set up Platform - Build frontend Docker image
+        id: platform-build-frontend
+        working-directory: autogpt_platform
+        background: true
+        run: |
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load frontend
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
@@ -322,27 +333,8 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Wait for image build and database
-        wait: [platform-build, database]
-
-      - name: Export Next.js build cache from BuildKit
-        id: next-build-cache-export
-        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
-        continue-on-error: true
-        working-directory: /tmp
-        background: true
-        run: |
-          rm -rf /tmp/next-build-cache
-          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
-          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
-          FROM node:24.18-alpine3.23 AS export
-          ARG RUN_ID
-          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
-              mkdir /out && cp -a /app/.next/cache/. /out/
-          FROM scratch
-          COPY --from=export /out /
-          EOF
-          du -sh /tmp/next-build-cache
+      - name: Wait for backend image build and database
+        wait: [platform-build-backend, database]
 
       - name: Set up Platform - Run migrations
         run: |
@@ -369,7 +361,9 @@ jobs:
 
       - name: Set up Platform - Start (all other services)
         run: |
-          docker compose -f ../docker-compose.resolved.yml up -d --no-build
+          # Everything but the frontend, whose image may still be building
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build \
+            $(docker compose -f ../docker-compose.resolved.yml config --services | grep -vx frontend)
           echo "Waiting for rest_server to be ready..."
           timeout 180 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || {
             echo "❌ rest_server did not become healthy in 180s"
@@ -414,6 +408,38 @@ jobs:
           docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
             sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+
+      - name: Wait for frontend image build
+        wait: [platform-build-frontend]
+
+      - name: Export Next.js build cache from BuildKit
+        id: next-build-cache-export
+        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
+        continue-on-error: true
+        working-directory: /tmp
+        background: true
+        run: |
+          rm -rf /tmp/next-build-cache
+          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
+          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
+          FROM node:24.18-alpine3.23 AS export
+          ARG RUN_ID
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              mkdir /out && cp -a /app/.next/cache/. /out/
+          FROM scratch
+          COPY --from=export /out /
+          EOF
+          du -sh /tmp/next-build-cache
+
+      - name: Set up Platform - Start frontend
+        run: |
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build --no-deps frontend
+          echo "Waiting for frontend to be ready..."
+          timeout 120 sh -c 'until curl -fsS -o /dev/null http://localhost:3000; do sleep 2; done' || {
+            echo "frontend did not become ready in 120s"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=100 frontend
+            exit 1
+          }
 
       - name: Copy source maps from Docker for E2E coverage
         run: |
