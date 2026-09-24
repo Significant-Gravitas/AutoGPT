@@ -598,3 +598,40 @@ async def test_the_reason_names_otto_as_he_even_in_an_experts_chat(gate, ran):
     )
     reason = gate.open_review.await_args.args[5]
     assert reason == "Otto does not know what Github Add Label does, so he asks."
+
+
+def test_a_workflow_with_two_irreversible_steps_names_both():
+    """Approving the run covers every step, so the card names every one it covers."""
+    subject = workflow_subject(
+        _graph(
+            [
+                _node("send", GmailSendBlock(), {}),
+                _node("post", SendDiscordMessageBlock(), {}),
+            ]
+        )
+    )
+    assert subject.irreversible
+    assert subject.reason == (
+        "Runs Morning digest; its steps Gmail Send and Send Discord Message "
+        "reach outside the platform."
+    )
+
+
+async def test_a_workflow_called_without_its_inputs_asks_nothing(gate):
+    """The run answers with the inputs it needs, so a card first is noise."""
+    graph = _graph(
+        [
+            _node("in", AgentInputBlock(), {"name": "topic"}),
+            _node("send", GmailSendBlock(), {}),
+        ]
+    )
+    run = AsyncMock(return_value=_answer())
+    with (
+        patch(_AGENT_GRAPH, AsyncMock(return_value=(graph, None))),
+        patch.object(RunAgentTool, "_execute", run),
+    ):
+        await RunAgentTool().execute(
+            "user-1", _session("ask_first"), "call-1", library_agent_id="lib-1"
+        )
+    gate.open_review.assert_not_awaited()
+    run.assert_awaited_once()
