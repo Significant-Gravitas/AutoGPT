@@ -1998,3 +1998,47 @@ class TestCreationEnvBehindTheSwapProxy:
         kwargs = self._create(proxy="proxy:1080", user_id=None)
         assert "envs" not in kwargs
         self.lookup.assert_not_awaited()
+
+
+class TestGrantsAreRenewedOnReconnect:
+    """An expert's box can stay paused longer than a grant lasts: a reconnect
+    that will run work renews its grants, behind the proxy only."""
+
+    def _reconnect(self, *, proxy, pin_egress=True, user_id="user-a"):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.renew_box_grants", AsyncMock()
+            ) as renew,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned(
+                    "sb-1", owner, _API_KEY, user_id=user_id, pin_egress=pin_egress
+                )
+            )
+        return renew
+
+    def test_behind_the_proxy_a_reconnect_renews_the_grants(self):
+        self._reconnect(proxy="proxy:1080").assert_awaited_once_with("sb-1")
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"proxy": None},
+            {"proxy": "proxy:1080", "pin_egress": False},
+            {"proxy": "proxy:1080", "user_id": "user-b"},  # not the box's user
+        ],
+        ids=["no proxy", "pause or kill", "another user"],
+    )
+    def test_otherwise_nothing_is_renewed(self, kwargs):
+        self._reconnect(**kwargs).assert_not_awaited()
