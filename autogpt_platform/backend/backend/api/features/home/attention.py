@@ -9,6 +9,7 @@ from backend.api.features.experts.spend_approval import is_spend_review
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.references import listed_ids
 from backend.copilot.gate.review import GATE_NODE_PREFIX, GateReviewPayload
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -132,7 +133,7 @@ def _named_value(gate: GateReviewPayload, key: str) -> str | None:
     if not any(ref.name for ref in refs):
         return None
     value = gate.arguments.get(key)
-    more = len(value) - len(refs) if isinstance(value, list) else 0
+    more = len(listed_ids(value)) - len(refs) if isinstance(value, list) else 0
     text = ", ".join(ref.name or ref.id for ref in refs)
     return f"{text} +{more} more" if more > 0 else text
 

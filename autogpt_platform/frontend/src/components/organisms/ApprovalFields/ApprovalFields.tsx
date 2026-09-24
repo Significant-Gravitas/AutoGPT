@@ -94,6 +94,8 @@ function FieldOrReference({
   const refs = references.filter((ref) => ref.key === name);
   if (!refs.some((ref) => ref.name))
     return <FieldValue name={name} value={value} clipped={clipped} />;
-  const total = Array.isArray(value) ? value.length : 1;
+  const total = Array.isArray(value)
+    ? value.filter((v) => typeof v === "string" && v.trim()).length
+    : 1;
   return <ReferenceValue refs={refs} total={total} />;
 }

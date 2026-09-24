@@ -558,7 +558,8 @@ def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
     ]
     payload = review_payload(
         "move_agents_to_folder",
-        {"agent_ids": [f"a{i}" for i in range(7)], "folder_id": "f-9"},
+        # A blank is not an id, so it counts neither as shown nor as "more".
+        {"agent_ids": ["a0", "", *(f"a{i}" for i in range(1, 7))], "folder_id": "f-9"},
         references=[folder, *agents],
     )
     review = _gate_review().model_copy(update={"payload": payload})

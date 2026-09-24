@@ -137,13 +137,17 @@ def wanted_references(tool_name: str, args: dict[str, Any]) -> list[Reference]:
         if tool != tool_name or entity is None:
             continue
         value = args.get(key)
-        values = value[:MAX_LISTED] if isinstance(value, list) else [value]
         refs.extend(
-            Reference(key=key, entity=entity, id=v.strip())
-            for v in values
-            if isinstance(v, str) and v.strip()
+            Reference(key=key, entity=entity, id=id)
+            for id in listed_ids(value)[:MAX_LISTED]
         )
     return refs
+
+
+def listed_ids(value: Any) -> list[str]:
+    """The ids an argument holds, blanks and non-strings dropped."""
+    values = value if isinstance(value, list) else [value]
+    return [v.strip() for v in values if isinstance(v, str) and v.strip()]
 
 
 class _Call(BaseModel):

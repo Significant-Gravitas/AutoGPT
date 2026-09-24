@@ -85,7 +85,7 @@ async def test_an_id_that_does_not_resolve_keeps_the_raw_id_and_no_link():
 
 async def test_a_list_resolves_each_element_up_to_the_cap():
     lib = _library(agents={f"a{i}": f"Agent {i}" for i in range(7) if i != 1})
-    args = {"agent_ids": [f"a{i}" for i in range(7)], "folder_id": None}
+    args = {"agent_ids": ["a0", "", *(f"a{i}" for i in range(1, 7))], "folder_id": None}
     with patch.object(references, "library_db", return_value=lib):
         refs = await resolve_references(
             "move_agents_to_folder", args, "user-1", _session()
