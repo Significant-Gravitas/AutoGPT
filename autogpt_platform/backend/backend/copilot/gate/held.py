@@ -13,11 +13,12 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
+from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.data.db_accessors import chat_db, review_db
@@ -27,6 +28,9 @@ from . import chat_rules
 from . import review as review_store
 
 if TYPE_CHECKING:
+    from backend.api.features.graph_executions.review.model import (
+        PendingHumanReviewModel,
+    )
     from backend.copilot.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -39,7 +43,13 @@ _KEY = "copilot:gate:held:"
 # 100,000-character output cap plus the wrapper), so nothing is cut here.
 _MAX_RESULT_CHARS = 120_000
 
+Outcome = Literal["approved", "rejected", "expired", "closed"]
+
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
+_RESEND = (
+    "Nothing ran: the approved action's details were lost before it could run. "
+    "Tell the user, and ask them to send the request again if it is still needed."
+)
 
 
 class HeldResult(PendingMessage):
@@ -55,6 +65,8 @@ class HeldCall(BaseModel):
     tool_call_id: str
     args: dict[str, Any]
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Rebuilt from a card whose stored copy of the arguments no longer binds.
+    lost: bool = False
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
@@ -117,18 +129,21 @@ async def resolve_answered(
         try:
             delivered.append(await _deliver(user_id, session, call, cap))
         except Exception:
-            # Put it back for the next turn; the gate's consume still stops a
-            # second run if the call got as far as running.
             logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
-            await remember(session.session_id, call)
+            delivered.extend(await _recover(user_id, session.session_id, call))
     return delivered
 
 
-async def wake(user_id: str, session_id: str) -> None:
+async def wake(
+    user_id: str,
+    session_id: str,
+    answered_rows: "Iterable[PendingHumanReviewModel]" = (),
+) -> None:
     """Start a turn to carry answered cards, if the chat is idle.
 
     Best effort: a running turn's end calls this again, and any later turn
-    folds the results in anyway.
+    folds the results in anyway. ``answered_rows`` are the cards just
+    answered; one whose held call is gone from Redis is restored from its row.
     """
     # Deferred: the executor utilities import the tool registry.
     from backend.copilot.active_turns import (
@@ -142,8 +157,18 @@ async def wake(user_id: str, session_id: str) -> None:
     from backend.copilot.turn_queue import InflightCapExceeded, try_enqueue_turn
 
     try:
-        if not await answered(user_id, session_id):
+        await _restore(user_id, session_id, answered_rows)
+        calls = await answered(user_id, session_id)
+        if not calls:
             return
+        # One wake per set of answered cards: a turn that died before its fold
+        # must not be woken again for the same cards, turn after failed turn.
+        wake_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{session_id}:" + ",".join(sorted(c.review_id for c in calls)),
+            )
+        )
         info = await chat_db().get_chat_session_metadata(session_id)
         if info is None or info.user_id != user_id:
             return
@@ -158,7 +183,10 @@ async def wake(user_id: str, session_id: str) -> None:
                     await append_and_save_message(
                         session_id,
                         ChatMessage(
-                            role="user", content=WAKE_MESSAGE, metadata=metadata
+                            id=wake_id,
+                            role="user",
+                            content=WAKE_MESSAGE,
+                            metadata=metadata,
                         ),
                     )
                     is None
@@ -183,6 +211,7 @@ async def wake(user_id: str, session_id: str) -> None:
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=session_id,
                 message=WAKE_MESSAGE,
+                message_id=wake_id,
                 message_metadata=metadata,
                 llm_auth_provider=info.metadata.llm_auth_provider,
                 llm_credential_id=info.metadata.llm_credential_id,
@@ -201,7 +230,41 @@ async def _deliver(
 ) -> PendingMessage:
     from backend.copilot.tools import get_tool
 
-    output = cap(await _outcome(user_id, session, call, get_tool(call.tool_name)))
+    outcome, output = await _outcome(user_id, session, call, get_tool(call.tool_name))
+    try:
+        return _result_row(call, cap(output), outcome)
+    except Exception:
+        # The outcome is known and may be a refusal; only the engine's cut
+        # failed, so deliver it trimmed rather than let recovery guess.
+        logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
+        return _result_row(call, output[: _MAX_RESULT_CHARS // 2], outcome)
+
+
+async def _recover(
+    user_id: str, session_id: str, call: HeldCall
+) -> list[PendingMessage]:
+    """``_outcome`` failed. A card still open goes back for the next turn; a
+    spent approval means the call reached the gate, so it may have run."""
+    try:
+        rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
+        spent = call.review_id not in rows
+    except Exception:
+        spent = False
+    if not spent:
+        await remember(session_id, call)
+        return []
+    return [
+        _result_row(
+            call,
+            "The approved action may have run, but its result was lost before it "
+            "reached you. Tell the user, and check the outcome before relying "
+            "on it.",
+            "approved",
+        )
+    ]
+
+
+def _result_row(call: HeldCall, output: str, outcome: Outcome) -> PendingMessage:
     return HeldResult(
         content=(
             f'<held_call_result tool="{call.tool_name}" '
@@ -213,6 +276,8 @@ async def _deliver(
                 "review_id": call.review_id,
                 "tool_name": call.tool_name,
                 "tool_call_id": call.tool_call_id,
+                # The chain row shows the answer without parsing the text.
+                "outcome": outcome,
             }
         },
     )
@@ -220,11 +285,11 @@ async def _deliver(
 
 async def _outcome(
     user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool | None"
-) -> str:
+) -> tuple[Outcome, str]:
     rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
     row = rows.get(call.review_id)
     if row is None or row.status == ReviewStatus.WAITING:
-        return "Nothing ran: this card is no longer open."
+        return "closed", "Nothing ran: this card is no longer open."
     # Deferred: reads imports this package's __init__, which imports this module.
     from .reads import answered_read, is_held_read
 
@@ -233,25 +298,72 @@ async def _outcome(
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
         await chat_rules.set_ask(session.session_id, call.tool_name)
-        return (
+        return "rejected", (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."
         )
     approved_at = row.reviewed_at or row.updated_at or row.created_at
     if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
         await review_store.consume(call.review_id, user_id)
-        return (
+        return "expired", (
             "Nothing ran: the approval expired an hour after it was given. "
             "Propose the call again if it is still needed."
         )
+    if call.lost:
+        await review_store.consume(call.review_id, user_id)
+        return "closed", _RESEND
     if tool is None:
         await review_store.consume(call.review_id, user_id)
-        return "Nothing ran: this tool no longer exists."
+        return "closed", "Nothing ran: this tool no longer exists."
     # The gate finds the approval for exactly these arguments and spends it.
     result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    # With the flag switched off since, the gate ran it without spending the
+    # approval; spend it here so no later identical call rides on it.
+    await review_store.consume(call.review_id, user_id)
     if isinstance(result.output, str):
-        return result.output
-    return json.dumps(result.output, default=str)
+        return "approved", result.output
+    return "approved", json.dumps(result.output, default=str)
+
+
+async def _restore(
+    user_id: str, session_id: str, rows: "Iterable[PendingHumanReviewModel]"
+) -> None:
+    gate_prefix = review_store.node_id_for("")
+    rows = [r for r in rows if r.node_exec_id.startswith(gate_prefix)]
+    if not rows:
+        return
+    held = await _held(session_id)
+    for row in rows:
+        if row.node_exec_id not in held:
+            logger.warning(f"Held call {row.node_exec_id} restored from its card")
+            await remember(session_id, _from_row(user_id, session_id, row))
+
+
+def _from_row(
+    user_id: str, session_id: str, row: "PendingHumanReviewModel"
+) -> HeldCall:
+    """The card stores a redacted, clipped copy; the review id is a hash of the
+    exact arguments, so only a copy that hashes back to it may run."""
+    tool_name = row.node_exec_id.removeprefix(review_store.node_id_for("")).rsplit(
+        COPILOT_NODE_EXEC_ID_SEPARATOR, 1
+    )[0]
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    args = payload.get("arguments")
+    if not isinstance(args, dict):
+        args = {}
+    intact = (
+        review_store.review_id_for(session_id, user_id, tool_name, args)
+        == row.node_exec_id
+    )
+    return HeldCall(
+        review_id=row.node_exec_id,
+        tool_name=tool_name,
+        # The card keeps the call's id, so the late result still finds its row.
+        tool_call_id=str(payload.get("tool_call_id") or ""),
+        args=args if intact else {},
+        held_at=row.created_at,
+        lost=not intact,
+    )
 
 
 async def _held(session_id: str) -> dict[str, HeldCall]:

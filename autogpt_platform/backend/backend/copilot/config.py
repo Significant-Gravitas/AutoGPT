@@ -53,7 +53,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # at the cloud default" so it can rewrite to ``fast_standard_model`` under
 # local transport (otherwise an "advanced" tier request 404s against
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
-_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
+_DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
@@ -1149,7 +1149,7 @@ class ChatConfig(BaseSettings):
         when the transport asks for it.
 
         The cloud defaults are ``openai/gpt-4o-mini`` / ``google/gemini-...``
-        / ``anthropic/claude-opus-4-8`` — fine on OpenRouter, instant 404
+        / ``anthropic/claude-opus-5`` — fine on OpenRouter, instant 404
         on a local backend (no provider slugs there). Operators on the
         local transport otherwise have to repeat the same Ollama slug
         across half a dozen ``CHAT_*_MODEL`` envs. Only fires when the
@@ -1158,7 +1158,7 @@ class ChatConfig(BaseSettings):
         Covers ``title_model`` + ``simulation_model`` (aux call sites)
         AND ``fast_advanced_model`` (the "advanced" baseline tier);
         without the advanced derivation, a user clicking the advanced
-        toggle in the UI sends ``anthropic/claude-opus-4-8`` to Ollama
+        toggle in the UI sends ``anthropic/claude-opus-5`` to Ollama
         and gets a model-not-found 404. The boot-time vendor validator
         is skipped under local transport so this misconfig wouldn't
         surface until the first advanced-tier turn.

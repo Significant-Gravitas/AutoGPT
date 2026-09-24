@@ -41,6 +41,9 @@ import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import type { SentFrom } from "../../sentFrom";
+import type { AutopilotMode } from "../../autopilotModeStore";
+import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
+import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -55,6 +58,8 @@ export interface ChatContainerProps {
   sessionId: string | null;
   sessionChatStatus?: string;
   sessionSentFrom?: SentFrom | null;
+  /** The approval mode stored on the session, when it has one. */
+  sessionAutopilotMode?: AutopilotMode | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -117,6 +122,7 @@ export interface ChatContainerProps {
 }
 
 const NO_OP_SEND = () => undefined;
+const CONTINUE_AFTER_HELD_CALL = "Continue from where you left off.";
 
 export const ChatContainer = ({
   messages,
@@ -125,6 +131,7 @@ export const ChatContainer = ({
   sessionId,
   sessionChatStatus,
   sessionSentFrom,
+  sessionAutopilotMode = null,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -198,6 +205,13 @@ export const ChatContainer = ({
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
+  const modeSelector = isAutoModeEnabled ? (
+    <AutopilotModeSelector
+      sessionId={sessionId}
+      persistedMode={sessionAutopilotMode}
+    />
+  ) : undefined;
   const silenceTimeoutMs = useVoiceSilenceTimeout();
   const voice = useVoiceMode({
     enabled: isVoiceModeEnabled,
@@ -259,7 +273,14 @@ export const ChatContainer = ({
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastRow = [...messages].reverse().find((m) => m.role === "user");
+    // A turn an answered card started failed after the call ran: resuming it
+    // must not re-send the request that led to the call.
+    if (lastRow && isHeldCallRow(lastRow)) {
+      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+      return;
+    }
+    const lastUserMsg = lastRow;
     const lastText = lastUserMsg?.parts
       .filter(
         (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
@@ -394,6 +415,8 @@ export const ChatContainer = ({
                             hasSession={!!sessionId}
                             sessionId={sessionId}
                             expertId={expertIdentity?.id ?? null}
+                            modeSelector={modeSelector}
+                            expertName={expertIdentity?.name ?? null}
                             voiceToggle={
                               isVoiceModeEnabled ? (
                                 <VoiceModeButton
@@ -442,6 +465,7 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                modeSelector={modeSelector}
                 voiceToggle={
                   isVoiceModeEnabled ? (
                     <VoiceModeButton

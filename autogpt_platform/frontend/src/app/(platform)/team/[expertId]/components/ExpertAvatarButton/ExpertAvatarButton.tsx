@@ -32,15 +32,15 @@ export function ExpertAvatarButton({ expert }: Props) {
         type="button"
         onClick={openFilePicker}
         disabled={isUploading}
-        aria-label={`Change ${expert.name}'s photo`}
-        className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
+        aria-label={`Change ${expert.name}'s appearance`}
+        className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
       >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           color={expert.color}
           size={96}
-          className="ring-4 ring-background"
+          className="rounded-full ring-4 ring-background"
         />
 
         <span
@@ -58,8 +58,8 @@ export function ExpertAvatarButton({ expert }: Props) {
       <input
         ref={fileRef}
         type="file"
-        aria-label={`Upload ${expert.name} photo`}
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        aria-label={`Upload ${expert.name} appearance`}
+        accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={handleChange}
       />

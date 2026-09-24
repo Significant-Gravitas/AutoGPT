@@ -9,6 +9,8 @@ import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
 import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
 import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
 import { cn } from "@/lib/utils";
+import { getManagedAvatar } from "./helpers";
+import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
 interface Props {
   name: string | null;
@@ -19,12 +21,6 @@ interface Props {
   className?: string;
 }
 
-/**
- * Expert avatar shared by the copilot home surfaces (briefing card, team
- * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated Notion-style face — as a flat image unless there
- * is something to animate.
- */
 export function ExpertAvatar({
   name,
   avatarUrl,
@@ -34,10 +30,27 @@ export function ExpertAvatar({
   className,
 }: Props) {
   const style = { width: size, height: size };
+  const managed = getManagedAvatar(avatarUrl, size);
 
-  if (!name) {
+  if (managed) {
+    return (
+      <ManagedExpertImage
+        key={`${managed.base}:${size}`}
+        name={name ?? "Expert"}
+        base={managed.base}
+        pixels={managed.pixels}
+        size={size}
+        isOtto={managed.assetID === "otto"}
+        className={className}
+      />
+    );
+  }
+
+  if (!name || !avatarUrl) {
     return (
       <div
+        role="img"
+        aria-label={name ? `${name}, AI Expert` : "AI Expert"}
         style={style}
         className={cn(
           "flex shrink-0 items-center justify-center rounded-full bg-zinc-100",

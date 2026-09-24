@@ -229,7 +229,7 @@ describe("PaywallModal — Monthly/Yearly cycle toggle", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
 
     // PRO yearly = 51000 cents → $42.50/mo, MAX yearly = 326400 cents → $272.00/mo.
     await waitFor(() => {
@@ -293,7 +293,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("radio", { name: /yearly/i }));
+    fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     await waitFor(() => {

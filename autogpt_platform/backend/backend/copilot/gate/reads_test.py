@@ -365,9 +365,9 @@ async def test_an_approved_held_read_arrives_as_its_late_result_byte_identical(r
     assert call.tool_call_id == "call-7"
     rows.answer(ReviewStatus.APPROVED)
 
-    late = await held._outcome("user-1", session, call, tool)
+    outcome, late = await held._outcome("user-1", session, call, tool)
 
-    assert late == _plain_output(_MARKER)
+    assert (outcome, late) == ("approved", _plain_output(_MARKER))
     assert tool.runs == 1, "the late result must be the stored bytes, not a refetch"
     assert rows.rows == {}
 
@@ -382,8 +382,9 @@ async def test_a_rejected_held_read_never_arrives_and_sets_no_chat_rule(rows):
 
     set_ask = AsyncMock()
     with patch.object(held.chat_rules, "set_ask", set_ask):
-        late = await held._outcome("user-1", session, call, tool)
+        outcome, late = await held._outcome("user-1", session, call, tool)
 
+    assert outcome == "rejected"
     assert _MARKER not in late and "declined" in late
     set_ask.assert_not_awaited()
     assert tool.runs == 1

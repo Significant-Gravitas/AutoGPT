@@ -103,4 +103,7 @@ async def test_a_held_read_comes_back_from_its_row_byte_identical(
         where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
     )
 
-    assert await held._outcome(test_user_id, session, call, None) == output
+    assert await held._outcome(test_user_id, session, call, None) == (
+        "approved",
+        output,
+    )

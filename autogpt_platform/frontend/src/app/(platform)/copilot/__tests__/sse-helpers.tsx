@@ -29,6 +29,7 @@ export interface SessionOverride {
   has_more_messages?: boolean;
   chat_status?: string;
   expert_id?: string | null;
+  metadata?: SessionDetailResponse["metadata"];
 }
 
 /**
@@ -47,7 +48,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     has_more_messages: opts.has_more_messages ?? false,
     oldest_sequence: null,
     active_stream: opts.active_stream ?? null,
-    metadata: { dry_run: false, builder_graph_id: null },
+    metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
     expert_id: opts.expert_id ?? null,
   });
 }

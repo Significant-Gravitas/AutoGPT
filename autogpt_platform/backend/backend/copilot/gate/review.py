@@ -3,17 +3,18 @@
 ``run_block`` already parks sensitive block executions in ``PendingHumanReview``
 under a ``copilot-session-<id>`` key, and the chat renders every such row via
 ``extractGraphExecId`` -> ``CopilotPendingReviews``. Writing the same shape for
-a tool call inherits the card, the Home "Needs You" row, the awaiting-review
-alert, and the approve/reject endpoint without new UI.
+a tool call inherits the Home "Needs You" row, the awaiting-review alert and
+the approve/reject endpoint; the payload carries what the approval card reads.
 """
 
 import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from prisma.enums import ReviewStatus
+from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import (
@@ -28,11 +29,50 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .headline import Headline, headline_for
+from .policy import DEFAULT_MODE, effect_for
+
 logger = logging.getLogger(__name__)
 
 # Keep the stored payload small: @@agptfile: references are expanded before the
 # tool handler runs, so an argument can arrive holding a whole file.
 _MAX_ARG_CHARS = 4_000
+
+GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
+
+ReasonKind = Literal["mode", "subject", "supervisor", "rule", "spend", "content"]
+
+
+class Subject(BaseModel):
+    kind: str = "tool"
+    key: str
+    name: str
+    effect: str
+    irreversible: bool = False
+
+
+class FieldLabel(BaseModel):
+    key: str
+    label: str
+
+
+class GateReviewPayload(BaseModel):
+    """What the approval card, Home and the channels render: never the raw call."""
+
+    tool: str
+    arguments: dict[str, Any]
+    clipped: list[str] = []
+    fields: list[FieldLabel] = []
+    tool_call_id: str = ""
+    turn: int = 0
+    mode: str | None = None
+    subject: Subject
+    reason: str = ""
+    reason_kind: ReasonKind = "mode"
+    # The gate records no chat-scoped rule yet, so none is offered.
+    chat_rules_allowed: list[Literal["allow", "judge"]] = []
+    headline: Headline
+
 
 # An approval must not run a call long after the user gave it; the answered
 # card's turn normally runs it within seconds.
@@ -44,7 +84,7 @@ def session_exec_id(session_id: str) -> str:
 
 
 def node_id_for(tool_name: str) -> str:
-    return f"{COPILOT_NODE_PREFIX}gate-{tool_name}"
+    return f"{GATE_NODE_PREFIX}{tool_name}"
 
 
 def review_id_for(
@@ -65,31 +105,38 @@ def review_id_for(
     return f"{node_id_for(tool_name)}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
 
 
-def review_payload(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Nest the arguments one level down, and redact secret-shaped keys."""
+def review_payload(
+    tool_name: str,
+    args: dict[str, Any],
+    *,
+    reason: str = "",
+    reason_kind: ReasonKind = "mode",
+    mode: str | None = None,
+    tool_call_id: str = "",
+    turn: int = 0,
+) -> dict[str, Any]:
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
     # the one that matters off the card while the approval still binds it.
     per_value = max(200, _MAX_ARG_CHARS // max(1, len(redacted)))
     shown = {key: _clip(value, per_value) for key, value in redacted.items()}
-    return {"tool": tool_name, "arguments": shown}
-
-
-def instructions_for(tool_name: str, reason: str) -> str:
-    """Compose the card headline ourselves rather than trusting the reason.
-
-    ``PendingReviewsList`` uses ``instructions`` AS the headline, so a model
-    that controls the reason controls the framing the approver reads; leading
-    with a name from our own registry keeps the identity trustworthy.
-
-    ``PendingReviewCard`` discards any instructions containing "Block" — a
-    hard-coded discriminator for HITL block reviews — so a capital B is
-    lower-cased rather than stripped, which would mangle the sentence.
-    """
-    cleaned = " ".join(reason.split())[:200].strip(" :—-") or "needs your approval"
-    label = tool_name.replace("_", " ")
-    label = label[:1].upper() + label[1:]
-    return f"{label} — {cleaned}".replace("Block", "block")
+    return GateReviewPayload(
+        tool=tool_name,
+        arguments=shown,
+        clipped=[key for key in shown if shown[key] is not redacted[key]],
+        fields=_field_labels(tool_name, shown),
+        tool_call_id=tool_call_id,
+        turn=turn,
+        mode=mode,
+        subject=Subject(
+            key=tool_name,
+            name=_label(tool_name),
+            effect=effect_for(tool_name).value,
+        ),
+        reason=" ".join(reason.split())[:300],
+        reason_kind=reason_kind,
+        headline=headline_for(tool_name, args),
+    ).model_dump()
 
 
 async def find_decision(
@@ -151,14 +198,21 @@ async def open_review(
     tool_name: str,
     args: dict[str, Any],
     reason: str,
+    reason_kind: ReasonKind = "mode",
+    tool_call_id: str = "",
 ) -> bool:
     """Park the call for approval. False means nothing was recorded."""
+    payload = review_payload(
+        tool_name,
+        args,
+        reason=reason,
+        reason_kind=reason_kind,
+        mode=session.metadata.autopilot_mode or DEFAULT_MODE,
+        tool_call_id=tool_call_id,
+        turn=turn_of(session),
+    )
     return await open_review_row(
-        review_id,
-        user_id,
-        session,
-        review_payload(tool_name, args),
-        instructions_for(tool_name, reason),
+        review_id, user_id, session, payload, headline_for(tool_name, args).text
     )
 
 
@@ -167,7 +221,7 @@ async def open_review_row(
     user_id: str,
     session: ChatSession,
     payload: dict[str, Any],
-    instructions: str,
+    message: str,
 ) -> bool:
     try:
         await review_db().get_or_create_human_review(
@@ -177,7 +231,7 @@ async def open_review_row(
             graph_id=session_exec_id(session.session_id),
             graph_version=1,
             input_data=payload,
-            message=instructions,
+            message=message,
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
@@ -190,6 +244,37 @@ async def open_review_row(
             exc_info=True,
         )
         return False
+
+
+def turn_of(session: ChatSession) -> int:
+    return sum(1 for m in session.messages if m.role == "user")
+
+
+def _label(tool_name: str) -> str:
+    label = tool_name.replace("_", " ")
+    return label[:1].upper() + label[1:]
+
+
+def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
+    """Labels and order from the tool's own input schema, required first."""
+    from backend.copilot.tools import get_tool  # imports the gate
+
+    tool = get_tool(tool_name)
+    schema = tool.parameters if tool else {}
+    props = schema.get("properties") or {}
+    required = [k for k in schema.get("required") or [] if k in props]
+    order = required + [k for k in props if k not in required]
+    order += [k for k in shown if k not in order]
+    return [
+        FieldLabel(key=key, label=(props.get(key) or {}).get("title") or _humanize(key))
+        for key in order
+        if key in shown
+    ]
+
+
+def _humanize(key: str) -> str:
+    words = key.removesuffix("_id").replace("_", " ").strip()
+    return words[:1].upper() + words[1:]
 
 
 def _clip(value: Any, limit: int) -> Any:
