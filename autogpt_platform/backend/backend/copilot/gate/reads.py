@@ -18,14 +18,14 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
-from backend.copilot.constants import COPILOT_NODE_PREFIX
+from backend.copilot.constants import AUTOPILOT_NAME, COPILOT_NODE_PREFIX
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ApprovalRequiredResponse
 
 from . import active_mode, held
 from . import review as review_store
 from .content import Image, judge_content
-from .headline import headline_for
+from .headline import Headline, named
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,14 @@ def source_of(tool_name: str, args: dict[str, Any]) -> str:
     return tool_name
 
 
+def read_headline(tool_name: str, args: dict[str, Any]) -> Headline:
+    headline = named(f"Let {AUTOPILOT_NAME} read", _SOURCE_KEYS, args)
+    if headline.object is None:
+        label = tool_name.replace("_", " ")
+        return Headline(ask=f"Let {AUTOPILOT_NAME} read what {label} returned")
+    return headline
+
+
 def read_review_id(
     session_id: str, user_id: str, tool_name: str, args: dict[str, Any]
 ) -> str:
@@ -267,6 +275,7 @@ async def _hold(
     if not await held.remember(session.session_id, call):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     reason = f"this content contains instructions: {passage}"
+    headline = read_headline(tool_name, call.args)
     payload = {
         **review_store.review_payload(
             tool_name,
@@ -278,6 +287,7 @@ async def _hold(
             turn=review_store.turn_of(session),
         ),
         "source": source,
+        "headline": headline.model_dump(),
         "passage": passage,
         "success": success,
         # Both seams hand over JSON-encoded text, whose control characters are
@@ -289,7 +299,7 @@ async def _hold(
         user_id,
         session,
         payload,
-        headline_for(tool_name, call.args).text,
+        headline.text,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
@@ -303,12 +313,20 @@ def _stub(
     review_id: str | None = None,
 ) -> str:
     reason = f"Content withheld pending your review: {source}."
+    named_source = source.partition(" ")[2]
     return ApprovalRequiredResponse(
         message=f"{reason} {why}",
         session_id=session.session_id,
         tool_name=tool_name,
         reason=reason,
         review_id=review_id,
+        # The chain row's words; the card asks from ``read_headline``.
+        ask=(
+            "Read"
+            if named_source
+            else f"Read what {tool_name.replace('_', ' ')} returned"
+        ),
+        object=named_source or None,
         graph_exec_id=(
             review_store.session_exec_id(session.session_id) if review_id else None
         ),
