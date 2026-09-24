@@ -17,10 +17,11 @@ export function AgentImages({ images }: AgentImagesProps) {
   const { playingVideoIndex, handlePlay, handlePause } = useAgentImage();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loadedThumbs, setLoadedThumbs] = useState<Set<number>>(new Set());
-  const [failedThumbs, setFailedThumbs] = useState<Set<number>>(new Set());
+  // Keyed by URL: the component stays mounted when a listing's images change.
+  const [failedThumbs, setFailedThumbs] = useState<Set<string>>(new Set());
 
-  function markThumbFailed(index: number) {
-    setFailedThumbs((prev) => new Set(prev).add(index));
+  function markThumbFailed(url: string) {
+    setFailedThumbs((prev) => new Set(prev).add(url));
   }
 
   useEffect(() => {
@@ -46,6 +47,10 @@ export function AgentImages({ images }: AgentImagesProps) {
           {images.map((image, index) => {
             const isVideo = isValidVideoUrl(image);
             const youtubeId = isVideo ? getYouTubeVideoId(image) : null;
+            const thumbnailUrl = youtubeId
+              ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`
+              : image;
+            const thumbnailFailed = failedThumbs.has(thumbnailUrl);
 
             return (
               <button
@@ -61,10 +66,10 @@ export function AgentImages({ images }: AgentImagesProps) {
               >
                 {(!isVideo || youtubeId) &&
                   !loadedThumbs.has(index) &&
-                  !failedThumbs.has(index) && (
+                  !thumbnailFailed && (
                     <Skeleton className="absolute inset-0 rounded-lg" />
                   )}
-                {failedThumbs.has(index) ? (
+                {thumbnailFailed ? (
                   <div className="flex h-full w-full items-center justify-center bg-zinc-100">
                     <Icon
                       icon={ImageNotFound01Icon}
@@ -73,14 +78,14 @@ export function AgentImages({ images }: AgentImagesProps) {
                   </div>
                 ) : youtubeId ? (
                   <img
-                    src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
+                    src={thumbnailUrl}
                     alt={`Thumbnail ${index + 1}`}
                     loading="lazy"
                     className="absolute inset-0 h-full w-full object-cover"
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
                     }
-                    onError={() => markThumbFailed(index)}
+                    onError={() => markThumbFailed(thumbnailUrl)}
                   />
                 ) : isVideo ? (
                   <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
@@ -88,14 +93,14 @@ export function AgentImages({ images }: AgentImagesProps) {
                   </div>
                 ) : (
                   <img
-                    src={image}
+                    src={thumbnailUrl}
                     alt={`Thumbnail ${index + 1}`}
                     loading="lazy"
                     className="absolute inset-0 h-full w-full object-cover"
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
                     }
-                    onError={() => markThumbFailed(index)}
+                    onError={() => markThumbFailed(thumbnailUrl)}
                   />
                 )}
               </button>

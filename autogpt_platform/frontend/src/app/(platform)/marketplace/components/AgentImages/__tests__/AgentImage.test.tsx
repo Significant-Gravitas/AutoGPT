@@ -20,4 +20,16 @@ describe("AgentImages thumbnails", () => {
     expect(screen.queryByAltText("Thumbnail 2")).toBeNull();
     expect(screen.getByAltText("Thumbnail 1")).toBeDefined();
   });
+
+  test("shows a replacement image at a previously dead index", () => {
+    const { rerender } = render(<AgentImages images={IMAGES} />);
+    fireEvent.error(screen.getByAltText("Thumbnail 2"));
+
+    rerender(
+      <AgentImages images={[IMAGES[0], "https://cdn.test/replacement.png"]} />,
+    );
+
+    const replacement = screen.getByAltText("Thumbnail 2") as HTMLImageElement;
+    expect(replacement.src).toBe("https://cdn.test/replacement.png");
+  });
 });
