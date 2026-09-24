@@ -879,3 +879,22 @@ class TestProviders:
             CopilotPermissions(), ALL_TOOL_NAMES
         )
         assert allowed_providers(merged) is None
+
+    @pytest.mark.parametrize("round_trip", [False, True])
+    def test_a_child_restriction_under_an_open_parent_is_kept(self, round_trip):
+        """The other direction of inheritance: the child narrows, the parent
+        does not."""
+        child = CopilotPermissions(providers=["github"], providers_exclude=True)
+        merged = child.merged_with_parent(CopilotPermissions(), ALL_TOOL_NAMES)
+        if round_trip:
+            merged = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_child_and_parent_restrictions_combine(self):
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        parent = CopilotPermissions(providers=["linear"], providers_exclude=True)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert merged.is_provider_allowed("github")
+        assert not merged.is_provider_allowed("linear")
+        assert allowed_providers(merged) is None  # github is every sandbox provider

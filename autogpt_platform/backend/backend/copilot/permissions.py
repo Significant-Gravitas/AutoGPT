@@ -531,6 +531,9 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            # The child's own filter first, then the parent's chain on top.
+            providers=self.providers,
+            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
         # Unlike blocks, the provider ceiling is written out in full rather
