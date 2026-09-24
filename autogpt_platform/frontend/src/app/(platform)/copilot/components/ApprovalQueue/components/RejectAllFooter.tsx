@@ -47,7 +47,7 @@ export function RejectAllFooter({
         <Button
           variant="link"
           size="small"
-          className="text-sm"
+          className="h-auto min-w-0 px-0 py-0 text-sm"
           disabled={busy}
           onClick={onAsk}
         >

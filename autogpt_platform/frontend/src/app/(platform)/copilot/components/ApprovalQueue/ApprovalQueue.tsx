@@ -77,7 +77,7 @@ export function ApprovalQueue({ items, onAnswered }: Props) {
                   key={item.reviewId}
                   id={approvalCardId(item.reviewId)}
                   tabIndex={-1}
-                  className="scroll-mb-24 outline-none focus-visible:bg-zinc-50"
+                  className="scroll-mb-24 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-300"
                 >
                   {compact && queue.openId !== item.reviewId ? (
                     <CompactApprovalLine

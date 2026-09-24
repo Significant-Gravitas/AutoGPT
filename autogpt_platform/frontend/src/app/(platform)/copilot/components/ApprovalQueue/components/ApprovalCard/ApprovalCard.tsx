@@ -6,6 +6,7 @@ import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFi
 import {
   type ApprovalItem,
   type ChatRule,
+  isBare,
   isHeldRead,
   reasonLine,
 } from "../../helpers";
@@ -37,6 +38,48 @@ export function ApprovalCard({
   const read = isHeldRead(item);
   const busy = status !== "idle";
 
+  const actions = (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
+      <ApproveSplitButton
+        label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
+        subjectName={item.subject.name}
+        rules={read || item.spend ? [] : item.chatRulesAllowed}
+        loading={status === "approving"}
+        disabled={busy}
+        onApprove={onApprove}
+      />
+      <Button
+        size="small"
+        variant="secondary"
+        className="min-w-0"
+        loading={status === "rejecting"}
+        disabled={busy}
+        onClick={onReject}
+      >
+        {status === "rejecting"
+          ? "Rejecting…"
+          : read
+            ? "Keep it out"
+            : "Reject"}
+      </Button>
+    </div>
+  );
+
+  // Nothing to read beyond the headline: the card is one row, as a list line is.
+  if (isBare(item) && !failed) {
+    return (
+      <article
+        aria-busy={busy}
+        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3"
+      >
+        <div className="min-w-0 flex-1">
+          <ApprovalHeadline item={item} />
+        </div>
+        {actions}
+      </article>
+    );
+  }
+
   return (
     <article aria-busy={busy} className="flex flex-col gap-2 px-4 py-3">
       <ApprovalHeadline item={item} />
@@ -55,30 +98,7 @@ export function ApprovalCard({
           clipped={item.clipped}
           hiddenKeys={item.headlineKeys}
         />
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          <ApproveSplitButton
-            label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
-            subjectName={item.subject.name}
-            rules={read || item.spend ? [] : item.chatRulesAllowed}
-            loading={status === "approving"}
-            disabled={busy}
-            onApprove={onApprove}
-          />
-          <Button
-            size="small"
-            variant="secondary"
-            className="min-w-0"
-            loading={status === "rejecting"}
-            disabled={busy}
-            onClick={onReject}
-          >
-            {status === "rejecting"
-              ? "Rejecting…"
-              : read
-                ? "Keep it out"
-                : "Reject"}
-          </Button>
-        </div>
+        {actions}
       </div>
     </article>
   );

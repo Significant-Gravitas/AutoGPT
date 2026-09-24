@@ -47,7 +47,9 @@ export function ApproveSplitButton({
       loading={loading}
       disabled={disabled}
       onClick={() => onApprove()}
-      className={rules.length > 0 ? "min-w-0 rounded-r-none pr-2.5" : "min-w-0"}
+      className={
+        rules.length > 0 ? "min-w-0 flex-1 rounded-r-none pr-2.5" : "min-w-0"
+      }
     >
       {loading ? "Approving…" : label}
     </Button>

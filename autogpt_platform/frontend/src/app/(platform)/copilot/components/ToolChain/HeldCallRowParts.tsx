@@ -52,7 +52,7 @@ export function HeldCallDetail({ held }: { held: HeldRowInfo }) {
         <Button
           variant="link"
           size="small"
-          className="text-sm"
+          className="h-auto min-w-0 px-0 py-0 text-sm"
           onClick={goToApproval}
         >
           Go to the approval

@@ -54,7 +54,7 @@ export function ApprovalFields({
         <Button
           variant="link"
           size="small"
-          className="self-start text-sm"
+          className="h-auto min-w-0 self-start px-0 py-0 text-sm"
           onClick={() => setShowAll(true)}
         >
           Show {more} more

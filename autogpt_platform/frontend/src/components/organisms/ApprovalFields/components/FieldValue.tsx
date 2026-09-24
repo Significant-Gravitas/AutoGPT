@@ -95,21 +95,20 @@ function LongText({ text, shortened }: LongTextProps) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col items-start gap-1">
-      <div
-        className={cn(
-          "w-full whitespace-pre-wrap rounded-lg bg-zinc-50 px-3 py-2",
-          !open && "line-clamp-3",
-        )}
-        style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
-      >
-        {text}
-        {shortened}
+      <div className="w-full rounded-lg bg-zinc-50 px-3 py-2">
+        <p
+          className={cn("whitespace-pre-wrap", !open && "line-clamp-3")}
+          style={{ WebkitLineClamp: open ? undefined : CLAMP_LINES }}
+        >
+          {text}
+          {shortened}
+        </p>
       </div>
       {!open && (
         <Button
           variant="link"
           size="small"
-          className="text-sm"
+          className="h-auto min-w-0 px-0 py-0 text-sm"
           onClick={() => setOpen(true)}
         >
           {lineCount(text) > CLAMP_LINES

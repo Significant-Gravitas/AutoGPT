@@ -29,7 +29,7 @@ export function ApprovalHeadline({ item, compact = false }: Props) {
         as="h3"
         className={cn(
           "min-w-0 flex-1 pt-[3px] text-zinc-900",
-          compact && "truncate",
+          compact ? "truncate" : "text-pretty",
         )}
       >
         <HeadlineText item={item} />
