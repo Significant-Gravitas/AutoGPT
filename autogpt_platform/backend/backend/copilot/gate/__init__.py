@@ -58,6 +58,8 @@ _OUTWARD = "This action reaches outside the platform, so it needs your approval.
 # One approval of a paid read over the ceiling buys one more dollar.
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+# Paid steps that otherwise run in every mode; the costliest blocks are workspace.
+METERED = frozenset({Effect.READ, Effect.WORKSPACE})
 # The user's own word on the subject in this chat outranks the mode's rule.
 _RULE_VERDICTS = {
     "allow": Verdict.RUN,
@@ -119,7 +121,7 @@ async def check_action(
 
     # Reads, workspace work and the ungated tools run in every mode and can
     # never have been parked, so they skip the review and rule lookups; a paid
-    # read can be parked over the ceiling, so it cannot.
+    # step can be parked over the ceiling, so it cannot.
     if effect_for(tool_name) not in _PARKABLE and not estimate_for(tool_name):
         return ALLOW
 
@@ -159,7 +161,7 @@ async def check_action(
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
     spend = spend_shown = None
-    if effect is Effect.READ and estimate > 0 and mode != "unsupervised":
+    if effect in METERED and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling()
     reason_kind: review_store.ReasonKind
     if rule in ("ask", "unreadable"):
@@ -168,7 +170,7 @@ async def check_action(
     elif spend is not None:
         spend_shown = _spend_shown(estimate, *spend)
         reason = (
-            f"costs about {_dollars(estimate)}, and this task has spent "
+            f"costs about {_dollars(estimate)}, and this turn has spent "
             f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling"
         )
         reason_kind = "spend"

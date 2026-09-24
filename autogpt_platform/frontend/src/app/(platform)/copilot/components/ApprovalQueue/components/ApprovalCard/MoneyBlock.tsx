@@ -23,14 +23,14 @@ export function MoneyBlock({ spend }: Props) {
         <span className="text-zinc-900">about {dollars(spend.estimate)}</span>
       </div>
       <div className="flex justify-between gap-3 text-zinc-500">
-        <span>Spent on this task</span>
+        <span>Spent this turn</span>
         <span className="text-zinc-900">
           {dollars(spend.spent)} of {dollars(spend.ceiling)}
         </span>
       </div>
       <div
         role="progressbar"
-        aria-label="Spent of this task's budget"
+        aria-label="Spent of this turn's budget"
         aria-valuenow={Math.round(share * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -41,9 +41,7 @@ export function MoneyBlock({ spend }: Props) {
           style={{ width: `${share * 100}%` }}
         />
       </div>
-      <p className="text-xs text-zinc-500">
-        Approving adds {dollars(spend.unit)} to this task&apos;s budget.
-      </p>
+      <p className="text-xs text-zinc-500">Approving runs this step.</p>
     </div>
   );
 }

@@ -249,7 +249,7 @@ export function spendCard(id = "spend", chatRules: string[] = []) {
     tool: "run_capability",
     mode: "auto",
     reason:
-      "costs about $0.05, and this task has spent $2.41 of its $2.00 ceiling",
+      "costs about $0.05, and this turn has spent $2.41 of its $2.00 ceiling",
     reasonKind: "spend",
     subject: {
       kind: "block",

@@ -23,8 +23,7 @@ from backend.copilot.capabilities.registry import configured_tool, get_registry
 from backend.copilot.capabilities.resolve import resolve_entry
 from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
-from backend.copilot.gate import gate_active
-from backend.copilot.gate.policy import Effect
+from backend.copilot.gate import METERED, gate_active
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
@@ -123,7 +122,7 @@ class RunCapabilityTool(BaseTool):
         if not required_input_keys(block) <= set(payload or {}):
             return NO_OP  # a schema lookup: run_block answers with the schema
         subject = block_subject(block, payload or {})
-        if subject.effect is not Effect.READ:
+        if subject.effect not in METERED:
             return subject
         # Most cost tables filter on the credentials, which the run injects.
         matched, _ = await resolve_block_credentials(

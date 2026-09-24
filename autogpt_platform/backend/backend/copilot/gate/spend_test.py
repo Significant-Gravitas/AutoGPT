@@ -17,6 +17,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.pinecone import PineconeQueryBlock
+from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
@@ -42,6 +43,12 @@ _PAID = Subject(
     key="block:paid", name="Paid Search", effect=Effect.READ, estimate=50_000
 )
 _FREE = Subject(key="block:free", name="Store Value", effect=Effect.READ)
+_VIDEO = Subject(
+    key="block:video",
+    name="Create Talking Avatar Video",
+    effect=Effect.WORKSPACE,
+    estimate=1_000_000,
+)
 _SEND = Subject(
     key="block:send",
     name="Gmail Send",
@@ -116,7 +123,7 @@ async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
     paid = await _check(_PAID, mode)
     assert not paid.allowed and paid.review_id
     assert paid.reason == (
-        "costs about $0.05, and this task has spent $0.00 of its $0.00 ceiling"
+        "costs about $0.05, and this turn has spent $0.00 of its $0.00 ceiling"
     )
     _, kwargs = gate.open_review.await_args
     # Microdollars: the card formats money itself.
@@ -127,6 +134,15 @@ async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
         "unit": CEILING_UNIT_MICRODOLLARS,
     }
     assert (await _check(_FREE, mode)).allowed
+
+
+async def test_over_the_ceiling_a_paid_workspace_block_asks(gate, ledger):
+    """Kills: metering reads only (the costliest blocks never meet the ceiling)."""
+    await _open(ledger, ceiling=0)
+    decision = await _check(_VIDEO)
+    assert not decision.allowed and decision.review_id
+    _, kwargs = gate.open_review.await_args
+    assert kwargs["spend"]["estimate"] == 1_000_000
 
 
 async def test_consulting_a_teammate_is_a_paid_read(gate, ledger):
@@ -246,6 +262,26 @@ async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
         )
     assert subject is not None and subject.effect is Effect.READ
     assert subject.estimate > 0
+
+
+async def test_a_workspace_block_is_priced_with_the_credentials_it_will_run_with():
+    """Kills: pricing only reads with credentials (an avatar video estimates $0)."""
+    cost = BLOCK_COSTS[CreateTalkingAvatarVideoBlock][0].cost_filter
+    platform = CredentialsMetaInput.model_validate(cost["credentials"])
+    with patch(
+        f"{_CAP}.resolve_block_credentials",
+        AsyncMock(return_value=({"credentials": platform}, [])),
+    ):
+        subject = await RunCapabilityTool().gate_subject(
+            "user-1",
+            _session(),
+            {
+                "id": CreateTalkingAvatarVideoBlock().id,
+                "input": {"script_input": "Hello"},
+            },
+        )
+    assert subject is not None and subject.effect is Effect.WORKSPACE
+    assert subject.estimate == 1_000_000
 
 
 def test_a_money_card_offers_no_chat_rule():

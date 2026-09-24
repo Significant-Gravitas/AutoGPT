@@ -28,11 +28,9 @@ test("a spend card shows this step's cost, the task's spend against its ceiling,
   ).toBeDefined();
   expect(screen.getByText("about $0.05")).toBeDefined();
   expect(screen.getByText("$2.41 of $2.00")).toBeDefined();
+  expect(screen.getByText("Approving runs this step.")).toBeDefined();
   expect(
-    screen.getByText("Approving adds $1.00 to this task's budget."),
-  ).toBeDefined();
-  expect(
-    screen.getByRole("progressbar", { name: "Spent of this task's budget" }),
+    screen.getByRole("progressbar", { name: "Spent of this turn's budget" }),
   ).toBeDefined();
   // The money block says it; the model's sentence is not repeated on the card.
   expect(screen.queryByText(/costs about/)).toBeNull();

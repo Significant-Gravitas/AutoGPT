@@ -559,7 +559,8 @@ async def charge_credits(user_id: str | None, credits: Callable[[], int]) -> Non
 
 async def spent_past_ceiling() -> tuple[int, int] | None:
     """``(spent, ceiling)`` once the running turn's tree has spent its
-    ceiling; None under it, or where no tree meters this turn."""
+    ceiling; None under it, or where no tree meters this turn. Runs are charged
+    when they finish, so paid calls issued together can overshoot by one batch."""
     envelope = get_current_envelope()
     if envelope is None:
         return None
