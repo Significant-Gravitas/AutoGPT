@@ -163,6 +163,12 @@ from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.llm.provider_billing import (
+    PROVIDER_UNAVAILABLE_CODE,
+    PROVIDER_UNAVAILABLE_MESSAGE,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -1458,6 +1464,15 @@ def _humanize_baseline_error(e: Exception) -> str:
     return str(e) or type(e).__name__
 
 
+def _is_platform_out_of_credits(e: Exception, auth_provider: str | None) -> bool:
+    """An out-of-credits refusal on the account the platform pays for.
+
+    A linked subscription (Codex) running out is the user's own limit and
+    keeps its typed envelope; only the platform route is our outage.
+    """
+    return auth_provider in (None, "platform") and is_provider_out_of_credits(e)
+
+
 def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
     """Return ``True`` when the caller should upload the final transcript.
 
@@ -2630,8 +2645,24 @@ async def stream_chat_completion_baseline(
             state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
-        error_msg = _humanize_baseline_error(e)
+        out_of_credits = _is_platform_out_of_credits(
+            e, session.metadata.llm_auth_provider if session else None
+        )
+        error_msg = (
+            PROVIDER_UNAVAILABLE_MESSAGE
+            if out_of_credits
+            else _humanize_baseline_error(e)
+        )
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
+        if out_of_credits:
+            report_provider_out_of_credits(
+                provider=config.effective_transport,
+                model=active_model,
+                surface="copilot_baseline",
+                error=e,
+                session_id=session_id,
+                user_id=user_id,
+            )
         # Drain any queued tail events (reasoning/text close + finish step)
         # that ``_baseline_llm_caller``'s finally block pushed before the
         # sentinel arrived — without this the frontend would be missing the
@@ -2640,11 +2671,17 @@ async def stream_chat_completion_baseline(
             evt = state.pending_events.get_nowait()
             if evt is not None:
                 yield evt
-        failure = classify_provider_failure(
-            e,
-            auth_provider=session.metadata.llm_auth_provider if session else None,
-            credential_id=session.metadata.llm_credential_id if session else None,
-            message=error_msg,
+        # An empty platform account is not the user's limit, so it must not
+        # reach the "switch connection / wait for your limit" envelope.
+        failure = (
+            None
+            if out_of_credits
+            else classify_provider_failure(
+                e,
+                auth_provider=(session.metadata.llm_auth_provider if session else None),
+                credential_id=session.metadata.llm_credential_id if session else None,
+                message=error_msg,
+            )
         )
         # Written before the error is yielded, and deliberately not in
         # ``finally``. The consumer breaks out of its loop the moment it sees
@@ -2673,6 +2710,8 @@ async def stream_chat_completion_baseline(
             # in hand by the time the turn is reported failed.
             yield StreamProviderFailure(failure=failure.as_part())
             yield StreamError(errorText=error_msg, code=failure.kind.value)
+        elif out_of_credits:
+            yield StreamError(errorText=error_msg, code=PROVIDER_UNAVAILABLE_CODE)
         else:
             yield StreamError(errorText=error_msg, code="baseline_error")
     finally:
