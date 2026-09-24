@@ -519,3 +519,20 @@ def _link(source: str, source_name: str, sink: str, sink_name: str) -> Link:
     return Link(
         source_id=source, source_name=source_name, sink_id=sink, sink_name=sink_name
     )
+
+
+async def test_a_preset_this_chat_cannot_use_raises_no_card(gate):
+    """Another expert's preset, or a missing one: the run refuses, so asking is noise."""
+    run = AsyncMock(return_value=_answer())
+    with (
+        patch(
+            "backend.copilot.tools.run_agent._preset_graph",
+            AsyncMock(return_value=(None, None)),
+        ),
+        patch.object(RunAgentTool, "_execute", run),
+    ):
+        await RunAgentTool().execute(
+            "user-1", _session("ask_first"), "call-1", preset_id="p-1"
+        )
+    gate.open_review.assert_not_awaited()
+    run.assert_awaited_once()
