@@ -29,7 +29,7 @@ from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
 from .headline import Headline, headline_for
-from .policy import DEFAULT_MODE, effect_for
+from .policy import DEFAULT_MODE, effect_for, is_irreversible
 
 if TYPE_CHECKING:
     from .subject import Subject as GateSubject
@@ -135,7 +135,7 @@ def review_payload(
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,
-        subject=_payload_subject(tool_name, subject),
+        subject=_payload_subject(tool_name, args, subject),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
         chat_rules_allowed=["allow", "judge"] if subject is not None else [],
@@ -262,10 +262,15 @@ def payload_headline(payload: dict[str, Any]) -> str:
     return Headline.model_validate(payload["headline"]).text
 
 
-def _payload_subject(tool_name: str, subject: "GateSubject | None") -> Subject:
+def _payload_subject(
+    tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
+) -> Subject:
     if subject is None:
         return Subject(
-            key=tool_name, name=_label(tool_name), effect=effect_for(tool_name).value
+            key=tool_name,
+            name=_label(tool_name),
+            effect=effect_for(tool_name).value,
+            irreversible=is_irreversible(tool_name, args),
         )
     # ``block:<id>`` or ``workflow:<graph id>``.
     kind, _, ident = subject.key.partition(":")

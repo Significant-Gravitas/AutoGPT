@@ -202,6 +202,7 @@ async def _park(
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
     ):
+        await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
         allowed=False,

@@ -5,6 +5,7 @@ decision here must hold even if it always answered "allow".
 """
 
 from enum import Enum
+from typing import Any
 
 from backend.copilot.model import AutopilotMode
 
@@ -174,6 +175,18 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
     },
     "unsupervised": {effect: Verdict.RUN for effect in Effect},
 }
+
+
+# Deletes that destroy data no restore path brings back. A folder delete is not
+# one: its agents move to the root and its rows are only flagged deleted.
+_IRREVERSIBLE = frozenset({"delete_schedule", "delete_skill", "delete_workspace_file"})
+
+
+def is_irreversible(tool_name: str, args: dict[str, Any]) -> bool:
+    if tool_name == "memory_forget_confirm":
+        # The default retracts the memory; only a hard delete destroys it.
+        return args.get("hard_delete") is True
+    return tool_name in _IRREVERSIBLE
 
 
 def effect_for(tool_name: str) -> Effect:
