@@ -27,6 +27,10 @@ const PAYWALL_VIEW_SESSION_KEY = "paywall_view_tracked";
  * the key unset and reports normally.
  */
 export function trackPaywallView() {
+  // PostHog keeps its own once-per-tab guard, marked only once the event is
+  // sent or dropped for lack of consent, not while it waits for the answer.
+  trackPaywallViewed("onboarding");
+
   try {
     if (sessionStorage.getItem(PAYWALL_VIEW_SESSION_KEY)) return;
     sessionStorage.setItem(PAYWALL_VIEW_SESSION_KEY, "1");
@@ -43,11 +47,11 @@ export function trackPaywallView() {
     // the screen users pay from, so an exception here would unmount the paywall
     // into an error boundary. Analytics must never be able to take checkout down.
   }
-
-  trackPaywallViewed("onboarding");
 }
 
 const CHECKOUT_CANCELLED_SESSION_KEY = "paywall_checkout_cancelled_tracked";
+const POSTHOG_CHECKOUT_CANCELLED_KEY =
+  "posthog_checkout_abandoned_onboarding_subscription";
 
 /**
  * Reports that the user reached Stripe Checkout and came back without paying.
@@ -62,6 +66,11 @@ const CHECKOUT_CANCELLED_SESSION_KEY = "paywall_checkout_cancelled_tracked";
  * would otherwise report the same abandonment again.
  */
 export function trackPaywallCheckoutCancelled() {
+  trackCheckoutAbandoned(
+    { checkout_kind: "subscription", surface: "onboarding" },
+    POSTHOG_CHECKOUT_CANCELLED_KEY,
+  );
+
   try {
     if (sessionStorage.getItem(CHECKOUT_CANCELLED_SESSION_KEY)) return;
     sessionStorage.setItem(CHECKOUT_CANCELLED_SESSION_KEY, "1");
@@ -74,9 +83,4 @@ export function trackPaywallCheckoutCancelled() {
   } catch {
     // Never let analytics take the checkout UI down; see trackPaywallView.
   }
-
-  trackCheckoutAbandoned({
-    checkout_kind: "subscription",
-    surface: "onboarding",
-  });
 }

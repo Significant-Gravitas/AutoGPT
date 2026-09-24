@@ -19,7 +19,11 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useUpdateSubscriptionTier: () => mockUseUpdateSubscriptionTier(),
 }));
 
-const posthog = vi.hoisted(() => ({ __loaded: true, capture: vi.fn() }));
+const posthog = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 const mockToast = vi.fn();

@@ -21,14 +21,11 @@ const PAYWALL_VIEWED_KEY_PREFIX = "posthog_paywall_viewed_";
 // Once per tab per surface: the onboarding paywall remounts on the return
 // from Stripe, and the billing page re-renders on every refetch.
 export function trackPaywallViewed(surface: PaywallSurface) {
-  const sentKey = `${PAYWALL_VIEWED_KEY_PREFIX}${surface}`;
-  try {
-    if (sessionStorage.getItem(sentKey)) return;
-    sessionStorage.setItem(sentKey, "1");
-  } catch {
-    // In-app browsers may block sessionStorage — double-counting beats dropping.
-  }
-  capture(MonetizationEvent.PAYWALL_VIEWED, { surface });
+  capture(
+    MonetizationEvent.PAYWALL_VIEWED,
+    { surface },
+    `${PAYWALL_VIEWED_KEY_PREFIX}${surface}`,
+  );
 }
 
 type PlanSelectedProperties = {
@@ -46,11 +43,15 @@ export function trackBillingPortalOpened(surface: BillingPortalSurface) {
   capture(MonetizationEvent.BILLING_PORTAL_OPENED, { surface });
 }
 
-export function trackCheckoutAbandoned(properties: {
-  checkout_kind: CheckoutKind;
-  surface: PaywallSurface;
-}) {
-  capture(MonetizationEvent.CHECKOUT_ABANDONED, properties);
+/** `oncePerTabKey` guards a cancel URL that survives a refresh. */
+export function trackCheckoutAbandoned(
+  properties: {
+    checkout_kind: CheckoutKind;
+    surface: PaywallSurface;
+  },
+  oncePerTabKey?: string,
+) {
+  capture(MonetizationEvent.CHECKOUT_ABANDONED, properties, oncePerTabKey);
 }
 
 const TRIAL_ABANDONED_KEY_PREFIX = "posthog_trial_checkout_abandoned_";
@@ -60,14 +61,10 @@ const TRIAL_ABANDONED_KEY_PREFIX = "posthog_trial_checkout_abandoned_";
 // another trial checkout clears the guard (`markTrialCheckoutStarted`), so a
 // second real abandonment in the same tab still counts.
 export function trackTrialCheckoutAbandoned(surface: PaywallSurface) {
-  const sentKey = `${TRIAL_ABANDONED_KEY_PREFIX}${surface}`;
-  try {
-    if (sessionStorage.getItem(sentKey)) return;
-    sessionStorage.setItem(sentKey, "1");
-  } catch {
-    // In-app browsers may block sessionStorage — double-counting beats dropping.
-  }
-  trackCheckoutAbandoned({ checkout_kind: "trial", surface });
+  trackCheckoutAbandoned(
+    { checkout_kind: "trial", surface },
+    `${TRIAL_ABANDONED_KEY_PREFIX}${surface}`,
+  );
 }
 
 export function markTrialCheckoutStarted(surface: PaywallSurface) {
@@ -81,6 +78,7 @@ export function markTrialCheckoutStarted(surface: PaywallSurface) {
 function capture(
   event: MonetizationEventName,
   properties: Record<string, unknown>,
+  oncePerTabKey?: string,
 ) {
-  capturePostHogEvent(event, properties);
+  capturePostHogEvent(event, properties, { oncePerTabKey });
 }

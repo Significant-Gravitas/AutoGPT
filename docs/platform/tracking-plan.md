@@ -256,10 +256,18 @@ The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
 as the way out. The onboarding paywall's DataFast goals (`paywall_view`,
 `paywall_checkout_cancelled`) keep firing alongside.
 
-Browser events captured before `posthog.init` has run (a page's mount effect
-on a full page load, such as the return from Stripe) are held by
-`src/services/analytics/posthog-capture.ts` and sent, with the time they
-happened, once PostHog is up.
+Browser events captured before PostHog captures (a page's mount effect on a
+full page load, such as the return from Stripe, runs before `posthog.init`
+and before the consent opt-in) are held by
+`src/services/analytics/posthog-capture.ts` while the consent answer is
+unknown. With analytics granted (an earlier answer, or a region where
+Cookiebot consents on its own once `uc.js` loads) they are sent, with the
+time they happened, once PostHog is opted in. When analytics is declined,
+there is no consent manager, or the banner is asking, they are dropped: an
+answer given on the banner covers what happens after it, not what was held
+before it. The once-per-tab guards on `paywall_viewed`, `checkout_abandoned`,
+`onboarding_step_viewed` and `tour_started` are set only when the event is
+sent or dropped this way, not while it is held.
 
 ## Retention
 

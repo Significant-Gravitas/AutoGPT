@@ -9,7 +9,7 @@ vi.mock("@/services/analytics", () => ({
 }));
 
 const { posthog } = vi.hoisted(() => ({
-  posthog: { __loaded: true, capture: vi.fn() },
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 

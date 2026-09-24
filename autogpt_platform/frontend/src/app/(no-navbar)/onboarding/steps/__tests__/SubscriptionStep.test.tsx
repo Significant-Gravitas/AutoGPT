@@ -29,7 +29,11 @@ vi.mock("@posthog/react", () => ({
   usePostHog: () => undefined,
 }));
 
-const posthogJS = vi.hoisted(() => ({ __loaded: true, capture: vi.fn() }));
+const posthogJS = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
 vi.mock("posthog-js", () => ({ default: posthogJS }));
 
 vi.mock("@/components/atoms/FadeIn/FadeIn", () => ({

@@ -11,7 +11,11 @@ import { usePaymentMethodCard } from "../components/SubscriptionTab/PaymentMetho
 import { useYourPlanCard } from "../components/SubscriptionTab/YourPlanCard/useYourPlanCard";
 import SettingsBillingPage from "../page";
 
-const posthog = vi.hoisted(() => ({ __loaded: true, capture: vi.fn() }));
+const posthog = vi.hoisted(() => ({
+  __loaded: true,
+  is_capturing: () => true,
+  capture: vi.fn(),
+}));
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 const mockSearchParams = { current: new URLSearchParams() };

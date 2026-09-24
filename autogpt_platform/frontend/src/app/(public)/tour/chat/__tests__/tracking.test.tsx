@@ -16,7 +16,7 @@ vi.mock("@/components/ui/dot-distortion-shader", () => ({
 import { configureCookiebot } from "@/tests/integrations/cookiebot";
 
 const { posthog } = vi.hoisted(() => ({
-  posthog: { __loaded: true, capture: vi.fn() },
+  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 

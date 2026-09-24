@@ -13,6 +13,7 @@ export type OnboardingStepKey =
   | "preparing";
 
 const SENT_KEY_PREFIX = "onboarding_step_sent_";
+const POSTHOG_SENT_KEY_PREFIX = "posthog_onboarding_step_viewed_";
 
 /**
  * Maps a wizard step number to a stable key.
@@ -49,6 +50,16 @@ export function onboardingStepKey(
  * ordered funnel.
  */
 export function trackOnboardingStep(key: OnboardingStepKey) {
+  // PostHog funnels order steps by their filter, so one event with a `step`
+  // property serves where DataFast needs a goal per step. Its once-per-tab
+  // guard is its own, marked only once the event is sent or dropped for lack
+  // of consent, not while it waits for the answer.
+  capturePostHogEvent(
+    OnboardingEvent.ONBOARDING_STEP_VIEWED,
+    { step: key },
+    { oncePerTabKey: `${POSTHOG_SENT_KEY_PREFIX}${key}` },
+  );
+
   const sentKey = `${SENT_KEY_PREFIX}${key}`;
   try {
     if (sessionStorage.getItem(sentKey)) return;
@@ -65,8 +76,4 @@ export function trackOnboardingStep(key: OnboardingStepKey) {
     // calls without a guard of its own. This runs inside the onboarding wizard,
     // so an exception here would unmount the flow into an error boundary.
   }
-
-  // PostHog funnels order steps by their filter, so one event with a `step`
-  // property serves where DataFast needs a goal per step.
-  capturePostHogEvent(OnboardingEvent.ONBOARDING_STEP_VIEWED, { step: key });
 }
