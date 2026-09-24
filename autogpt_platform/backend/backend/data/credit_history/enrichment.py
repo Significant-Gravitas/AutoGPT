@@ -32,7 +32,7 @@ async def enrich_credit_history(
     organization_id: str | None = None,
 ) -> list[CreditTransactionItem]:
     if not any(
-        item.usage_execution_id or item.usage_graph_id or item.usage_session_id
+        item.usage_execution_id or item.usage_graph_id or item.usage_chat_session_id
         for item in items
     ):
         return items
@@ -117,7 +117,9 @@ async def _load_related_executions(
 async def _load_sessions(
     items: list[CreditTransactionItem], user_id: str, organization_id: str | None
 ) -> dict[str, ChatSession]:
-    ids = sorted({item.usage_session_id for item in items if item.usage_session_id})
+    ids = sorted(
+        {item.usage_chat_session_id for item in items if item.usage_chat_session_id}
+    )
     if not ids:
         return {}
     where: ChatSessionWhereInput = {"id": {"in": ids}, "userId": user_id}
@@ -259,8 +261,8 @@ def _enrich_item(
     child_counts: dict[str, int],
 ) -> CreditTransactionItem:
     item = original.model_copy(deep=True)
-    if item.usage_session_id:
-        session = sessions.get(item.usage_session_id)
+    if item.usage_chat_session_id:
+        session = sessions.get(item.usage_chat_session_id)
         item.conversation_id = session.id if session else None
         item.conversation_title = session.title if session else None
         return item

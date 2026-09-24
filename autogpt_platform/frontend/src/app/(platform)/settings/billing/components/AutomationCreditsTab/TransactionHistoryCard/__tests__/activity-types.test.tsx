@@ -75,11 +75,11 @@ describe("Transaction history activity and states", () => {
           transactions: [
             {
               ...run,
-              id: "session:chat-123",
-              transaction_key: "session:chat-123",
+              id: "chat:chat-123",
+              transaction_key: "chat:chat-123",
               activity_type: "copilot_tools",
               usage_execution_id: null,
-              usage_session_id: "chat-123",
+              usage_chat_session_id: "chat-123",
               conversation_id: "chat-123",
               conversation_title: "Market landscape",
               library_agent_id: null,

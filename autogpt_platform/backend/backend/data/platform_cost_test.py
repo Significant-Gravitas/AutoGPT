@@ -15,6 +15,7 @@ from .platform_cost import (
     _build_where,
     _ids_matching_metadata_filter,
     _mask_email,
+    _run_or_chat,
     get_platform_cost_dashboard,
     get_platform_cost_logs,
     get_platform_cost_logs_for_export,
@@ -823,7 +824,7 @@ def _make_prisma_log_row(
     row.createdAt = datetime(2026, 3, 1, tzinfo=timezone.utc)
     row.userId = "u1"
     row.graphExecId = None
-    row.sessionId = None
+    row.chatSessionId = None
     row.nodeExecId = None
     row.blockName = "TestBlock"
     row.provider = "openai"
@@ -1047,3 +1048,34 @@ class TestGetPlatformCostLogsForExport:
         assert logs == []
         assert truncated is False
         assert ids_mock.await_args.kwargs["start"] == start
+
+
+@pytest.mark.parametrize(
+    "row,expected",
+    [
+        (
+            {"blockId": "copilot", "graphExecId": None, "chatSessionId": "c1"},
+            {"graph_exec_id": None, "chat_session_id": "c1"},
+        ),
+        (
+            {"blockId": "copilot", "graphExecId": "c2", "chatSessionId": None},
+            {"graph_exec_id": None, "chat_session_id": "c2"},
+        ),
+        (
+            {
+                "blockId": "copilot",
+                "graphExecId": "pass-1",
+                "chatSessionId": None,
+                "metadata": {"source": "dream_pass"},
+            },
+            {"graph_exec_id": "pass-1", "chat_session_id": None},
+        ),
+        (
+            {"blockId": "block-uuid", "graphExecId": "ge-1", "chatSessionId": None},
+            {"graph_exec_id": "ge-1", "chat_session_id": None},
+        ),
+    ],
+    ids=["chat", "chat-before-the-column", "dream-pass", "graph-run"],
+)
+def test_a_cost_row_names_its_run_or_its_chat(row, expected):
+    assert _run_or_chat(MagicMock(**{"metadata": None, **row})) == expected

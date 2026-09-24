@@ -373,8 +373,45 @@ class TestPlatformCostLogging:
         assert entry.metadata["tracking_type"] == "cost_usd"
         assert entry.metadata["tracking_amount"] == 0.005
         assert entry.block_name == "copilot:SDK"
-        assert entry.session_id == "sess-test"
+        assert entry.chat_session_id == "sess-test"
         assert entry.graph_exec_id is None
+
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"graph_exec_id_override": "pass-1"}, ("pass-1", None)),
+            ({"chat_session_id_override": "chat-9"}, (None, "chat-9")),
+        ],
+        ids=["dream-pass", "voice"],
+    )
+    @pytest.mark.asyncio
+    async def test_a_dream_pass_is_logged_under_its_own_id_not_as_a_chat(
+        self, overrides, expected
+    ):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                **overrides,
+            )
+            await asyncio.sleep(0)
+        entry = mock_log.call_args[0][0]
+        assert (entry.graph_exec_id, entry.chat_session_id) == expected
 
     @pytest.mark.asyncio
     async def test_logs_cost_entry_without_cost_usd(self):

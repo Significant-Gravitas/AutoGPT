@@ -176,7 +176,7 @@ async def _charge_block_credits(
             user_id=user_id,
             cost=cost,
             metadata=UsageTransactionMetadata(
-                session_id=session_id,
+                chat_session_id=session_id,
                 node_exec_id=node_exec_id,
                 block_id=block_id,
                 block=block_name,

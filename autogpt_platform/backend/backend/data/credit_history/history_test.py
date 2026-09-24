@@ -142,7 +142,7 @@ async def test_copilot_and_orphan_usage_are_distinct(history_wallet):
     ]
     # A row written before chat usage had its own field still names the chat.
     [chat] = [r for r in page.transactions if r.activity_type == "copilot_tools"]
-    assert (chat.usage_session_id, chat.usage_execution_id) == ("chat-1", None)
+    assert (chat.usage_chat_session_id, chat.usage_execution_id) == ("chat-1", None)
     assert chat.usage_graph_id is None
 
 
@@ -160,7 +160,7 @@ async def test_a_chat_block_charge_is_attributed_to_its_chat(history_wallet):
         session_id="chat-9",
     )
     metadata = spend.await_args.kwargs["metadata"]
-    assert (metadata.session_id, metadata.graph_exec_id, metadata.graph_id) == (
+    assert (metadata.chat_session_id, metadata.graph_exec_id, metadata.graph_id) == (
         "chat-9",
         None,
         None,
@@ -184,11 +184,11 @@ async def test_a_chat_block_charge_is_attributed_to_its_chat(history_wallet):
     by_type = {row.activity_type: row for row in page.transactions}
     assert set(by_type) == {"copilot_tools", "agent_run"}
     chat = by_type["copilot_tools"]
-    assert chat.amount == -14 and chat.transaction_key == "session:chat-9"
-    assert (chat.usage_session_id, chat.usage_execution_id) == ("chat-9", None)
+    assert chat.amount == -14 and chat.transaction_key == "chat:chat-9"
+    assert (chat.usage_chat_session_id, chat.usage_execution_id) == ("chat-9", None)
     assert chat.usage_graph_id is None
     run = by_type["agent_run"]
-    assert (run.usage_execution_id, run.usage_session_id) == ("run-1", None)
+    assert (run.usage_execution_id, run.usage_chat_session_id) == ("run-1", None)
     assert run.usage_graph_id == "graph-1"
 
 

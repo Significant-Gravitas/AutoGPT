@@ -179,7 +179,7 @@ function LogsTable({
 export { LogsTable };
 
 function ExecutionCell({ log }: { log: CostLogRow }) {
-  const id = log.graph_exec_id ?? log.session_id;
+  const id = log.graph_exec_id ?? log.chat_session_id;
   return (
     <td
       className={[

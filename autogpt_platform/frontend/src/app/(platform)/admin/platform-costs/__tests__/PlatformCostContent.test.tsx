@@ -636,7 +636,7 @@ describe("PlatformCostContent", () => {
             ...logsWithData.logs[0],
             id: "log-chat",
             graph_exec_id: null,
-            session_id: "5e551011-aaaa-bbbb-cccc-000000000000",
+            chat_session_id: "5e551011-aaaa-bbbb-cccc-000000000000",
             block_name: "copilot:SDK",
           },
         ],

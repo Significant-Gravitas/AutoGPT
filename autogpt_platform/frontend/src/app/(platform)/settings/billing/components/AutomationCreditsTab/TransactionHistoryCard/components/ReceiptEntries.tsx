@@ -15,7 +15,7 @@ export function ReceiptEntries({ transaction }: Props) {
   const referenceID = useId();
   const reference =
     transaction.usage_execution_id ||
-    transaction.usage_session_id ||
+    transaction.usage_chat_session_id ||
     transaction.transaction_key;
   return (
     <div className="mt-3">
@@ -77,7 +77,7 @@ export function ReceiptEntries({ transaction }: Props) {
 
 function referenceLabel(transaction: Transaction) {
   if (transaction.usage_execution_id) return "Run ID";
-  if (transaction.usage_session_id) return "Chat ID";
+  if (transaction.usage_chat_session_id) return "Chat ID";
   return "Reference";
 }
 

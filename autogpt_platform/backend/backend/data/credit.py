@@ -77,7 +77,7 @@ class UsageTransactionMetadata(BaseModel):
     graph_exec_id: str | None = None
     graph_id: str | None = None
     # Set instead of the graph fields when the usage came from an AutoPilot chat.
-    session_id: str | None = None
+    chat_session_id: str | None = None
     node_id: str | None = None
     node_exec_id: str | None = None
     block_id: str | None = None
@@ -1401,11 +1401,10 @@ class UserCredit(UserCreditBase):
         ]
 
 
-def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str | None:
-    """One auto top-up per graph execution or chat; usage with neither
-    leaves the ceiling balance as the only guard."""
-    scope = metadata.graph_exec_id or metadata.session_id
-    return f"AUTO-TOP-UP-{user_id}-{scope}" if scope else None
+def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:
+    """One auto top-up per graph execution or chat. A top-up stays inactive
+    until its charge succeeds, so the key is what stops a repeat charge."""
+    return f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id or metadata.chat_session_id}"
 
 
 class DisabledUserCredit(UserCreditBase):

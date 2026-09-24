@@ -58,7 +58,7 @@ def _item(execution_id="run", graph_id="graph", session_id=None):
         user_id="user",
         usage_graph_id=graph_id,
         usage_execution_id=execution_id,
-        usage_session_id=session_id,
+        usage_chat_session_id=session_id,
         amount=-12,
     )
 

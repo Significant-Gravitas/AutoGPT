@@ -26,7 +26,7 @@ def history_row(
         transaction_time=datetime(2026, 9, 4, tzinfo=timezone.utc),
         usage_start_time=datetime(2026, 9, 3, tzinfo=timezone.utc),
         usage_execution_id=execution_id,
-        usage_session_id=session_id,
+        usage_chat_session_id=session_id,
         usage_graph_id="graph-1",
         usage_has_block=True,
         usage_charge_amount=-100,

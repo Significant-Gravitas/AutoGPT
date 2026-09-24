@@ -13,17 +13,17 @@ WITH wallet AS (
         CASE WHEN metadata->>'graph_exec_id' LIKE 'copilot-session-%' THEN NULL
              ELSE NULLIF(metadata->>'graph_exec_id', '') END AS execution_id,
         COALESCE(
-            NULLIF(metadata->>'session_id', ''),
+            NULLIF(metadata->>'chat_session_id', ''),
             CASE WHEN metadata->>'graph_exec_id' LIKE 'copilot-session-%'
                  THEN substr(metadata->>'graph_exec_id', length('copilot-session-') + 1)
-            END) AS session_id
+            END) AS chat_session_id
     FROM wallet
 ), classified AS MATERIALIZED (
     SELECT *,
         CASE WHEN transaction_type = 'USAGE' AND execution_id IS NOT NULL
              THEN 'execution:' || execution_id
-             WHEN transaction_type = 'USAGE' AND session_id IS NOT NULL
-             THEN 'session:' || session_id
+             WHEN transaction_type = 'USAGE' AND chat_session_id IS NOT NULL
+             THEN 'chat:' || chat_session_id
              ELSE 'transaction:' || "transactionKey" END AS group_id,
         CASE WHEN transaction_type != 'USAGE' THEN 'transaction'
              WHEN metadata->'input' ? 'reconciled_delta' THEN 'adjustment'
@@ -53,12 +53,12 @@ WITH wallet AS (
         MIN("createdAt") AS usage_start_time,
         MAX(transaction_type) AS transaction_type,
         SUM(amount)::bigint AS amount,
-        MAX(CASE WHEN transaction_type = 'USAGE' AND session_id IS NULL
+        MAX(CASE WHEN transaction_type = 'USAGE' AND chat_session_id IS NULL
                  THEN NULLIF(metadata->>'graph_id', '') END) AS usage_graph_id,
         MAX(CASE WHEN transaction_type = 'USAGE'
                  THEN execution_id END) AS usage_execution_id,
         MAX(CASE WHEN transaction_type = 'USAGE'
-                 THEN session_id END) AS usage_session_id,
+                 THEN chat_session_id END) AS usage_chat_session_id,
         COUNT(DISTINCT CASE WHEN transaction_type = 'USAGE'
                            THEN NULLIF(metadata->>'node_exec_id', '') END)::int
             AS usage_node_count,

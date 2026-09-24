@@ -19728,9 +19728,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
           },
-          "session_id": {
+          "chat_session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
+            "title": "Chat Session Id"
           },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -20400,9 +20400,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
           },
-          "usage_session_id": {
+          "usage_chat_session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usage Session Id",
+            "title": "Usage Chat Session Id",
             "description": "The AutoPilot chat the usage came from"
           },
           "usage_node_count": {
