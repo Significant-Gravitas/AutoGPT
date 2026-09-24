@@ -6,6 +6,7 @@ so a catalog entry is the "connect to Linear" capability itself.
 """
 
 from collections import Counter
+from functools import cache
 from urllib.parse import urlsplit
 
 from backend.copilot.capabilities.models import (
@@ -13,6 +14,7 @@ from backend.copilot.capabilities.models import (
     Connection,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
 from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
@@ -43,6 +45,9 @@ def _catalog_entry(preset: MCPCatalogEntry, keyed_by_host: bool) -> CapabilityEn
     # Service names come last so ``index._service_tags`` can read them back:
     # the slug, the host, and the display name when it is a single word.
     tags += ["mcp", slug]
+    brand = _brand(slug)
+    if brand:
+        tags.append(brand)
     if host:
         tags.append(host)
     if " " not in preset.display_name.strip():
@@ -53,12 +58,17 @@ def _catalog_entry(preset: MCPCatalogEntry, keyed_by_host: bool) -> CapabilityEn
         klass="service",
         name=preset.display_name,
         purpose=clip_purpose(preset.description),
+        description=normalize_text(preset.description),
         tags=tags,
         context="direct",
         implementations=[
+            # A ``custom`` preset ships no URL: the user supplies their own
+            # tenant endpoint.  Leaving the ref empty keeps the preset name
+            # out of URL position, where it used to be parsed as a hostname
+            # ("Blocked server URL: Hostname 'mcp_amplitude' ...").
             Implementation(
                 kind="mcp_server",
-                ref=server.server_url or preset.name,
+                ref=server.server_url or "",
                 name=preset.display_name,
             )
         ],
@@ -67,3 +77,46 @@ def _catalog_entry(preset: MCPCatalogEntry, keyed_by_host: bool) -> CapabilityEn
         ),
         schema_ref=f"mcp:{preset.name}",
     )
+
+
+# Suffixes that are part of a company's domain rather than its name, so
+# "apollo_io" is the service "apollo" and a query for "apollo" must reach it.
+_BRAND_SUFFIXES = frozenset({"io", "com", "dev", "ai", "co", "app", "so", "to", "sh"})
+
+
+def _brand(slug: str) -> str | None:
+    """The brand inside a domain-shaped slug, e.g. ``apollo_io`` -> ``apollo``."""
+    head, _, tail = slug.rpartition("_")
+    if head and tail in _BRAND_SUFFIXES and "_" not in head:
+        return head
+    return None
+
+
+def setup_hint(schema_ref: str) -> str:
+    """How to reach a catalog server that ships no URL of its own."""
+    preset = _presets_by_schema_ref().get(schema_ref)
+    if preset is None:
+        return (
+            "This MCP server needs a server URL. The user adds it under "
+            "Settings -> Integrations, then call run_capability with that "
+            "https:// URL as the id."
+        )
+    options = ", ".join(
+        f"{option.label} ({option.url})"
+        for option in preset.mcp_server.server_url_options
+    )
+    lines = [
+        f"{preset.display_name} has no shared endpoint: it runs at a URL "
+        "specific to the user's account, so the platform cannot call it until "
+        "they add one under Settings -> Integrations.",
+        preset.mcp_server.setup_instructions,
+        f"Known endpoints: {options}." if options else "",
+        "Once the user has added their URL, call run_capability with that "
+        "https:// URL as the id.",
+    ]
+    return " ".join(line for line in lines if line)
+
+
+@cache
+def _presets_by_schema_ref() -> dict[str, MCPCatalogEntry]:
+    return {f"mcp:{preset.name}": preset for preset in get_mcp_catalog()}

@@ -15,6 +15,7 @@ import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
 
 export default function OnboardingPage() {
   const {
@@ -78,7 +79,14 @@ export default function OnboardingPage() {
         </Button>
       )}
 
-      <div className="flex w-full min-w-0 flex-1 items-center justify-center pb-8 pt-16">
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-1 items-center justify-center",
+          currentStep === steps.subscription
+            ? "pb-8 pt-3 lg:pb-2"
+            : "pb-8 pt-16",
+        )}
+      >
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
@@ -100,7 +108,11 @@ export default function OnboardingPage() {
       </div>
 
       {showDots && (
-        <div className="pb-8">
+        <div
+          className={
+            currentStep === steps.subscription ? "pb-8 lg:pb-4" : "pb-8"
+          }
+        >
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
       )}

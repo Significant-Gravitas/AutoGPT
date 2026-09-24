@@ -3,11 +3,12 @@ from typing import Any, Optional
 import pydantic
 
 from backend.data.model import CredentialsMetaInput
+from backend.data.schedule import ScheduleName
 
 
 class ScheduleCreationRequest(pydantic.BaseModel):
     graph_version: Optional[int] = None
-    name: str
+    name: ScheduleName
     cron: str
     inputs: dict[str, Any]
     credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)

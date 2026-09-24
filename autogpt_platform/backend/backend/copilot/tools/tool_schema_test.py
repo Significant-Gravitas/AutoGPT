@@ -14,6 +14,8 @@ import pytest
 
 from backend.copilot.tools import TOOL_REGISTRY
 
+from ._test_data import make_session
+
 # Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
 # Bumped 32000 -> 32500 on PR #12699 to fit two pieces of load-bearing
 # guidance: the wait_for_result dispatch-mode docs on run_agent
@@ -151,6 +153,26 @@ from backend.copilot.tools import TOOL_REGISTRY
 # The next tool that does not fit raises this line itself, with its own measured
 # number and its own row above.
 #
+# Bumped 67_651 -> 68_604 on 2026-09-16, by the line above: #14415 landed and
+# dev alone now measures 67,622, leaving 29 chars — consult_teammate's measured
+# +981 does not fit. Measured on the MERGED tree, which is what this PR's CI
+# runs on, not on the branch tip:
+#     dev 2ee0819cc5                             67,622 (81 tools)
+#     + #14207 multi-expert-teams  +981          68,603 (82 tools)
+# Still no margin: strict <, so the ceiling is that total plus one. dev's own
+# 29 chars are the standing problem here — the next tool anyone adds trips this
+# again, whatever this line says.
+#
+# Bumped 71_752 -> 73_003 for find_session and message_session, the two tools
+# this PR adds: they measure 1,251 between them.
+#     dev + this branch's consult_teammate           71,751 (86 tools)
+#     + find_session, message_session  +1,251        73,002 (88 tools)
+#
+# Bumped 73_003 -> 73_030 for one sentence in find_session's description
+# saying `task` searches recent sessions only — 27 chars. A description edit
+# costs the same on both brakes (see below); only a tool's SHAPE makes them
+# differ.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
@@ -165,11 +187,78 @@ from backend.copilot.tools import TOOL_REGISTRY
 # counts against this ceiling. The tip reads 68,235 and `refs/pull/14416/merge`
 # 68,237 — dev widened raise_expert by two characters after this line was first
 # set, which reddened three interpreters on a branch that had added nothing.
+# Bumped 68_238 -> 69_219 on 2026-09-16, merging dev into #14207: dev's own
+# 68,238 left one character of headroom (dev measures 68,237 with the schedule
+# tools above), and consult_teammate's measured +981 does not fit. Re-measured
+# on the MERGED tree per the rule above, not on either side's tip:
+#     dev e45aa33600                             68,237 (83 tools)
+#     + #14207 multi-expert-teams  +981          69,218 (84 tools)
+# Higher of the two conflicting values wins and is then re-measured, which is
+# what makes it 69,219 rather than this branch's earlier 68,604. #14476 landed
+# mid-merge and is in here too; it moves API routes and no tools, so 69,218 holds.
+# Bumped 69_056 -> 70_037 on 2026-09-16, merging dev into #14207 again. dev's
+# ceiling of 69,056 sat one character above its own 69,055 — the third merge
+# running where dev is on its limit — so consult_teammate's +981 does not fit.
+# Measured on the MERGED tree, never on either tip, never reused from a prior
+# merge:
+#     dev 648c5ce6d5                             69,055 (84 tools)
+#     + #14207 multi-expert-teams  +981          70,036 (85 tools)
+# Keep the HIGHER of two conflicting values and then re-measure, per the rule
+# above: this branch held 69,219 and dev 69,056, and neither is the answer.
 # Bumped 69_056 -> 70_771 for SECRT-2605: edit_chat_platform_message (mirroring
 # post_to_chat_platform's platform/target enums plus channel_id/ref_id/content)
 # measures 1,460, and the line in post_to_chat_platform's description pointing
 # at it 255. Measured on the branch merged with dev: 70,770, plus one.
-_CHAR_BUDGET = 70_771
+# Bumped 70_771 -> 71_752 on 2026-09-16, merging dev into #14207 a fourth time.
+# #14436 added edit_chat_platform_message and set 70,771 against dev's own
+# 70,770 — one character, as every one of these bumps has left. Re-measured on
+# the MERGED tree, against the ref merged rather than origin/dev afterwards:
+#     dev 28d332fb36                             70,770 (85 tools)
+#     + #14207 multi-expert-teams  +981          71,751 (86 tools)
+# consult_teammate has measured +981 at every dev tip since 2026-09-09; what
+# moves this line is dev, not this branch.
+# Bumped 73_030 -> 75_260 for the two tools this PR adds: set_expert_routine
+# measures 1,823 (nine parameters, because it both creates standing work and
+# switches it on, and because the modes and the credential grant are each a
+# decision the owner makes out loud) and list_expert_routines 403. Measured on
+# the branch merged with dev, plus one — this line carries no margin by design.
+# Bumped 75_261 -> 75_693 in the same PR, for two arguments those tools grew:
+# `delay_seconds` (a routine can now be a one-shot, so the durable record
+# covers "check the deploy at six" and not only work that repeats) and
+# `session_id` (PINNED can name any chat the owner holds, which is the one
+# thing schedule_followup could do that a routine could not). Every other
+# description in both tools was cut first — that paid back 377 of the 808 —
+# so what is left here is the two new arguments, not wording. Measured on the
+# branch merged with dev at 75,692, plus one.
+# Bumped 75_693 -> 75_839 after merging dev, which reworded `raise_expert`,
+# `setup_agent_webhook_trigger` and `run_agent` — no tool was added and this
+# branch's own delta did not move. Re-measured on the merged tree at 75,838,
+# plus one, per the rule above about measuring on the merge ref.
+# Bumped 75_839 -> 76_300 for the ``tool:`` capability ids in tool descriptions
+# (SECRT-2667) and the routine/follow-up split in ``schedule_followup``.
+# Measured on this branch merged with dev at 76,110, +272 over dev's 75,838.
+# The margin over the measurement is deliberate, and the exception to the
+# no-margin rule above: this lands during the v0.8.0 release while dev is
+# still moving, and the two rewordings that cost 146 chars last week would
+# each have reded this PR at the queue on a measured-plus-one ceiling.
+# Bumped 76_300 -> 76_686 for list_workspace_files' folder_id and recursive
+# arguments and the description rewrite that tells the model where the user's
+# own uploads live, plus the matching sentence in read_workspace_file. No tool
+# was added (89 either side). Measured on the branch merged with dev, which
+# here is the branch itself — it already contains dev's tip 480c6f5509:
+#     dev 480c6f5509                              76,245 (89 tools)
+#     + this PR's two descriptions   +440         76,685 (89 tools)
+# Plus one; that line carried no margin by design, and dev overtook it within
+# the day: #14779 made the session's skills first-class find_capability
+# candidates, growing find_capability and run_capability, and the merge ref
+# measured 76,714 — 28 over — with none of this branch's delta having moved.
+# Re-measured on this branch merged with dev b6b03f5e72:
+#     merged tree                                 76,714 (89 tools)
+#     + headroom                       +300       77,014
+# The margin is deliberate and is the same exception the wire budget's #14476
+# note names: this is queued while dev is still moving, and a measured-plus-one
+# ceiling reds the queue's merge ref on the next reworded description.
+_CHAR_BUDGET = 77_014
 
 
 @pytest.fixture(scope="module")
@@ -305,10 +394,61 @@ def test_total_schema_char_budget() -> None:
 # session moves 62,003 -> 63,609. Measured on the branch merged with dev,
 # which is what CI builds — the branch tip still read 62,003 and would have
 # been ejected from the queue.
+# Raised 63_610 -> 64_494 on 2026-09-16, merging dev into #14207:
+# consult_teammate is in the ``delegation`` group, which an Otto chat does not
+# hide, so it is declared here and the largest session moves 63,609 -> 64,493.
+# Its wire cost is 884, not the 981 it adds to _CHAR_BUDGET above — this shape
+# drops ``required`` and uses compact separators but prefixes each name.
+#     dev d028684cce                             63,609 (85 tools)
+#     + #14207 multi-expert-teams  +884          64,493 (86 tools)
+# Raised 64_494 -> 65_603 for find_session and message_session. Both sit in the
+# ``delegation`` group, which an Otto chat does not hide, so both are declared
+# here: 65,602, +1,109. That is less than the 1,251 they add to _CHAR_BUDGET
+# above — the two brakes never move in step, so measure each.
+#
+# Raised 65_603 -> 65_630 for the same sentence: 65,629, +27, exactly the
+# registry's delta. Prose lands byte-for-byte in both, so the two brakes only
+# diverge on tool shape — `required` and separators — not on wording.
+#
+# Raised 65_630 -> 67_767 for the same two tools. They ride the
+# ``expert_resources`` group, so they are declared in every session that can
+# manage an expert's resources — which is the largest one. Measured 67,767,
+# plus one.
+# Raised 67_768 -> 68_188 for the same two arguments as ``_CHAR_BUDGET`` above;
+# both tools are in that largest session, so the whole delta lands here too.
+# Measured 68,187, plus one.
+# Raised 68_188 -> 68_329 for the same dev rewordings; all three tools are in
+# the largest session, so the whole delta lands here too. Measured 68,328,
+# plus one.
+#
+# Raised 68_329 -> 68_800 for the ``tool:`` capability ids in tool
+# descriptions (SECRT-2667) and the routine/follow-up split in
+# ``schedule_followup``: a deferred tool named bare is refused, so text
+# pointing at one spells its id. Measured on this branch merged with dev at
+# 68,595, +267 over dev's 68,328. Dev's 68,329 was measured without those
+# prefixes, so the higher of the two conflicting values was the floor here,
+# not the answer. Carries the same deliberate margin as ``_CHAR_BUDGET``.
+#
+# Raised 68_800 -> 69_156 for the same two descriptions as ``_CHAR_BUDGET``
+# above. Both file tools are in the largest session, so the whole delta lands
+# here too — but the wire form drops ``required`` and prefixes each name, so it
+# is +430 here against +440 there. Measured on the branch merged with dev,
+# which here is the branch itself (it contains dev's tip 480c6f5509):
+#     dev 480c6f5509                              68,725
+#     + this PR's two descriptions   +430         69,155
+# Plus one. Dev's 68,725 sits 75 under the old 68,800, which was the margin
+# that line took deliberately; this one takes none.
+#
 # ON CONFLICT, KEEP THE HIGHER VALUE — same rule, same reason: each branch's
 # CI measures only its own delta while the ceiling has to cover every in-flight
 # PR together. MEASURE ON THE PR'S MERGE REF, never the branch tip.
-_SESSION_WIRE_BUDGET = 63_610
+#
+# Re-measured on this branch merged with dev b6b03f5e72, after #14779 grew
+# find_capability and run_capability: the merge ref measured 69,183, 27 over
+# the plus-one ceiling above. Same headroom, for the same reason.
+#     merged tree                                 69,183
+#     + headroom                       +300       69,483
+_SESSION_WIRE_BUDGET = 69_483
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -384,19 +524,24 @@ def test_get_available_tools_hides_graphiti_when_disabled() -> None:
         "memory_forget_confirm",
     }
 
-    default = {t["function"]["name"] for t in get_available_tools()}
+    default = {
+        t["function"]["name"] for t in get_available_tools(include_deferred=True)
+    }
     assert memory_tool_names.issubset(
         default
     ), "sanity: memory_* tools should be present when no groups disabled"
 
     filtered = {
-        t["function"]["name"] for t in get_available_tools(disabled_groups=["graphiti"])
+        t["function"]["name"]
+        for t in get_available_tools(
+            include_deferred=True, disabled_groups=["graphiti"]
+        )
     }
     assert not (
         memory_tool_names & filtered
     ), f"graphiti disabled but memory_* still present: {memory_tool_names & filtered}"
     # Non-graphiti tools stay visible.
-    assert "find_block" in filtered
+    assert "find_capability" in filtered
     assert "TodoWrite" in filtered
 
 
@@ -411,8 +556,12 @@ def test_get_copilot_tool_names_hides_graphiti_when_disabled() -> None:
         f"{MCP_TOOL_PREFIX}memory_forget_confirm",
     }
 
+    # ``memory_search`` is eager — the memory supplement orders a search by
+    # name — and the other three are deferred, reached through
+    # run_capability.  Disabling the group must hide all four either way.
+    deferred_mcp_names = memory_mcp_names - {f"{MCP_TOOL_PREFIX}memory_search"}
     default = set(get_copilot_tool_names())
-    assert memory_mcp_names.issubset(default)
+    assert not deferred_mcp_names & default
 
     filtered = set(get_copilot_tool_names(disabled_groups=["graphiti"]))
     assert not (
@@ -438,53 +587,90 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     for origin in ("automation", None):
         hidden = origin_disabled_tools(origin)
         assert hidden == INTERACTIVE_ORIGIN_TOOLS
 
-        declared = {
-            t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-        }
-        assert not (INTERACTIVE_ORIGIN_TOOLS & declared), (
-            f"origin={origin!r} still declares "
-            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & declared)}"
+        # Reachable, not declared: most of these are deferred now, so the
+        # schema list would read every one of them as gated whether the gate
+        # works or not.  ``run_capability`` answers to the same hidden set.
+        reachable = reachable_tool_names(disabled_tools=hidden)
+        assert not (INTERACTIVE_ORIGIN_TOOLS & reachable), (
+            f"origin={origin!r} can still reach "
+            f"{sorted(INTERACTIVE_ORIGIN_TOOLS & reachable)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
         # still reports through a chat platform, still wakes itself up.
         assert {
             "run_agent",
-            "run_block",
+            "run_capability",
             "run_sub_session",
             "schedule_followup",
             "ask_question",
-        } <= declared
+        } <= reachable
 
 
-def test_interactive_origin_declares_every_tool_it_did_before() -> None:
-    """An interactive session declares exactly what it declared before.
+@pytest.mark.asyncio
+async def test_a_deferred_tool_named_directly_is_refused() -> None:
+    """The schema list is a presentation filter; this is the boundary.
+
+    Deferred tools are absent from every schema list, but a model that names
+    one anyway (replayed transcript, prompt injection) used to reach it here
+    and run it — routing around ``run_capability`` and the permission and
+    envelope gates it applies.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES, execute_tool, get_tool
+    from backend.copilot.tools.models import ErrorResponse
+
+    name = "memory_store"
+    assert name in DEFERRED_TOOL_NAMES, "test relies on this tool being deferred"
+    tool = get_tool(name)
+    assert tool is not None
+
+    with patch.object(
+        tool, "execute", new=AsyncMock(return_value="should never run")
+    ) as ran:
+        result = await execute_tool(
+            tool_name=name,
+            parameters={},
+            user_id="user-1",
+            session=make_session("user-1"),
+            tool_call_id="call-1",
+            # Nothing else gates it: the refusal has to come from deferral.
+            disabled_groups=[],
+            disabled_tools=(),
+        )
+
+    ran.assert_not_awaited()
+    assert result.success is False
+    assert ErrorResponse.model_validate_json(result.output).error == "tool_disabled"
+
+
+def test_interactive_origin_reaches_every_tool_it_did_before() -> None:
+    """An interactive session reaches exactly what it reached before.
 
     The counterpart to the test above, and what fails if the gate ever widens
     past ``origin`` into the sessions a person really is driving.
     """
     from backend.copilot.tools import (
         INTERACTIVE_ORIGIN_TOOLS,
-        get_available_tools,
         origin_disabled_tools,
+        reachable_tool_names,
     )
 
     hidden = origin_disabled_tools("interactive")
     assert hidden == frozenset()
 
-    declared = {
-        t["function"]["name"] for t in get_available_tools(disabled_tools=hidden)
-    }
+    reachable = reachable_tool_names(disabled_tools=hidden)
     assert (
-        INTERACTIVE_ORIGIN_TOOLS <= declared
-    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - declared)}"
+        INTERACTIVE_ORIGIN_TOOLS <= reachable
+    ), f"interactive session lost {sorted(INTERACTIVE_ORIGIN_TOOLS - reachable)}"
 
 
 def test_set_matches_the_tools_that_call_the_origin_guard() -> None:

@@ -4,6 +4,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import base64
 import functools
 from copy import copy
@@ -115,8 +116,8 @@ from ..pending_messages import (
 )
 from ..permissions import (
     CopilotPermissions,
-    all_known_tool_names,
     apply_tool_permissions,
+    denied_tool_names,
 )
 from ..prompting import (
     get_chat_platform_supplement,
@@ -707,13 +708,10 @@ async def _consume_sdk_until_done(
         measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
         compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
-            # Compaction events end with StreamFinishStep, which maps to
-            # Vercel AI SDK's "finish-step" — that clears activeTextParts.
-            # Close any open text block BEFORE the compaction events so
-            # the text-end arrives before finish-step, preventing
-            # "text-end for missing text part" errors on the frontend.
+            # Compaction events end with StreamFinishStep; open blocks must
+            # close before it (see ``SDKResponseAdapter.end_open_blocks``).
             pre_close: list[StreamBaseResponse] = []
-            state.adapter._end_text_if_open(pre_close)
+            state.adapter.end_open_blocks(pre_close)
             # Compaction events bypass the adapter, so sync step state
             # when a StreamFinishStep is present — otherwise the adapter
             # will skip StreamStartStep on the next AssistantMessage.
@@ -970,6 +968,15 @@ _BUILDING_MODE_CONTINUATION = (
     "Continue working on the user's request from where you left off."
 )
 
+# Sent instead when the guide could not be loaded, so the model is never told
+# a <building_guide> block is present that is not. The building-mode gates stay
+# closed, which is correct — the guide really is absent.
+_BUILDING_MODE_UNAVAILABLE_CONTINUATION = (
+    "The agent-building guide could not be loaded into your system prompt. "
+    "Continue working on the user's request from where you left off, and do "
+    "not retry enter_agent_building_mode in this turn."
+)
+
 # Synthetic message injected when a turn ends with extended thinking but no
 # visible TextBlock. Bounded to one re-prompt per turn — if the model still
 # returns thinking-only the adapter promotes the last thinking block to
@@ -1037,10 +1044,7 @@ def _hidden_short_names_for_permissions(
     Hiding the tool from the MCP server removes it from the model's tool
     list entirely so it never reaches for the blocked name.
     """
-    if permissions is None or permissions.is_empty():
-        return frozenset()
-    all_tools = all_known_tool_names()
-    return all_tools - permissions.effective_allowed_tools(all_tools)
+    return denied_tool_names(permissions)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -1725,12 +1729,19 @@ async def _apply_building_mode_restart(
     building_mode_requested flips False either way.
     """
     session.building_mode_requested = False
-    building_suffix = await build_builder_system_prompt_suffix(session)
+    # ``force``: the enter tool set the flag in this very turn, so re-deriving
+    # "is this session building?" from persisted history asks a question the
+    # caller already answered — and answers it wrong, because the tool call is
+    # not in ``messages`` yet.
+    building_suffix = await build_builder_system_prompt_suffix(session, force=True)
     session.guide_in_system_prompt = bool(building_suffix)
     if not building_suffix:
+        # Only a guide-load failure reaches here now.
         logger.error(
-            f"{log_prefix} Building-mode restart: guide suffix "
-            f"empty — continuing without prompt upgrade"
+            "%s Building-mode restart: guide suffix empty — relaunching "
+            "without the guide (session_id=%s)",
+            log_prefix,
+            session.session_id,
         )
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
@@ -1767,7 +1778,11 @@ async def _apply_building_mode_restart(
     state.options = sdk_options_restart
     state.use_resume = True
     state.resume_file = session_id
-    state.query_message = _BUILDING_MODE_CONTINUATION
+    state.query_message = (
+        _BUILDING_MODE_CONTINUATION
+        if building_suffix
+        else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
+    )
     # Fresh adapter, same carry-over rules as a transient retry.
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
@@ -1782,6 +1797,8 @@ async def _apply_building_mode_restart(
     state.adapter.thinking_only_reprompted = state.thinking_only_reprompted
     if prior_adapter.emitted_real_content_to_wire:
         state.adapter.prior_attempt_emitted_visible_content = True
+    if not building_suffix:
+        return StreamStatus(message="Continuing without the agent guide…")
     return StreamStatus(message="Entering building mode — loading the agent guide…")
 
 
@@ -2068,12 +2085,21 @@ async def _iter_sdk_messages(
     timeout.  On timeout we yield a heartbeat sentinel but keep the Task
     alive so it can deliver the next message.
 
+    Every fetch Task runs in one context, copied once up front.  The
+    langsmith tracing wrapper around ``receive_response()`` stores the
+    ``claude.conversation`` run in a ContextVar during the first fetch and
+    parents each reply's ``claude.assistant.turn`` span on it; a Task given
+    a fresh copy of the caller's context per message never sees that run,
+    so every reply after the first message would drop out of the trace.
+    Only one fetch is in flight at a time, so sharing the context is safe.
+
     Yields `None` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
     On stream end (`StopAsyncIteration`), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
     """
     msg_iter = client.receive_response().__aiter__()
+    fetch_context = contextvars.copy_context()
     pending_task: asyncio.Task[Any] | None = None
     wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
@@ -2084,7 +2110,7 @@ async def _iter_sdk_messages(
     try:
         while True:
             if pending_task is None:
-                pending_task = asyncio.create_task(_next_msg())
+                pending_task = asyncio.create_task(_next_msg(), context=fetch_context)
             waiters: set[asyncio.Task[Any]] = {pending_task}
             for event in (wake, tool_display_wake):
                 if event is not None and event not in wake_tasks.values():
@@ -4212,7 +4238,7 @@ async def _run_stream_attempt(
             ctx.log_prefix,
         )
         closing_responses: list[StreamBaseResponse] = []
-        state.adapter._end_text_if_open(closing_responses)
+        state.adapter.end_open_blocks(closing_responses)
         for r in closing_responses:
             yield r
         notice_block_id = str(uuid.uuid4())
@@ -4512,6 +4538,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     organization_id: str | None = None,
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4604,7 +4631,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message
+        session, message, is_user_message, message_metadata
     )
     if _user_message_appended and is_user_message:
         track_user_message(
@@ -4884,6 +4911,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # get_agent_building_guide skip redundant guide round-trips when the
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
+        # Turn-scoped, as the baseline's turn-end clear makes it: without
+        # this the buffer the adapter fills would carry a previous turn's
+        # calls into a gate that asks about *this* turn.
+        session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
@@ -4967,6 +4998,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
             | kickoff_hidden
             | origin_disabled_tools(session.metadata.origin)
+        )
+        # run_capability reaches deferred tools by id; the same hidden set
+        # must bound it, so it travels with the turn's execution context.
+        set_execution_context(
+            user_id,
+            session,
+            sandbox=e2b_sandbox,
+            sdk_cwd=sdk_cwd,
+            permissions=permissions,
+            envelope=envelope,
+            hidden_tools=hidden_tools,
         )
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
@@ -5169,6 +5211,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),
             "conversation_turn": str(turn),
+            "tool_surface": "registry",
         }
         if _user_tier:
             _otel_metadata["subscription_tier"] = _user_tier.value
@@ -5861,7 +5904,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
-                    state.adapter._end_text_if_open(cleanup_events)
+                    state.adapter.end_open_blocks(cleanup_events)
                 cleanup_events.extend(
                     interrupted.finalize(
                         session,

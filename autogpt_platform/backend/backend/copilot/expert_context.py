@@ -24,7 +24,9 @@ directly (suffix: leading ``\\n\\n``; message blocks: trailing ``\\n\\n``).
 import asyncio
 import logging
 
+from backend.api.features.experts.copy_policy import EXPERT_COPY_POLICY
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.api.features.experts.models import ExpertRoutine as ExpertRoutineModel
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
@@ -32,6 +34,18 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
+
+# Every top-level block this module renders into a prompt. The display strip in
+# ``service.py`` peels these off the front of a stored user message by name, so
+# a new block missing from this tuple renders verbatim as if the user typed it.
+OWNED_BLOCK_TAGS = (
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
+)
 
 
 class ExpertSessionUnavailableError(RuntimeError):
@@ -113,7 +127,25 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"<identity_and_personality>\n{identity}\n</identity_and_personality>\n"
         f"<voice_preferences>\n{voice}\n</voice_preferences>\n"
         f"<boundaries>\n{boundaries}\n</boundaries>\n"
-        f"<protected_rules>\n{protected_rules}\n</protected_rules>\n"
+        f"<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n"
+        f"<standing_work>\n"
+        f"Part of your job is the work that repeats. A colleague who only "
+        f"ever acts when asked is half a colleague: when you notice something "
+        f"in your own area that would be worth doing every week, or every "
+        f"weekday morning, say so and offer to take it on. "
+        f"`tool:list_routines` shows any you already came with, and "
+        f"`tool:schedule_routine` both switches one on and sets up a new one you "
+        f"and the user agreed on — you are not limited to the routines you "
+        f"arrived with, and an expert that arrived with none can still build "
+        f"its own. Offer only work inside your role as "
+        f"{escape_prompt_xml_tags(expert.role)}.\n"
+        f"Never describe a routine as running until the tool call that "
+        f"schedules it has actually succeeded. An unkept cadence is silent — "
+        f"the user finds out by noticing that nothing ever arrived — so "
+        f"'I'll check every Monday' is a promise you may only make after the "
+        f"call returns. Every routine you set up is the user's to see and "
+        f"change: `tool:list_schedules` shows what is really scheduled.\n"
+        f"</standing_work>\n"
         f"<first_turn>\n"
         f"Your first turn after being hired arrives as a hidden instruction "
         f"that names `expert_onboarding`. On that turn call "
@@ -122,8 +154,13 @@ def render_expert_identity_suffix(expert: Expert) -> str:
         f"question and option on that card must be about your own role as "
         f"{escape_prompt_xml_tags(expert.role)} and the workflows installed "
         f"on you: never about a teammate's area or work outside your role, "
-        f"whatever other context suggests. Once the card's answers come "
-        f"back, continue as normal.\n"
+        f"whatever other context suggests. If <routines> lists any "
+        f"standing work, spend one of those questions on which of it to take "
+        f"on — it is the one moment the user is deciding how you will work, "
+        f"and a routine offered later has already missed it. Once the card's "
+        f"answers come back, continue as normal: that reply is an ordinary "
+        f"turn, so settle the details of anything they picked and switch it "
+        f"on there.\n"
         f"</first_turn>\n"
         f"The base instructions above describe Otto, the platform's default "
         f"assistant. All platform capabilities and tools remain "
@@ -210,7 +247,16 @@ async def build_expert_context(
                 delegation_enabled=delegation_enabled,
                 include_teammates=include_teammates,
             )
-        return await _team_context(user_id, delegation_enabled=delegation_enabled)
+        team = await _team_context(user_id, delegation_enabled=delegation_enabled)
+        if not delegation_enabled:
+            # ``expert_resources`` is hidden without the flag, and naming a
+            # tool the turn cannot execute is worse than saying nothing.
+            return team
+        return (
+            team
+            + render_account_standing_work_block()
+            + await _routines_block(user_id, None)
+        )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
         return ""
@@ -248,7 +294,110 @@ async def _expert_session_context(
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
         return ""
-    return render_expert_workflows_block(expert) + _expert_computer_block() + teammates
+    return (
+        render_expert_workflows_block(expert)
+        + await _routines_block(user_id, expert_id)
+        + render_expert_computer_block()
+        + teammates
+    )
+
+
+def render_account_standing_work_block() -> str:
+    """Tell Otto that standing work is a thing it owns, not only experts.
+
+    Without this the model reaches for ``schedule_followup``, because that is
+    the only scheduling primitive its prompt has ever named — and a weekly job
+    pinned to whatever chat the user happened to be in is what that produces.
+    It is right for a deferral and wrong for everything that repeats, and the
+    difference is invisible at the moment of choosing.
+    """
+    return (
+        "<standing_work>\n"
+        "Work that repeats, or that the user will want to find and change "
+        "later, belongs in a routine: `tool:schedule_routine` leaves a named "
+        "record "
+        "they can switch off, and gives recurring work its own thread so each "
+        "run remembers the last. `tool:list_routines` shows what you hold. Offer "
+        "one when you notice work repeating, rather than waiting to be asked "
+        "twice, and never say a routine is running before the call that "
+        "schedules it has returned — an unkept cadence is silent.\n"
+        "</standing_work>\n\n"
+    )
+
+
+async def _routines_block(user_id: str, expert_id: str | None) -> str:
+    """The standing work this expert offers, and what is actually running.
+
+    Without this the model has no idea its own routines exist, so it never
+    offers them and the expert silently does less than it came able to do. A
+    failed lookup drops the block rather than the turn: an expert that forgets
+    to mention a routine is worse than one that cannot answer at all.
+    """
+    try:
+        routines = await experts_db().list_routines(user_id, expert_id)
+    except Exception as e:
+        logger.warning(f"Failed to load routines for expert context: {e}")
+        return ""
+    if not routines:
+        return ""
+    lines = "\n".join(_routine_line(routine) for routine in routines)
+    # Only a proposal somebody else wrote needs resolving before it runs. Said
+    # about the user's own words it would be nonsense — and worse, it would
+    # send the model back to re-ask questions they have already answered.
+    proposal_rule = (
+        (
+            "The routines marked (proposal) are offers, not plans: their "
+            "wording is a draft written for everybody, so before switching one "
+            "on, answer its open questions with the user, rewrite it in their "
+            "terms, and show them the result. Routines without that mark are "
+            "already the user's own words — do not re-ask them. A routine "
+            "reaches none of their connected accounts unless they say it "
+            "should, so if the work needs one, ask for that specifically "
+            "rather than assuming it.\n"
+        )
+        if any(r.source == "TEMPLATE" for r in routines)
+        else ""
+    )
+    return (
+        f"<routines>\n"
+        f"Standing work you can do unattended. Each runs as a turn of yours at "
+        f"its own time, in the user's timezone. Switch one on with "
+        f"`tool:schedule_routine` — never silently, always after the user has "
+        f"chosen it:\n"
+        f"{lines}\n"
+        f"{proposal_rule}"
+        f"</routines>\n\n"
+    )
+
+
+def _routine_line(routine: ExpertRoutineModel) -> str:
+    title = escape_prompt_xml_tags(routine.title)
+    when = (
+        ", ".join(routine.crons)
+        if routine.crons
+        else (
+            f"once at {routine.run_at:%Y-%m-%d %H:%M} UTC"
+            if routine.run_at
+            else "no time set"
+        )
+    )
+    if not routine.enabled:
+        asks = (
+            " — still needs answered: "
+            + "; ".join(escape_prompt_xml_tags(ask) for ask in routine.asks)
+            if routine.asks
+            else ""
+        )
+        # Marked per row rather than described once for the list: an expert can
+        # hold a template's proposals and the owner's own routines at the same
+        # time, and one blanket rule about drafts sends the model back to
+        # re-ask questions the user already answered.
+        proposal = " (proposal)" if routine.source == "TEMPLATE" else ""
+        return f"- {title} (id: {routine.id}) — OFF{proposal}, suggested {when}{asks}"
+    reach = (
+        "may use connected accounts" if routine.grants_credentials else "platform-only"
+    )
+    return f"- {title} (id: {routine.id}) — ON, {when}, {reach}"
 
 
 def render_expert_workflows_block(expert: Expert) -> str:
@@ -266,7 +415,7 @@ def render_expert_workflows_block(expert: Expert) -> str:
         f"<expert_workflows>\n"
         f"Workflows installed on this expert — the only ones you can run, edit, "
         f"or schedule (`run_agent` with the IDs below). To use another agent, "
-        f"install it first with `install_expert_workflow` from the marketplace "
+        f"install it first with `tool:install_expert_workflow` from the marketplace "
         f"or the owner's library — `find_library_agent` lists what the library "
         f"holds; agents you build here are installed for you:\n"
         f"{workflow_lines}\n"
@@ -282,7 +431,7 @@ def render_expert_workflows_block(expert: Expert) -> str:
     )
 
 
-def _expert_computer_block() -> str:
+def render_expert_computer_block() -> str:
     """Tell an expert about its own machine — only when E2B actually backs it.
 
     Lives in the first user message with the other expert blocks so the
@@ -415,7 +564,11 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
         "workflows rather than yours, hand it over with "
         "`delegate_to_expert(expert_id=..., prompt=...)` — they cannot "
         "see this thread, so put the context they need in the prompt. "
-        "Never impersonate a teammate or guess at their domain yourself."
+        "Never impersonate a teammate or guess at their domain yourself. "
+        "Before anything that commits this company (money, dates, "
+        "guarantees, policy) leaves the conversation, have one of them "
+        "check it with "
+        '`run_capability(id="tool:consult_teammate", input={...})`.'
     )
 
 
@@ -447,8 +600,8 @@ def _empty_team_context(templates: list[Expert]) -> str:
         "<team_context>\n"
         "The user has not hired any experts yet. You are their Head of AI: "
         "when recurring work shows up, propose hiring one expert from the "
-        "roster below with `hire_expert(template_id=...)`, or raising a "
-        "custom one with `raise_expert(...)`, and say why. Always offer both "
+        "roster below with `tool:hire_expert` (`template_id`), or raising a "
+        "custom one with `tool:raise_expert`, and say why. Always offer both "
         "paths (hire from the roster, or raise your own). Propose one hire "
         "at a time. Never hire silently — both tools return an approval card "
         "the user must confirm; do not describe the card's contents, the "

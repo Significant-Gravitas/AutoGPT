@@ -38,7 +38,7 @@ async def test_run_block_emits_name_before_execution_or_setup(
     if scenario == "invalid_schema":
         block.input_schema.jsonschema.side_effect = ValueError("Invalid schema")
 
-    async def resolve_credentials(*args):
+    async def resolve_credentials(*args, **kwargs):
         assert published == [_BLOCK_NAME]
         return {}, [MagicMock()] if scenario == "credentials" else []
 
@@ -115,7 +115,7 @@ async def test_approved_continuation_emits_name_before_credentials(
     database = _review_database(session, review_id)
     published: list[str] = []
 
-    async def resolve_credentials(*args):
+    async def resolve_credentials(*args, **kwargs):
         assert published == [_BLOCK_NAME]
         return {}, [MagicMock()] if missing_credentials else []
 

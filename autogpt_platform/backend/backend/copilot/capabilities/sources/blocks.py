@@ -10,18 +10,18 @@ import logging
 
 from backend.blocks import get_blocks
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities.block_meta import (
+    get_block_provider,
+    is_graph_only_block,
+)
 from backend.copilot.capabilities.models import (
     CapabilityEntry,
     Connection,
     Implementation,
     clip_purpose,
+    normalize_text,
 )
 from backend.copilot.capabilities.text import tokenize
-from backend.copilot.tools.find_block import (
-    COPILOT_EXCLUDED_BLOCK_IDS,
-    COPILOT_EXCLUDED_BLOCK_TYPES,
-)
-from backend.copilot.tools.helpers import get_block_provider
 from backend.data.model import CredentialsFieldInfo
 
 logger = logging.getLogger(__name__)
@@ -53,10 +53,7 @@ def block_entries(*, include_disabled: bool = False) -> list[CapabilityEntry]:
 
 
 def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
-    graph_only = (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    )
+    graph_only = is_graph_only_block(block)
     provider = get_block_provider(block)
     # Credentials may sit inside a nested input (the Google Sheets picker),
     # which ``get_credentials_fields`` does not see; the info view does.
@@ -73,6 +70,15 @@ def _block_entry(block: AnyBlockSchema) -> CapabilityEntry:
         klass=block.capability_kind,
         name=block.name,
         purpose=clip_purpose(block.optimized_description or block.description),
+        # The optimized description is curated for retrieval (it is loaded from
+        # the database at runtime), so the index sees it as well as the source.
+        description=normalize_text(
+            " ".join(
+                text
+                for text in (block.optimized_description, block.description)
+                if text
+            )
+        ),
         tags=tags,
         context="graph" if graph_only else "both",
         implementations=[Implementation(kind="block", ref=block.id, name=block.name)],

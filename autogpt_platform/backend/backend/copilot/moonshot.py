@@ -34,7 +34,7 @@ Detection is prefix-based (``moonshotai/``).  Moonshot routes every Kimi
 SKU through the same Anthropic-compat surface, so a new slug transparently
 inherits both the rate card and the cache-control gate without editing
 this file.  SKUs priced off the shared K2.x default (Kimi K3 broke the
-uniform pricing at 5x) carry per-slug entries in
+uniform pricing at ~3x) carry per-slug entries in
 :data:`_RATE_OVERRIDES_USD_PER_MTOK`.
 """
 
@@ -60,7 +60,7 @@ def _overrides_from_catalog() -> dict[str, tuple[float, float]]:
     """Per-slug USD overrides for SKUs priced off the shared K2.x default.
 
     Authored in the catalog (``provider_*_usd_per_1m`` on the model's cost
-    entry — e.g. Kimi K3's $3/$15); slugs without them fall back to
+    entry — e.g. Kimi K3's $1.70/$8.50); slugs without them fall back to
     :data:`_DEFAULT_MOONSHOT_RATE_USD_PER_MTOK`.
     """
     return {

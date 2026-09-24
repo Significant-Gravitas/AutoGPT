@@ -21,7 +21,6 @@ import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -97,7 +96,6 @@ export function LibraryAgentList({
   fleetSummary,
   briefingAgents,
 }: Props) {
-  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const shouldReduceMotion = useReducedMotion();
   const activeContainerVariants = shouldReduceMotion
     ? reducedContainerVariants
@@ -150,8 +148,7 @@ export function LibraryAgentList({
 
   return (
     <>
-      {isAgentBriefingEnabled &&
-        !selectedFolderId &&
+      {!selectedFolderId &&
         fleetSummary &&
         briefingAgents &&
         briefingAgents.length > 0 && (

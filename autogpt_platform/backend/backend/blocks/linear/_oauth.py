@@ -15,6 +15,7 @@ from backend.sdk import (
     ProviderName,
     Requests,
     SecretStr,
+    parse_granted_scopes,
 )
 
 
@@ -239,10 +240,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=username or "Unknown User",
             access_token=token_data["access_token"],
-            scopes=(
-                token_data["scope"].split(",")
-                if "scope" in token_data
-                else (current_credentials.scopes if current_credentials else [])
+            scopes=parse_granted_scopes(
+                token_data.get("scope"),
+                fallback=current_credentials.scopes if current_credentials else [],
             ),
             refresh_token=token_data.get("refresh_token"),
             access_token_expires_at=access_token_expires_at,

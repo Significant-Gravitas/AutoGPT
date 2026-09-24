@@ -29,7 +29,7 @@ from backend.util.file import (
     get_mime_type,
     store_media_file,
 )
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 
 logger = logging.getLogger(name=__name__)
 
@@ -206,11 +206,7 @@ class SendWebRequestBlock(Block):
             json=body if (input_data.json_format and not use_files) else None,
         )
 
-        # Decide how to parse the response
-        if response.headers.get("content-type", "").startswith("application/json"):
-            result = None if response.status == 204 else response.json()
-        else:
-            result = response.text()
+        result = _parse_response_body(response, input_data.method)
 
         # Yield according to status code bucket
         if 200 <= response.status < 300:
@@ -219,6 +215,25 @@ class SendWebRequestBlock(Block):
             yield "client_error", result
         else:
             yield "server_error", result
+
+
+def _parse_response_body(response: Response, method: HttpMethod):
+    if method == HttpMethod.HEAD or response.status in {204, 205}:
+        return None
+
+    content_type = (
+        response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    )
+    main_type, _, subtype = content_type.partition("/")
+    is_json = content_type == "application/json" or (
+        bool(main_type) and len(subtype) > len("+json") and subtype.endswith("+json")
+    )
+    if is_json:
+        try:
+            return response.json()
+        except ValueError:
+            return response.text()
+    return response.text()
 
 
 class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):

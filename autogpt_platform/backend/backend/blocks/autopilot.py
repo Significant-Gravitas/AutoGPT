@@ -169,11 +169,11 @@ class AutoPilotBlock(Block):
             default=None,
             credential_reference_only=True,
             discriminator="transport",
-            # `platform` is deliberately absent: it needs no credential at all,
-            # and an unmapped discriminator value makes the credential input
-            # hide itself rather than asking for something that does not exist.
             discriminator_mapping={
                 AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
+            credential_free_discriminator_values={
+                AutoPilotTransport.PLATFORM.value,
             },
             json_schema_extra={
                 "secret": True,
@@ -225,7 +225,7 @@ class AutoPilotBlock(Block):
 
         blocks: list[str] = SchemaField(
             description=(
-                "Block identifiers to filter when the copilot uses run_block. "
+                "Block identifiers to filter when the copilot runs blocks via run_capability. "
                 "Each entry can be: a block name (e.g. 'HTTP Request'), "
                 "a full block UUID, or the first 8 hex characters of the UUID "
                 "(e.g. 'c069dc6b'). Works with blocks_exclude. "
@@ -248,7 +248,7 @@ class AutoPilotBlock(Block):
 
         dry_run: bool = SchemaField(
             description=(
-                "When enabled, run_block and run_agent tool calls in this "
+                "When enabled, run_capability and run_agent tool calls in this "
                 "autopilot session are forced to use dry-run simulation mode. "
                 "No real API calls, side effects, or credits are consumed "
                 "by those tools. Useful for testing agent wiring and "
@@ -777,7 +777,7 @@ async def _build_and_validate_permissions(
         if invalid_blocks:
             return (
                 f"Unknown block identifier(s) in 'blocks': {invalid_blocks}. "
-                "Use find_block to discover valid block names and IDs. "
+                "Use find_capability to discover valid block names and IDs. "
                 "You may also use the first 8 characters of a block UUID."
             )
 

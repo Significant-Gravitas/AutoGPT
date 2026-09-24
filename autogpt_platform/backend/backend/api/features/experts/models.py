@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -128,6 +129,7 @@ class ExpertIdentity(BaseModel):
     avatar_url: str | None
     color: str | None = None
     role: str
+    job_title: str | None = None
     is_archived: bool
 
 
@@ -196,6 +198,46 @@ _DAY_ONE_ITEMS: TypeAdapter[list[ExpertDayOneItem]] = TypeAdapter(
 )
 
 
+class ExpertRoutine(BaseModel):
+    """Standing work done unattended, as the API and the fire path see it.
+
+    A template's row is a proposal; a hire's row is that proposal until
+    somebody switches it on. A row the owner dictated is neither — it is
+    already theirs.
+    """
+
+    id: str
+    # None when this is the account's own standing work rather than an
+    # expert's: Otto is the default assistant, not a row in Expert.
+    expert_id: str | None = None
+    # Roster/shared slug; None when this one was authored in conversation.
+    key: str | None = None
+    title: str
+    prompt: str
+    # Exactly one of ``crons`` and ``run_at`` is set.
+    crons: list[str] = []
+    run_at: datetime | None = None
+    # What must be asked before this can run. Non-empty on a proposal nobody
+    # has answered yet, and answering them is what makes it runnable.
+    asks: list[str] = []
+    session_mode: str = "THREAD"
+    session_id: str | None = None
+    # "TEMPLATE" (someone else wrote the prompt) or "OWNER" (the owner did).
+    # What the fire-time turn may reach hangs off this.
+    source: str = "TEMPLATE"
+    enabled: bool = False
+    # True once the owner resolved the proposal, after which no roster edit
+    # touches this row again.
+    customized: bool = False
+    # Whether this routine's turns may reach the owner's connected services.
+    # Always False on anything a template shipped.
+    grants_credentials: bool = False
+
+    @property
+    def recurring(self) -> bool:
+        return bool(self.crons)
+
+
 class Expert(BaseModel):
     id: str
     name: str
@@ -203,6 +245,7 @@ class Expert(BaseModel):
     # Accent color token chosen while raising; "" when unset.
     color: str = ""
     role: str
+    job_title: str | None = None
     tagline: str | None
     bio: str | None
     skills: list[str]
@@ -378,7 +421,7 @@ class ExpertSkillsUpdate(BaseModel):
     expert must be library skills (default or uploaded); names already on
     the expert are kept as-is so marketplace skills survive a round-trip."""
 
-    skills: list[str] = Field(max_length=50)
+    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)

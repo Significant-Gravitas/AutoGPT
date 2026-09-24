@@ -373,6 +373,7 @@ def test_create_raised_expert_returns_expert(
         "Otto",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -409,6 +410,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         json={
             "name": "Nova",
             "role": "Research Assistant",
+            "job_title": "  Market Research Analyst  ",
             "voice_preferences": "Warm and detailed.",
             "weekly_budget": 250,
             "attachments": [
@@ -429,6 +431,7 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
         "Nova",
         "Research Assistant",
         "Warm and detailed.",
+        job_title="Market Research Analyst",
         avatar_url=None,
         color=None,
         about=None,
@@ -442,6 +445,28 @@ def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
     )
+
+
+def test_create_raised_expert_trims_job_title_before_length_check(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+    job_title = "j" * 100
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "job_title": f"  {job_title}  "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["job_title"] == job_title
 
 
 def test_create_raised_expert_forwards_about(
@@ -468,6 +493,7 @@ def test_create_raised_expert_forwards_about(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about="Always cites a source.",
@@ -519,6 +545,7 @@ def test_create_raised_expert_reports_attachment_installation_failure(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url=None,
         color=None,
         about=None,
@@ -582,6 +609,7 @@ def test_create_raised_expert_passes_avatar_and_color(
         "Nova",
         None,
         None,
+        job_title=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         about=None,
@@ -657,6 +685,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
 
     assert response.status_code == 200
     assert mock_create.await_args.kwargs == {
+        "job_title": None,
         "avatar_url": None,
         "color": None,
         "about": None,
@@ -862,6 +891,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "avatar_url": None,
             "color": "orange-500",
             "role": "Marketing Specialist",
+            "job_title": None,
             "is_archived": True,
         }
     ]
@@ -1203,6 +1233,11 @@ def test_update_expert_avatar_returns_updated_expert(
     test_user_id: str,
 ) -> None:
     updated = _make_expert(avatar_url="https://cdn.example.com/mara.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
     mock_update = mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1241,6 +1276,11 @@ def test_update_expert_avatar_rejects_unsafe_url(
 def test_update_expert_avatar_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.update_avatar",
         new_callable=AsyncMock,
@@ -1963,3 +2003,21 @@ def test_start_expert_desktop_without_e2b_is_503(
     config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
     config.return_value.active_e2b_api_key = None
     assert client.post("/experts/expert-1/computer/desktop").status_code == 503
+
+
+def test_existing_custom_avatar_can_be_kept_without_review(mocker):
+    expert = _make_expert(avatar_url="https://example.com/old.png")
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+        return_value=expert,
+    )
+    response = client.patch(
+        "/experts/expert-1/avatar", json={"avatar_url": expert.avatar_url}
+    )
+    assert response.status_code == 200

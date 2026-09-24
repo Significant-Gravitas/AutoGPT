@@ -339,7 +339,7 @@ async def _change_grant(
         return ErrorResponse(
             message=(
                 "An expert cannot change credential grants. Use "
-                "request_credential_grant to ask the user for access."
+                "tool:request_credential_grant to ask the user for access."
             ),
             error="access_denied",
             session_id=session_id,
@@ -437,7 +437,7 @@ class ListExpertWorkflowsTool(BaseTool):
             workflows=expert.workflows,
             message=(
                 f"{len(expert.workflows)} workflow(s) installed on {expert.name}: "
-                f"{lines or 'none'}. Add more with install_expert_workflow."
+                f"{lines or 'none'}. Add more with tool:install_expert_workflow."
             ),
             session_id=session_id,
         )
@@ -585,7 +585,7 @@ class RequestCredentialGrantTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "Personal AutoPilot already holds every credential; use "
-                    "grant_expert_credential to give one to an expert."
+                    "tool:grant_expert_credential to give one to an expert."
                 ),
                 error="not_an_expert_session",
                 session_id=session_id,
@@ -602,7 +602,7 @@ class RequestCredentialGrantTool(BaseTool):
             f"(credential_id={credential_id})"
             + (f" so I can {reason}" if reason else "")
             + ". Approve it on my Integrations page, or tell personal AutoPilot "
-            f"to run grant_expert_credential for expert {session.expert_id}."
+            f"to run tool:grant_expert_credential for expert {session.expert_id}."
         )
         asked_at = datetime.now(timezone.utc)
         try:

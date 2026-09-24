@@ -25,10 +25,17 @@ format:
 	cd frontend && pnpm format
 	cd frontend && pnpm lint
 
+# Create any missing .env from its .env.default, then fill the secrets that
+# .env.default deliberately leaves blank (see single-container/runtime_config.py
+# SECRET_GENERATORS). Safe to re-run: existing files and existing values are
+# never overwritten.
 init-env:
 	cp -n .env.default .env || true
 	cd backend && cp -n .env.default .env || true
 	cd frontend && cp -n .env.default .env || true
+	python3 single-container/runtime_config.py fill-env --missing-ok --path .env
+	python3 single-container/runtime_config.py fill-env --missing-ok --path backend/.env
+	python3 single-container/runtime_config.py fill-env --missing-ok --path frontend/.env
 
 
 # Run migrations for backend

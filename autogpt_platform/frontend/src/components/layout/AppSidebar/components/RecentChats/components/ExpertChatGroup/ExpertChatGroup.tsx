@@ -1,11 +1,7 @@
 "use client";
 
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import {
@@ -15,8 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
-import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
+import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,8 +22,7 @@ import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
 import { ReactNode, useState } from "react";
-
-export const EXPERT_GROUP_PREVIEW_COUNT = 10;
+import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
 // that floats over that slot are all one size.
@@ -40,6 +34,7 @@ const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
 
 interface Props {
   label: string;
+  role?: string | null;
   avatarUrl: string | null;
   newChatHref: string | null;
   color?: string | null;
@@ -50,6 +45,7 @@ interface Props {
 
 export function ExpertChatGroup({
   label,
+  role,
   avatarUrl,
   newChatHref,
   color,
@@ -58,9 +54,8 @@ export function ExpertChatGroup({
   renderItem,
 }: Props) {
   const [isOpen, setIsOpen] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
+  const [visibleCount, setVisibleCount] = useState(EXPERT_CHAT_PAGE_SIZE);
   const visibleSessions = sessions.slice(0, visibleCount);
-  const avatarConfig = expertNotionConfig({ name: label, avatarUrl, color });
   const hasHiddenSessions = sessions.length > visibleSessions.length;
   const runningSessions = sessions.filter((session) => session.is_processing);
 
@@ -76,24 +71,26 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-zinc-100">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-zinc-900"
         >
           {isAutopilot ? (
-            <AutopilotAvatar size={24} />
-          ) : avatarConfig ? (
-            <NotionAvatarImage config={avatarConfig} size={24} title={label} />
+            <AutopilotAvatar size={32} transparent />
           ) : (
-            <Avatar className="h-6 w-6 border border-stone-500">
-              <AvatarImage
-                src={avatarUrl ?? undefined}
-                alt={label}
-                width={48}
-                height={48}
-              />
-              <AvatarFallback>{label}</AvatarFallback>
-            </Avatar>
+            <ExpertAvatar
+              name={label}
+              avatarUrl={avatarUrl}
+              color={color}
+              size={32}
+              className="border-0"
+            />
           )}
-          <span className="truncate">{label}</span>
+          <ExpertIdentityDetails
+            isOtto={isAutopilot}
+            name={label}
+            role={role}
+            size="compact"
+            areaClassName="opacity-70"
+          />
           {newChatHref && (
             <span
               aria-hidden
@@ -126,7 +123,7 @@ export function ExpertChatGroup({
               type="button"
               aria-label={`Load more ${label} chats`}
               onClick={() =>
-                setVisibleCount((count) => count + EXPERT_GROUP_PREVIEW_COUNT)
+                setVisibleCount((count) => count + EXPERT_CHAT_PAGE_SIZE)
               }
               className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
             >
@@ -176,7 +173,7 @@ function NewChatIcon() {
 
 function GroupBody({ children }: { children: ReactNode }) {
   return (
-    <div className="relative ml-[17px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
+    <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
       {children}
     </div>
   );
