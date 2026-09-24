@@ -196,7 +196,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
 | `voice_turn_sent` | browser | live | `turn_index`, `transcript_chars`, `transcribe_latency_ms` | A spoken turn is sent. |
-| `voice_turn_dropped` | browser | live | `reason`; `transcribe_latency_ms` with `reason: filler_or_empty` | A spoken turn is discarded. |
+| `voice_turn_dropped` | browser | live | `reason` (`vad_misfire`, `transcribe_failed`, `filler_or_empty`, `interrupted`); `transcribe_latency_ms` with `filler_or_empty`; `turn_index` and `first_sound_latency_ms` (null when nothing played yet) with `interrupted` | A spoken turn is discarded, or with `interrupted` a sent turn's reply is cut off by switching voice mode off or leaving the page. A sent turn ends in exactly one of `voice_turn_completed` or this. |
 | `voice_turn_completed` | browser | live | `turn_index`, `first_sound_latency_ms` (null when nothing played) | The mic reopens after the reply. |
 | `voice_transcribe_retried` | browser | live | `turn_index` | A failed transcription is retried. |
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
@@ -286,7 +286,7 @@ history PostHog already holds.
 | `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
 | `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
 | `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
-| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`. |
+| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
 | `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
 | `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
 | `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |

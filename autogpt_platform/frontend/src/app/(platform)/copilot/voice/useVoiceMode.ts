@@ -211,6 +211,7 @@ export function useVoiceMode({
   }
 
   function deactivate(reason: "user" | "silence_timeout" = "user") {
+    trackInterruptedTurn();
     if (stateRef.current !== "off") {
       trackVoiceMode(
         reason === "silence_timeout"
@@ -229,6 +230,21 @@ export function useVoiceMode({
     void vadRef.current?.destroy();
     vadRef.current = null;
     dispatch({ type: "DISABLE" });
+  }
+
+  // A turn cut off before its reply finished never reaches
+  // `voice_turn_completed`, and the slow replies are the ones most likely to
+  // be cut off, so their first-sound latency goes out on the drop instead.
+  function trackInterruptedTurn() {
+    if (stateRef.current !== "thinking" && stateRef.current !== "speaking") {
+      return;
+    }
+    trackVoiceMode("voice_turn_dropped", {
+      reason: "interrupted",
+      turn_index: turnIndex.current,
+      first_sound_latency_ms: firstSoundLatencyMs.current,
+    });
+    firstSoundLatencyMs.current = null;
   }
 
   function setStarting(value: boolean) {
@@ -501,6 +517,7 @@ export function useVoiceMode({
     // Unmount without deactivate — navigating away mid-session. A mic session
     // still starting would otherwise finish after this, open the mic, and
     // flag later text turns as voice turns.
+    trackInterruptedTurn();
     activation.current += 1;
     setVoiceTurnActive(false);
     clearTimers();
