@@ -163,7 +163,6 @@ describe("HireStep — hiring", () => {
         hires.push(await request.json());
         return HttpResponse.json({
           expert: { id: "exp-1", name: "Maria" },
-          failed_preloads: [],
         });
       }),
     );

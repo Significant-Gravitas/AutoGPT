@@ -2,6 +2,7 @@
 Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
+import hashlib
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -261,6 +262,36 @@ async def test_write_file_overwrite_not_double_counted(manager, mock_storage, mo
             filename="test.txt", content=content, overwrite=True
         )
     assert result == created_file
+
+
+@pytest.mark.parametrize(
+    "scanned, expect_scan",
+    [((), True), (("0" * 64,), True), ((hashlib.sha256(b"hello").hexdigest(),), False)],
+    ids=["none-recorded", "other-bytes", "same-bytes"],
+)
+async def test_write_file_skips_the_scan_only_for_bytes_already_scanned(
+    manager, mock_storage, mock_db, scanned, expect_scan
+):
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage", return_value=mock_storage
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch(
+            "backend.util.workspace.scan_content_safe", new_callable=AsyncMock
+        ) as scan,
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=1_000,
+        ),
+    ):
+        await manager.write_file(
+            filename="test.txt", content=b"hello", scanned_checksums=scanned
+        )
+    # Kills: skipping on any recorded hash, or never skipping.
+    assert scan.await_count == (1 if expect_scan else 0)
 
 
 @pytest.mark.asyncio

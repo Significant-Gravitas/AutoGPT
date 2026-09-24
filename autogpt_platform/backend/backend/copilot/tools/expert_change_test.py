@@ -140,8 +140,7 @@ def _env(
     db.count_raised_experts = AsyncMock(return_value=raised_count)
     db.hire_expert = AsyncMock(
         side_effect=hire_error,
-        return_value=hire_result
-        or SimpleNamespace(expert=_created(), failed_preloads=[]),
+        return_value=hire_result or SimpleNamespace(expert=_created()),
     )
     db.create_raised_expert = AsyncMock(
         side_effect=raise_error,
@@ -855,32 +854,9 @@ class TestApplyProposalDispatch:
         db.hire_expert.assert_not_called()
 
 
-class TestPartialHire:
-    """A hire whose workflows failed to install leaves an expert that cannot
-    do part of its job — the message must say so, or the user only finds out
-    when the work silently doesn't happen."""
-
+class TestHireMessage:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_failed_workflows_are_named_in_the_message(self):
-        partial = SimpleNamespace(
-            expert=_created(),
-            failed_preloads=["Inbox triage", "Daily digest"],
-        )
-        with _env(hire_result=partial):
-            session = make_session(_USER)
-            preview = await _hire(session, template_id="tpl-scout")
-            assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
-            )
-        assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == ["Inbox triage", "Daily digest"]
-        assert "Inbox triage" in resp.message
-        assert "Daily digest" in resp.message
-        assert "is hired and on the team." not in resp.message
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_clean_hire_still_reads_as_a_clean_hire(self):
+    async def test_hire_says_setup_continues_in_the_background(self):
         with _env():
             session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
@@ -889,8 +865,8 @@ class TestPartialHire:
                 _approve(session), confirmation_id=preview.confirmation_id
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == []
-        assert "could not be installed" not in resp.message
+        assert "is hired and on the team" in resp.message
+        assert "background" in resp.message
 
 
 class TestLegacySessionsCannotStaff:

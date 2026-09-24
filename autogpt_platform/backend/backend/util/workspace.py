@@ -9,6 +9,7 @@ import asyncio
 import logging
 import mimetypes
 import uuid
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
@@ -246,6 +247,7 @@ class WorkspaceManager:
         mime_type: Optional[str] = None,
         overwrite: bool = False,
         metadata: Optional[dict] = None,
+        scanned_checksums: Collection[str] = (),
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -260,6 +262,9 @@ class WorkspaceManager:
             mime_type: MIME type (auto-detected if not provided)
             overwrite: Whether to overwrite existing file at path
             metadata: Optional metadata dict (e.g., origin tracking)
+            scanned_checksums: SHA-256s of bytes the server has already
+                scanned clean; content hashing to one of them is not scanned
+                again. Never pass hashes a client supplied.
 
         Returns:
             Created WorkspaceFile instance
@@ -327,15 +332,14 @@ class WorkspaceManager:
 
         # Scan here — callers must NOT duplicate this scan.
         # WorkspaceManager owns virus scanning for all persisted files.
-        await scan_content_safe(content, filename=filename)
+        checksum = compute_file_checksum(content)
+        if checksum not in scanned_checksums:
+            await scan_content_safe(content, filename=filename)
 
         # Auto-detect MIME type if not provided
         if mime_type is None:
             mime_type, _ = mimetypes.guess_type(filename)
             mime_type = mime_type or "application/octet-stream"
-
-        # Compute checksum
-        checksum = compute_file_checksum(content)
 
         # Generate unique file ID for storage
         file_id = str(uuid.uuid4())

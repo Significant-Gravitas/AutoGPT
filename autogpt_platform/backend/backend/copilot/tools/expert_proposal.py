@@ -344,29 +344,17 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=_hire_message(result.expert.name, result.failed_preloads),
+        message=_hire_message(result.expert.name),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
-        failed_workflows=result.failed_preloads,
     )
 
 
-def _hire_message(name: str, failed_workflows: list[str]) -> str:
-    """A hire whose workflows didn't install must not read as a clean one.
-
-    The expert exists either way, but until the listed workflows are added
-    back it cannot do the part of the job they carried — so the model is
-    told to name them rather than announce an unqualified success.
-    """
-    if not failed_workflows:
-        return f"{name} is hired and on the team. Tell the user who joined and what they own."
-    workflows = ", ".join(failed_workflows)
+def _hire_message(name: str) -> str:
     return (
-        f"{name} joined the team, but {len(failed_workflows)} of their "
-        f"workflows could not be installed: {workflows}. Tell the user who "
-        "joined, name the workflows that failed, and say those need to be "
-        f"added from {name}'s team page before that part of the job can run."
+        f"{name} is hired and on the team; their workflows and skills finish "
+        "installing in the background. Tell the user who joined and what they own."
     )
 
 
