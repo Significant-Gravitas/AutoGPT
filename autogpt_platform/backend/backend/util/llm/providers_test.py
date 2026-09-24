@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import httpx
+import httpx2
 import pytest
 from pydantic import ValidationError
 
@@ -27,6 +28,7 @@ from backend.util.llm.providers import (
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
+    anthropic_request_timeout,
     call_provider,
     call_provider_openai_compat_sync,
     request_timeout,
@@ -1555,7 +1557,13 @@ class TestTimeoutThreading:
                 max_tokens=10,
                 timeout_seconds=42.0,
             )
-        assert seen["timeout"] == request_timeout(42.0)
+        # The Anthropic SDK runs on httpx2 and only recognises its own Timeout.
+        expected = (
+            anthropic_request_timeout(42.0)
+            if kind == "anthropic"
+            else request_timeout(42.0)
+        )
+        assert seen["timeout"] == expected
 
     @pytest.mark.asyncio
     async def test_call_provider_omitted_timeout_resolves_at_call_time(
@@ -1692,6 +1700,17 @@ class TestDefaults:
         assert t.write == DEFAULT_REQUEST_TIMEOUT_SECONDS
         # Queueing for a connection is not generation either.
         assert t.pool == FAST_FAIL_TIMEOUT_SECONDS
+
+    def test_anthropic_request_timeout_matches_the_shared_budget(self):
+        shared = request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        t = anthropic_request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        assert isinstance(t, httpx2.Timeout)
+        assert (t.connect, t.read, t.write, t.pool) == (
+            shared.connect,
+            shared.read,
+            shared.write,
+            shared.pool,
+        )
 
 
 # ---------------------------------------------------------------------------

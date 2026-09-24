@@ -288,30 +288,33 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.79.0"
+version = "1.6.0"
 description = "The official Python library for the anthropic API"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "anthropic-0.79.0-py3-none-any.whl", hash = "sha256:04cbd473b6bbda4ca2e41dd670fe2f829a911530f01697d0a1e37321eb75f3cf"},
-    {file = "anthropic-0.79.0.tar.gz", hash = "sha256:8707aafb3b1176ed6c13e2b1c9fb3efddce90d17aee5d8b83a86c70dcdcca871"},
+    {file = "anthropic-1.6.0-py3-none-any.whl", hash = "sha256:049434f013d3a874acdfee696ec626e19166d58f4277e8fa34e5d0a5ec250ad0"},
+    {file = "anthropic-1.6.0.tar.gz", hash = "sha256:ce3c032f940984f67c516db896375bff36959f8dc589973e386f8e6ea81bbec3"},
 ]
 
 [package.dependencies]
-anyio = ">=3.5.0,<5"
-distro = ">=1.7.0,<2"
+anyio = ">=4.1.0,<5"
 docstring-parser = ">=0.15,<1"
-httpx = ">=0.25.0,<1"
+httpx2 = ">=2.0.0,<3"
 jiter = ">=0.4.0,<1"
 pydantic = ">=1.9.0,<3"
-sniffio = "*"
-typing-extensions = ">=4.10,<5"
+sniffio = ">=1,<2"
+typing-extensions = ">=4.14,<5"
 
 [package.extras]
-aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.9)"]
-bedrock = ["boto3 (>=1.28.57)", "botocore (>=1.31.57)"]
+aiohttp = ["aiohttp (>=3.10.0,<4)"]
+aws = ["boto3 (>=1.28.57,<2)", "botocore (>=1.31.57,<2)"]
+bedrock = ["boto3 (>=1.28.57,<2)", "botocore (>=1.31.57,<2)"]
+google-cloud = ["google-auth[requests] (>=2,<3)"]
+mcp = ["mcp (>=1.0,<3) ; python_version >= \"3.10\""]
 vertex = ["google-auth[requests] (>=2,<3)"]
+webhooks = ["standardwebhooks (>=1.0.1,<2)"]
 
 [[package]]
 name = "anyio"
@@ -8936,4 +8939,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "0775ceb3c13fc0e920726e46be5cccdf31cf76930399cf5059dd15bb2f629cb1"
+content-hash = "e4787c4481429240c5f3dbb28a47be9b87b137d193b339d79ac7b2c4c5a5a847"
