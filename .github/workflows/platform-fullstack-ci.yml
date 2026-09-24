@@ -476,7 +476,6 @@ jobs:
         run: docker compose -f ../docker-compose.resolved.yml logs
 
       - name: Wait for Next.js build cache export
-        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
         wait: [next-build-cache-export]
 
       - name: Save Next.js build cache
