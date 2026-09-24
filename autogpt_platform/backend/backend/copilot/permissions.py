@@ -77,7 +77,7 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
 
@@ -607,6 +607,17 @@ def allowed_providers(
     return allowed
 
 
+def _denied(permissions: CopilotPermissions, infos: Iterable[Any]) -> list[str]:
+    """The providers named by credential field specs *infos* that
+    *permissions* keeps from the run, of those the ceiling covers."""
+    named = {str(getattr(p, "value", p)) for info in infos for p in info.provider}
+    return sorted(
+        p
+        for p in named
+        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
+    )
+
+
 def denied_block_providers(
     permissions: CopilotPermissions | None, block: object
 ) -> list[str]:
@@ -617,14 +628,18 @@ def denied_block_providers(
         return []
     schema = getattr(block, "input_schema", None)
     fields = schema.get_credentials_fields_info() if schema is not None else {}
-    denied = {
-        str(getattr(p, "value", p)) for info in fields.values() for p in info.provider
-    }
-    return sorted(
-        p
-        for p in denied
-        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
-    )
+    return _denied(permissions, fields.values())
+
+
+def denied_graph_providers(
+    permissions: CopilotPermissions | None, graph: Any
+) -> list[str]:
+    """``denied_block_providers`` for every block of an agent graph: an agent
+    run is its blocks acting with the user's credentials."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    fields = graph.aggregate_credentials_inputs()
+    return _denied(permissions, (info for info, _, _ in fields.values()))
 
 
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:

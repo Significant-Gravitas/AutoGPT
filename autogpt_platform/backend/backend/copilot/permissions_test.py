@@ -898,3 +898,23 @@ class TestProviders:
         assert merged.is_provider_allowed("github")
         assert not merged.is_provider_allowed("linear")
         assert allowed_providers(merged) is None  # github is every sandbox provider
+
+
+class TestGraphProviders:
+    def _graph(self, *providers):
+        from unittest.mock import MagicMock
+
+        graph = MagicMock()
+        graph.aggregate_credentials_inputs.return_value = {
+            "credentials": (MagicMock(provider=frozenset(providers)), set(), True)
+        }
+        return graph
+
+    def test_a_graph_using_a_denied_provider_is_named(self):
+        from backend.copilot.permissions import denied_graph_providers
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert denied_graph_providers(perms, self._graph("github")) == ["github"]
+        # Providers the ceiling does not cover are not its to refuse.
+        assert denied_graph_providers(perms, self._graph("slack")) == []
+        assert denied_graph_providers(None, self._graph("github")) == []
