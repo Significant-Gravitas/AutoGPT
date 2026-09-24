@@ -1,6 +1,8 @@
+import { http, HttpResponse } from "msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import realCardsJson from "./realCards.json";
 
-export const SESSION_EXEC = "copilot-session-s1";
+export const CHAT_SESSION = "s1";
 
 interface HeldArgs {
   id: string;
@@ -37,9 +39,10 @@ export function heldReview({
     node_exec_id: `${node}:${id}`,
     node_id: node,
     user_id: "u-1",
-    graph_exec_id: SESSION_EXEC,
-    graph_id: SESSION_EXEC,
-    graph_version: 1,
+    session_id: CHAT_SESSION,
+    graph_exec_id: null,
+    graph_id: null,
+    graph_version: null,
     payload: {
       tool,
       arguments: args,
@@ -181,6 +184,64 @@ export function heldRead(id: string, url: string) {
   return { ...review, node_id: node, node_exec_id: `${node}:${id}` };
 }
 
+// An MCP tool on a server the effect map names.
+export function mcpTool(id = "mcp") {
+  const name = "create_issue on mcp.linear.app";
+  return heldReview({
+    id,
+    tool: "run_capability",
+    mode: "auto",
+    reason: `Runs ${name}, which reaches outside the platform.`,
+    reasonKind: "subject",
+    subject: {
+      kind: "mcp",
+      key: "mcp:mcp.linear.app/mcp::create_issue",
+      name,
+      effect: "external",
+      irreversible: false,
+      block_id: null,
+    },
+    chatRules: ["allow", "judge"],
+    args: { title: "Q3 invoices missing PO numbers", team: "Finance" },
+    headline: { ask: "Run", object: name },
+  });
+}
+
+export interface RealCard {
+  story: string;
+  review: PendingHumanReviewModel;
+  schema: Record<string, unknown> | null;
+}
+
+// Built by the backend's payload builder from real registry blocks (card_fixture_test.py).
+export function realCards(): RealCard[] {
+  return (realCardsJson as unknown as Omit<RealCard, "review">[]).map(
+    (card) => ({
+      ...card,
+      review: {
+        ...(card as unknown as { review: PendingHumanReviewModel }).review,
+        created_at: new Date(Date.now() - 5 * 60_000),
+      },
+    }),
+  );
+}
+
+export function realCardSchemaHandler(cards: RealCard[]) {
+  return http.get("*/api/builder/blocks/batch", ({ request }) => {
+    const ids = new URL(request.url).searchParams.getAll("block_ids");
+    return HttpResponse.json(
+      cards
+        .filter((card) => card.schema)
+        .map((card) => ({
+          id: (card.review.payload as { subject: { block_id: string } }).subject
+            .block_id,
+          name: card.story,
+          inputSchema: card.schema,
+        }))
+        .filter((block) => ids.includes(block.id)),
+    );
+  });
+}
 // A paid read over the task's spend ceiling; money in microdollars.
 export function spendCard(id = "spend", chatRules: string[] = []) {
   return heldReview({

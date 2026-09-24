@@ -190,8 +190,7 @@ async def test_a_block_run_charges_what_it_cost(gate, ledger):
         node_exec_id="n",
         cost=7,
         cost_filter={},
-        synthetic_graph_id="g",
-        synthetic_node_id="n",
+        session_id="s1",
     )
     assert (await ledger.snapshot("turn-1"))["spent"] == 70_000
 

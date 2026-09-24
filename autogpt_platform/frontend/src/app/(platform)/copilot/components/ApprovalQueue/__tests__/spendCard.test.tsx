@@ -5,17 +5,17 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { SESSION_EXEC, spendCard } from "./fixtures";
+import { CHAT_SESSION, spendCard } from "./fixtures";
 
 function renderQueue(reviews: PendingHumanReviewModel[]) {
   server.use(
-    http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(reviews),
     ),
   );
   render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-      <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
     </CopilotChatActionsProvider>,
   );
 }

@@ -57,3 +57,14 @@ test("rows that are not late results are ignored", () => {
     getHeldOutcomes([lateResult({ held_calls_answered: true }, "x")]).size,
   ).toBe(0);
 });
+
+test("an output that contains the closing tag is kept whole", () => {
+  const body = 'wrote "</held_call_result>" into notes.md';
+  const outcomes = getHeldOutcomes([
+    lateResult(
+      { held_call: { tool_call_id: "call-7", outcome: "approved" } },
+      body,
+    ),
+  ]);
+  expect(outcomes.get("call-7")?.output).toBe(body);
+});

@@ -11,35 +11,20 @@ import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
 import { isGateReview, toApprovalItem } from "../ApprovalQueue/helpers";
 import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
-interface Props {
-  graphExecId: string;
-  graphId?: string;
-  pollWhileEmpty?: boolean;
-  refetchKey?: number;
-}
+type Props =
+  | { graphExecId: string; graphId?: string }
+  | { chatSessionId: string; pollWhileEmpty?: boolean; refetchKey?: number };
 
 /**
- * Renders the chat's pending reviews: held AutoPilot calls in one "Waiting for
- * you" queue, oldest first, and every block, MCP or run review in one
- * consolidated list. Works for both run_capability (synthetic
- * copilot-session-*) and run_agent (real graph exec) reviews.
+ * Renders the chat's pending reviews, or those of an agent run it started:
+ * held AutoPilot calls in one "Waiting for you" queue, oldest first, and
+ * every block, MCP or run review in one consolidated list.
  */
-export function CopilotPendingReviews({
-  graphExecId,
-  graphId,
-  pollWhileEmpty,
-  refetchKey,
-}: Props) {
+export function CopilotPendingReviews(props: Props) {
   const { onSend, onBackendTurn } = useCopilotChatActions();
-  const { pendingReviews, refetch } = useCopilotPendingReviews({
-    graphExecId,
-    graphId,
-    pollWhileEmpty,
-    refetchKey,
-  });
+  const graphExecId = "graphExecId" in props ? props.graphExecId : "";
+  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
 
-  // Graph executions auto-resume after approval; capability reviews need resume_capability.
-  const isGraphExecution = !graphExecId.startsWith("copilot-session-");
   const heldCalls = pendingReviews
     .filter(isGateReview)
     .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
@@ -63,7 +48,8 @@ export function CopilotPendingReviews({
 
     if (remaining.length > 0) return;
 
-    if (isGraphExecution) {
+    // Graph executions auto-resume after approval; chat reviews need resume_capability.
+    if (graphExecId) {
       onSend(
         `All pending reviews have been processed. ` +
           `The agent execution will resume automatically for approved reviews. ` +
@@ -76,7 +62,7 @@ export function CopilotPendingReviews({
           `For rejected reviews, no further action is needed.`,
       );
     }
-  }, [refetch, onSend, isGraphExecution, graphExecId]);
+  }, [refetch, onSend, graphExecId]);
 
   return (
     <div className="flex flex-col gap-2 py-2 empty:hidden">

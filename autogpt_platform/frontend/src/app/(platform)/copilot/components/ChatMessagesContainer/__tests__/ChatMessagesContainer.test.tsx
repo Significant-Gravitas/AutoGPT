@@ -131,11 +131,14 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: vi.fn(() => null),
+  CopilotPendingReviews: (props: object) => (
+    <span data-testid="pending-reviews" data-props={JSON.stringify(props)} />
+  ),
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
-vi.mock("../helpers", () => ({
-  extractReviewTarget: vi.fn(() => null),
+vi.mock("../helpers", async (importOriginal) => ({
+  extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
+    .extractReviewTarget,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -1484,85 +1487,128 @@ describe("ChatMessagesContainer — held call rows", () => {
   });
 });
 
-describe("ChatMessagesContainer — held call cards", () => {
-  it("loads the chat's held cards even when another run is the newest review target", async () => {
-    const { CopilotPendingReviews } = await import(
-      "../../CopilotPendingReviews/CopilotPendingReviews"
-    );
-    const mounted = vi.mocked(CopilotPendingReviews);
-    mounted.mockClear();
-    const messages = [
+describe("ChatMessagesContainer — pending reviews", () => {
+  function withToolOutput(output: object): Message[] {
+    return [
       {
-        id: "a1",
-        role: "assistant" as const,
+        id: "assistant-review",
+        role: "assistant",
         parts: [
           {
-            type: "tool-create_folder",
-            toolCallId: "c1",
+            type: "tool-run_capability",
+            toolCallId: "call-1",
             state: "output-available",
             input: {},
-            output: { type: "approval_required", review_id: "r1" },
+            output: JSON.stringify(output),
           },
         ],
-      },
-    ] as unknown as Message[];
+      } as Message,
+    ];
+  }
 
-    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+  function mounted() {
+    return screen
+      .queryAllByTestId("pending-reviews")
+      .map((el) => JSON.parse(el.getAttribute("data-props") ?? "{}"));
+  }
 
-    expect(mounted.mock.calls.map(([props]) => props.graphExecId)).toContain(
-      "copilot-session-sess-123",
+  const chatList = (pollWhileEmpty: boolean, refetchKey: number) => ({
+    chatSessionId: "sess-123",
+    pollWhileEmpty,
+    refetchKey,
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("finds a chat review by the chat's session, with no graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          block_id: "blk",
+          block_name: "Create Folder",
+          input_data: {},
+        })}
+      />,
     );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds a chat review stored before it had a session id of its own", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          graph_exec_id: "copilot-session-sess-123",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds an agent run's reviews by its graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({ execution_id: "exec-9", status: "REVIEW" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+  });
+
+  it("keeps the chat's held cards loaded while a newer run is the review target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          ...withToolOutput({ type: "approval_required", review_id: "r1" }),
+          ...withToolOutput({ execution_id: "exec-9", status: "RUNNING" }),
+        ]}
+      />,
+    );
+
     // One held call on screen: fetched, but polled only if a card comes back.
-    expect(mounted.mock.calls.at(-1)?.[0].refetchKey).toBe(1);
-    expect(mounted.mock.calls.at(-1)?.[0].pollWhileEmpty).toBe(false);
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
   });
 
-  it("fetches a new held card at once while a block review holds the chat's slot", async () => {
-    const { CopilotPendingReviews } = await import(
-      "../../CopilotPendingReviews/CopilotPendingReviews"
+  it("refetches the chat's list at once for a new held call while it is the target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "approval_required",
+          review_id: "r1",
+        })}
+      />,
     );
-    const { extractReviewTarget } = await import("../helpers");
-    vi.mocked(extractReviewTarget).mockReturnValueOnce({
-      graphExecId: "copilot-session-sess-123",
-    });
-    const mounted = vi.mocked(CopilotPendingReviews);
-    mounted.mockClear();
-    const messages = [
-      {
-        id: "a1",
-        role: "assistant" as const,
-        parts: [
-          {
-            type: "tool-create_folder",
-            toolCallId: "c1",
-            state: "output-available",
-            input: {},
-            output: { type: "approval_required", review_id: "r1" },
-          },
-        ],
-      },
-    ] as unknown as Message[];
 
-    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
-
-    const [props] = mounted.mock.calls.at(-1) ?? [];
-    expect(props?.graphExecId).toBe("copilot-session-sess-123");
-    expect(props?.pollWhileEmpty).toBeUndefined();
-    expect(props?.refetchKey).toBe(1);
+    expect(mounted()).toEqual([chatList(true, 1)]);
   });
 
-  it("still finds held cards whose call has paged out of the loaded history", async () => {
-    const { CopilotPendingReviews } = await import(
-      "../../CopilotPendingReviews/CopilotPendingReviews"
-    );
-    const mounted = vi.mocked(CopilotPendingReviews);
-    mounted.mockClear();
-
+  it("still finds held cards whose call has paged out of the loaded history", () => {
     render(<ChatMessagesContainer {...baseProps} messages={[]} />);
 
-    const props = mounted.mock.calls.at(-1)?.[0];
-    expect(props?.graphExecId).toBe("copilot-session-sess-123");
-    expect(props?.pollWhileEmpty).toBe(false);
-    expect(props?.refetchKey).toBe(0);
+    expect(mounted()).toEqual([chatList(false, 0)]);
+  });
+
+  it("mounts nothing in a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={withToolOutput({ type: "review_required", review_id: "r" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([]);
   });
 });

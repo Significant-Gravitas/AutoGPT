@@ -11,6 +11,7 @@ because the caller here is the raw handler wrapper, not the tool layer.
 
 import json
 import logging
+import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -18,7 +19,6 @@ from backend.copilot.model import ChatSession
 from . import check_action, refusal_message
 from .content import Image
 from .reads import release_held_read, screen_read
-from .review import session_exec_id
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,9 @@ async def screen_non_registry_read(
         success=not result.get("isError"),
         text=text,
         images=images,
+        # The MCP handler never sees the SDK's tool_use_id; registry tools
+        # on this engine use the same stand-in.
+        tool_call_id=f"sdk-{uuid.uuid4().hex[:12]}",
     )
     if stub is None:
         return result
@@ -107,8 +110,6 @@ def _error(
     review_id: str | None,
     session: ChatSession,
 ) -> dict[str, Any]:
-    # ``graph_exec_id`` is what mounts the chat's approval card — the frontend
-    # scans tool outputs for that key.
     payload = {
         "type": "approval_required",
         "tool_name": tool_name,
@@ -118,5 +119,4 @@ def _error(
     }
     if review_id:
         payload["review_id"] = review_id
-        payload["graph_exec_id"] = session_exec_id(session.session_id)
     return {"content": [{"type": "text", "text": json.dumps(payload)}], "isError": True}

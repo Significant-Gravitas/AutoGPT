@@ -16,6 +16,9 @@ import {
   heldRead,
   heldReview,
   mail,
+  mcpTool,
+  realCardSchemaHandler,
+  realCards,
   shell,
   spendCard,
   workflow,
@@ -92,6 +95,9 @@ export const BlockCard: Story = {
 };
 
 export const WorkflowRun: Story = { args: queueOf([workflow()]) };
+
+// The Approve menu: the chat rules the server allows on this subject.
+export const RuleMenu: Story = { args: queueOf([mcpTool()]) };
 
 // A paid read over the task's spend ceiling.
 export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
@@ -263,7 +269,12 @@ export const HeldReadChainRows: StoryObj = {
   },
 };
 
-function homeRow(title: string, description: string, action: string) {
+function homeRow(
+  title: string,
+  description: string,
+  action: string,
+  headline?: { ask: string; object: string },
+) {
   const review = folder("a", "Q3 reports");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white">
@@ -273,6 +284,7 @@ function homeRow(title: string, description: string, action: string) {
           kind: "approval",
           priority: "normal",
           title,
+          headline,
           description,
           why_it_matters: "Nothing runs until you approve it.",
           review,
@@ -301,5 +313,26 @@ export const HomeRowAfter: StoryObj = {
       "Create folder “Q3 reports”",
       "Otto is waiting for your approval.",
       "Open chat",
+      { ask: "Create folder", object: "Q3 reports" },
     ),
 };
+
+// Real registry blocks, their payloads built by the server's own builder and
+// their real input schemas served as the API serves them.
+function realStory(name: string): Story {
+  const cards = realCards();
+  const card = cards.find((c) => c.story === name)!;
+  return {
+    args: queueOf([card.review]),
+    parameters: {
+      msw: { handlers: [realCardSchemaHandler(cards), answerAfter(600_000)] },
+    },
+  };
+}
+
+export const RealGmailSend = realStory("Gmail Send");
+export const RealGoogleSheetsUpdateRow = realStory("Google Sheets Update Row");
+export const RealExecuteCode = realStory("Execute Code");
+export const RealSendWebRequest = realStory("Send Web Request");
+export const RealPostToX = realStory("Post To X");
+export const RealWorkflow = realStory("Workflow");

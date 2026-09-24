@@ -442,7 +442,7 @@ def test_block_review_names_the_action_and_the_workflow() -> None:
 
 def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
     review = _review(NOW).model_copy(
-        update={"graph_exec_id": "copilot-session-abc", "agent_name": None}
+        update={"graph_exec_id": None, "session_id": "abc", "agent_name": None}
     )
 
     [item] = compose_attention_items(
@@ -492,6 +492,8 @@ def test_a_held_call_reads_as_its_card_on_home() -> None:
     item = _one(_gate_review())
 
     assert item.title == "Create folder “Q3 reports”"
+    assert item.headline is not None
+    assert (item.headline.ask, item.headline.object) == ("Create folder", "Q3 reports")
     # The mode's own reason is the chat's, not this call's.
     assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
     # The headline already names it.
@@ -529,5 +531,17 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
     )
     item = _one(review)
     assert item.title == "Create folder “Q3 reports”"
+    assert item.headline is None
     assert item.primary_action is not None
     assert item.primary_action.label == "Review"
+
+
+def test_home_previews_lists_and_flags_as_the_card_does() -> None:
+    review = _gate_review(
+        arguments={"to": ["dana@acme.com", "ops@acme.com"], "notify": True},
+        fields=[
+            {"key": "to", "label": "To"},
+            {"key": "notify", "label": "Notify"},
+        ],
+    )
+    assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"

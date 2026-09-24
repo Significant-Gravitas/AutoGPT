@@ -143,3 +143,11 @@ test("a released read's row reads Released", async () => {
   );
   expect(await screen.findByText("Released")).toBeDefined();
 });
+
+test("a call that may have run claims neither approval nor refusal", async () => {
+  render(chain(new Map([["call-7", { outcome: "unknown", output: "" }]])));
+  expect(await screen.findByText("Unclear")).toBeDefined();
+  expect(screen.queryByText("Approved")).toBeNull();
+  expect(screen.queryByText(/Created folder/)).toBeNull();
+  expect(screen.queryByText(/Didn't create folder/)).toBeNull();
+});
