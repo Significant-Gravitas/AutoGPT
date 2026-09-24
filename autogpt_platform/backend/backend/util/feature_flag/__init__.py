@@ -10,6 +10,7 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
+import sentry_sdk.feature_flags
 from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
@@ -518,10 +519,33 @@ async def _evaluate_flag_value(
         context = (_with_request_attributes(user_context, attributes), context_resolved)
     backend = settings.config.feature_flag_backend
     if backend is FeatureFlagBackend.POSTHOG:
-        return await _evaluate_posthog(flag_key, user_id, default, context)
-    if backend is FeatureFlagBackend.DUAL:
-        return await _evaluate_dual(flag_key, user_id, default, context)
-    return await _evaluate_launchdarkly(flag_key, user_id, default, context)
+        result = await _evaluate_posthog(flag_key, user_id, default, context)
+    elif backend is FeatureFlagBackend.DUAL:
+        result = await _evaluate_dual(flag_key, user_id, default, context)
+    else:
+        result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
+    _record_flag_for_sentry(flag_key, *result)
+    return result
+
+
+def _record_flag_for_sentry(flag_key: str, value: Any, evaluated: bool) -> None:
+    """Put a served flag on Sentry's scope so errors show which flags were on,
+    and which of them were a stand-in rather than the vendor's answer."""
+    try:
+        # Sentry's flag context holds booleans only; JSON and string flags are skipped.
+        if not isinstance(value, bool):
+            return
+        sentry_sdk.feature_flags.add_feature_flag(flag_key, value)
+        # A pseudo-flag on the scope's buffer only: a span keeps 10 flags and then
+        # ignores every write, so there it would take a value's slot and never clear.
+        flags = sentry_sdk.get_isolation_scope().flags
+        marker = f"{flag_key}.fallback"
+        if not evaluated:
+            flags.set(marker, True)
+        elif any(f["flag"] == marker for f in flags.get()):
+            flags.set(marker, False)
+    except Exception:
+        logger.debug(f"Could not record flag {flag_key} for Sentry", exc_info=True)
 
 
 async def _evaluate_dual(
@@ -861,6 +885,7 @@ async def evaluate_feature_flag(
 
     # A misconfigured flag is not an answer either: fall back to the default,
     # but never let a caller take an irreversible action on it.
+    _record_flag_for_sentry(flag_key.value, default, False)
     return default, False
 
 
@@ -903,6 +928,7 @@ def feature_flag(
                         f"using default {flag_key}={repr(default)}"
                     )
                     is_enabled = default
+                    _record_flag_for_sentry(flag_key, default, False)
                 else:
                     # Use the internal function directly since we have a raw string flag_key
                     flag_value = await get_feature_flag_value(
@@ -919,6 +945,7 @@ def feature_flag(
                             f"Using default value {repr(default)}"
                         )
                         is_enabled = default
+                        _record_flag_for_sentry(flag_key, default, False)
 
                 if not is_enabled:
                     raise HTTPException(status_code=404, detail="Feature not available")
@@ -989,6 +1016,7 @@ def create_feature_flag_dependency(
                 "Feature flag backend not configured, using default "
                 f"{flag_key.value}={default}"
             )
+            _record_flag_for_sentry(flag_key.value, default, False)
             if not default:
                 raise HTTPException(status_code=404, detail="Feature not available")
             return
@@ -999,6 +1027,7 @@ def create_feature_flag_dependency(
                     "Feature flag backend not initialized, using default "
                     f"{flag_key.value}={default}"
                 )
+                _record_flag_for_sentry(flag_key.value, default, False)
                 if not default:
                     raise HTTPException(status_code=404, detail="Feature not available")
                 return

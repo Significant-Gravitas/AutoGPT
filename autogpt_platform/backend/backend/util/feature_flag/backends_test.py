@@ -7,11 +7,14 @@ import os
 import uuid
 
 import pytest
+import sentry_sdk
+import sentry_sdk.feature_flags
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.integrations.test_data import TestData
 from posthog import Posthog
+from sentry_sdk.tracing import Span
 
 import backend.util.feature_flag as ff
 import backend.util.feature_flag.posthog as ph
@@ -689,6 +692,155 @@ class TestForcedFlagsInEveryBackend:
         with pytest.raises(HTTPException) as off:
             await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
         assert off.value.status_code == 404
+
+
+class TestSentryFlagContext:
+    """Every vendor's served value lands on the scope Sentry attaches to errors."""
+
+    @pytest.fixture
+    def sentry_flags(self):
+        with sentry_sdk.isolation_scope() as scope:
+            # A forked scope inherits whatever earlier tests recorded.
+            scope.flags.clear()
+            yield scope.flags
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
+    async def test_a_boolean_flag_is_recorded_as_served(
+        self, mocker, ld_client, user_context, sentry_flags, backend
+    ):
+        use_backend(mocker, backend)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=backend is FeatureFlagBackend.POSTHOG)
+
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        assert sentry_flags.get() == [{"flag": Flag.HIRE_EXPERTS.value, "result": True}]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("initialized", [True, False])
+    async def test_a_non_boolean_flag_records_nothing(
+        self, ld_client, user_context, sentry_flags, initialized
+    ):
+        ld_client.is_initialized.return_value = initialized
+        ld_client.variation.return_value = {"daily": 5}
+
+        await ff.get_feature_flag_value("copilot-cost-limits", "u-1", {"daily": 1})
+        assert sentry_flags.get() == []
+
+    @pytest.mark.asyncio
+    async def test_a_fallback_is_marked_beside_its_value(
+        self, mocker, user_context, sentry_flags
+    ):
+        client = mocker.Mock(spec=LDClient)
+        client.is_initialized.return_value = False
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+
+        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+
+        assert sentry_flags.get() == [
+            {"flag": Flag.HIRE_EXPERTS.value, "result": False},
+            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_non_boolean_answer_to_a_boolean_read_records_the_default(
+        self, ld_client, user_context, sentry_flags
+    ):
+        ld_client.variation.return_value = "on"
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1", True) == (
+            True,
+            False,
+        )
+        assert sentry_flags.get() == [
+            {"flag": Flag.HIRE_EXPERTS.value, "result": True},
+            {"flag": f"{Flag.HIRE_EXPERTS.value}.fallback", "result": True},
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "gate, configured, initialized, answer",
+        [
+            ("decorator", True, False, True),
+            ("decorator", True, True, "on"),
+            ("dependency", False, True, True),
+            ("dependency", True, False, True),
+        ],
+    )
+    async def test_a_gate_serving_its_default_records_it(
+        self,
+        mocker,
+        ld_client,
+        user_context,
+        sentry_flags,
+        gate,
+        configured,
+        initialized,
+        answer,
+    ):
+        use_backend(mocker, FeatureFlagBackend.LAUNCHDARKLY)
+        mocker.patch("backend.util.feature_flag.is_configured", return_value=configured)
+        ld_client.is_initialized.return_value = initialized
+        ld_client.variation.return_value = answer
+        # A stale earlier answer must not be what an error from this route carries.
+        sentry_sdk.feature_flags.add_feature_flag(Flag.HIRE_EXPERTS.value, True)
+
+        with pytest.raises(HTTPException):
+            if gate == "decorator":
+                await _gated_route()(user_id="u-1")
+            else:
+                await ff.create_feature_flag_dependency(Flag.HIRE_EXPERTS)("u-1")
+
+        assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
+            Flag.HIRE_EXPERTS.value: False,
+            f"{Flag.HIRE_EXPERTS.value}.fallback": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_fallback_marker_stays_off_the_span(
+        self, mocker, user_context, sentry_flags
+    ):
+        client = mocker.Mock(spec=LDClient)
+        client.is_initialized.return_value = False
+        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        span = Span()
+        scope = sentry_sdk.get_current_scope()
+        previous, scope.span = scope.span, span
+        try:
+            await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+        finally:
+            scope.span = previous
+
+        assert span._flags == {f"flag.evaluation.{Flag.HIRE_EXPERTS.value}": False}
+
+    @pytest.mark.asyncio
+    async def test_a_real_answer_clears_an_earlier_fallback(
+        self, ld_client, user_context, sentry_flags
+    ):
+        sentry_sdk.feature_flags.add_feature_flag(
+            f"{Flag.HIRE_EXPERTS.value}.fallback", True
+        )
+        ld_client.variation.return_value = True
+
+        await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
+
+        assert {f["flag"]: f["result"] for f in sentry_flags.get()} == {
+            f"{Flag.HIRE_EXPERTS.value}.fallback": False,
+            Flag.HIRE_EXPERTS.value: True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_recording_failure_does_not_break_the_read(
+        self, mocker, ld_client, user_context
+    ):
+        mocker.patch.object(
+            sentry_sdk.feature_flags,
+            "add_feature_flag",
+            side_effect=RuntimeError("sentry down"),
+        )
+        ld_client.variation.return_value = True
+
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
 
 
 class TestTheCountryRuleInEveryBackend:
