@@ -2284,6 +2284,10 @@ model SkillListingVersion {
   // provider names as used by the credentials system.
   requiredProviders String[] @default([])
 
+  // SHA-256 of each exact file an install wrote after it passed the virus
+  // scan; a later install writing the same bytes skips the scan.
+  scannedSha256 String[] @default([])
+
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?

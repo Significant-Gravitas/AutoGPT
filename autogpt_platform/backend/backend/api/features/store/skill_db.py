@@ -9,17 +9,28 @@ owner (personal library or expert): a re-install overwrites that copy and is
 not counted again.
 """
 
+import logging
+
 import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import SkillFile, list_user_skills, store_user_skill
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    SkillFile,
+    list_user_skills,
+    render_skill_markdown,
+    store_user_skill,
+)
 from backend.data.db import query_raw_with_schema
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
+from backend.util.workspace_storage import compute_file_checksum
 
 from . import skill_model
 from .categories import category_filter_values
+
+logger = logging.getLogger(__name__)
 
 _LISTING_INCLUDE: prisma.types.SkillListingInclude = {
     "ActiveVersion": True,
@@ -180,7 +191,8 @@ async def install_marketplace_skill(
     # report installs rather than installers. Counting only: no healing.
     owned = await list_user_skills(user_id, expert_id, heal_missing=False)
     is_new = all(s.name != listing.slug for s in owned)
-    await store_user_skill(
+    files = await _read_version_files(active.id)
+    parsed = await store_user_skill(
         user_id,
         name=listing.slug,
         description=active.description,
@@ -189,15 +201,42 @@ async def install_marketplace_skill(
         version=str(active.version),
         # `[]`, never `None` — which means "leave the folder alone" and would
         # keep a sibling only the previously installed version had.
-        files=await _read_version_files(active.id),
+        files=files,
         expert_id=expert_id,
+        scanned_checksums=active.scannedSha256,
     )
+    try:
+        await _record_scanned(active, files, parsed)
+    except Exception:
+        # Only a cache of scan results: failing to record costs a rescan next
+        # time, never this install.
+        logger.warning(
+            f"Could not record scanned checksums for skill '{listing.slug}'",
+            exc_info=True,
+        )
     if is_new:
         await prisma.models.SkillListing.prisma().update(
             where={"id": listing.id}, data={"installCount": {"increment": 1}}
         )
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
+    )
+
+
+async def _record_scanned(
+    active: prisma.models.SkillListingVersion,
+    files: list[SkillFile],
+    parsed: ParsedSkill,
+) -> None:
+    """Remember the bytes this install wrote past the scan, so the next
+    install of the same version writing the same bytes need not scan them."""
+    written = {compute_file_checksum(f.content) for f in files}
+    written.add(compute_file_checksum(render_skill_markdown(parsed).encode("utf-8")))
+    if written <= set(active.scannedSha256):
+        return
+    await prisma.models.SkillListingVersion.prisma().update(
+        where={"id": active.id},
+        data={"scannedSha256": sorted(written | set(active.scannedSha256))},
     )
 
 

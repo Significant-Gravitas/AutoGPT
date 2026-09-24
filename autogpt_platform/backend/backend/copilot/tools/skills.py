@@ -28,7 +28,7 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -628,6 +628,7 @@ async def store_user_skill(
     files: list[SkillFile] | None = None,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    scanned_checksums: Collection[str] = (),
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
@@ -644,6 +645,9 @@ async def store_user_skill(
     caller — leaves the existing siblings alone, which is what keeps the
     model's own ``store_skill`` from wiping a package it only rewrote the
     body of.
+
+    *scanned_checksums* are server-recorded SHA-256s of bytes already scanned
+    clean, never a client's; a file hashing to one skips the virus scan.
     """
     name = name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
@@ -787,6 +791,7 @@ async def store_user_skill(
                     metadata=(
                         {_META_EXECUTABLE: True} if entry.is_executable else None
                     ),
+                    scanned_checksums=scanned_checksums,
                 )
         except Exception:
             # Not a rollback: a file already here keeps the new bytes, so an
@@ -801,6 +806,7 @@ async def store_user_skill(
             mime_type="text/markdown",
             overwrite=True,
             metadata=metadata,
+            scanned_checksums=scanned_checksums,
         )
         await _delete_paths(
             manager, {f.path for f in stale if f.path not in written}, stale
