@@ -186,6 +186,22 @@ async def _approve_after_losing_the_held_call(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_whose_card_could_not_open_leaves_nothing_held(
+    setup_test_user, test_user_id, gate_on
+):
+    session = await _new_session(test_user_id)
+
+    with patch.object(review_store, "open_review", AsyncMock(return_value=False)):
+        decision = await check_action(
+            _TOOL, {"text": "no card"}, test_user_id, session, tool_call_id="c1"
+        )
+
+    assert not decision.allowed and decision.review_id is None
+    redis = await get_redis_async()
+    assert await redis.hgetall(held._key(session.session_id)) == {}
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
