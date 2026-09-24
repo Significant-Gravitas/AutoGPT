@@ -30,6 +30,7 @@ from backend.copilot.integration_creds import (
     invalidate_user_provider_cache,
     placeholder_env,
     placeholder_grants,
+    renew_box_grants,
     swap_placeholder,
 )
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
@@ -733,7 +734,10 @@ class TestPlaceholders:
             await grant_to_box("sb-1", {"github": "newer"})
             assert await granted_to_box("sb-1", "github") == {"older", "newer"}
             assert await granted_to_box("sb-2", "github") == set()
+            ttls.clear()
+            await renew_box_grants("sb-1")
         assert set(ttls.values()) == {48 * 3600}
+        assert "e2b:egress:grant:sb-1:github" in ttls
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_token_cached_without_its_id_is_looked_up_again(self):

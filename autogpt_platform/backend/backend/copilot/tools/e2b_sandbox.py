@@ -92,6 +92,7 @@ from backend.copilot.integration_creds import (
     grant_to_box,
     placeholder_env,
     placeholder_grants,
+    renew_box_grants,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
@@ -374,7 +375,7 @@ async def _connect_pinned(
             "it; pinning it without credentials",
             sandbox_id,
         )
-    return await connect_sandbox(
+    sandbox = await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
         owner.egress_owner(swap_user_id),
@@ -382,6 +383,25 @@ async def _connect_pinned(
         api_key=api_key,
         timeout=timeout,
     )
+    if pin_egress and swap_user_id is not None:
+        await _keep_grants(sandbox_id)
+    return sandbox
+
+
+async def _keep_grants(sandbox_id: str) -> None:
+    """Renew the box's credential grants on a reconnect that will run work.
+
+    A grant lasts as long as a paused box can, but an expert's box can be
+    paused far longer and come back with the placeholders it was created
+    with; each reconnect restarts their clock.  Best effort: a failure costs
+    only those placeholders, and commands grant their own again.
+    """
+    if proxy_address() is None:
+        return
+    try:
+        await renew_box_grants(sandbox_id)
+    except Exception as exc:
+        logger.warning("[E2B] Could not renew the grants of %.12s: %s", sandbox_id, exc)
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:

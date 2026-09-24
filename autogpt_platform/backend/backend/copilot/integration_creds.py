@@ -465,7 +465,8 @@ async def grant_to_box(sandbox_id: str, grants: Mapping[str, str]) -> None:
     can use the accounts its chats were given and no other of the user's,
     whatever id it types.  A grant outlives the command that made it (a
     process it started may still hold the placeholder) and lasts as long as a
-    paused box can.
+    paused box can; every reconnect that runs work renews it
+    (``renew_box_grants``), so a box paused longer keeps its own.
     """
     if not grants:
         return
@@ -474,6 +475,14 @@ async def grant_to_box(sandbox_id: str, grants: Mapping[str, str]) -> None:
         key = _grant_key(sandbox_id, provider)
         await redis.sadd(key, credential_id)
         await redis.expire(key, _GRANT_TTL)
+
+
+async def renew_box_grants(sandbox_id: str) -> None:
+    """Restart the clock on everything granted to *sandbox_id* (see
+    ``grant_to_box``): for a box reconnected after a long pause."""
+    redis = await get_redis_async()
+    for provider in PROVIDER_ENV_VARS:
+        await redis.expire(_grant_key(sandbox_id, provider), _GRANT_TTL)
 
 
 async def granted_to_box(sandbox_id: str, provider: str) -> set[str]:
