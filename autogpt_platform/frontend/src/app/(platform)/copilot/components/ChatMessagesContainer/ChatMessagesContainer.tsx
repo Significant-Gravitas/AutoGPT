@@ -836,26 +836,19 @@ export function ChatMessagesContainer({
               </MessageContent>
             </Message>
           )}
-          {!readOnly && reviewTarget && (
+          {!readOnly && reviewTarget?.kind === "graph" && (
             <CopilotPendingReviews
               graphExecId={reviewTarget.graphExecId}
               graphId={reviewTarget.graphId}
-              refetchKey={
-                reviewTarget.graphExecId === `copilot-session-${sessionID}`
-                  ? countHeldCalls(messages)
-                  : undefined
-              }
             />
           )}
-          {!readOnly &&
-            sessionID &&
-            reviewTarget?.graphExecId !== `copilot-session-${sessionID}` && (
-              <CopilotPendingReviews
-                graphExecId={`copilot-session-${sessionID}`}
-                pollWhileEmpty={false}
-                refetchKey={countHeldCalls(messages)}
-              />
-            )}
+          {!readOnly && sessionID && (
+            <CopilotPendingReviews
+              chatSessionId={sessionID}
+              pollWhileEmpty={reviewTarget?.kind === "chat"}
+              refetchKey={countHeldCalls(messages)}
+            />
+          )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">

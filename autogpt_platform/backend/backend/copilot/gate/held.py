@@ -43,7 +43,7 @@ _KEY = "copilot:gate:held:"
 # 100,000-character output cap plus the wrapper), so nothing is cut here.
 _MAX_RESULT_CHARS = 120_000
 
-Outcome = Literal["approved", "rejected", "expired", "closed"]
+Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 _RESEND = (
@@ -105,12 +105,11 @@ async def answered(user_id: str, session_id: str) -> list[HeldCall]:
             f"Gate could not read held calls for session {session_id}", exc_info=True
         )
         return []
-    exec_id = review_store.session_exec_id(session_id)
     return sorted(
         (
             held[review_id]
             for review_id, row in rows.items()
-            if row.graph_exec_id == exec_id and row.status != ReviewStatus.WAITING
+            if row.session_id == session_id and row.status != ReviewStatus.WAITING
         ),
         key=lambda call: call.held_at,
     )
@@ -267,7 +266,7 @@ async def _recover(
             "The approved action may have run, but its result was lost before it "
             "reached you. Tell the user, and check the outcome before relying "
             "on it.",
-            "approved",
+            "unknown",
         )
     ]
 

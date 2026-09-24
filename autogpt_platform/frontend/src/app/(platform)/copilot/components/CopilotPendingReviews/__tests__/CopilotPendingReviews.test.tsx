@@ -1,73 +1,96 @@
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { expect, test, vi } from "vitest";
-import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { afterEach, expect, test, vi } from "vitest";
+import {
+  getGetV2GetPendingReviewsForChatSessionMockHandler,
+  getGetV2GetPendingReviewsForExecutionMockHandler,
+  getPostV2ProcessReviewActionMockHandler200,
+} from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
-import type { ReviewRequest } from "@/app/api/__generated__/models/reviewRequest";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
-import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { CopilotPendingReviews } from "../CopilotPendingReviews";
 
-const EXEC = "copilot-session-s1";
-const NODE = "copilot-node-gate-post_to_chat_platform";
+const onSend = vi.fn();
+vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
+  useCopilotChatActions: () => ({ onSend }),
+}));
 
-function heldCall(id: string, text: string): PendingHumanReviewModel {
+afterEach(() => {
+  cleanup();
+  onSend.mockReset();
+});
+
+function makeReview(
+  overrides: Partial<PendingHumanReviewModel> = {},
+): PendingHumanReviewModel {
   return {
-    node_exec_id: `${NODE}:${id}`,
-    node_id: NODE,
+    node_exec_id: "copilot-node-blk:ab12",
+    node_id: "copilot-node-blk",
     user_id: "u-1",
-    graph_exec_id: EXEC,
-    graph_id: EXEC,
-    graph_version: 1,
-    payload: { tool: "post_to_chat_platform", arguments: { text } },
-    instructions: `Post to chat platform — ${text}`,
-    editable: false,
+    session_id: "chat-1",
+    graph_exec_id: null,
+    graph_id: null,
+    graph_version: null,
+    payload: { path: "/reports" },
+    instructions: "Create Folder",
+    editable: true,
     status: "WAITING",
     created_at: new Date(),
+    ...overrides,
   };
 }
 
-function serveQueue(reviews: PendingHumanReviewModel[]) {
-  const sent: ReviewRequest[] = [];
+test("a chat's queue is read from the chat, and the resume is AutoPilot's", async () => {
+  let waiting = [makeReview()];
   server.use(
-    http.get(`*/api/review/execution/${EXEC}`, () =>
-      HttpResponse.json(reviews),
-    ),
-    getPostV2ProcessReviewActionMockHandler200(async (info) => {
-      sent.push((await info.request.json()) as ReviewRequest);
+    getGetV2GetPendingReviewsForChatSessionMockHandler(() => waiting),
+    getGetV2GetPendingReviewsForExecutionMockHandler([
+      makeReview({ instructions: "Not this chat's review" }),
+    ]),
+    getPostV2ProcessReviewActionMockHandler200(() => {
+      waiting = [];
       return { approved_count: 1, rejected_count: 0, failed_count: 0 };
     }),
   );
-  return sent;
-}
 
-test("each held call is its own card, oldest first, and answering one follows the server's turn", async () => {
-  const sent = serveQueue([
-    heldCall("a", "first post"),
-    heldCall("b", "second post"),
-  ]);
-  const onSend = vi.fn();
-  const onBackendTurn = vi.fn();
+  render(<CopilotPendingReviews chatSessionId="chat-1" />);
 
-  render(
-    <CopilotChatActionsProvider onSend={onSend} onBackendTurn={onBackendTurn}>
-      <CopilotPendingReviews graphExecId={EXEC} />
-    </CopilotChatActionsProvider>,
+  expect((await screen.findAllByText("Create Folder")).length).toBeGreaterThan(
+    0,
+  );
+  expect(screen.queryByText("Not this chat's review")).toBeNull();
+
+  await userEvent.click(screen.getAllByRole("button", { name: /^Approve/ })[0]);
+
+  await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), {
+    timeout: 3000,
+  });
+  expect(onSend.mock.calls[0][0]).toContain("resume_capability");
+});
+
+test("an agent run's queue is read from its execution", async () => {
+  server.use(
+    getGetV2GetPendingReviewsForExecutionMockHandler([
+      makeReview({
+        session_id: null,
+        graph_exec_id: "exec-9",
+        graph_id: "g-1",
+        graph_version: 1,
+        instructions: "Send Email",
+      }),
+    ]),
+    getGetV2GetPendingReviewsForChatSessionMockHandler([
+      makeReview({ instructions: "Not the run's review" }),
+    ]),
   );
 
-  const approves = await screen.findAllByRole("button", { name: "Approve" });
-  expect(approves).toHaveLength(2);
-  const [first] = screen.getAllByText(/first post/);
-  const [second] = screen.getAllByText(/second post/);
-  expect(
-    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  render(<CopilotPendingReviews graphExecId="exec-9" />);
 
-  await userEvent.click(approves[0]);
-
-  await waitFor(() => expect(onBackendTurn).toHaveBeenCalledTimes(1));
-  expect(sent).toHaveLength(1);
-  expect(sent[0].reviews.map((r) => r.node_exec_id)).toEqual([`${NODE}:a`]);
-  expect(onSend).not.toHaveBeenCalled();
+  expect((await screen.findAllByText("Send Email")).length).toBeGreaterThan(0);
+  expect(screen.queryByText("Not the run's review")).toBeNull();
 });

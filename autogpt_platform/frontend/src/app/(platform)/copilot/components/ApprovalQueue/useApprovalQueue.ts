@@ -65,7 +65,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
           auto_approve_future: approved && !!rule,
           message: rule,
         })),
-        batch.map((item) => item.graphExecId),
+        batch.map((item) => item.scope),
       );
       ok = res.status === 200 && res.data.failed_count === 0;
     } catch {

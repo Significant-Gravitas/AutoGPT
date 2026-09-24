@@ -1676,7 +1676,7 @@ class TestSpendApproval:
 
         assert isinstance(response, ReviewRequiredResponse)
         assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
-        assert response.graph_exec_id.startswith("copilot-session-")
+        assert "graph_exec_id" not in response.model_dump()
         assert not block.executed
         gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
         assert (

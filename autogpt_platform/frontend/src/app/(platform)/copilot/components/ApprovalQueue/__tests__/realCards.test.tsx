@@ -4,7 +4,7 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { realCardSchemaHandler, realCards, SESSION_EXEC } from "./fixtures";
+import { realCardSchemaHandler, realCards, CHAT_SESSION } from "./fixtures";
 
 const cards = realCards();
 
@@ -12,14 +12,14 @@ test.each(cards.map((card) => [card.story, card] as const))(
   "the real %s card names its subject and labels every input in plain words",
   async (_, card) => {
     server.use(
-      http.get(`*/api/review/execution/${SESSION_EXEC}`, () =>
+      http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
         HttpResponse.json([card.review]),
       ),
       realCardSchemaHandler(cards),
     );
     render(
       <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-        <CopilotPendingReviews graphExecId={SESSION_EXEC} />
+        <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
       </CopilotChatActionsProvider>,
     );
 

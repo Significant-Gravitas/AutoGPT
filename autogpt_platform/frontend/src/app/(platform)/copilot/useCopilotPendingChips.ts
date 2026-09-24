@@ -66,8 +66,14 @@ export function useCopilotPendingChips({
     () => queue.map((entry) => entry.text),
     [queue],
   );
+  // Live view of the strip for the peek effect, which needs the queue at the
+  // moment it issues a GET without re-running on every enqueue.
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
-  usePeekOnBoundary({ sessionId, status, setMessages, setQueue });
+  usePeekOnBoundary({ sessionId, status, queueRef, setMessages, setQueue });
 
   useAutoContinuePromotion({
     sessionId,
@@ -106,23 +112,24 @@ export function useCopilotPendingChips({
 function usePeekOnBoundary({
   sessionId,
   status,
+  queueRef,
   setMessages,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
+  queueRef: { current: QueuedMessage[] };
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
-  // Snapshot of chip ids known to be in-flight to the server at the
-  // moment a peek GET is issued.  Anything NOT in this set when the GET
-  // resolves was appended after the request — preserve it so a
-  // concurrently-queued chip isn't wiped by the server's now-stale
-  // truth.  Set inside the effect (closes over the current chips
-  // value), read inside the ``.then`` handler.
-  const inFlightSnapshotIdsRef = useRef<Set<string>>(new Set());
+  // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
+  // can land within one round trip.  Only the newest peek's answer is
+  // applied — an older one resolving later would rebase over fresher
+  // server truth (and, before this guard, the two answers each carried the
+  // other's copy of a buffered message forward, doubling the strip).
+  const latestPeekSeqRef = useRef(0);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -154,19 +161,21 @@ function usePeekOnBoundary({
     // we don't want chip-appends in another effect to invalidate this
     // peek's result.
     const requestSessionId = sessionId;
-    // Capture the id-set of queue entries currently in local state so
-    // the resolve handler can preserve any entry the user queues during
-    // the GET window.
-    setQueue((current) => {
-      inFlightSnapshotIdsRef.current = new Set(
-        current.map((entry) => entry.id),
-      );
-      return current;
-    });
+    const peekSeq = ++latestPeekSeqRef.current;
+    // Snapshot of chip ids known to be in-flight to the server at the
+    // moment this GET is issued.  Anything NOT in this set when it
+    // resolves was appended after the request — preserve it so a
+    // concurrently-queued chip isn't wiped by the server's now-stale
+    // truth.  Captured per request: a shared snapshot let a later peek
+    // overwrite an earlier one's, and the earlier answer then dropped a
+    // chip typed between the two as if the server already had it.
+    const inFlightIds = new Set(
+      (sessionChanged ? [] : queueRef.current).map((entry) => entry.id),
+    );
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
+      if (peekSeq !== latestPeekSeqRef.current) return;
       if (res.status !== 200) return;
-      const inFlightIds = inFlightSnapshotIdsRef.current;
       // Turn-start drain path: when the backend has drained everything
       // it had at GET time, promote those drained entries to user
       // bubbles BEFORE removing them from local state.  Without the
@@ -188,6 +197,21 @@ function usePeekOnBoundary({
             }
             return current.filter((entry) => !inFlightIds.has(entry.id));
           });
+          return;
+        }
+        // The backend holds more than the strip knows about: a session-load
+        // peek this one superseded would have restored them, and the
+        // mid-turn polls only run once the strip is non-empty.  Prepend the
+        // surplus (the buffer is FIFO, so the unknown ones are the oldest).
+        // Local entries keep their ids: a turn-start drain hint can already
+        // have a promotion in flight for them, and rebasing them to fresh
+        // ids would leave that promotion's copy stuck in the strip.
+        const unknownCount = res.data.count - inFlightIds.size;
+        if (unknownCount > 0) {
+          const restored = res.data.messages
+            .slice(0, unknownCount)
+            .map((text) => ({ id: uuidv4({}), text }));
+          setQueue((current) => [...restored, ...current]);
         }
         return;
       }
@@ -208,7 +232,7 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
-  }, [sessionId, status, setQueue]);
+  }, [sessionId, status, queueRef, setQueue]);
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
@@ -220,6 +244,14 @@ function usePeekOnBoundary({
 // `submitted → streaming` (that's Turn 1's opener).  Any later new
 // assistant id in the same chain is the auto-continue.  Reset on every
 // turn boundary.
+//
+// A new id is only a *cue* to reconcile, never proof of a drain: the
+// backend emits `data-status` before `start`, so `useChat` parks the turn
+// in a placeholder under its own id and then pushes the real message once
+// `start` carries the server's id — the same "new assistant id" shape, with
+// the follow-up still sitting in the buffer. Promoting on the cue alone
+// drew the chip as a plain user bubble above the live tool chain (twice
+// after a mid-turn reload, once per peek). The buffer re-read decides.
 
 function useAutoContinuePromotion({
   sessionId,
@@ -242,6 +274,10 @@ function useAutoContinuePromotion({
   // Reset to null on every turn boundary (turn-start or becameIdle) so
   // the next chain starts fresh.
   const openerAssistantIdRef = useRef<string | null>(null);
+  const latestSessionIdRef = useRef<string | null>(sessionId);
+  useEffect(() => {
+    latestSessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -272,41 +308,56 @@ function useAutoContinuePromotion({
     }
     // Same id as opener — no new assistant yet, wait.
     if (latest === openerAssistantIdRef.current) return;
-    // A different id means the backend auto-continued.
+    // A different id: reconcile once against the buffer, then treat this
+    // id as the current opener so later deltas into it stay quiet.
+    openerAssistantIdRef.current = latest;
     if (queue.length === 0) return;
 
-    const promotedIds = new Set(queue.map((entry) => entry.id));
-    promoteBeforeAssistant(setMessages, latest, queue);
-    // Drop only the entries we promoted; entries appended after the
-    // snapshot (during the React commit) survive.
-    setQueue((current) =>
-      current.filter((entry) => !promotedIds.has(entry.id)),
+    const requestSessionId = sessionId;
+    const isCurrentSession = () =>
+      latestSessionIdRef.current === requestSessionId;
+    void pollBackendAndPromote(
+      sessionId,
+      queue,
+      setMessages,
+      setQueue,
+      isCurrentSession,
+      "auto-continue",
     );
   }, [messages, status, sessionId, queue, setMessages, setQueue]);
 }
 
+type PromotionFlavour = Parameters<typeof makePromotedUserBubble>[1];
+
+const PROMOTION_FLAVOURS: PromotionFlavour[] = ["auto-continue", "midturn"];
+
 /**
  * Splice promoted user bubbles for *drained* in just before the trailing
- * streaming assistant message — same insertion shape as the mid-turn poll
- * promotion so AI SDK's streaming continues into the right slot.
+ * streaming assistant message, so AI SDK's streaming continues into the
+ * right slot.  Every promotion path funnels through here: the turn-start
+ * drain in ``usePeekOnBoundary`` (the backend drained chips before the
+ * first peek resolved, and the bubble would otherwise only appear via
+ * hydration after the turn ends), the auto-continue reconciliation, and
+ * the mid-turn hint / backstop poll.
  *
- * Used by the turn-start drain path in ``usePeekOnBoundary``: when the
- * backend has already drained chips before the frontend's first peek
- * resolves, we'd otherwise just remove them from local state and the
- * bubble would only appear via hydration after the turn ends.  This
- * helper makes the bubble visible immediately so the user can see what
- * the model is responding to.
+ * An entry that already has a bubble under *either* flavour is skipped.
+ * Two reconciliations of the same chip can be in flight at once — a new
+ * assistant id and a drain hint (or the backstop) each issue their own
+ * GET — and both see the drained buffer; keyed on the exact id, each
+ * flavour would store its own copy and the transcript would draw the
+ * follow-up twice.
  */
 function promoteChipsToTrailingBubbles(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   drained: QueuedMessage[],
+  flavour: PromotionFlavour = "midturn",
 ): void {
   setMessages((prev) => {
     const newBubbles = drained
+      .filter((entry) => !prev.some((m) => isPromotedBubbleFor(m, entry)))
       .map((entry) =>
-        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
-      )
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry)),
+      );
     if (newBubbles.length === 0) return prev;
     const lastIdx = prev.length - 1;
     if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
@@ -324,23 +375,19 @@ function bubbleIdFor(entry: QueuedMessage): string {
   return `pending-chip-${entry.id}`;
 }
 
-function promoteBeforeAssistant(
-  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
-  assistantId: string,
-  queue: QueuedMessage[],
-): void {
-  setMessages((prev) => {
-    const idx = prev.findIndex((m) => m.id === assistantId);
-    const insertAt = idx === -1 ? prev.length : idx;
-    const newBubbles = queue
-      .map((entry) =>
-        makePromotedUserBubble(entry.text, "auto-continue", bubbleIdFor(entry)),
-      )
-      // Skip bubbles that are already in the array (effect re-run safety).
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-    if (newBubbles.length === 0) return prev;
-    return [...prev.slice(0, insertAt), ...newBubbles, ...prev.slice(insertAt)];
-  });
+// Whether *message* is the promoted bubble for *entry*, whichever path
+// promoted it.  The queue id is the chip's identity; the flavour prefix
+// only records which path got there first.  Repeated user messages carry
+// distinct queue ids, so they still each get a bubble.
+function isPromotedBubbleFor(
+  message: UIMessage,
+  entry: QueuedMessage,
+): boolean {
+  const suffix = bubbleIdFor(entry);
+  return PROMOTION_FLAVOURS.some(
+    (flavour) =>
+      message.id === makePromotedUserBubble(entry.text, flavour, suffix).id,
+  );
 }
 
 // ── 3. Mid-turn drain promotion ────────────────────────────────────────
@@ -458,6 +505,7 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
+  flavour: PromotionFlavour = "midturn",
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -494,20 +542,7 @@ async function pollBackendAndPromote(
   // keeps the stream flowing, at the cost of showing a count-only follow-up
   // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
   // the list to the DB order at the end of the turn.
-  setMessages((prev) => {
-    const newBubbles = drained
-      .map((entry) =>
-        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
-      )
-      // Skip bubbles that are already there (effect re-run safety).
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-    if (newBubbles.length === 0) return prev;
-    const lastIdx = prev.length - 1;
-    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
-      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
-    }
-    return [...prev, ...newBubbles];
-  });
+  promoteChipsToTrailingBubbles(setMessages, drained, flavour);
   // Drop only the drained entries by id; entries appended after the
   // snapshot survive the in-flight poll race.
   setQueue((current) => current.filter((entry) => !drainedIds.has(entry.id)));

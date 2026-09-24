@@ -5,9 +5,10 @@
       "node_exec_id": "copilot-node-gate-run_capability:45dc4fe375588da5",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_capability",
         "arguments": {
@@ -181,9 +182,10 @@
       "node_exec_id": "copilot-node-gate-run_capability:9be621b1d86e07dd",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_capability",
         "arguments": {
@@ -406,9 +408,10 @@
       "node_exec_id": "copilot-node-gate-run_capability:8a45589b61e8a14d",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_capability",
         "arguments": {
@@ -571,9 +574,10 @@
       "node_exec_id": "copilot-node-gate-run_capability:f9fc2d8be8150e56",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_capability",
         "arguments": {
@@ -716,9 +720,10 @@
       "node_exec_id": "copilot-node-gate-run_capability:d50b2741a9b2406f",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_capability",
         "arguments": {
@@ -1062,9 +1067,10 @@
       "node_exec_id": "copilot-node-gate-run_agent:b6b37239ba4de98b",
       "node_id": "copilot-node-gate-run_agent",
       "user_id": "user-1",
-      "graph_exec_id": "copilot-session-s1",
-      "graph_id": "copilot-session-s1",
-      "graph_version": 1,
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
       "payload": {
         "tool": "run_agent",
         "arguments": {

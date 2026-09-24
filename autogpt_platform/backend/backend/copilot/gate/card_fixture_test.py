@@ -157,9 +157,10 @@ def _row(tool: str, args: dict[str, Any], subject: Any) -> dict[str, Any]:
         "node_exec_id": review_id,
         "node_id": node_id,
         "user_id": "user-1",
-        "graph_exec_id": "copilot-session-s1",
-        "graph_id": "copilot-session-s1",
-        "graph_version": 1,
+        "session_id": "s1",
+        "graph_exec_id": None,
+        "graph_id": None,
+        "graph_version": None,
         "payload": review_payload(
             tool,
             args,

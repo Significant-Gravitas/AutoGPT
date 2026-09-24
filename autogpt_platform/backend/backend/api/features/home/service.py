@@ -75,7 +75,7 @@ async def build_home_dashboard(
     )
     graph_ids = list(
         {execution.graph_id for execution in data.executions}
-        | {review.graph_id for review in data.reviews}
+        | {review.graph_id for review in data.reviews if review.graph_id}
     )
     work_session_ids = list(
         {event.session_id for event in data.work_events if event.session_id}

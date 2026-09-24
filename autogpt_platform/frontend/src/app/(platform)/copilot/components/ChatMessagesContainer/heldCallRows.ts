@@ -47,7 +47,12 @@ function isHeldOutput(output: unknown): boolean {
   );
 }
 
-export type HeldOutcomeKind = "approved" | "rejected" | "expired" | "closed";
+export type HeldOutcomeKind =
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "closed"
+  | "unknown";
 
 export interface HeldOutcome {
   outcome: HeldOutcomeKind;
@@ -55,8 +60,16 @@ export interface HeldOutcome {
   output: unknown;
 }
 
-const OUTCOMES = new Set<string>(["approved", "rejected", "expired", "closed"]);
-const RESULT_RE = /<held_call_result[^>]*>\n?([\s\S]*?)\n?<\/held_call_result>/;
+const OUTCOMES = new Set<string>([
+  "approved",
+  "rejected",
+  "expired",
+  "closed",
+  "unknown",
+]);
+// Anchored at the end: the output itself may contain the closing tag.
+const RESULT_RE =
+  /<held_call_result[^>]*>\n?([\s\S]*?)\n?<\/held_call_result>\s*$/;
 
 export function getHeldOutcomes(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],

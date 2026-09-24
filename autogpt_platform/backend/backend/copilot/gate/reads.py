@@ -26,6 +26,7 @@ from . import active_mode, held
 from . import review as review_store
 from .content import Image, judge_content
 from .headline import Headline, named
+from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,10 @@ _REJECTED = (
     "The user declined to release this content. Do not fetch it again or "
     "another way; tell them what you could not do without it."
 )
+_DELIVERED = (
+    "The user released this content and it was already delivered to you "
+    "once; nothing more arrives for this call."
+)
 _UNRECORDABLE = (
     "It could not be checked or queued for the user's review, so it is left "
     "out. Tell the user; do not fetch it another way."
@@ -129,9 +134,14 @@ async def release_held_read(
             output=_stub(tool_name, source, _WAITING, session), success=False
         )
     consumed = await review_store.consume(review_id, user_id)
-    if review.status == ReviewStatus.REJECTED or not consumed:
+    if review.status == ReviewStatus.REJECTED:
         return Release(
             output=_stub(tool_name, source, _REJECTED, session), success=False
+        )
+    if not consumed:
+        # The late result took the approved bytes first.
+        return Release(
+            output=_stub(tool_name, source, _DELIVERED, session), success=False
         )
     return held_bytes(review)
 
@@ -149,8 +159,11 @@ async def answered_read(
     nothing about the tool that fetched it.
     """
     consumed = await review_store.consume(review.node_exec_id, user_id)
-    if review.status != ReviewStatus.APPROVED or not consumed:
+    if review.status != ReviewStatus.APPROVED:
         return "rejected", _REJECTED
+    if not consumed:
+        # An identical re-read already received the released bytes.
+        return "closed", _DELIVERED
     return "approved", held_bytes(review).output
 
 
@@ -282,7 +295,7 @@ async def _hold(
             call.args,
             reason=reason,
             reason_kind="content",
-            mode=session.metadata.autopilot_mode,
+            mode=session.metadata.autopilot_mode or DEFAULT_MODE,
             tool_call_id=call.tool_call_id,
             turn=review_store.turn_of(session),
         ),
@@ -327,7 +340,4 @@ def _stub(
             else f"Read what {tool_name.replace('_', ' ')} returned"
         ),
         object=named_source or None,
-        graph_exec_id=(
-            review_store.session_exec_id(session.session_id) if review_id else None
-        ),
     ).model_dump_json()
