@@ -19,6 +19,9 @@ import {
 } from "./helpers";
 
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
+// Account names can contain spaces ("Work Gmail"), so this one keeps matching
+// past whitespace; it only wins when the wider token still names an account.
+const ACCOUNT_MENTION_RE = /(?:^|\s)@([^@\n]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
 const MENTION_RESULT_LIMIT = 8;
 const MENTION_FOLDER_LIMIT = 3;
@@ -173,7 +176,9 @@ export function useChatMentions({
     }
     const caret = textarea.selectionStart ?? textarea.value.length;
     const beforeCaret = textarea.value.slice(0, caret);
-    const accountMatch = beforeCaret.match(/(?:^|\s)@([^@\n]*)$/);
+    // A single-word token is always a query; a multi-word one is only kept
+    // while it still matches a connected account.
+    const accountMatch = beforeCaret.match(ACCOUNT_MENTION_RE);
     const match =
       beforeCaret.match(MENTION_RE) ??
       (accountMatch &&
