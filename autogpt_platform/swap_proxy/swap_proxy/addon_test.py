@@ -766,3 +766,42 @@ async def test_a_utf16_value_in_a_body_that_does_not_decode_is_scrubbed():
     raw = flow.response.raw_content or b""
     assert TOKEN.encode("utf-16-le") not in raw
     assert "hsurr:github".encode("utf-16-le") in raw
+
+
+# ------------------------------------------------------------ the target names the host too
+
+
+@pytest.mark.parametrize(
+    "authority, swapped",
+    [
+        ("", True),  # origin-form: Host alone names the host
+        (HOST, True),
+        (f"{HOST}:443", True),
+        ("API.GitHub.com", True),
+        ("evil.example", False),  # absolute-form to another origin
+        ("evil.example:443", False),
+        ("[::1]:443", False),
+        ("not a host", False),
+    ],
+)
+async def test_an_absolute_form_target_must_name_the_verified_host(
+    caplog, authority, swapped
+):
+    """``GET https://evil.example/x`` with ``Host: api.github.com`` is
+    forwarded as it is, and a front shared by many origins routes on the
+    target: it must not carry the value there."""
+    flow = tflow.tflow()
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    addon = addon_for(flow)
+    flow.request.authority = authority
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.request(flow)
+    sent = flow.request.headers["authorization"]
+    assert (sent == f"Bearer {TOKEN}") is swapped
+    if not swapped:
+        lines = [
+            json.loads(r.message)
+            for r in caplog.records
+            if r.name == "swap_proxy.audit"
+        ]
+        assert [x.get("reason") for x in lines] == ["unverified-destination"]

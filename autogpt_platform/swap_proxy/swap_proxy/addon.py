@@ -79,6 +79,7 @@ from typing import Optional, Union
 
 from mitmproxy import connection, http, tls
 from mitmproxy.net.http.http1.read import expected_http_body_size
+from mitmproxy.net.http.url import parse_authority
 from mitmproxy.proxy import server_hooks
 from mitmproxy.proxy.layers import modes
 from OpenSSL import SSL
@@ -580,8 +581,22 @@ class SwapProxyAddon:
             return True
         if flow.request.scheme != "https":
             return False
-        sni = flow.server_conn.sni
-        return bool(sni) and sni.lower() == flow.request.pretty_host.lower()
+        sni = (flow.server_conn.sni or "").lower()
+        if not sni or sni != flow.request.pretty_host.lower():
+            return False
+        # An HTTP/1 absolute-form target ("GET https://other.example/x") is
+        # forwarded as it is, and RFC 9112 3.2.2 has the server honour it over
+        # ``Host``: a front shared by many origins would route on it.  So the
+        # target's authority, when there is one, must name the same host.
+        # (For HTTP/2 mitmproxy already rejects an :authority that disagrees.)
+        authority = flow.request.authority
+        if authority:
+            try:
+                host, _ = parse_authority(authority, check=True)
+            except ValueError:
+                return False
+            return host.lower() == sni
+        return True
 
     async def _scrub_credentials(
         self, flow: http.HTTPFlow, owner: Owner
