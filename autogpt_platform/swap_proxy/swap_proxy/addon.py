@@ -16,7 +16,10 @@ One connection's life:
 4. ``request``: placeholders are swapped for the owner's values (``swap.py``),
    fetched from the backend for this user and this host (``source.py``).  By
    default only in the ``Authorization`` header; anywhere else only for a
-   credential with ``swap_anywhere``, which nothing sets yet.
+   credential with ``swap_anywhere``, which nothing sets yet.  A request that
+   gets a value counts against the box's and the user's quota
+   (``quota.py``); past it, the request is not sent and the box is answered
+   with why.
 5. ``response``: known values are scrubbed back into placeholders.  Websocket
    messages get the same two steps, one per direction (the swap into a
    message only with ``swap_anywhere``).
@@ -87,6 +90,7 @@ from OpenSSL import SSL
 from swap_proxy.decode import DecodedTooLarge, Undecodable, bounded_decode
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
+from swap_proxy.quota import QuotaVerdict, RequestQuota
 from swap_proxy.source import CredentialSource, SourceUnavailable
 from swap_proxy.swap import (
     PLACEHOLDER_RE,
@@ -285,11 +289,14 @@ class SwapProxyAddon:
         source: CredentialSource,
         guard: EgressGuard,
         *,
+        quota: Optional[RequestQuota] = None,
         allow_insecure_swap: bool = False,
     ):
         self._directory = owners
         self._source = source
         self._guard = guard
+        # None: no quota (tests only; ``__main__`` always passes one).
+        self._quota = quota
         # Tests only: lets a swap happen over plain http to a local upstream.
         self._allow_insecure_swap = allow_insecure_swap
         self._owners: weakref.WeakKeyDictionary[connection.Client, Owner] = (
@@ -431,6 +438,8 @@ class SwapProxyAddon:
             lookup = await self._lookup(flow, owner, host, names)
             swap = RequestSwap(lookup.credentials, host, request.method, request.path)
             swap.head(request)
+            if not await self._within_quota(flow, owner, host, swap, answer=False):
+                return
             self._record_swap(flow, owner, host, lookup, names, swap)
         if not is_scrubbable(request.headers.get("content-type", "")):
             return  # binary: streams through as it is
@@ -506,6 +515,8 @@ class SwapProxyAddon:
             swap.body(plain)
             if plain.raw_content != before:
                 put_back(request, plain)
+        if not await self._within_quota(flow, owner, host, swap, answer=True):
+            return
         self._record_swap(flow, owner, host, lookup, names, swap)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
@@ -670,6 +681,58 @@ class SwapProxyAddon:
             credentials += lookup.credentials.values()
         swapped: dict[str, Credential] = flow.metadata.get(_SWAPPED, {})
         return [*credentials, *swapped.values()]
+
+    async def _within_quota(
+        self,
+        flow: http.HTTPFlow,
+        owner: Owner,
+        host: str,
+        swap: RequestSwap,
+        *,
+        answer: bool,
+    ) -> bool:
+        """Count a request that got a value; ``False`` if it must not be sent,
+        in which case it has been answered (or killed) and audited.
+
+        Called after the swap and before anything leaves.  A body swapped
+        later, while it streams (``swap_anywhere`` only), is not counted.
+        """
+        if self._quota is None or not any(e.kind == "swapped" for e in swap.events):
+            return True
+        verdict = await self._quota.take(owner.label, owner.user_id)
+        if verdict.allowed:
+            return True
+        self._refuse_over_quota(flow, owner, host, verdict, answer=answer)
+        return False
+
+    def _refuse_over_quota(
+        self,
+        flow: http.HTTPFlow,
+        owner: Owner,
+        host: str,
+        verdict: QuotaVerdict,
+        *,
+        answer: bool,
+    ) -> None:
+        """Answer instead of the provider, so the box reads why.
+
+        Only from ``request``, where the whole body is in hand.  From
+        ``requestheaders`` (a large or unmeasured body) the flow is killed:
+        mitmproxy may yet start streaming that body, and a flow that both
+        streams and has an answer set is one it cannot handle.
+        """
+        self._audit(
+            owner, host, "refused-request", reason=verdict.reason, scope=verdict.scope
+        )
+        if not answer or flow.request.stream:
+            if flow.killable:
+                flow.kill()
+            return
+        headers = {"content-type": "text/plain; charset=utf-8"}
+        if verdict.retry_after:
+            headers["retry-after"] = str(verdict.retry_after)
+        status = 429 if verdict.reason == "quota-exceeded" else 503
+        flow.response = http.Response.make(status, verdict.message(), headers)
 
     def _refuse_response(self, flow: http.HTTPFlow, owner: Owner, reason: str) -> None:
         self._audit(owner, flow.request.pretty_host, "refused-response", reason=reason)

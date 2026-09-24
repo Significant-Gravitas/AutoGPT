@@ -28,6 +28,7 @@ from swap_proxy.addon import (
 )
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
+from swap_proxy.quota import QuotaVerdict
 from swap_proxy.source import SourceUnavailable
 from swap_proxy.swap import Credential
 
@@ -71,10 +72,13 @@ def addon_for(
     swaps: bool = True,
     source: Source | None = None,
     anywhere: bool = False,
+    quota: Any = None,
 ) -> SwapProxyAddon:
     source = source or Source()
     source.anywhere = anywhere
-    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source, EgressGuard())
+    addon = SwapProxyAddon(
+        OwnerDirectory(NoRedis()), source, EgressGuard(), quota=quota
+    )
     addon._owners[flow.client_conn] = Owner(
         "session:s-a", "user-a", "sb-1", swaps, box="box-0123456789abcdef"
     )
@@ -905,3 +909,88 @@ async def test_a_content_host_is_scrubbed_and_never_sent_the_value(caplog):
     assert flow.request.headers["authorization"] == "token hsurr:github"
     assert flow.response.text == "stored earlier: hsurr:github"
     assert audit(caplog) == [("refused", "hsurr:github"), ("scrubbed", None)]
+
+
+# ------------------------------------------------------------ quotas
+
+
+class Quota:
+    """Answers every count with *verdict* and remembers who was counted."""
+
+    def __init__(self, verdict: QuotaVerdict):
+        self.verdict = verdict
+        self.taken: list[tuple[str, str | None]] = []
+
+    async def take(self, owner_label, user_id):
+        self.taken.append((owner_label, user_id))
+        return self.verdict
+
+
+OVER = QuotaVerdict(
+    reason="quota-exceeded", scope="box", limit=1000, window=3600, retry_after=42
+)
+
+
+async def test_a_credentialed_request_within_quota_is_counted_and_sent(caplog):
+    flow = tflow.tflow()
+    quota = Quota(QuotaVerdict())
+    addon = addon_for(flow, quota=quota)
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert flow.response is None
+    assert quota.taken == [("session:s-a", "user-a")]
+    assert audit(caplog) == [("swapped", "hsurr:github")]
+
+
+async def test_a_request_with_nothing_swapped_is_not_counted():
+    flow = tflow.tflow()
+    quota = Quota(OVER)
+    addon = addon_for(flow, quota=quota)
+    await addon.requestheaders(flow)
+    await addon.request(flow)
+    assert quota.taken == [] and flow.response is None
+
+
+@pytest.mark.parametrize(
+    "verdict, status",
+    [(OVER, 429), (QuotaVerdict(reason="quota-unavailable"), 503)],
+    ids=["exceeded", "unavailable"],
+)
+async def test_past_the_quota_the_box_is_answered_and_nothing_is_sent(
+    caplog, verdict, status
+):
+    flow = tflow.tflow()
+    addon = addon_for(flow, quota=Quota(verdict))
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    # An answer set in ``request`` is what mitmproxy sends instead of the
+    # request itself.
+    assert flow.response is not None
+    assert flow.response.status_code == status
+    assert "request not sent" in (flow.response.text or "")
+    if status == 429:
+        assert flow.response.headers["retry-after"] == "42"
+    # Audited once, as refused, and never as swapped.
+    assert audit(caplog) == [("refused-request", verdict.reason)]
+    assert TOKEN not in caplog.text
+
+
+async def test_past_the_quota_a_request_with_an_unmeasured_body_is_killed(caplog):
+    """Its head is swapped before the body is read; mitmproxy may yet stream
+    that body, so it cannot be answered, only stopped."""
+    flow = tflow.tflow()
+    flow.live = True
+    addon = addon_for(flow, quota=Quota(OVER))
+    flow.request.http_version = "HTTP/2.0"
+    flow.request.headers.pop("content-length", None)
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.raw_content = None
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+    assert flow.error is not None and not flow.killable
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]

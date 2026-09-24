@@ -11,6 +11,7 @@ from redis.asyncio.cluster import ClusterNode, RedisCluster
 from swap_proxy.addon import MAX_BODY_BYTES, SwapProxyAddon
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import OwnerDirectory
+from swap_proxy.quota import RequestQuota
 from swap_proxy.settings import Settings
 from swap_proxy.source import BackendCredentialSource
 
@@ -110,8 +111,14 @@ async def run() -> None:
     redis = connect_redis(settings)
     await redis.ping()
     source = BackendCredentialSource(settings.backend_url)
+    quota = RequestQuota(
+        redis,
+        per_box=settings.quota_per_box,
+        per_user=settings.quota_per_user,
+        window=settings.quota_window_seconds,
+    )
     addon = SwapProxyAddon(
-        OwnerDirectory(redis), source, EgressGuard(settings.egress_allow)
+        OwnerDirectory(redis), source, EgressGuard(settings.egress_allow), quota=quota
     )
     master = build_master(
         addon, settings.listen_host, settings.listen_port, settings.confdir

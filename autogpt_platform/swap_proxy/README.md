@@ -51,6 +51,12 @@ users at once.
    box's egress is pinned): a provider outside it comes back with no host it
    may be sent to, scrubbed but never swapped.
    (`swap_proxy/swap.py`, `swap_proxy/source.py`)
+   A request that gets a value swapped in counts against a quota per box and
+   per user, in a fixed window shared by every replica through Redis. Past
+   either limit, or if the count cannot be taken, the request is not sent:
+   the box gets a `429` (or `503`) whose body says why and when the limit
+   resets, and the audit says `refused-request` / `quota-exceeded` or
+   `quota-unavailable`. (`swap_proxy/quota.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it,
    and so is the exact base64 of an HTTP Basic pair the proxy built, which a
@@ -180,6 +186,8 @@ poetry run swap-proxy
 | `SWAP_PROXY_CONFDIR` | `~/.mitmproxy` | directory the signing CA is mounted into; see below |
 | `SWAP_PROXY_GENERATE_CA` | `false` | local runs only: generate a CA if the directory has none |
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
+| `SWAP_PROXY_QUOTA_PER_BOX` / `SWAP_PROXY_QUOTA_PER_USER` | `1000` / `3000` | credentialed requests per box (session or expert) and per user in each window; `0` turns one off |
+| `SWAP_PROXY_QUOTA_WINDOW_SECONDS` | `3600` | the quota's fixed window |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend |
 
 ### The signing CA
@@ -341,6 +349,11 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   reconnect rotates it), but the backend no longer knows its box: from then on
   nothing is swapped into it, and its text responses from bound hosts are
   refused as while the backend is down, until the client opens a new one.
+- The quota counts requests that get a value swapped in, nothing else. A
+  request over it whose body is large or of unknown length (a big `git push`)
+  is cut off rather than answered, since its body may already be streaming;
+  the audit still says why. A body swapped while it streams (`swap_anywhere`
+  only) is not counted.
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.
