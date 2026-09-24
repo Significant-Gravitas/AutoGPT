@@ -93,3 +93,8 @@ async def test_only_a_held_call_with_a_subject_offers_a_key():
     with patch.object(held, "_held", AsyncMock(return_value=calls)):
         keys = await held.subject_keys("s", ["mcp", "tool", "read", "gone"])
     assert keys == {"mcp": "mcp:h/t"}
+
+
+async def test_an_unreadable_store_approves_without_a_rule():
+    with patch.object(held, "_held", AsyncMock(side_effect=ConnectionError)):
+        assert await held.subject_keys("s", ["mcp"]) == {}

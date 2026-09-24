@@ -33,8 +33,8 @@ class Subject(BaseModel):
     effect: Effect
     # The line the card shows under the name; empty where nothing asks.
     reason: str = ""
-    # A judge rule still asks: the supervisor may not wave through what
-    # cannot be taken back.
+    # Shows "Can't be undone" and keeps the card out of approve-all; a judge
+    # rule still covers it.
     irreversible: bool = False
     # What one call is expected to cost, in microdollars; a paid read asks
     # once the turn's tree is over its ceiling.
