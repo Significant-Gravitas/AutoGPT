@@ -64,13 +64,23 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
         "name": "GitHub",
         "env_vars": ["GH_TOKEN", "GITHUB_TOKEN"],
         "default_scopes": ["repo"],
-        # The API, git over HTTPS, and release asset uploads.
-        "swap_hosts": ["github.com", "api.github.com", "uploads.github.com"],
-        # raw., objects., gist., media. (LFS) and the other user-content
-        # domains, and gists' own pages.  codeload.github.com is left out: it
-        # serves only archives, which are binary and never scrubbed, so opening
-        # its traffic would cost TLS termination and protect nothing.
-        "content_hosts": [".githubusercontent.com", "gist.github.com"],
+        # The API, git over HTTPS, release asset uploads, and the two
+        # GitHub-owned content hosts that do take the token: a private repo's
+        # raw file (``Authorization: token ...`` to raw.githubusercontent.com)
+        # and git over HTTPS to a gist (Basic auth to gist.github.com).
+        "swap_hosts": [
+            "github.com",
+            "api.github.com",
+            "uploads.github.com",
+            "raw.githubusercontent.com",
+            "gist.github.com",
+        ],
+        # objects., gist., media. (LFS) and the other user-content domains:
+        # served from signed URLs, they never need the token, so they are only
+        # scrubbed.  codeload.github.com is left out: it serves only archives,
+        # which are binary and never scrubbed, so opening its traffic would
+        # cost TLS termination and protect nothing.
+        "content_hosts": [".githubusercontent.com"],
     },
 }
 

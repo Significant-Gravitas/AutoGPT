@@ -772,6 +772,25 @@ class TestPlaceholders:
         assert "username=x-access-token\n" in result.stdout
         assert "password=hsurr:github:cred-1\n" in result.stdout
 
+    @pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+    def test_git_answers_for_a_gist_too(self, tmp_path):
+        env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "GIT_TERMINAL_PROMPT": "0",
+            "GH_TOKEN": "hsurr:github:cred-1",
+            **git_credential_helper_env(),
+        }
+        result = subprocess.run(
+            ["git", "credential", "fill"],
+            input="protocol=https\nhost=gist.github.com\npath=abc.git\n\n",
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        )
+        assert "password=hsurr:github:cred-1\n" in result.stdout
+
 
 class TestGitIdentityGoesThroughRequests:
     """A host-side call with the real token: through Requests' address checks
