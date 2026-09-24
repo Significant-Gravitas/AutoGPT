@@ -35,6 +35,11 @@ def test_is_client_rendered_shell_detects_single_quoted_root():
     assert _is_client_rendered_shell(html, "Home Menu Contact") is True
 
 
+def test_is_client_rendered_shell_ignores_unrelated_attributes_with_root():
+    html = '<html><body><div data-testid="root">Content</div><div id="root-heading">Title</div></body></html>'
+    assert _is_client_rendered_shell(html, "Content Title") is False
+
+
 def test_html_cleaner_filters_scripts_and_styles_safely():
     dirty_html = (
         "<html><head><script type='text/javascript'>const a = '<p>code</p>';</script>"

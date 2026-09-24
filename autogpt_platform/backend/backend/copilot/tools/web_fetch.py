@@ -42,7 +42,7 @@ _TEXT_CONTENT_TYPES = {
 
 # SPA container and fallback signals
 _SPA_SHELL_PATTERNS = re.compile(
-    r"""id\s*=\s*['"]?(?:root|__next|app)['"]?""",
+    r"""(?<![-a-zA-Z0-9_])id\s*=\s*['"]?(?:root|__next|app)['"]?(?=[\s>/]|$)""",
     re.IGNORECASE,
 )
 _SPA_FALLBACK_TEXT = "you need to enable javascript to run this app"
@@ -51,7 +51,7 @@ _SPA_FALLBACK_TEXT = "you need to enable javascript to run this app"
 class _HTMLCleaner(HTMLParser):
     """Filter out script, style, noscript, and svg elements from HTML before text extraction."""
 
-    _DROP_TAGS = {"script", "style", "noscript", "svg"}
+    _DROP_TAGS = frozenset({"script", "style", "noscript", "svg"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=False)
@@ -114,7 +114,10 @@ def _html_to_text(html: str) -> str:
     try:
         cleaner.feed(html)
         cleaned_html = cleaner.get_cleaned_html()
-    except Exception:
+    except Exception as err:
+        logger.debug(
+            "HTML cleaner encountered an error, falling back to raw html: %s", err
+        )
         cleaned_html = html
     h = html2text.HTML2Text()
     h.ignore_links = False
