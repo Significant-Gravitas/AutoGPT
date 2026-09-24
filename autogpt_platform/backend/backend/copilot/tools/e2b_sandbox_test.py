@@ -1985,7 +1985,7 @@ class TestCreationEnvBehindTheSwapProxy:
         kwargs = self._create(proxy="proxy:1080", user_id="user-a")
         assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
         assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
-        self.lookup.assert_awaited_once_with("user-a")
+        self.lookup.assert_awaited_once_with("user-a", providers=None)
         self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
 
     def test_without_the_proxy_the_create_call_is_unchanged(self):
@@ -2005,6 +2005,36 @@ class TestGrantsAreRenewedOnReconnect:
     that will run work renews its grants, behind the proxy only."""
 
     def _reconnect(self, *, proxy, pin_egress=True, user_id="user-a"):
+
+
+class TestProviderCeilingIsPinned:
+    """The turn's ceiling on connected accounts reaches the box's egress
+    record at create and at every reconnect (``e2b_network``)."""
+
+    def test_on_create(self):
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk(),
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.create_sandbox",
+                AsyncMock(return_value=_mock_sandbox("sb-new")),
+            ) as create,
+        ):
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID,
+                    _API_KEY,
+                    timeout=_TIMEOUT,
+                    user_id="user-a",
+                    providers=("github",),
+                )
+            )
+        egress_owner = create.await_args.args[1]
+        assert egress_owner.user_id == "user-a"
+        assert egress_owner.providers == ("github",)
+
+    def test_on_reconnect(self):
         owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
         stamp = owner.creation_metadata(user_id="user-a")
         with (
@@ -2042,3 +2072,12 @@ class TestGrantsAreRenewedOnReconnect:
     )
     def test_otherwise_nothing_is_renewed(self, kwargs):
         self._reconnect(**kwargs).assert_not_awaited()
+
+
+            ) as connect,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=())
+            )
+        assert connect.await_args.args[2].providers == ()

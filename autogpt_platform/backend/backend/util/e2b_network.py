@@ -52,6 +52,10 @@ from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+# One JSON line per pin: which box, for whom, and which of the user's accounts
+# its requests may be given.  Never a value; the proxy's own audit has the
+# requests themselves.
+audit_logger = logging.getLogger("backend.egress_audit")
 
 _CREDENTIAL_KEY_PREFIX = "e2b:egress:cred:"
 _BOX_KEY_PREFIX = "e2b:egress:box:"
@@ -77,6 +81,11 @@ class EgressOwner(BaseModel):
     (``swaps``): a block runs a graph someone else may have written, and a
     marketplace agent must not get to act with the GitHub account of whoever
     runs it.
+
+    *providers* is the ceiling on which of the user's providers the box may
+    use (the turn's ``CopilotPermissions``); ``None`` means every one.  It is
+    recorded with the credential, and the backend's swap service refuses a
+    value for any provider outside it.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -84,6 +93,7 @@ class EgressOwner(BaseModel):
     kind: Literal["session", "expert", "block"]
     id: str
     user_id: Optional[str] = None
+    providers: Optional[tuple[str, ...]] = None
 
     @property
     def label(self) -> str:
@@ -159,6 +169,7 @@ async def create_sandbox(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         sandbox.sandbox_id,
         owner.label,
     )
+    _audit_pin("created", sandbox.sandbox_id, owner)
     return sandbox
 
 
@@ -212,6 +223,7 @@ async def connect_sandbox(
     logger.info(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
+    _audit_pin("reconnected", sandbox_id, owner)
     return sandbox
 
 
@@ -255,6 +267,27 @@ async def credential_record(username: str) -> Optional[dict[str, Any]]:
     return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
 
 
+def _audit_pin(event: str, sandbox_id: str, owner: EgressOwner) -> None:
+    """Record whose credentials a box's requests may be given from now on:
+    the per-box half of the audit trail, the proxy's lines being the
+    per-request half."""
+    audit_logger.info(
+        json.dumps(
+            {
+                "event": event,
+                "sandbox_id": sandbox_id,
+                "owner": owner.label,
+                "user_id": owner.user_id,
+                "swaps": owner.swaps,
+                "providers": (
+                    sorted(owner.providers) if owner.providers is not None else "all"
+                ),
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def _mint() -> ProxyCredential:
     return ProxyCredential(
         username=f"box-{secrets.token_hex(8)}", secret=secrets.token_urlsafe(32)
@@ -287,6 +320,8 @@ async def _remember(
         "user_id": owner.user_id,
         # Absent or false means the proxy swaps nothing for this box.
         "swaps": owner.swaps,
+        # None: every provider.  Read by the backend, never by the box.
+        "providers": list(owner.providers) if owner.providers is not None else None,
         "sandbox_id": sandbox_id,
         "secret_sha256": secret_digest(credential.secret),
     }

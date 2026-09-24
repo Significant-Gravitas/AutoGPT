@@ -642,8 +642,8 @@ async def _admitted_turn_envelope(
 def _narrow_permissions(
     permissions: CopilotPermissions | None, envelope: TurnEnvelope
 ) -> CopilotPermissions | None:
-    """The envelope's tool set as the turn's whitelist, keeping any block
-    filter the caller passed. Hides the tools from the model; the refusal
+    """The envelope's tool set as the turn's whitelist, keeping any block and
+    provider filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
     if narrowed is None:
@@ -662,6 +662,8 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
+        providers=permissions.providers,
+        providers_exclude=permissions.providers_exclude,
     )
 
 

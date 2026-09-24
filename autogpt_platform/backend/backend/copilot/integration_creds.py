@@ -23,7 +23,7 @@ creds-changed bus does.  See ``_ensure_cache_invalidation_listener``.
 import asyncio
 import logging
 import threading
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import cast
 
 import aiohttp
@@ -414,14 +414,16 @@ async def placeholder_grants(
     user_id: str,
     required_scopes: Mapping[str, frozenset[str]] | None = None,
     selected: Mapping[str, str] | None = None,
+    providers: Collection[str] | None = None,
 ) -> dict[str, str]:
     """Provider to credential id: for each provider, the credential
     ``get_integration_env_vars`` would have injected with the same arguments
     (the chat's pick, else the best match for the requested scopes).  A
     provider with none (not connected, the pick deleted, a failed refresh) is
-    left out."""
+    left out, and so is one outside the run's ceiling *providers* (``None``:
+    every provider)."""
     grants: dict[str, str] = {}
-    for provider in PROVIDER_ENV_VARS:
+    for provider, _ in _permitted(providers):
         scopes = (required_scopes or {}).get(provider, frozenset())
         credential_id = await get_provider_credential_id(
             user_id, provider, scopes, (selected or {}).get(provider)
@@ -494,10 +496,20 @@ async def granted_to_box(sandbox_id: str, provider: str) -> set[str]:
     return {m.decode() if isinstance(m, bytes) else m for m in members}
 
 
+def _permitted(providers: Collection[str] | None) -> list[tuple[str, list[str]]]:
+    """``PROVIDER_ENV_VARS`` items within the ceiling *providers* (all: None)."""
+    return [
+        (provider, var_names)
+        for provider, var_names in PROVIDER_ENV_VARS.items()
+        if providers is None or provider in providers
+    ]
+
+
 async def get_integration_env_vars(
     user_id: str,
     required_scopes: Mapping[str, frozenset[str]] | None = None,
     selected: Mapping[str, str] | None = None,
+    providers: Collection[str] | None = None,
 ) -> dict[str, str]:
     """Return env vars for all providers the user has connected.
 
@@ -506,9 +518,11 @@ async def get_integration_env_vars(
     Only providers with a stored credential contribute entries.
     *required_scopes* maps a provider to the scopes its token should carry, and
     *selected* to the credential the user picked for it in this chat.
+    *providers*, when given, is the run's ceiling: a provider outside it gets
+    no variable.
     """
     env: dict[str, str] = {}
-    for provider, var_names in PROVIDER_ENV_VARS.items():
+    for provider, var_names in _permitted(providers):
         scopes = (required_scopes or {}).get(provider, frozenset())
         token = await get_provider_token(
             user_id, provider, scopes, (selected or {}).get(provider)

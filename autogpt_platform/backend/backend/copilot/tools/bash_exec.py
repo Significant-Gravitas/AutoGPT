@@ -30,6 +30,7 @@ from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_current_permissions,
     get_current_sandbox,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
@@ -43,6 +44,7 @@ from backend.copilot.integration_creds import (
     placeholder_grants,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import allowed_providers
 from backend.util.e2b_network import proxy_address
 
 from .base import BaseTool
@@ -231,8 +233,16 @@ class BashExecTool(BaseTool):
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
+            # The run's ceiling on connected accounts.  Without the proxy,
+            # leaving a provider's token out is what keeps it from the box.
+            # Behind it, a provider outside the ceiling gets no grant (and so
+            # empty variables); the ceiling recorded when the box's egress was
+            # pinned, enforced by the swap service, is what holds.
+            providers = allowed_providers(get_current_permissions())
             if proxy_address() is not None:
-                grants = await placeholder_grants(user_id, required_scopes, selected)
+                grants = await placeholder_grants(
+                    user_id, required_scopes, selected, providers
+                )
                 try:
                     # Before the command runs: its placeholders resolve only
                     # for credentials granted to this box.
@@ -248,7 +258,7 @@ class BashExecTool(BaseTool):
                 envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
-                    user_id, required_scopes, selected
+                    user_id, required_scopes, selected, providers
                 )
                 secret_values = [v for v in integration_env.values() if v]
                 envs.update(integration_env)

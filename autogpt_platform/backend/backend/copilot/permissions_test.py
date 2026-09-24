@@ -13,6 +13,7 @@ from backend.copilot.permissions import (
     CopilotPermissions,
     _block_matches,
     all_known_tool_names,
+    allowed_providers,
     apply_tool_permissions,
     validate_block_identifiers,
     validate_tool_names,
@@ -814,3 +815,51 @@ class TestApplyToolPermissionsIsLossless:
             for name in allowed_unfiltered
             if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
         }
+
+
+# ---------------------------------------------------------------------------
+# Providers: the ceiling on a run's connected accounts
+# ---------------------------------------------------------------------------
+
+
+class TestProviders:
+    def test_no_filter_allows_every_provider(self):
+        perms = CopilotPermissions()
+        assert perms.is_provider_allowed("github")
+        assert allowed_providers(perms) is None
+        assert allowed_providers(None) is None
+
+    def test_deny_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert not perms.is_provider_allowed("github")
+        assert perms.is_provider_allowed("linear")
+        assert allowed_providers(perms) == ()
+        assert not perms.is_empty()
+
+    def test_allow_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=False)
+        assert perms.is_provider_allowed("github")
+        assert not perms.is_provider_allowed("linear")
+        # Every provider a box can be handed is allowed: no ceiling to record.
+        assert allowed_providers(perms) is None
+
+    def test_an_allow_list_of_nothing_the_box_can_use_allows_nothing(self):
+        perms = CopilotPermissions(providers=["linear"], providers_exclude=False)
+        assert allowed_providers(perms) == ()
+
+    def test_a_tool_filter_alone_does_not_restrict_providers(self):
+        perms = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+        assert allowed_providers(perms) is None
+
+    def test_a_child_cannot_widen_its_parent(self):
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_the_ceiling_survives_serialisation(self):
+        """Permissions cross the executor queue as JSON."""
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        again = CopilotPermissions.model_validate_json(perms.model_dump_json())
+        assert not again.is_provider_allowed("github")

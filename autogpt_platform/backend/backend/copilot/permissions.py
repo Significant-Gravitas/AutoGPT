@@ -44,7 +44,18 @@ tools are denied and everything else is allowed.  An empty list means
 ``tools_exclude=False`` — ``tools`` is a **whitelist**; only listed tools
 are allowed.
 
-``blocks_exclude`` follows the same pattern for ``blocks``.
+``blocks_exclude`` follows the same pattern for ``blocks``, and
+``providers_exclude`` for ``providers``.
+
+Providers
+---------
+``providers`` filters the connected accounts a run's sandbox may use, by
+provider slug (``github``).  It is a ceiling on credentials, not on tools: the
+backend records it on the sandbox when the box's egress is pinned
+(``backend.util.e2b_network``), and the swap proxy's credential service
+(``backend.copilot.swap_credentials``) refuses to hand out a value for a
+provider outside it.  Nothing in the sandbox enforces it, so nothing there can
+widen it.
 
 Denying a capability denies the tools that extend it (see
 ``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
@@ -69,6 +80,8 @@ import re
 from typing import TYPE_CHECKING, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -403,12 +416,18 @@ class CopilotPermissions(BaseModel):
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
         blocks_exclude: Same semantics as *tools_exclude* but for blocks.
+        providers: Provider slugs (``github``) whose connected accounts the
+            run's sandbox may use.
+        providers_exclude: Same semantics as *tools_exclude* but for
+            providers.
     """
 
     tools: list[str] = []
     tools_exclude: bool = True
     blocks: list[str] = []
     blocks_exclude: bool = True
+    providers: list[str] = []
+    providers_exclude: bool = True
 
     # Private: parent permissions for recursion inheritance.
     # Set only by merged_with_parent(); never exposed in block input schema.
@@ -461,6 +480,21 @@ class CopilotPermissions(BaseModel):
         return not matched if self.blocks_exclude else matched
 
     # ------------------------------------------------------------------
+    # Provider helpers
+    # ------------------------------------------------------------------
+
+    def is_provider_allowed(self, provider: str) -> bool:
+        """True if the run may use the user's *provider* account; the whole
+        inheritance chain must agree."""
+        if self.providers:
+            listed = provider in self.providers
+            if listed == self.providers_exclude:
+                return False
+        if self._parent is not None:
+            return self._parent.is_provider_allowed(provider)
+        return True
+
+    # ------------------------------------------------------------------
     # Recursion / merging
     # ------------------------------------------------------------------
 
@@ -472,8 +506,9 @@ class CopilotPermissions(BaseModel):
         """Return a new instance that is at most as permissive as *parent*.
 
         - Tools: intersection of effective-allowed sets, stored as a whitelist.
-        - Blocks: parent is stored internally; both constraints are applied
-          during :meth:`is_block_allowed`.
+        - Blocks and providers: parent is stored internally; both
+          constraints are applied during :meth:`is_block_allowed` and
+          :meth:`is_provider_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
@@ -483,6 +518,8 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            providers=self.providers,
+            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
         return result
@@ -493,7 +530,12 @@ class CopilotPermissions(BaseModel):
 
     def is_empty(self) -> bool:
         """Return True when no filtering is configured (allow-all passthrough)."""
-        return not self.tools and not self.blocks and self._parent is None
+        return (
+            not self.tools
+            and not self.blocks
+            and not self.providers
+            and self._parent is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +571,22 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def allowed_providers(
+    permissions: CopilotPermissions | None,
+) -> tuple[str, ...] | None:
+    """The providers a run may use, of those a sandbox can be handed; ``None``
+    when nothing restricts them, which is what a box's egress record stores
+    for "every provider"."""
+    if permissions is None or permissions.is_empty():
+        return None
+    allowed = tuple(
+        p for p in SUPPORTED_PROVIDERS if permissions.is_provider_allowed(p)
+    )
+    if len(allowed) == len(SUPPORTED_PROVIDERS):
+        return None
+    return allowed
 
 
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:

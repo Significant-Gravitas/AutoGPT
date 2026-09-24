@@ -302,3 +302,14 @@ class TestNarrowPermissions:
         assert merged is not None
         assert merged.tools_exclude is False
         assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}
+
+    def test_the_callers_provider_ceiling_is_kept(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"bash_exec"})}
+        )
+        caller = CopilotPermissions(providers=["github"], providers_exclude=True)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        assert not merged.is_provider_allowed("github")

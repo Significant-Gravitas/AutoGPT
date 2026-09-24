@@ -77,7 +77,7 @@ class TestBashExecE2BTokenInjection:
             )
 
         # The session's picks reach the token lookup, not just its scopes.
-        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED)
+        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED, None)
         # And the commit identity comes from that same GitHub account, so a
         # commit made with one account's token is not signed as another's.
         mock_identity.assert_awaited_once_with(_USER, "cred-picked")
@@ -495,3 +495,51 @@ class TestBashExecWithoutTheSwapProxy:
         envs = sandbox.commands.run.call_args[1]["envs"]
         assert envs["GH_TOKEN"] == "gh-secret"
         assert "GIT_CONFIG_COUNT" not in envs
+
+
+class TestBashExecUnderAProviderCeiling:
+    """A run whose permissions leave GitHub out gets no GitHub variable,
+    with or without the proxy."""
+
+    @pytest.fixture(autouse=True)
+    def no_github(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.tools.bash_exec.get_current_permissions",
+            return_value=CopilotPermissions(
+                providers=["github"], providers_exclude=True
+            ),
+        ):
+            yield
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("proxy", [None, "proxy:1080"])
+    async def test_github_is_left_out(self, proxy):
+        sandbox = _make_sandbox(stdout="ok")
+        session = make_session(user_id=_USER)
+        with (
+            patch("backend.copilot.tools.bash_exec.proxy_address", return_value=proxy),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ) as real,
+            patch(
+                "backend.copilot.tools.bash_exec.placeholder_grants",
+                new=AsyncMock(return_value={}),
+            ) as placeholders,
+            patch("backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        called = placeholders if proxy else real
+        assert called.await_args.args[3] == ()
