@@ -80,6 +80,8 @@ class TestApplyBuildingModeRestart:
         oversight_supplement: str = "",
         team_building_supplement: str = "",
         role_charter: str = "",
+        use_e2b: bool = False,
+        expert_id: str | None = None,
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -91,6 +93,7 @@ class TestApplyBuildingModeRestart:
             new=mocker.AsyncMock(return_value=suffix),
         )
         session = _session(requested=True, guide_loaded=False)
+        session.expert_id = expert_id
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
         )
@@ -105,7 +108,7 @@ class TestApplyBuildingModeRestart:
             team_building_supplement=team_building_supplement,
             graphiti_supplement="",
             role_charter=role_charter,
-            use_e2b=False,
+            use_e2b=use_e2b,
             session_id="sess-1",
             message_id="msg-1",
             log_prefix="[test]",
@@ -150,6 +153,26 @@ class TestApplyBuildingModeRestart:
         prompt = state.options.system_prompt
         text = prompt if isinstance(prompt, str) else prompt["append"]
         assert marker in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "use_e2b, expert_id, expected",
+        [(True, None, 1), (True, "expert-1", 0), (False, None, 0)],
+    )
+    async def test_computer_note_only_for_a_plain_e2b_session(
+        self, mocker, use_e2b, expert_id, expected
+    ):
+        """An expert session's computer block rides its first user message, so
+        the system prompt must not add a second one."""
+        mocker.patch(
+            "backend.copilot.sdk.service.build_expert_identity_suffix",
+            new=mocker.AsyncMock(return_value=""),
+        )
+        _, state, _, _ = await self._run(mocker, use_e2b=use_e2b, expert_id=expert_id)
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert text.count("### Your computer") == expected
 
     @pytest.mark.asyncio
     async def test_empty_suffix_relaunches_without_the_confirmation(self, mocker):

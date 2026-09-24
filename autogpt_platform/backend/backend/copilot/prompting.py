@@ -9,6 +9,8 @@ handling the distinction between:
 from functools import cache
 from typing import Literal
 
+from backend.blocks.desktop._api import DISPLAY
+
 # Which seat this session occupies on the user's team: Otto is the head of
 # staff, an expert session is one hired employee. The role only changes
 # wording in the role-aware supplements — tool availability is gated
@@ -615,8 +617,27 @@ what happened so the user knows the turn is complete.
 """
 
 
+# Plain chats only: an expert session is told about its own machine by
+# ``expert_context.render_expert_computer_block``. bash_exec does not set DISPLAY.
+_COMPUTER_NOTE = f"""
+### Your computer
+The cloud sandbox is also a computer with a screen. `start_desktop` turns the
+screen on and streams it to the user; use it when a task needs a GUI app, or a
+browser the user should watch or take over.
+- The screen shows only what runs in the sandbox on its display: after
+  `start_desktop`, launch the app or browser with `bash_exec`, in the
+  background with `DISPLAY={DISPLAY}`. `browser_*` tools run elsewhere and never
+  appear on it.
+- It lives with this session: files and installed tools outside `~/workspace`
+  are lost when the session expires.
+- The desktop is shared with the user, not private from either of you. Never
+  ask them to sign into personal accounts on it; use their connected
+  integrations instead.
+"""
+
+
 @cache
-def get_sdk_supplement(use_e2b: bool) -> str:
+def get_sdk_supplement(use_e2b: bool, expert_session: bool = False) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
@@ -633,16 +654,19 @@ def get_sdk_supplement(use_e2b: bool) -> str:
 
     Args:
         use_e2b: Whether E2B cloud sandbox is being used
+        expert_session: Whether the session belongs to an expert, whose own
+            ``<expert_computer>`` block replaces the computer note
 
     Returns:
         The supplement string to append to the system prompt
     """
-    base = (
-        _get_cloud_sandbox_supplement()
-        if use_e2b
-        else _get_local_storage_supplement("/tmp/copilot-<session-id>")
-    )
-    return base + _USER_FOLLOW_UP_NOTE
+    if not use_e2b:
+        return (
+            _get_local_storage_supplement("/tmp/copilot-<session-id>")
+            + _USER_FOLLOW_UP_NOTE
+        )
+    computer = "" if expert_session else _COMPUTER_NOTE
+    return _get_cloud_sandbox_supplement() + computer + _USER_FOLLOW_UP_NOTE
 
 
 # The one reply a chat-platform bot does not deliver. A message on Discord,

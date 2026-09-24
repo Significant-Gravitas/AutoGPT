@@ -39,7 +39,7 @@ def test_speech_meters_the_synthesis_against_the_users_plan(
     assert kwargs["user_id"] == test_user_id
     assert kwargs["provider"] == "openai"
     assert kwargs["block_name_override"] == speech_module.TTS_BLOCK_NAME
-    assert kwargs["graph_exec_id_override"] == "sess-1"
+    assert kwargs["chat_session_id_override"] == "sess-1"
     assert kwargs["cost_usd"] == speech_module.speech_cost_usd(
         len("Two sentences here.")
     )

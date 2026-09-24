@@ -1,24 +1,29 @@
 "use client";
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
-import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject } from "react";
-import { AlertCircleIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import {
+  AlertCircleIcon,
+  Folder01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
+import type { MentionOption } from "../useChatMentions";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  files: WorkspaceFileItem[];
+  options: MentionOption[];
   isLoading: boolean;
   isError: boolean;
   highlightedIndex: number;
   highlightedRef: MutableRefObject<HTMLButtonElement | null>;
-  onSelect: (item: WorkspaceFileItem) => void;
+  onSelect: (option: MentionOption) => void;
   onHighlight: (index: number) => void;
 }
 
 export function MentionDropdown({
-  files,
+  options,
   isLoading,
   isError,
   highlightedIndex,
@@ -26,7 +31,7 @@ export function MentionDropdown({
   onSelect,
   onHighlight,
 }: Props) {
-  const showEmpty = !isLoading && !isError && files.length === 0;
+  const showEmpty = !isLoading && !isError && options.length === 0;
 
   return (
     <div
@@ -55,21 +60,26 @@ export function MentionDropdown({
       {showEmpty && (
         <p className="px-3 py-2 text-sm text-zinc-500">No matching files.</p>
       )}
-      {files.map((file, index) => {
+      {options.map((option, index) => {
         const isHighlighted = index === highlightedIndex;
-        const fileIcon = getFileTypeIcon(file.mime_type);
+        const isFolder = option.kind === "folder";
+        const name = isFolder ? option.folder.name : option.file.name;
+        const count = isFolder
+          ? folderSummary(option.folder.file_count ?? 0, option.subfolderCount)
+          : null;
         return (
           <button
-            key={file.id}
+            key={isFolder ? `folder-${option.folder.id}` : option.file.id}
             ref={isHighlighted ? highlightedRef : undefined}
             type="button"
             role="option"
             aria-selected={isHighlighted}
+            aria-label={isFolder ? `Folder ${name}, ${count}` : undefined}
             // preventDefault on mousedown keeps focus in the textarea so the
             // caret/selection used to strip the @query stays valid.
             onMouseDown={(e) => {
               e.preventDefault();
-              onSelect(file);
+              onSelect(option);
             }}
             onMouseEnter={() => onHighlight(index)}
             className={cn(
@@ -77,8 +87,16 @@ export function MentionDropdown({
               isHighlighted ? "bg-zinc-100 text-zinc-900" : "text-zinc-700",
             )}
           >
-            <Icon icon={fileIcon} className="h-4 w-4 shrink-0 text-zinc-900" />
-            <span className="min-w-0 flex-1 truncate">{file.name}</span>
+            <Icon
+              icon={
+                isFolder ? Folder01Icon : getFileTypeIcon(option.file.mime_type)
+              }
+              className="h-4 w-4 shrink-0 text-zinc-900"
+            />
+            <span className="min-w-0 flex-1 truncate">{name}</span>
+            {count ? (
+              <span className="shrink-0 text-xs text-zinc-500">{count}</span>
+            ) : null}
           </button>
         );
       })}

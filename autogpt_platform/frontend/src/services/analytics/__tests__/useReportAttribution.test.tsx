@@ -1,5 +1,9 @@
 import { server } from "@/mocks/mock-server";
-import { consent } from "@/services/consent/cookies";
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -44,13 +48,8 @@ function captureReports(status = 200) {
 }
 
 function setAnalyticsConsent(analytics: boolean): void {
-  consent.save({
-    hasConsented: true,
-    timestamp: Date.now(),
-    analytics,
-    monitoring: false,
-    advertising: false,
-  });
+  configureCookiebot();
+  installCookiebot({ statistics: analytics });
 }
 
 beforeEach(() => {
@@ -61,6 +60,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  removeCookiebot();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

@@ -159,7 +159,9 @@ def chat_system_prompt(expert: Expert | None) -> str:
     )
     return assemble_system_prompt(
         CACHEABLE_SYSTEM_PROMPT,
-        engine_supplement=get_sdk_supplement(use_e2b=True),
+        engine_supplement=get_sdk_supplement(
+            use_e2b=True, expert_session=expert is not None
+        ),
         delegation_supplement=(
             get_delegation_supplement(role) if DELEGATION_ENABLED else ""
         ),
