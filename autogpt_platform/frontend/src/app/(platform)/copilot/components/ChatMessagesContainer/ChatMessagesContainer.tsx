@@ -68,6 +68,10 @@ import {
   type SentFrom,
 } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
+import {
+  WORKSPACE_FOLDER_PART_TYPE,
+  type WorkspaceFolderPartData,
+} from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -641,6 +645,11 @@ export function ChatMessagesContainer({
             const fileParts = renderableParts.filter(
               (p): p is FileUIPart => p.type === "file",
             );
+            const folderParts = renderableParts.flatMap((p) =>
+              p.type === WORKSPACE_FOLDER_PART_TYPE
+                ? [(p as { data: WorkspaceFolderPartData }).data]
+                : [],
+            );
 
             const sentFrom = readOnly
               ? null
@@ -751,9 +760,10 @@ export function ChatMessagesContainer({
                     />
                   </MessageActions>
                 )}
-                {fileParts.length > 0 && (
+                {(fileParts.length > 0 || folderParts.length > 0) && (
                   <MessageAttachments
                     files={fileParts}
+                    folders={folderParts}
                     isUser={message.role === "user"}
                     filePattern={filePattern}
                     readOnly={readOnly}

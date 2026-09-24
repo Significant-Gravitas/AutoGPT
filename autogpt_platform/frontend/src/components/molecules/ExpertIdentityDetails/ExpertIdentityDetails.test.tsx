@@ -14,9 +14,9 @@ describe("ExpertIdentityDetails", () => {
         />,
       );
 
-      const area = screen.getByText("Social media");
+      const area = screen.getByText("Social Media Manager");
       const chip = area.parentElement;
-      expect(screen.getAllByText("Social media")).toHaveLength(1);
+      expect(screen.getAllByText("Social Media Manager")).toHaveLength(1);
       expect(chip?.classList.contains("bg-zinc-50")).toBe(true);
       expect(chip?.classList.contains("rounded-full")).toBe(true);
       expect(chip?.querySelector("svg")).not.toBeNull();
@@ -60,8 +60,61 @@ describe("ExpertIdentityDetails", () => {
       />,
     );
     expect(
-      screen.getByText("Social media").classList.contains("leading-4"),
+      screen.getByText("Social Media Manager").classList.contains("leading-4"),
     ).toBe(true);
     expect(container.querySelector("svg")).toBeNull();
   });
 });
+
+test("does not grant Otto's identity exception from a specialist title", () => {
+  render(<ExpertIdentityDetails name="My Expert" role="Head of AI" />);
+  expect(screen.getByText("AI Expert")).toBeDefined();
+  expect(screen.queryByText("Your personal Head of AI")).toBeNull();
+});
+
+test.each(["compact", "card", "page"] as const)(
+  "discloses AI for an Expert without a role or title in %s size",
+  (size) => {
+    render(
+      <ExpertIdentityDetails
+        name="My Expert"
+        role={null}
+        jobTitle={null}
+        size={size}
+      />,
+    );
+    expect(screen.getByText("AI Expert")).toBeDefined();
+    expect(screen.queryByText("Your personal Head of AI")).toBeNull();
+  },
+);
+
+test("keeps Otto's disclosure without a role or title", () => {
+  render(<ExpertIdentityDetails name="Otto" isOtto />);
+  expect(screen.getByText("Your personal Head of AI")).toBeDefined();
+  expect(screen.queryByText("AI Expert")).toBeNull();
+});
+
+test("shows only name and role for a compact specialist", () => {
+  render(
+    <ExpertIdentityDetails name="Mina" jobTitle="Bookkeeper" size="compact" />,
+  );
+  expect(screen.getByText("Mina")).toBeDefined();
+  expect(screen.getByText("Bookkeeper")).toBeDefined();
+  expect(screen.queryByText("AI Expert")).toBeNull();
+});
+
+test.each(["compact", "card", "page"] as const)(
+  "avoids repeating Otto's role in %s size",
+  (size) => {
+    render(
+      <ExpertIdentityDetails
+        name="Otto"
+        isOtto
+        role="Head of AI"
+        size={size}
+      />,
+    );
+    expect(screen.getByText("Head of AI")).toBeDefined();
+    expect(screen.queryByText("Your personal Head of AI")).toBeNull();
+  },
+);

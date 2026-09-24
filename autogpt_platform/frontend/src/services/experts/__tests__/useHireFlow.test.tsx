@@ -104,7 +104,7 @@ describe("useHireFlow", () => {
     pushMock.mockReset();
     window.sessionStorage.clear();
     server.use(
-      getHireExpertMockHandler({ expert: hiredMaria, failed_preloads: [] }),
+      getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(hiredMaria),
     );
   });
