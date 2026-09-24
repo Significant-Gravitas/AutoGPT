@@ -560,6 +560,7 @@ class DatabaseManager(AppService):
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
+    add_expert_skill_names = _(experts_db.add_expert_skill_names)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
@@ -570,6 +571,7 @@ class DatabaseManager(AppService):
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
     hire_expert = _(experts_db.hire_expert)
+    expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
@@ -967,6 +969,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
     add_expert_skill_name = d.add_expert_skill_name
+    add_expert_skill_names = d.add_expert_skill_names
     remove_expert_skill_name = d.remove_expert_skill_name
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
@@ -975,6 +978,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
     hire_expert = d.hire_expert
+    expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
     count_raised_experts = d.count_raised_experts

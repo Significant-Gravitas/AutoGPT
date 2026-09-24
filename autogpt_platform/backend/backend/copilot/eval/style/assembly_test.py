@@ -124,7 +124,9 @@ def test_chat_prompt_is_base_plus_sdk_supplements_plus_suffix():
     expert = roster_experts(["Frankie"])[0]
     prompt = chat_system_prompt(expert)
     assert prompt.startswith(CACHEABLE_SYSTEM_PROMPT)
-    assert get_sdk_supplement(use_e2b=True) in prompt
+    assert get_sdk_supplement(use_e2b=True, expert_session=True) in prompt
+    assert "### Your computer" not in prompt
+    assert "### Your computer" in chat_system_prompt(None)
     assert prompt.endswith("</expert_identity>")
     assert "<expert_identity>" not in chat_system_prompt(None)
 
