@@ -1084,9 +1084,7 @@ def test_update_expert_skills_passes_explicit_removals_through(
         return_value=_make_expert(name="Maria", skills=[]),
     )
 
-    response = client.put(
-        "/experts/expert-1/skills", json={"remove": [" SEO ", "seo"]}
-    )
+    response = client.put("/experts/expert-1/skills", json={"remove": [" SEO ", "seo"]})
 
     assert response.status_code == 200
     mock_update.assert_awaited_once_with(
