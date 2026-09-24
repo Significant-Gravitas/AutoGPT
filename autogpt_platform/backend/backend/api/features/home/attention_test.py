@@ -6,6 +6,7 @@ from prisma.enums import ReviewStatus
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.references import Reference
 from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -545,3 +546,24 @@ def test_home_previews_lists_and_flags_as_the_card_does() -> None:
         ],
     )
     assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"
+
+
+def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
+    folder = Reference(
+        key="folder_id", entity="library_folder", id="f-9", name="Archive"
+    )
+    agents = [
+        Reference(key="agent_ids", entity="library_agent", id=f"a{i}", name=name)
+        for i, name in enumerate(["Digest", None, "Triage", "Notes", "Inbox"])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        {"agent_ids": [f"a{i}" for i in range(7)], "folder_id": "f-9"},
+        references=[folder, *agents],
+    )
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    item = _one(review)
+
+    assert item.title == "Move agents into a folder “Archive”"
+    assert item.preview == "Agent ids: Digest, a1, Triage, Notes, Inbox +2 more"

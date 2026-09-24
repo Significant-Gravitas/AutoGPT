@@ -29,6 +29,7 @@ from backend.data.db_accessors import review_db
 
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
+from .references import Reference, resolve_references
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ class GateReviewPayload(BaseModel):
     arguments: dict[str, Any]
     clipped: list[str] = []
     fields: list[FieldLabel] = []
+    # What the call's ids name, as they were when it was held.
+    references: list[Reference] = []
     tool_call_id: str = ""
     turn: int = 0
     mode: str | None = None
@@ -108,6 +111,7 @@ def review_payload(
     mode: str | None = None,
     tool_call_id: str = "",
     turn: int = 0,
+    references: list[Reference] | None = None,
 ) -> dict[str, Any]:
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
@@ -119,6 +123,7 @@ def review_payload(
         arguments=shown,
         clipped=[key for key in shown if shown[key] is not redacted[key]],
         fields=_field_labels(tool_name, shown),
+        references=references or [],
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,
@@ -130,7 +135,7 @@ def review_payload(
         ),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
-        headline=headline_for(tool_name, args),
+        headline=headline_for(tool_name, args, references),
     ).model_dump()
 
 
@@ -187,9 +192,11 @@ async def open_review(
     reason: str,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
-) -> bool:
-    """Park the call for approval. False means nothing was recorded."""
+) -> Headline | None:
+    """Park the call for approval; the card's headline, or None if nothing was
+    recorded."""
     try:
+        references = await resolve_references(tool_name, args, user_id, session)
         payload = review_payload(
             tool_name,
             args,
@@ -198,25 +205,27 @@ async def open_review(
             mode=session.metadata.autopilot_mode or DEFAULT_MODE,
             tool_call_id=tool_call_id,
             turn=sum(1 for m in session.messages if m.role == "user"),
+            references=references,
         )
+        headline = Headline.model_validate(payload["headline"])
         await review_db().get_or_create_human_review(
             user_id=user_id,
             node_exec_id=review_id,
             chat_session_id=session.session_id,
             input_data=payload,
-            message=headline_for(tool_name, args).text,
+            message=headline.text,
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
         )
-        return True
+        return headline
     except Exception:
         logger.warning(
             f"Gate could not open a review for {tool_name} in session "
             f"{session.session_id}",
             exc_info=True,
         )
-        return False
+        return None
 
 
 def _label(tool_name: str) -> str:

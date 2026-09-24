@@ -3,7 +3,7 @@
 import json
 import logging
 from collections import deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
@@ -22,6 +22,9 @@ from .models import (
     NeedLoginResponse,
     ToolResponseBase,
 )
+
+if TYPE_CHECKING:
+    from backend.copilot.gate.headline import Headline
 
 logger = logging.getLogger(__name__)
 
@@ -523,6 +526,7 @@ class BaseTool:
             decision.reason,
             review_id=decision.review_id,
             args=kwargs,
+            headline=decision.headline,
         )
 
     def _refusal(
@@ -532,11 +536,12 @@ class BaseTool:
         reason: str,
         review_id: str | None = None,
         args: dict[str, Any] | None = None,
+        headline: "Headline | None" = None,
     ) -> StreamToolOutputAvailable:
         from backend.copilot.gate import refusal_message
         from backend.copilot.gate.headline import headline_for
 
-        headline = headline_for(self.name, args or {})
+        headline = headline or headline_for(self.name, args or {})
         return StreamToolOutputAvailable(
             toolCallId=tool_call_id,
             toolName=self.name,
