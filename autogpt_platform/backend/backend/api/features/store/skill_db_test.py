@@ -295,6 +295,36 @@ async def test_a_batch_install_looks_up_listings_and_the_owners_skills_once(mock
     assert [c.installCount for c in counts] == [1, 1, 1]
 
 
+async def test_a_failed_name_write_fails_only_the_skills_it_could_not_record(mocker):
+    listings = [await _make_listing(f"names-one-{i}") for i in range(3)]
+    lost = listings[1].slug
+    workspace = _FakeWorkspaceManager()
+    experts = MagicMock()
+    experts.add_expert_skill_names = AsyncMock(side_effect=RuntimeError("row busy"))
+
+    async def add_one(user_id, expert_id, name):
+        if name == lost:
+            raise RuntimeError("row busy")
+
+    experts.add_expert_skill_name = AsyncMock(side_effect=add_one)
+    mocker.patch("backend.copilot.tools.skills.experts_db", return_value=experts)
+
+    with _patch_skills_path(workspace):
+        outcomes = await skill_db.install_marketplace_skills(
+            "user-1", [listing.slug for listing in listings], expert_id="expert-a"
+        )
+
+    # Kills: failing every skill in the batch when the one-write record fails.
+    assert [type(o).__name__ for o in outcomes] == [
+        "InstalledSkill",
+        "RuntimeError",
+        "InstalledSkill",
+    ]
+    assert [c.args[2] for c in experts.add_expert_skill_name.await_args_list] == [
+        listing.slug for listing in listings
+    ]
+
+
 async def test_an_install_skips_the_scan_only_for_bytes_an_earlier_install_scanned(
     mocker,
 ):

@@ -822,13 +822,7 @@ async def store_user_skills(
         if stored:
             await invalidate_skills_index_cache(user_id, expert_id)
         if expert_id is not None and stored:
-            try:
-                await experts_db().add_expert_skill_names(
-                    user_id, expert_id, [name for _, name in stored]
-                )
-            except Exception as e:
-                for index, _ in stored:
-                    outcomes[index] = e
+            await _record_skill_names(user_id, expert_id, stored, outcomes)
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         if lock is not None and lock_held:
@@ -840,6 +834,41 @@ async def store_user_skills(
                     user_id,
                     exc_info=True,
                 )
+
+
+async def _record_skill_names(
+    user_id: str,
+    expert_id: str,
+    stored: list[tuple[int, str]],
+    outcomes: list[StoredSkill | Exception | None],
+) -> None:
+    """Record the stored skills' names on the expert's row in one write.
+
+    When a batch's write fails, retry name by name, so a skill is reported as
+    failed only when its own name cannot be recorded. Its files are written
+    either way, and a re-install records the name again.
+    """
+    try:
+        await experts_db().add_expert_skill_names(
+            user_id, expert_id, [name for _, name in stored]
+        )
+        return
+    except Exception as e:
+        if len(stored) == 1:
+            outcomes[stored[0][0]] = e
+            return
+        logger.warning(
+            "[skills] recording %d skill names on expert %s failed (%s); "
+            "retrying one at a time",
+            len(stored),
+            expert_id,
+            e,
+        )
+    for index, name in stored:
+        try:
+            await experts_db().add_expert_skill_name(user_id, expert_id, name)
+        except Exception as e:
+            outcomes[index] = e
 
 
 class _PreparedSkill(NamedTuple):
