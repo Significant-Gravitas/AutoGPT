@@ -1,4 +1,5 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import referenceCardsJson from "./referenceCards.json";
 
 export const CHAT_SESSION = "s1";
 
@@ -134,4 +135,28 @@ export function deleteFolder(id: string, folderId: string) {
     fields: [{ key: "folder_id", label: "Folder" }],
     headline: { ask: "Delete a folder" },
   });
+}
+
+export interface ReferenceCard {
+  story: string;
+  review: PendingHumanReviewModel;
+}
+
+// Built by the server's resolvers and payload builder (reference_cards_test.py).
+export function referenceCards(): ReferenceCard[] {
+  return (
+    referenceCardsJson as unknown as { story: string; review: object }[]
+  ).map((card) => ({
+    story: card.story,
+    review: {
+      ...(card.review as PendingHumanReviewModel),
+      created_at: new Date(Date.now() - 5 * 60_000),
+    },
+  }));
+}
+
+export function referenceCard(story: string) {
+  const card = referenceCards().find((c) => c.story === story);
+  if (!card) throw new Error(`No reference card "${story}"`);
+  return card.review;
 }

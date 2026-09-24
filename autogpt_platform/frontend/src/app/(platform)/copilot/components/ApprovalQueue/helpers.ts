@@ -3,6 +3,7 @@ import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsL
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   isIdKey,
+  type Reference,
   visibleKeys,
 } from "@/components/organisms/ApprovalFields/helpers";
 import { beautifyString } from "@/lib/utils";
@@ -20,6 +21,7 @@ export interface ApprovalItem {
   toolCallId: string;
   args: Record<string, unknown>;
   fields: { key: string; label: string }[];
+  references: Reference[];
   clipped: string[];
   subject: { kind: string; key: string; name: string; irreversible: boolean };
   blockId: string | null;
@@ -60,6 +62,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
         key: String(f.key),
         label: str(f, "label") ?? String(f.key),
       })),
+    references: asArray(payload.references).flatMap(toReference),
     clipped: asArray(payload.clipped).filter(
       (k): k is string => typeof k === "string",
     ),
@@ -125,6 +128,7 @@ export function shownFieldKeys(item: ApprovalItem) {
     values: item.args,
     hiddenKeys: item.headlineKeys,
     idsWhenAlone: !item.headline.object,
+    references: item.references,
   });
 }
 
@@ -159,6 +163,29 @@ export function approveAllLabel(count: number) {
 function isIdOnly(item: ApprovalItem) {
   const keys = shownFieldKeys(item);
   return !item.headline.object && keys.length > 0 && keys.every(isIdKey);
+}
+
+function toReference(value: unknown): Reference[] {
+  const ref = asObject(value) ?? {};
+  const key = str(ref, "key");
+  const id = str(ref, "id");
+  if (!key || !id) return [];
+  const name = str(ref, "name");
+  return [
+    {
+      key,
+      id,
+      entity: str(ref, "entity") ?? "",
+      name,
+      // A link is only ever built for an id that resolved.
+      href: name ? safeHref(str(ref, "href")) : null,
+    },
+  ];
+}
+
+// Only an in-app path: the payload is stored data, never a place to send the user.
+function safeHref(href: string | null) {
+  return href && href.startsWith("/") && !href.startsWith("//") ? href : null;
 }
 
 function asArray(value: unknown): unknown[] {

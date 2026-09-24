@@ -23,6 +23,15 @@ export interface FieldSpec {
   label: string;
 }
 
+// What an id argument names, resolved by the server when the call was held.
+export interface Reference {
+  key: string;
+  entity: string;
+  id: string;
+  name: string | null;
+  href: string | null;
+}
+
 export function fieldKind(key: string, value: unknown): FieldKind {
   if (value === REDACTED) return "secret";
   if (Array.isArray(value)) {
@@ -47,6 +56,7 @@ interface VisibleKeysArgs {
   hiddenKeys: string[];
   // Show ids when nothing else would tell this call from another.
   idsWhenAlone: boolean;
+  references?: Reference[];
 }
 
 export function visibleKeys({
@@ -54,11 +64,16 @@ export function visibleKeys({
   values,
   hiddenKeys,
   idsWhenAlone,
+  references = [],
 }: VisibleKeysArgs) {
   const present = [...new Set(keys)].filter(
     (key) => !hiddenKeys.includes(key) && hasValue(values[key]),
   );
-  const named = present.filter((key) => !isIdKey(key));
+  // An id the server named reads as its name, so it is shown like one.
+  const resolved = new Set(
+    references.filter((ref) => ref.name).map((ref) => ref.key),
+  );
+  const named = present.filter((key) => !isIdKey(key) || resolved.has(key));
   return named.length > 0 || !idsWhenAlone ? named : present;
 }
 

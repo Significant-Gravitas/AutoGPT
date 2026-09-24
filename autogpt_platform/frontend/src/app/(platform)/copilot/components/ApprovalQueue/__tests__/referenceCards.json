@@ -1,0 +1,330 @@
+[
+  {
+    "story": "Delete folder",
+    "review": {
+      "node_exec_id": "copilot-node-gate-delete_folder:e3f421dfb462abc8",
+      "node_id": "copilot-node-gate-delete_folder",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "delete_folder",
+        "arguments": {
+          "folder_id": "f-q3"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "folder_id",
+            "label": "Folder"
+          }
+        ],
+        "references": [
+          {
+            "key": "folder_id",
+            "entity": "library_folder",
+            "id": "f-q3",
+            "name": "Q3 reports",
+            "href": "/library?folder=f-q3"
+          }
+        ],
+        "tool_call_id": "call-delete_folder",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "delete_folder",
+          "name": "Delete folder",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Delete a folder",
+          "object": "Q3 reports",
+          "object_key": "folder_id"
+        }
+      },
+      "instructions": "delete_folder",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Move agents",
+    "review": {
+      "node_exec_id": "copilot-node-gate-move_agents_to_folder:438bc4a7e55797ed",
+      "node_id": "copilot-node-gate-move_agents_to_folder",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "move_agents_to_folder",
+        "arguments": {
+          "agent_ids": [
+            "lib-digest",
+            "lib-gone",
+            "lib-triage",
+            "lib-notes",
+            "lib-invoices",
+            "lib-leads",
+            "lib-social"
+          ],
+          "folder_id": "f-archive"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "agent_ids",
+            "label": "Agent ids"
+          },
+          {
+            "key": "folder_id",
+            "label": "Folder"
+          }
+        ],
+        "references": [
+          {
+            "key": "folder_id",
+            "entity": "library_folder",
+            "id": "f-archive",
+            "name": "Archive",
+            "href": "/library?folder=f-archive"
+          },
+          {
+            "key": "agent_ids",
+            "entity": "library_agent",
+            "id": "lib-digest",
+            "name": "Morning digest",
+            "href": "/library/agents/lib-digest"
+          },
+          {
+            "key": "agent_ids",
+            "entity": "library_agent",
+            "id": "lib-gone",
+            "name": null,
+            "href": null
+          },
+          {
+            "key": "agent_ids",
+            "entity": "library_agent",
+            "id": "lib-triage",
+            "name": "Inbox triage",
+            "href": "/library/agents/lib-triage"
+          },
+          {
+            "key": "agent_ids",
+            "entity": "library_agent",
+            "id": "lib-notes",
+            "name": "Meeting notes",
+            "href": "/library/agents/lib-notes"
+          },
+          {
+            "key": "agent_ids",
+            "entity": "library_agent",
+            "id": "lib-invoices",
+            "name": "Invoice chaser",
+            "href": "/library/agents/lib-invoices"
+          }
+        ],
+        "tool_call_id": "call-move_agents_to_folder",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "move_agents_to_folder",
+          "name": "Move agents to folder",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Move agents into a folder",
+          "object": "Archive",
+          "object_key": "folder_id"
+        }
+      },
+      "instructions": "move_agents_to_folder",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Pause schedule",
+    "review": {
+      "node_exec_id": "copilot-node-gate-pause_schedule:ecd458da7a506241",
+      "node_id": "copilot-node-gate-pause_schedule",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "pause_schedule",
+        "arguments": {
+          "schedule_id": "sch-digest"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "schedule_id",
+            "label": "Schedule"
+          }
+        ],
+        "references": [
+          {
+            "key": "schedule_id",
+            "entity": "schedule",
+            "id": "sch-digest",
+            "name": "Daily digest",
+            "href": "/library/agents/lib-digest?activeTab=scheduled&activeItem=sch-digest"
+          }
+        ],
+        "tool_call_id": "call-pause_schedule",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "pause_schedule",
+          "name": "Pause schedule",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Pause a schedule",
+          "object": "Daily digest",
+          "object_key": "schedule_id"
+        }
+      },
+      "instructions": "pause_schedule",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Hire expert",
+    "review": {
+      "node_exec_id": "copilot-node-gate-hire_expert:3ffe656fbe28a59c",
+      "node_id": "copilot-node-gate-hire_expert",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "hire_expert",
+        "arguments": {
+          "template_id": "tpl-ada",
+          "name": "Ada"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "template_id",
+            "label": "Template"
+          },
+          {
+            "key": "name",
+            "label": "Name"
+          }
+        ],
+        "references": [
+          {
+            "key": "template_id",
+            "entity": "expert_template",
+            "id": "tpl-ada",
+            "name": "Ada",
+            "href": "/marketplace/experts/tpl-ada"
+          }
+        ],
+        "tool_call_id": "call-hire_expert",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "hire_expert",
+          "name": "Hire expert",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Hire",
+          "object": "Ada",
+          "object_key": "name"
+        }
+      },
+      "instructions": "hire_expert",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Unresolved id",
+    "review": {
+      "node_exec_id": "copilot-node-gate-delete_preset:67a218ba0946e3d5",
+      "node_id": "copilot-node-gate-delete_preset",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "delete_preset",
+        "arguments": {
+          "preset_id": "3f0c9a2e-preset-gone"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "preset_id",
+            "label": "Preset"
+          }
+        ],
+        "references": [
+          {
+            "key": "preset_id",
+            "entity": "preset",
+            "id": "3f0c9a2e-preset-gone",
+            "name": null,
+            "href": null
+          }
+        ],
+        "tool_call_id": "call-delete_preset",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "delete_preset",
+          "name": "Delete preset",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Delete a preset",
+          "object": null,
+          "object_key": null
+        }
+      },
+      "instructions": "delete_preset",
+      "editable": false,
+      "status": "WAITING"
+    }
+  }
+]

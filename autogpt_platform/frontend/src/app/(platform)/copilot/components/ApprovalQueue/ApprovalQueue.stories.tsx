@@ -15,6 +15,7 @@ import {
   folder,
   heldReview,
   mail,
+  referenceCard,
   shell,
 } from "./__tests__/fixtures";
 
@@ -65,6 +66,27 @@ export const SupervisorCouldNotVouch: Story = { args: queueOf([shell()]) };
 
 export const IdentifiedOnlyById: Story = {
   args: queueOf([deleteFolder("f1", "f-111"), deleteFolder("f2", "f-222")]),
+};
+
+// Ids the server resolved to names and pages when the call was held.
+export const NamedFolder: Story = {
+  args: queueOf([referenceCard("Delete folder")]),
+};
+
+export const NamedAgentList: Story = {
+  args: queueOf([referenceCard("Move agents")]),
+};
+
+export const NamedSchedule: Story = {
+  args: queueOf([referenceCard("Pause schedule")]),
+};
+
+export const NamedTemplate: Story = {
+  args: queueOf([referenceCard("Hire expert")]),
+};
+
+export const UnresolvedId: Story = {
+  args: queueOf([referenceCard("Unresolved id")]),
 };
 
 export const FiveWaiting: Story = {
