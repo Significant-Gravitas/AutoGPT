@@ -183,7 +183,7 @@
     "knip": "6.32.2",
     "monocart-reporter": "2.10.0",
     "msw": "2.11.6",
-    "msw-storybook-addon": "2.0.6",
+    "msw-storybook-addon": "3.0.3",
     "orval": "7.13.0",
     "pbkdf2": "3.1.5",
     "postcss": "8.5.23",
