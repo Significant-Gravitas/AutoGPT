@@ -19,6 +19,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useImageFallback } from "@/hooks/useImageFallback";
 
 export type AgentTableRowProps = {
   storeAgentSubmission: StoreSubmission;
@@ -58,6 +59,7 @@ export const AgentTableRow = ({
     review_avg_rating,
   } = storeAgentSubmission;
 
+  const { showImage, handleImageError } = useImageFallback(image_urls?.[0]);
   const canModify = status === SubmissionStatus.PENDING;
 
   return (
@@ -70,14 +72,15 @@ export const AgentTableRow = ({
       <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
         {/* Agent info column */}
         <div className="flex items-center gap-4">
-          {image_urls?.[0] ? (
+          {showImage && image_urls?.[0] ? (
             <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
               <Image
-                src={image_urls?.[0] ?? ""}
-                unoptimized={isLocalStoreMediaUrl(image_urls?.[0] ?? "")}
+                src={image_urls[0]}
+                unoptimized={isLocalStoreMediaUrl(image_urls[0])}
                 alt={agentName}
                 fill
                 style={{ objectFit: "cover" }}
+                onError={handleImageError}
               />
             </div>
           ) : (
