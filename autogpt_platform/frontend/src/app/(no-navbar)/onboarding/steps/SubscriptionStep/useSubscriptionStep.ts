@@ -47,8 +47,7 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
-  const { billing, plans, pricingVariant } =
-    useSubscriptionPricingExperiment();
+  const { billing, plans, pricingVariant } = useSubscriptionPricingExperiment();
   const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is

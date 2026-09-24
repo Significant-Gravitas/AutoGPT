@@ -130,9 +130,7 @@ test("re-arms trial abandonment tracking when a new trial checkout starts", asyn
     }),
   );
   render(<SubscriptionStep />);
-  const card = within(
-    await screen.findByRole("region", { name: "Pro plan" }),
-  );
+  const card = within(await screen.findByRole("region", { name: "Pro plan" }));
   fireEvent.click(
     await card.findByRole("button", { name: "Start 7-day trial" }),
   );
