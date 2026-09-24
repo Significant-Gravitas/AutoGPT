@@ -58,7 +58,7 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it: `chat_copilot` (`copilot/tracking.py`), `platform` (every other backend emitter), `web` (the browser). |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
 
 Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies both last, so a caller cannot
@@ -160,7 +160,7 @@ differently.
 | `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). The paywall step reports `paywall_viewed` instead. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the whole finalize round trip. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
 | `brain_dump_skipped` | browser | live | — | The step is skipped. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
