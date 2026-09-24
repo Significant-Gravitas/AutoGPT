@@ -1216,13 +1216,13 @@ model ExpertWorkflow {
   @@index([expertId, createdAt, id])
 }
 
-// Where a routine's turn lands each time it fires.
 enum ExpertSetupStatus {
   INSTALLING
   READY
   FAILED
 }
 
+// Where a routine's turn lands each time it fires.
 enum ExpertRoutineSource {
   // Shipped by a roster or a shared package. Its prompt was written by someone
   // who will never see the account it runs on, so it arrives reaching nothing

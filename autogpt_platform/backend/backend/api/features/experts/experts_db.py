@@ -1051,6 +1051,7 @@ async def _run_hire_setup(
     """
     failures: list[str] | None = None
     failed_preloads: list[str] = []
+    ready = False
     for attempt in range(_SETUP_ATTEMPTS):
         if attempt:
             await asyncio.sleep(_SETUP_RETRY_DELAY_SECONDS * attempt)
@@ -1059,13 +1060,16 @@ async def _run_hire_setup(
                 user_id, expert_id, template_id
             )
         except Exception:
+            # Keeps the last named failures: a raise tells us nothing new.
             logger.exception(f"Setup attempt {attempt + 1} failed for #{expert_id}")
-            failures = None
             continue
         failures = failed_preloads + failed_rest
-        if not failures:
+        ready = not failures
+        if ready:
             break
-    ready = failures == []
+    if failures is None:
+        failed_preloads = await _uninstalled_preloads(expert_id, template_id)
+        failures = failed_preloads
     await prisma.models.Expert.prisma().update(
         where={"id": expert_id},
         data={
@@ -1083,6 +1087,25 @@ async def _run_hire_setup(
             "hire_completed",
             {"template_id": template_id, "failed_preloads_count": len(failed_preloads)},
         )
+
+
+async def _uninstalled_preloads(expert_id: str, template_id: str) -> list[str]:
+    """The template's preloads the hire still lacks, for a setup that never
+    got far enough to name its failures."""
+    template = await prisma.models.Expert.prisma().find_unique(
+        where={"id": template_id}, include=_WORKFLOW_INCLUDE
+    )
+    installed = {
+        w.storeListingVersionId
+        for w in await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": expert_id}
+        )
+    }
+    return [
+        w.StoreListingVersion.name if w.StoreListingVersion else w.storeListingVersionId
+        for w in (template.Workflows if template else None) or []
+        if w.storeListingVersionId and w.storeListingVersionId not in installed
+    ]
 
 
 async def _install_hire_contents(

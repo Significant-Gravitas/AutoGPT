@@ -6085,6 +6085,77 @@ async def test_hire_completed_reports_failed_preloads_count(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_raising_retry_keeps_the_failures_an_earlier_attempt_named(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    monkeypatch.setattr(
+        experts_db,
+        "_install_hire_contents",
+        AsyncMock(
+            side_effect=[
+                (["Agent X"], ["skill-a"]),
+                RuntimeError("db"),
+                RuntimeError("db"),
+            ]
+        ),
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db._run_hire_setup(
+            test_user.id, hired.expert.id, template.id, count_hire=True
+        )
+
+    # Kills: resetting the failures when a later attempt raises.
+    done = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert done is not None
+    assert done.setup_status == "failed"
+    assert done.setup_failures == ["Agent X", "skill-a"]
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_setup_that_only_raised_reports_the_preloads_it_lacks(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    with patch.object(
+        experts_db.library_db,
+        "add_store_agent_to_library",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("install exploded"),
+    ):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    named = hired.expert.setup_failures
+    assert len(named) == 1
+    monkeypatch.setattr(
+        experts_db, "_install_hire_contents", AsyncMock(side_effect=RuntimeError("db"))
+    )
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        await experts_db._run_hire_setup(
+            test_user.id, hired.expert.id, template.id, count_hire=True
+        )
+
+    # Kills: settling a total failure with no failures and a zero count.
+    done = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert done is not None
+    assert done.setup_status == "failed"
+    assert done.setup_failures == named
+    emit.assert_called_once_with(
+        test_user.id,
+        "hire_completed",
+        {"template_id": template.id, "failed_preloads_count": 1},
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_idempotent_rehire_does_not_reemit_hire_completed(
     server: SpinTestServer, test_user
 ):
