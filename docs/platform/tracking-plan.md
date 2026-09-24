@@ -302,7 +302,7 @@ history PostHog already holds.
 
 | Event | Was sent by | Read instead |
 | --- | --- | --- |
-| `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `subscription_trial_started` carries it. |
+| `subscription_trial_checkout_started` | browser | `checkout_started` with `checkout_kind: trial`, sent by the backend once the trial's Checkout session exists; `surface` is the same `onboarding` / `billing`. `trial_offer_version` is dropped; `trial_started` carries it. |
 | `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
 | `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
 | `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |

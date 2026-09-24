@@ -17,7 +17,11 @@ import {
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { trackPaywallCheckoutCancelled, trackPaywallView } from "./tracking";
+import {
+  markPaywallCheckoutStarted,
+  trackPaywallCheckoutCancelled,
+  trackPaywallView,
+} from "./tracking";
 import { trackPlanSelected } from "@/services/analytics/monetization-analytics";
 
 const PLAN_TO_TIER: Record<
@@ -132,6 +136,7 @@ export function useSubscriptionStep() {
         trackAdsConversion("begin_checkout", {
           value: getSubscriptionValue(planKey, cycle),
         });
+        markPaywallCheckoutStarted();
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;

@@ -13,7 +13,11 @@ const { posthog } = vi.hoisted(() => ({
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 
-import { trackPaywallCheckoutCancelled, trackPaywallView } from "../tracking";
+import {
+  markPaywallCheckoutStarted,
+  trackPaywallCheckoutCancelled,
+  trackPaywallView,
+} from "../tracking";
 
 describe("PostHog paywall funnel", () => {
   beforeEach(() => {
@@ -37,6 +41,25 @@ describe("PostHog paywall funnel", () => {
     trackPaywallCheckoutCancelled();
 
     expect(posthog.capture.mock.calls).toEqual([
+      [
+        "checkout_abandoned",
+        { checkout_kind: "subscription", surface: "onboarding" },
+      ],
+    ]);
+  });
+
+  it("counts a second abandonment after a new checkout starts", () => {
+    trackPaywallCheckoutCancelled();
+    markPaywallCheckoutStarted();
+    trackPaywallCheckoutCancelled();
+    // The refresh after the second return is still guarded.
+    trackPaywallCheckoutCancelled();
+
+    expect(posthog.capture.mock.calls).toEqual([
+      [
+        "checkout_abandoned",
+        { checkout_kind: "subscription", surface: "onboarding" },
+      ],
       [
         "checkout_abandoned",
         { checkout_kind: "subscription", surface: "onboarding" },

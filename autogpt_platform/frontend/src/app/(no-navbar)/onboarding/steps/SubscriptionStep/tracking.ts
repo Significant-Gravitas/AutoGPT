@@ -54,6 +54,19 @@ const POSTHOG_CHECKOUT_CANCELLED_KEY =
   "posthog_checkout_abandoned_onboarding_subscription";
 
 /**
+ * Re-arms the PostHog abandonment guard when a new Checkout starts, so a second
+ * real abandonment in the same tab still counts; a refresh after the return
+ * stays guarded.
+ */
+export function markPaywallCheckoutStarted() {
+  try {
+    sessionStorage.removeItem(POSTHOG_CHECKOUT_CANCELLED_KEY);
+  } catch {
+    // In-app browsers may block sessionStorage; the guard is then unset anyway.
+  }
+}
+
+/**
  * Reports that the user reached Stripe Checkout and came back without paying.
  *
  * Distinguishes "looked at the price and never clicked" from "picked a plan,
