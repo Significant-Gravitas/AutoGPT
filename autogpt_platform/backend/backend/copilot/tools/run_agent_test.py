@@ -1236,6 +1236,55 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "origin, dry_run, expected",
+    [
+        ("interactive", False, True),
+        (None, False, True),
+        ("automation", False, False),
+        ("interactive", True, False),
+    ],
+)
+async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
+    mocker, origin, dry_run, expected
+):
+    from backend.copilot.model import ChatSessionMetadata
+
+    tool = RunAgentTool()
+    session = make_session(user_id="user-1")
+    session.metadata = ChatSessionMetadata(origin=origin)
+    session.organization_id = "org-1"
+
+    lib = MagicMock(graph_id="graph-1", graph_version=1, id="lib-1")
+    lib.name = "Test Agent"
+    mocker.patch(
+        "backend.copilot.tools.run_agent.get_or_create_library_agent",
+        AsyncMock(return_value=lib),
+    )
+    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
+    mocker.patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
+    )
+    add = mocker.patch(
+        "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+        AsyncMock(return_value=MagicMock(id="exec-1")),
+    )
+    graph = MagicMock(id="graph-1", version=1)
+    graph.name = "Test Agent"
+
+    await tool._run_agent(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        graph_credentials={},
+        inputs={},
+        dry_run=dry_run,
+    )
+
+    assert add.await_args.kwargs["pause_irreversible_actions"] is expected
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
     """Sessions created before org tagging carry no org — the run must fall
     back to the user's default team instead of executing tenant-blind."""

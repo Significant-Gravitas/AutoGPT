@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
 
     # Capability registry (find/describe/run_capability)
     CAPABILITY_LIST = "capability_list"
@@ -1021,6 +1022,19 @@ class ReviewRequiredResponse(ToolResponseBase):
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+
+
+class ApprovalRequiredResponse(ToolResponseBase):
+    """An action the auto-mode gate parked for the user to approve; with a
+    ``review_id`` it mounts the chat's approval card."""
+
+    type: ResponseType = ResponseType.APPROVAL_REQUIRED
+    tool_name: str
+    reason: str
+    review_id: str | None = None
+    # The chain row's label, from the same table as the card's headline.
+    ask: str | None = None
+    object: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

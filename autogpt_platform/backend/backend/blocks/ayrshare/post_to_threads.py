@@ -48,6 +48,7 @@ class PostToThreadsBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToThreadsBlock.Input,
             output_schema=PostToThreadsBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

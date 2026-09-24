@@ -549,6 +549,23 @@ async def update_chat_session_llm_route(
     return result > 0
 
 
+async def update_chat_session_autopilot_mode(
+    session_id: str, user_id: str, mode: str
+) -> bool:
+    """Merge only the mode key into stored metadata, scoped to the owner."""
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('autopilot_mode', $3::text), "
+        '"updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        mode,
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,
