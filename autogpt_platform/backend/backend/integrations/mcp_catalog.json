@@ -872,6 +872,22 @@
     }
   },
   {
+    "name": "mcp_posthog",
+    "display_name": "PostHog",
+    "description": "Query product analytics and insights, investigate errors, and manage feature flags and experiments.",
+    "mcp_server": {
+      "server_url": "https://mcp.posthog.com/mcp",
+      "documentation_url": "https://posthog.com/docs/model-context-protocol",
+      "setup_instructions": "Sign in to PostHog; your account determines the US or EU data region. Alternatively, use a personal API key with the MCP Server preset. Review the requested permissions and active project before making changes. AI-powered tools require AI data processing to be enabled and may incur PostHog AI charges.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "posthog"
+    }
+  },
+  {
     "name": "mcp_runlayer",
     "display_name": "Runlayer",
     "description": "Discover and access tools through your organization's managed MCP catalog.",
