@@ -1066,8 +1066,48 @@ def test_update_expert_skills_replaces_the_list(
     assert response.status_code == 200
     assert response.json()["skills"] == ["Deep Research", "SEO"]
     mock_update.assert_awaited_once_with(
-        test_user_id, "expert-1", ["Deep Research", "SEO"], marketplace_listing_ids=[]
+        test_user_id,
+        "expert-1",
+        ["Deep Research", "SEO"],
+        marketplace_listing_ids=[],
+        remove=[],
     )
+
+
+def test_update_expert_skills_passes_explicit_removals_through(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        return_value=_make_expert(name="Maria", skills=[]),
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills", json={"remove": [" SEO ", "seo"]}
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", [], marketplace_listing_ids=[], remove=["SEO"]
+    )
+
+
+def test_update_expert_skills_rejects_a_name_both_added_and_removed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills", json={"skills": ["SEO"], "remove": ["seo"]}
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
 
 
 def test_update_expert_skills_unknown_skill_returns_404(

@@ -540,6 +540,7 @@ async def update_expert_skills(
             expert_id,
             request.skills,
             marketplace_listing_ids=request.marketplace_listing_ids,
+            remove=request.remove,
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))

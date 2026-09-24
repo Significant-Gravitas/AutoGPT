@@ -3,7 +3,14 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
@@ -423,16 +430,31 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSkillsUpdate(BaseModel):
-    """The full list of skill names an expert should carry. Names new to the
-    expert must be library skills (default or uploaded); names already on
-    the expert are kept as-is so marketplace skills survive a round-trip."""
+    """Skills to attach to an expert and skills to remove from it. Names new
+    to the expert must be library skills (default or uploaded); names already
+    on the expert are kept as-is so marketplace skills survive a round-trip.
 
-    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
+    Only names listed in ``remove`` are removed. A skill the expert carries
+    that appears in neither list is left alone, so a client holding a stale
+    list can never delete a skill it has not seen (the expert can distil new
+    ones at any time)."""
+
+    skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
+    remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("skills", mode="before")
+    @model_validator(mode="after")
+    def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
+        both = {n.lower() for n in self.skills} & {n.lower() for n in self.remove}
+        if both:
+            raise ValueError(
+                f"Skills cannot be both added and removed: {', '.join(sorted(both))}"
+            )
+        return self
+
+    @field_validator("skills", "remove", mode="before")
     @classmethod
     def strip_and_dedupe(cls, value: object) -> object:
         if not isinstance(value, list):

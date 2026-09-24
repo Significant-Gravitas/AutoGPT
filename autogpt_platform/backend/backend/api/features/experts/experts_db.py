@@ -1443,14 +1443,18 @@ async def update_skills(
     expert_id: str,
     skills: list[str],
     marketplace_listing_ids: list[str] | None = None,
+    remove: list[str] | None = None,
 ) -> Expert:
-    """Replace an expert's skill list.
+    """Attach ``skills`` to an expert and remove the names in ``remove``.
 
     Names the expert does not already carry must resolve to a library skill.
     A personal-Otto skill is copied into the expert's own folder so the
-    expert owns it from then on; names dropped from the list delete the
-    expert's copy. The stored name is the skill's canonical one so display
-    and lookup agree."""
+    expert owns it from then on; a removed name deletes the expert's copy.
+    The stored name is the skill's canonical one so display and lookup agree.
+
+    Only an explicit ``remove`` deletes anything. The expert distils new
+    skills into its own folder at any time, so a list the client read earlier
+    can be missing one; treating an absent name as a removal destroyed it."""
     row = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1494,8 +1498,8 @@ async def update_skills(
     for name in marketplace:
         if name.lower() not in {r.lower() for r in resolved}:
             resolved.append(name)
-    kept = {r.lower() for r in resolved}
-    for dropped in [name for name in current.values() if name.lower() not in kept]:
+    removed = {skill_name_key(name) for name in remove or []}
+    for dropped in [n for n in current.values() if skill_name_key(n) in removed]:
         # delete_user_skill drops the row name itself — except for a built-in,
         # where it raises first and _detach_expert_skill swallows that.
         await _detach_expert_skill(user_id, expert_id, dropped)
