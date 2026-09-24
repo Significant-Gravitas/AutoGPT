@@ -65,6 +65,41 @@ function assistantWithHints(hints: DrainHint[]): Messages[number] {
   return { id: ASSISTANT_ID, role: "assistant", parts };
 }
 
+/** The auto-continue assistant, optionally carrying drain hints of its
+ *  own with a visible step between them so each is a split point. */
+function continuationMessage(hints: DrainHint[] = []): Messages[number] {
+  return { ...assistantWithHints(hints), id: "assistant-continuation" };
+}
+
+/** Hold every pending-buffer GET open until the test resolves it, so two
+ *  reconciliations of the same chip can overlap the way they do live. */
+function deferPendingGets() {
+  const resolvers: Array<(count: number) => void> = [];
+  mockGetPending.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolvers.push((count) =>
+          resolve({
+            status: 200,
+            data: { count, messages: [] },
+            headers: new Headers(),
+          } as Awaited<ReturnType<typeof getV2GetPendingMessages>>),
+        );
+      }),
+  );
+  return {
+    count: () => resolvers.length,
+    resolveDrained: (index: number) =>
+      act(async () => {
+        resolvers[index](0);
+      }),
+  };
+}
+
+function storedFallbacks(messages: Messages) {
+  return messages.filter((m) => m.id.startsWith("promoted-"));
+}
+
 /** What the transcript draws: the user rows of the render-time split. */
 function renderedUserRows(messages: Messages) {
   return splitMessagesAtDrainHints(messages)
@@ -441,6 +476,146 @@ describe("useCopilotPendingChips", () => {
     expect(ids[0]).toBe(ASSISTANT_ID);
     expect(ids[1]).toMatch(/^promoted-auto-continue-pending-chip-/);
     expect(ids[2]).toBe("assistant-continuation");
+  });
+
+  describe("overlapping reconciliations of one queued chip", () => {
+    // A new assistant id and a drain hint (or the backstop poll) can each
+    // start a GET for the same chip before the other resolves. Each sees a
+    // drained buffer; only one bubble may be stored for the chip, whichever
+    // path wins — the promotion flavour is not part of the chip's identity.
+    it.each([
+      ["auto-continue first", [0, 1]],
+      ["drain hint first", [1, 0]],
+    ])(
+      "stores one fallback when the text-bearing hint's GET overlaps the new-id GET (%s)",
+      async (_label, order) => {
+        const gets = deferPendingGets();
+        const { view, getMessages, rerender } = setupHook([
+          assistantMessage(0),
+        ]);
+        act(() => {
+          view.result.current.queueMessage("follow up");
+        });
+
+        await act(async () => {
+          rerender([assistantMessage(0), continuationMessage()]);
+        });
+        expect(gets.count()).toBe(1);
+
+        await act(async () => {
+          rerender([
+            assistantMessage(0),
+            continuationMessage([{ text: "follow up" }]),
+          ]);
+        });
+        expect(gets.count()).toBe(2);
+
+        for (const index of order) await gets.resolveDrained(index);
+
+        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(storedFallbacks(getMessages())).toHaveLength(1);
+        expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+          "follow up",
+        ]);
+        const messages = getMessages();
+        expect(messages[messages.length - 1].id).toBe("assistant-continuation");
+      },
+    );
+
+    it.each([
+      ["auto-continue first", [0, 1]],
+      ["count-only hint first", [1, 0]],
+    ])(
+      "renders one follow-up when a count-only hint's GET overlaps the new-id GET (%s)",
+      async (_label, order) => {
+        const gets = deferPendingGets();
+        const { view, getMessages, rerender } = setupHook([
+          assistantMessage(0),
+        ]);
+        act(() => {
+          view.result.current.queueMessage("follow up");
+        });
+
+        await act(async () => {
+          rerender([assistantMessage(0), continuationMessage()]);
+        });
+        await act(async () => {
+          rerender([assistantMessage(0), continuationMessage(["count-only"])]);
+        });
+        expect(gets.count()).toBe(2);
+
+        for (const index of order) await gets.resolveDrained(index);
+
+        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(storedFallbacks(getMessages())).toHaveLength(1);
+        expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+          "follow up",
+        ]);
+      },
+    );
+
+    it("renders one follow-up when the backstop poll overlaps the new-id GET", async () => {
+      vi.useFakeTimers();
+      try {
+        const gets = deferPendingGets();
+        const { view, getMessages, rerender } = setupHook([
+          assistantMessage(0),
+        ]);
+        act(() => {
+          view.result.current.queueMessage("follow up");
+        });
+
+        await act(async () => {
+          rerender([assistantMessage(0), continuationMessage()]);
+        });
+        expect(gets.count()).toBe(1);
+
+        // No hint ever arrives; the backstop fires while the first GET is
+        // still open.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+        });
+        expect(gets.count()).toBe(2);
+
+        await gets.resolveDrained(1);
+        await gets.resolveDrained(0);
+
+        expect(view.result.current.queuedMessages).toEqual([]);
+        expect(storedFallbacks(getMessages())).toHaveLength(1);
+        expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+          "follow up",
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps two bubbles for two genuinely repeated follow-ups drained together", async () => {
+      const gets = deferPendingGets();
+      const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+      act(() => {
+        view.result.current.queueMessage("continue");
+        view.result.current.queueMessage("continue");
+      });
+
+      await act(async () => {
+        rerender([assistantMessage(0), continuationMessage()]);
+      });
+      await act(async () => {
+        rerender([assistantMessage(0), continuationMessage(["count-only"])]);
+      });
+      expect(gets.count()).toBe(2);
+
+      await gets.resolveDrained(0);
+      await gets.resolveDrained(1);
+
+      expect(view.result.current.queuedMessages).toEqual([]);
+      expect(storedFallbacks(getMessages())).toHaveLength(2);
+      expect(renderedUserRows(getMessages()).map((row) => row.text)).toEqual([
+        "continue",
+        "continue",
+      ]);
+    });
   });
 
   it("does not promote when the backend buffer count still covers the local chips", async () => {

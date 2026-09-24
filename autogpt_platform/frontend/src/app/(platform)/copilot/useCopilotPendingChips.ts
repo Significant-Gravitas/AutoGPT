@@ -303,28 +303,37 @@ function useAutoContinuePromotion({
   }, [messages, status, sessionId, queue, setMessages, setQueue]);
 }
 
+type PromotionFlavour = Parameters<typeof makePromotedUserBubble>[1];
+
+const PROMOTION_FLAVOURS: PromotionFlavour[] = ["auto-continue", "midturn"];
+
 /**
  * Splice promoted user bubbles for *drained* in just before the trailing
- * streaming assistant message — same insertion shape as the mid-turn poll
- * promotion so AI SDK's streaming continues into the right slot.
+ * streaming assistant message, so AI SDK's streaming continues into the
+ * right slot.  Every promotion path funnels through here: the turn-start
+ * drain in ``usePeekOnBoundary`` (the backend drained chips before the
+ * first peek resolved, and the bubble would otherwise only appear via
+ * hydration after the turn ends), the auto-continue reconciliation, and
+ * the mid-turn hint / backstop poll.
  *
- * Used by the turn-start drain path in ``usePeekOnBoundary``: when the
- * backend has already drained chips before the frontend's first peek
- * resolves, we'd otherwise just remove them from local state and the
- * bubble would only appear via hydration after the turn ends.  This
- * helper makes the bubble visible immediately so the user can see what
- * the model is responding to.
+ * An entry that already has a bubble under *either* flavour is skipped.
+ * Two reconciliations of the same chip can be in flight at once — a new
+ * assistant id and a drain hint (or the backstop) each issue their own
+ * GET — and both see the drained buffer; keyed on the exact id, each
+ * flavour would store its own copy and the transcript would draw the
+ * follow-up twice.
  */
 function promoteChipsToTrailingBubbles(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   drained: QueuedMessage[],
+  flavour: PromotionFlavour = "midturn",
 ): void {
   setMessages((prev) => {
     const newBubbles = drained
+      .filter((entry) => !prev.some((m) => isPromotedBubbleFor(m, entry)))
       .map((entry) =>
-        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
-      )
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry)),
+      );
     if (newBubbles.length === 0) return prev;
     const lastIdx = prev.length - 1;
     if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
@@ -340,6 +349,21 @@ function promoteChipsToTrailingBubbles(
 // twice (different ids → dedup misses).
 function bubbleIdFor(entry: QueuedMessage): string {
   return `pending-chip-${entry.id}`;
+}
+
+// Whether *message* is the promoted bubble for *entry*, whichever path
+// promoted it.  The queue id is the chip's identity; the flavour prefix
+// only records which path got there first.  Repeated user messages carry
+// distinct queue ids, so they still each get a bubble.
+function isPromotedBubbleFor(
+  message: UIMessage,
+  entry: QueuedMessage,
+): boolean {
+  const suffix = bubbleIdFor(entry);
+  return PROMOTION_FLAVOURS.some(
+    (flavour) =>
+      message.id === makePromotedUserBubble(entry.text, flavour, suffix).id,
+  );
 }
 
 // ── 3. Mid-turn drain promotion ────────────────────────────────────────
@@ -457,7 +481,7 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
-  flavour: "auto-continue" | "midturn" = "midturn",
+  flavour: PromotionFlavour = "midturn",
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -494,20 +518,7 @@ async function pollBackendAndPromote(
   // keeps the stream flowing, at the cost of showing a count-only follow-up
   // above the work that preceded it until ``useHydrateOnStreamEnd`` snaps
   // the list to the DB order at the end of the turn.
-  setMessages((prev) => {
-    const newBubbles = drained
-      .map((entry) =>
-        makePromotedUserBubble(entry.text, flavour, bubbleIdFor(entry)),
-      )
-      // Skip bubbles that are already there (effect re-run safety).
-      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
-    if (newBubbles.length === 0) return prev;
-    const lastIdx = prev.length - 1;
-    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
-      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
-    }
-    return [...prev, ...newBubbles];
-  });
+  promoteChipsToTrailingBubbles(setMessages, drained, flavour);
   // Drop only the drained entries by id; entries appended after the
   // snapshot survive the in-flight poll race.
   setQueue((current) => current.filter((entry) => !drainedIds.has(entry.id)));
