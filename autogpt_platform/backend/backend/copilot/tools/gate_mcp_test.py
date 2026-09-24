@@ -184,14 +184,15 @@ async def test_a_chat_allow_does_not_reach_another_server_on_the_host(gate, ran)
     ran.assert_awaited_once()
 
 
-async def test_a_chat_judge_still_asks_before_an_irreversible_tool(gate, ran):
+async def test_a_chat_judge_covers_an_irreversible_tool_too(gate, ran):
+    """Judging means the supervisor decides next time, irreversible or not."""
     session = _session()
     assert _is_held(await _call(session, _GITHUB, "merge_pull_request", {"n": 1}))
     await _answer_with_rule(gate, "judge")
 
-    assert _is_held(await _call(session, _GITHUB, "merge_pull_request", {"n": 2}))
-    gate.classify.assert_not_awaited()
-    ran.assert_not_awaited()
+    assert not _is_held(await _call(session, _GITHUB, "merge_pull_request", {"n": 2}))
+    gate.classify.assert_awaited_once()
+    ran.assert_awaited_once()
 
 
 async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):

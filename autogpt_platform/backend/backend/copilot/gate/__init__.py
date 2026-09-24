@@ -146,9 +146,8 @@ async def check_action(
     rule = (
         await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
     )
+    # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
-    if verdict is Verdict.JUDGE and subject is not None and subject.irreversible:
-        verdict = Verdict.ASK
     reason_kind: review_store.ReasonKind
     if rule in ("ask", "unreadable"):
         reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE

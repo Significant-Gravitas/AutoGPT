@@ -16,6 +16,7 @@ from backend.copilot.gate.review import (
     review_payload,
     session_exec_id,
 )
+from backend.copilot.gate.subject import mcp_subject
 
 
 def test_the_same_call_is_the_same_approval():
@@ -164,8 +165,11 @@ def test_the_subject_is_the_tool_until_l5a_names_one():
     assert payload["mode"] == "auto"
 
 
-def test_no_rule_is_offered_before_the_gate_records_one():
+def test_a_bare_tool_offers_no_rule_and_a_named_subject_offers_both():
     assert review_payload("create_folder", {})["chat_rules_allowed"] == []
+    subject = mcp_subject("https://mcp.example.com/mcp", "create_issue")
+    payload = review_payload("run_capability", {}, subject)
+    assert payload["chat_rules_allowed"] == ["allow", "judge"]
 
 
 @pytest.mark.parametrize(

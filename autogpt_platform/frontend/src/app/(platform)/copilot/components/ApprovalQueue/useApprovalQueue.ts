@@ -61,9 +61,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
         batch.map((item) => ({
           node_exec_id: item.reviewId,
           approved,
-          // The chat-scoped rule rides the approval; the gate reads it once it records rules.
-          auto_approve_future: approved && !!rule,
-          message: rule,
+          chat_rule: approved ? (rule ?? null) : null,
         })),
         batch.map((item) => item.graphExecId),
       );
