@@ -16,10 +16,6 @@ type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 interface QueuedMessage {
   id: string;
   text: string;
-  /** Restored from the backend buffer by a peek rather than typed here.
-   *  The next peek's rebase replaces these; only entries typed during its
-   *  GET window are carried over. */
-  fromServer?: boolean;
 }
 
 type QueueUpdater = (prev: QueuedMessage[]) => QueuedMessage[];
@@ -70,8 +66,14 @@ export function useCopilotPendingChips({
     () => queue.map((entry) => entry.text),
     [queue],
   );
+  // Live view of the strip for the peek effect, which needs the queue at the
+  // moment it issues a GET without re-running on every enqueue.
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
-  usePeekOnBoundary({ sessionId, status, setMessages, setQueue });
+  usePeekOnBoundary({ sessionId, status, queueRef, setMessages, setQueue });
 
   useAutoContinuePromotion({
     sessionId,
@@ -110,23 +112,24 @@ export function useCopilotPendingChips({
 function usePeekOnBoundary({
   sessionId,
   status,
+  queueRef,
   setMessages,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
+  queueRef: { current: QueuedMessage[] };
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
-  // Snapshot of chip ids known to be in-flight to the server at the
-  // moment a peek GET is issued.  Anything NOT in this set when the GET
-  // resolves was appended after the request — preserve it so a
-  // concurrently-queued chip isn't wiped by the server's now-stale
-  // truth.  Set inside the effect (closes over the current chips
-  // value), read inside the ``.then`` handler.
-  const inFlightSnapshotIdsRef = useRef<Set<string>>(new Set());
+  // Peeks overlap: Strict Mode mounts this effect twice, and two idle edges
+  // can land within one round trip.  Only the newest peek's answer is
+  // applied — an older one resolving later would rebase over fresher
+  // server truth (and, before this guard, the two answers each carried the
+  // other's copy of a buffered message forward, doubling the strip).
+  const latestPeekSeqRef = useRef(0);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -158,19 +161,21 @@ function usePeekOnBoundary({
     // we don't want chip-appends in another effect to invalidate this
     // peek's result.
     const requestSessionId = sessionId;
-    // Capture the id-set of queue entries currently in local state so
-    // the resolve handler can preserve any entry the user queues during
-    // the GET window.
-    setQueue((current) => {
-      inFlightSnapshotIdsRef.current = new Set(
-        current.map((entry) => entry.id),
-      );
-      return current;
-    });
+    const peekSeq = ++latestPeekSeqRef.current;
+    // Snapshot of chip ids known to be in-flight to the server at the
+    // moment this GET is issued.  Anything NOT in this set when it
+    // resolves was appended after the request — preserve it so a
+    // concurrently-queued chip isn't wiped by the server's now-stale
+    // truth.  Captured per request: a shared snapshot let a later peek
+    // overwrite an earlier one's, and the earlier answer then dropped a
+    // chip typed between the two as if the server already had it.
+    const inFlightIds = new Set(
+      (sessionChanged ? [] : queueRef.current).map((entry) => entry.id),
+    );
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
+      if (peekSeq !== latestPeekSeqRef.current) return;
       if (res.status !== 200) return;
-      const inFlightIds = inFlightSnapshotIdsRef.current;
       // Turn-start drain path: when the backend has drained everything
       // it had at GET time, promote those drained entries to user
       // bubbles BEFORE removing them from local state.  Without the
@@ -201,27 +206,18 @@ function usePeekOnBoundary({
       // GET fire time).  Without this re-attach, an entry queued after
       // an "idle" transition but before the peek resolves silently
       // disappears.
-      //
-      // Entries an *earlier* peek restored are not "queued during the
-      // window" even when they post-date this GET's snapshot: two peeks
-      // overlap on load (Strict Mode mounts the effect twice; two idle
-      // edges can land within one round trip), and each carrying the
-      // other's copy forward doubled the strip. The next new-assistant
-      // reconciliation then saw more chips than the backend held and
-      // promoted the surplus above the running tool chain.
       setQueue((current) => {
         const fromServer = res.data.messages.map((text) => ({
           id: uuidv4({}),
           text,
-          fromServer: true,
         }));
         const queuedDuringWindow = current.filter(
-          (entry) => !inFlightIds.has(entry.id) && !entry.fromServer,
+          (entry) => !inFlightIds.has(entry.id),
         );
         return [...fromServer, ...queuedDuringWindow];
       });
     });
-  }, [sessionId, status, setQueue]);
+  }, [sessionId, status, queueRef, setQueue]);
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────

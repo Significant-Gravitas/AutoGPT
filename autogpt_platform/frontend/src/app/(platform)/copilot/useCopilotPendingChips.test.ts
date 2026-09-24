@@ -718,17 +718,18 @@ describe("useCopilotPendingChips", () => {
   });
 
   describe("restoring the buffer on session load", () => {
-    /** Hold every peek GET open and answer each with the same one-message
-     *  buffer, the way the backend does while a follow-up is still queued. */
+    /** Hold every peek GET open. `resolveAll` answers each with the same
+     *  one-message buffer, the way the backend does while a follow-up is
+     *  still queued; `resolveWith` answers one peek with a given buffer. */
     function deferBufferPeeks(text: string) {
-      const resolvers: Array<() => void> = [];
+      const resolvers: Array<(messages: string[]) => void> = [];
       mockGetPending.mockImplementation(
         () =>
           new Promise((resolve) => {
-            resolvers.push(() =>
+            resolvers.push((messages) =>
               resolve({
                 status: 200,
-                data: { count: 1, messages: [text] },
+                data: { count: messages.length, messages },
                 headers: new Headers(),
               } as Awaited<ReturnType<typeof getV2GetPendingMessages>>),
             );
@@ -738,7 +739,11 @@ describe("useCopilotPendingChips", () => {
         count: () => resolvers.length,
         resolveAll: () =>
           act(async () => {
-            resolvers.splice(0).forEach((resolve) => resolve());
+            resolvers.splice(0).forEach((resolve) => resolve([text]));
+          }),
+        resolveWith: (index: number, messages: string[]) =>
+          act(async () => {
+            resolvers[index](messages);
           }),
       };
     }
@@ -793,6 +798,38 @@ describe("useCopilotPendingChips", () => {
 
       await waitFor(() =>
         expect(view.result.current.queuedMessages).toEqual(["follow up"]),
+      );
+    });
+
+    it("keeps a message typed between two overlapping peeks", async () => {
+      const peeks = deferBufferPeeks("typed meanwhile");
+      const setMessages = vi.fn();
+      const view = renderHook(
+        ({ status }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: [],
+            setMessages,
+          }),
+        { initialProps: { status: "ready" as "ready" | "error" } },
+      );
+      act(() => {
+        view.result.current.queueMessage("typed meanwhile");
+      });
+      view.rerender({ status: "error" });
+      expect(peeks.count()).toBe(2);
+
+      // The newer peek already sees the message on the server; the older
+      // one predates it and answers last. Its stale, empty buffer must not
+      // wipe the message the newer peek restored — and the snapshot it
+      // filters with must be its own, not the newer peek's, or it would
+      // treat the typed entry as already on the server and drop it.
+      await peeks.resolveWith(1, ["typed meanwhile"]);
+      await peeks.resolveWith(0, []);
+
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual(["typed meanwhile"]),
       );
     });
 
