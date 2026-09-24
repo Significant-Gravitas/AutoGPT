@@ -3,6 +3,7 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { describe, expect, test } from "vitest";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import {
   filterExpertSchedules,
   filterExpertWorkflows,
@@ -276,7 +277,7 @@ describe("getExpertCover", () => {
         }),
       ).toEqual({
         art: null,
-        color: "#C47F5C",
+        color: getExpertTopicHex("Marketing"),
       });
     }
   });

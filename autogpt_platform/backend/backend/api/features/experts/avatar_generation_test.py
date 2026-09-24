@@ -193,7 +193,7 @@ def test_generation_varies_color_and_full_outline_independently_of_category():
     )
     prompt = avatar_prompt(request)
     assert "#4F7968" in prompt
-    assert "#C47F5C" not in prompt
+    assert "#C45F36" not in prompt
     assert "kidney" in prompt
     assert "wide" in prompt
     assert "left" in prompt
@@ -242,4 +242,4 @@ def test_shade_uses_category_hue_instead_of_an_unrelated_color():
         )
     )
     assert "#8B9481" in prompt
-    assert "#C47F5C" not in prompt
+    assert "#C45F36" not in prompt
