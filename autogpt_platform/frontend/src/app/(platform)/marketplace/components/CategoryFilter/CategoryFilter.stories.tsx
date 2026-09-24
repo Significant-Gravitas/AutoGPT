@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { fn } from "storybook/test";
 import { useState } from "react";
+import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getGetV2ListStoreCategoriesMockHandler } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import {
@@ -13,6 +14,13 @@ import { CategoryFilter } from "./CategoryFilter";
 const meta = {
   title: "Marketplace/CategoryColors",
   component: CategoryFilter,
+  decorators: [
+    (Story) => (
+      <BackendAPIProvider>
+        <Story />
+      </BackendAPIProvider>
+    ),
+  ],
   args: { selected: "finance", onSelect: fn() },
   parameters: {
     msw: {

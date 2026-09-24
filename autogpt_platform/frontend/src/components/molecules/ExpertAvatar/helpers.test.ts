@@ -4,7 +4,7 @@ import { resolveExpertAvatarUrl } from "./helpers";
 describe("expert PNG avatars", () => {
   it("maps stored roster URLs without depending on the current name", () => {
     expect(resolveExpertAvatarUrl("/experts/maria.svg")).toBe(
-      "/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
+      "/experts/clay/v5/maria-marketing.png",
     );
   });
 

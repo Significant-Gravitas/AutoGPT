@@ -4,13 +4,13 @@ import { ExpertAvatar } from "./ExpertAvatar";
 
 describe("ExpertAvatar saved appearance", () => {
   test("uses the saved clay identity after a rename and color change", () => {
-    const avatarUrl = "/autogpt-characters/v1.1/expert-maria/neutral/128.webp";
+    const avatarUrl = "/autogpt-characters/v1.1/expert-mina/neutral/128.webp";
     const { rerender } = render(
-      <ExpertAvatar name="Maria" avatarUrl={avatarUrl} size={32} />,
+      <ExpertAvatar name="Mina" avatarUrl={avatarUrl} size={32} />,
     );
     const image = screen.getByRole("img");
     expect(image.getAttribute("src")).toBe(
-      "/autogpt-characters/v1.1/expert-maria/neutral/32.webp",
+      "/autogpt-characters/v1.1/expert-mina/neutral/32.webp",
     );
     rerender(
       <ExpertAvatar
@@ -29,13 +29,13 @@ describe("ExpertAvatar saved appearance", () => {
     render(
       <ExpertAvatar
         name="My editor"
-        avatarUrl="/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
+        avatarUrl="/autogpt-characters/v1.1/expert-mina/neutral/128.webp"
         size={32}
       />,
     );
     fireEvent.error(screen.getByRole("img"));
     expect(screen.getByRole("img").getAttribute("src")).toBe(
-      "/autogpt-characters/v1.1/expert-maria/neutral/32.png",
+      "/autogpt-characters/v1.1/expert-mina/neutral/32.png",
     );
     fireEvent.error(screen.getByRole("img"));
     expect(screen.getByRole("img").textContent).toBe("MY");

@@ -1391,6 +1391,13 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Record a skill the expert now owns; idempotent, and a display name and
     its slug count as one name."""
+    await add_expert_skill_names(user_id, expert_id, [name])
+
+
+async def add_expert_skill_names(
+    user_id: str, expert_id: str, names: list[str]
+) -> None:
+    """:func:`add_expert_skill_name` for several names in one row write."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1398,12 +1405,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isTemplate": False,
             "isArchived": False,
         },
-        lambda names: (
-            names
-            if skill_name_key(name) in {skill_name_key(n) for n in names}
-            else [*names, name]
-        ),
+        lambda current: _with_names(current, names),
     )
+
+
+def _with_names(current: list[str], names: list[str]) -> list[str]:
+    merged = list(current)
+    keys = {skill_name_key(n) for n in merged}
+    for name in names:
+        if skill_name_key(name) not in keys:
+            keys.add(skill_name_key(name))
+            merged.append(name)
+    return merged
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
@@ -1792,14 +1805,22 @@ async def _install_bundled_skills(
     leaves no name, so the hire never lists a skill it does not have.
     """
     bundled = await _live_bundled_skills(user_id, [template_id])
-    for skill in bundled.get(template_id, []):
-        try:
-            await skill_db.install_marketplace_skill(
-                user_id, skill.slug, expert_id=expert_id
+    skills = bundled.get(template_id, [])
+    if not skills:
+        return
+    try:
+        outcomes: list[object] = list(
+            await skill_db.install_marketplace_skills(
+                user_id, [s.slug for s in skills], expert_id=expert_id
             )
-        except Exception:
-            logger.exception(
-                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+        )
+    except Exception as e:
+        outcomes = [e] * len(skills)
+    for skill, outcome in zip(skills, outcomes):
+        if isinstance(outcome, Exception):
+            logger.error(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}",
+                exc_info=outcome,
             )
 
 

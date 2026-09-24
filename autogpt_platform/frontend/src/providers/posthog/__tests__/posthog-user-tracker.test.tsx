@@ -1,11 +1,10 @@
-import { render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import {
   installCookiebot,
   removeCookiebot,
   TEST_COOKIEBOT_CBID,
 } from "@/tests/integrations/cookiebot";
+import { render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const posthog = vi.hoisted(() => ({
   identify: vi.fn(),
@@ -40,12 +39,14 @@ vi.mock("@/services/feature-flags/flag-backend", () => ({
 }));
 
 describe("PostHogUserTracker", () => {
-  afterEach(removeCookiebot);
-
   beforeEach(() => {
-    installCookiebot({ statistics: true });
     posthog.identify.mockClear();
     posthog.setPersonPropertiesForFlags.mockClear();
+    installCookiebot({ statistics: true });
+  });
+
+  afterEach(() => {
+    removeCookiebot();
   });
 
   it.each([false, true])(
@@ -82,6 +83,18 @@ describe("PostHogUserTracker", () => {
 
     render(<PostHogUserTracker />);
 
+    expect(posthog.setPersonPropertiesForFlags).not.toHaveBeenCalled();
+  });
+
+  it("hands PostHog neither identity nor flag properties without analytics consent", async () => {
+    flags.usesPostHog = true;
+    removeCookiebot();
+    installCookiebot({ statistics: false });
+    const { PostHogUserTracker } = await import("../posthog-provider");
+
+    render(<PostHogUserTracker />);
+
+    expect(posthog.identify).not.toHaveBeenCalled();
     expect(posthog.setPersonPropertiesForFlags).not.toHaveBeenCalled();
   });
 });

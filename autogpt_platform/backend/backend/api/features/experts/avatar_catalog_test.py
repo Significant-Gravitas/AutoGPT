@@ -4,7 +4,7 @@ from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 def test_existing_roster_avatar_maps_without_using_the_name():
     assert (
         resolve_avatar_url("/experts/maria.svg")
-        == "/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
+        == "/experts/clay/v5/maria-marketing.png"
     )
 
 

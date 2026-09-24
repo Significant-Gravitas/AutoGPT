@@ -160,7 +160,7 @@ describe("Marketplace category filter over experts", () => {
     render(<MainMarkeplacePage />);
 
     const chips = await screen.findByRole("group", {
-      name: "Browse by category",
+      name: "Browse experts by category",
     });
     const shelf = await screen.findByRole("link", { name: /Maria/ });
 
@@ -247,7 +247,7 @@ describe("Marketplace category filter over experts", () => {
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

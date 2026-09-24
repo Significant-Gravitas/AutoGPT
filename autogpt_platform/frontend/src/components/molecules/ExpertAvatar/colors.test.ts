@@ -2,14 +2,14 @@ import { expect, test } from "vitest";
 import { getExpertTopicHex } from "./colors";
 
 test.each([
-  ["Marketing", "#C47F5C"],
-  ["Social & Content Repurposing", "#C47F5C"],
-  ["Sales", "#C9A35B"],
+  ["Marketing", "#C45F36"],
+  ["Social & Content Repurposing", "#C45F36"],
+  ["Sales", "#D5AB24"],
   ["Operations", "#98AFC6"],
   ["Finance", "#A5B09A"],
   ["Research", "#AAA77A"],
   ["Development", "#777570"],
-  ["Support", "#CB9182"],
+  ["Support", "#C45B88"],
   ["Content", "#B5ADA0"],
   ["General purpose", "#B5ADA0"],
   ["Head of AI", "#B6A4C8"],

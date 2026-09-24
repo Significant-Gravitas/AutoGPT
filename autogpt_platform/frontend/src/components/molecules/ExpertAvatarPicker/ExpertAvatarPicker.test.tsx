@@ -94,13 +94,13 @@ test("a failed job keeps the current avatar and the catalog remains usable", asy
     screen.getByRole("img", { name: "Nova" }).getAttribute("src"),
   ).toContain("existing.png");
   expect(onPick).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Ochre" }));
+  await userEvent.click(screen.getByRole("button", { name: "Gold" }));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   await userEvent.click(
     screen.getByRole("button", { name: "Use this avatar" }),
   );
   expect(onPick).toHaveBeenCalledWith(
-    "/experts/clay/v1/sales.png",
+    "/experts/clay/v5/max-sales.png",
     "amber-300",
   );
 });

@@ -54,9 +54,7 @@ def test_template_projection_changes_only_recorded_defaults():
         tagline="Custom tagline",
     )
     result = template_presentation(row)
-    assert (
-        result["avatarUrl"] == "/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
-    )
+    assert result["avatarUrl"] == "/experts/clay/v5/maria-marketing.png"
     assert result["bio"] == "Custom bio"
     assert result["identity"] == "Custom instructions"
 
@@ -213,7 +211,7 @@ def test_template_projection_replaces_shared_draft_avatars_only():
         tagline=None,
     )
     assert (
-        template_presentation(row)["avatarUrl"] == "/experts/clay/v4/noor-marketing.png"
+        template_presentation(row)["avatarUrl"] == "/experts/clay/v5/noor-marketing.png"
     )
     row.avatarUrl = "https://custom.example/image.png"
     assert template_presentation(row)["avatarUrl"] == row.avatarUrl
@@ -232,7 +230,7 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
     template = SimpleNamespace(
         id="template",
         name="Noor",
-        avatarUrl="/experts/clay/v4/noor-marketing.png",
+        avatarUrl="/experts/clay/v5/noor-marketing.png",
         jobTitle="Writer",
         tagline="Hi",
         bio=None,
@@ -266,5 +264,5 @@ async def test_hired_avatar_refresh_is_scoped_to_its_template_and_known_default(
             "isTemplate": False,
             "updatedAt": "0",
         },
-        data={"avatarUrl": "/experts/clay/v4/noor-marketing.png"},
+        data={"avatarUrl": "/experts/clay/v5/noor-marketing.png"},
     )
