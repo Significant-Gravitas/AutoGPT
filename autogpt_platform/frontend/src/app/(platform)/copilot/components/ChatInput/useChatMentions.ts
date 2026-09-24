@@ -160,9 +160,17 @@ export function useChatMentions({
     setPendingCaret(null);
   }, [pendingCaret, value]);
 
+  // With workspace files off and nothing connected there is nothing to pick,
+  // so a typed `@` must not open an empty dropdown.
+  const hasOptions = includeWorkspaceFiles || integrations.length > 0;
+
   function detect(textarea: MentionInput) {
     if (!enabled) return;
     textareaRef.current = textarea;
+    if (!hasOptions) {
+      setActive(null);
+      return;
+    }
     const caret = textarea.selectionStart ?? textarea.value.length;
     const beforeCaret = textarea.value.slice(0, caret);
     const accountMatch = beforeCaret.match(/(?:^|\s)@([^@\n]*)$/);

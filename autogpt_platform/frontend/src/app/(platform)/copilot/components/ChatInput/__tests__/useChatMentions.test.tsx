@@ -480,6 +480,27 @@ describe("useChatMentions", () => {
     );
   });
 
+  it("never opens when workspace files are off and nothing is connected", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @")));
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.options).toEqual([]);
+    expect(mockListWorkspaceFiles).not.toHaveBeenCalled();
+  });
+
   it("offers only integrations and never queries files when workspace files are off", () => {
     const { result } = renderHook(
       () =>
