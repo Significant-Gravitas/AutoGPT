@@ -224,6 +224,26 @@ export const HeldReadBesideAnAction: Story = {
   ]),
 };
 
+// The judge failed (timeout, gateway error): no verdict, so no quote.
+export const HeldReadUnchecked: Story = {
+  args: queueOf([
+    (() => {
+      const review = heldRead("u", "status.acme.dev");
+      const payload = review.payload as Record<string, unknown>;
+      return { ...review, payload: { ...payload, judged: false, passage: "" } };
+    })(),
+  ]),
+};
+
+// Answered at once, so clicking leaves the Released / Kept out receipt.
+export const HeldReadAnswered: Story = {
+  args: queueOf([
+    heldRead("a", "docs.northwind.io/billing"),
+    heldRead("b", "pastebin.example/raw/x1"),
+  ]),
+  parameters: { msw: { handlers: [answerAfter(0)] } },
+};
+
 const READ_PART = (id: string, url: string) =>
   ({
     type: "tool-web_fetch",
@@ -242,6 +262,7 @@ const READ_PART = (id: string, url: string) =>
 const READ_OUTCOMES = new Map<string, HeldOutcome>([
   ["read-b", { outcome: "approved", output: { message: "fetched" } }],
   ["read-c", { outcome: "rejected", output: "" }],
+  ["read-d", { outcome: "unknown", output: "" }],
 ]);
 
 export const HeldReadChainRows: StoryObj = {
@@ -250,6 +271,7 @@ export const HeldReadChainRows: StoryObj = {
       READ_PART("a", "docs.northwind.io/billing"),
       READ_PART("b", "status.acme.dev"),
       READ_PART("c", "pastebin.example/raw/x1"),
+      READ_PART("d", "files.acme.dev/q3.csv"),
     ].map((part, i) => applyHeldOutcome(toChainRow(part, i)!, READ_OUTCOMES));
     return (
       <div className="flex flex-col">
@@ -328,7 +350,7 @@ function realStory(name: string): Story {
 
 export const RealGmailSend = realStory("Gmail Send");
 export const RealGoogleSheetsUpdateRow = realStory("Google Sheets Update Row");
-export const RealExecuteCode = realStory("Execute Code");
+export const RealExecuteCodeStep = realStory("Execute Code Step");
 export const RealSendWebRequest = realStory("Send Web Request");
 export const RealPostToX = realStory("Post To X");
 export const RealWorkflow = realStory("Workflow");

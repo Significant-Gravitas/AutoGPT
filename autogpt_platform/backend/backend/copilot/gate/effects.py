@@ -151,6 +151,19 @@ UNREADABLE_BLOCKS = frozenset(
 )
 
 
+# Unreadable blocks whose effect is the code the call itself carries: the
+# supervisor reads that code, as it reads a bash_exec command. Add a block here
+# only when everything it does is in its own input.
+JUDGED_BLOCKS = frozenset(
+    {
+        "ClaudeCodeBlock",
+        "ExecuteCodeBlock",
+        "ExecuteCodeStepBlock",
+        "InstantiateCodeSandboxBlock",
+    }
+)
+
+
 def _linked_input_names(graph: "BaseGraph") -> dict[str, frozenset[str]]:
     by_node: dict[str, set[str]] = {}
     for link in graph.links:

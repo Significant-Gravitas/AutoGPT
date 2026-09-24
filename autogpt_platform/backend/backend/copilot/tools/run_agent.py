@@ -201,6 +201,8 @@ class RunAgentTool(BaseTool):
             return None
         if graph.has_external_trigger:
             return NO_OP
+        if not params.preset_id and _asks_for_inputs(graph, params):
+            return NO_OP  # the run answers with the inputs it needs
         return workflow_subject(
             graph,
             schedules=bool(params.schedule_name or params.cron),
@@ -1419,3 +1421,15 @@ async def _bind_builder_graph(
 
 def _names_an_agent(params: RunAgentInput) -> bool:
     return bool(params.library_agent_id) or "/" in params.username_agent_slug
+
+
+def _asks_for_inputs(graph: GraphModel, params: RunAgentInput) -> bool:
+    """The input gates of ``_check_prerequisites``: the call runs nothing."""
+    properties = graph.input_schema.get("properties", {})
+    provided = set(params.inputs)
+    if provided - set(properties):
+        return True
+    if params.use_defaults:
+        return False
+    required = set(graph.input_schema.get("required", []))
+    return bool(properties and not provided) or bool(required - provided)

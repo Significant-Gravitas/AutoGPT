@@ -28,6 +28,8 @@ export interface ApprovalItem {
   mode: string | null;
   // A held read's flagged passage, which the card quotes.
   passage: string | null;
+  // A held read the check could not assess, so it names no passage.
+  unjudged: boolean;
   chatRulesAllowed: ChatRule[];
   headline: { ask: string; object: string | null };
   // The argument the headline already names.
@@ -76,6 +78,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
     passage: str(payload, "passage"),
+    unjudged: payload.judged === false,
     chatRulesAllowed: asArray(payload.chat_rules_allowed).filter(
       (r): r is ChatRule => r === "allow" || r === "judge",
     ),
@@ -106,6 +109,8 @@ export function isHeldRead(item: ApprovalItem) {
 
 // Said once in the queue header; per card only a reason about this call.
 export function reasonLine(item: ApprovalItem): string | null {
+  if (isHeldRead(item) && item.unjudged)
+    return `${AUTOPILOT_NAME} could not check this, so he asks. ${AUTOPILOT_NAME} hasn't seen it.`;
   if (isHeldRead(item))
     return `It contains instructions aimed at ${AUTOPILOT_NAME}, so it was held back. ${AUTOPILOT_NAME} hasn't seen it.`;
   if (!item.reason) return null;

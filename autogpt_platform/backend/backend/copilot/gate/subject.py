@@ -11,9 +11,10 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.integrations.mcp_catalog import mcp_tool_effect
 
-from .effects import block_effect, graph_effect
+from .effects import JUDGED_BLOCKS, block_effect, graph_effect
 from .policy import Effect
 
 if TYPE_CHECKING:
@@ -43,6 +44,9 @@ NO_OP = Subject(key="", name="", effect=Effect.UNGATED)
 def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
     effect = block_effect(block, inputs)
     name = display_name(block)
+    if type(block).__name__ in JUDGED_BLOCKS:
+        # Judged like the shell: the supervisor's verdict is the reason.
+        return Subject(key=f"block:{block.id}", name=name, effect=Effect.SHELL)
     return Subject(
         key=f"block:{block.id}",
         name=name,
@@ -66,6 +70,16 @@ def workflow_subject(
         reason=_reason(effect, name, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
     )
+    steps = _irreversible_steps(graph)
+    if subject.effect is Effect.EXTERNAL and len(steps) > 1:
+        # The approval covers the whole run, so the card names every step it covers.
+        subject = subject.model_copy(
+            update={
+                "irreversible": True,
+                "reason": f"Runs {name}; its steps {_listed(steps)} reach "
+                "outside the platform.",
+            }
+        )
     creates = (
         f"Runs {name} and creates a schedule."
         if schedules
@@ -89,7 +103,8 @@ def mcp_subject(server_url: str, tool: str) -> Subject:
     mapped = mcp_tool_effect(server_url, tool)
     name = f"{tool} on {host}"
     if mapped is None:
-        effect, reason = Effect.EXTERNAL, f"Its effect is unknown: {name}."
+        effect = Effect.EXTERNAL
+        reason = f"{AUTOPILOT_NAME} does not know what {name} does, so he asks."
     elif mapped == "read":
         effect, reason = Effect.READ, ""
     else:
@@ -129,7 +144,7 @@ def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str
     """The card's reason line: ``culprit`` is the workflow step that decided."""
     if effect is None:
         step = display_name(culprit) if culprit is not None else name
-        return f"Its effect is unknown: {step}."
+        return f"{AUTOPILOT_NAME} does not know what {step} does, so he asks."
     does = {
         BlockEffect.EXTERNAL: "reaches outside the platform",
         BlockEffect.PLATFORM: "changes your platform objects",
@@ -139,6 +154,20 @@ def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str
     if culprit is not None:
         return f"Runs {name}; its step {display_name(culprit)} {does}."
     return f"Runs {name}, which {does}."
+
+
+def _irreversible_steps(graph: "GraphModel") -> list[str]:
+    names: list[str] = []
+    for each in (graph, *graph.sub_graphs):
+        for node in each.nodes:
+            name = display_name(node.block)
+            if node.block.is_irreversible_action and name not in names:
+                names.append(name)
+    return names
+
+
+def _listed(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + f" and {names[-1]}"
 
 
 def _irreversible(effect: BlockEffect | None, block: Block | None) -> bool:

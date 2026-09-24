@@ -229,7 +229,7 @@
           "irreversible": false,
           "block_id": "b8a934d5-fca0-4be3-9fc2-a99bf63bd385"
         },
-        "reason": "Its effect is unknown: Google Sheets Update Row.",
+        "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
         "reason_kind": "subject",
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
@@ -403,9 +403,9 @@
     }
   },
   {
-    "story": "Execute Code",
+    "story": "Execute Code Step",
     "review": {
-      "node_exec_id": "copilot-node-gate-run_capability:8a45589b61e8a14d",
+      "node_exec_id": "copilot-node-gate-run_capability:89830f14bf9fbf54",
       "node_id": "copilot-node-gate-run_capability",
       "user_id": "user-1",
       "session_id": "s1",
@@ -415,28 +415,23 @@
       "payload": {
         "tool": "run_capability",
         "arguments": {
+          "sandbox_id": "sbx-q3",
           "language": "python",
-          "setup_commands": ["pip install pandas"],
-          "code": "import pandas as pd\n\ndf = pd.read_csv('invoices.csv')\nmissing = df[df.po_number.isna()]\nprint(missing[['id', 'amount']].to_markdown())\n",
-          "timeout": 60
+          "step_code": "import pandas as pd\n\ndf = pd.read_csv('invoices.csv')\nmissing = df[df.po_number.isna()]\nprint(missing[['id', 'amount']].to_markdown())\n"
         },
         "clipped": [],
         "fields": [
+          {
+            "key": "sandbox_id",
+            "label": "Sandbox"
+          },
           {
             "key": "language",
             "label": "Language"
           },
           {
-            "key": "setup_commands",
-            "label": "Setup commands"
-          },
-          {
-            "key": "code",
-            "label": "Code"
-          },
-          {
-            "key": "timeout",
-            "label": "Timeout"
+            "key": "step_code",
+            "label": "Step code"
           }
         ],
         "tool_call_id": "call-run_capability",
@@ -444,22 +439,22 @@
         "mode": "auto",
         "subject": {
           "kind": "block",
-          "key": "block:0b02b072-abe7-11ef-8372-fb5d162dd712",
-          "name": "Execute Code",
-          "effect": "external",
+          "key": "block:82b59b8e-ea10-4d57-9161-8b169b0adba6",
+          "name": "Execute Code Step",
+          "effect": "shell",
           "irreversible": false,
-          "block_id": "0b02b072-abe7-11ef-8372-fb5d162dd712"
+          "block_id": "82b59b8e-ea10-4d57-9161-8b169b0adba6"
         },
-        "reason": "Its effect is unknown: Execute Code.",
-        "reason_kind": "subject",
+        "reason": "it reads a local file of invoices and prints what it finds.",
+        "reason_kind": "supervisor",
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
-          "object": "Execute Code",
+          "object": "Execute Code Step",
           "object_key": null
         }
       },
-      "instructions": "Execute Code",
+      "instructions": "Execute Code Step",
       "editable": false,
       "status": "WAITING"
     },
@@ -501,32 +496,20 @@
           "type": "object",
           "description": "Enter your API key for the E2B platform. You can get it in here - https://e2b.dev/docs"
         },
-        "setup_commands": {
+        "sandbox_id": {
           "advanced": false,
-          "description": "Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.\n\nThese commands are executed with `sh`, in the foreground.",
-          "items": {
-            "type": "string"
-          },
-          "placeholder": "pip install cowsay",
+          "description": "ID of the sandbox instance to execute the code in",
           "secret": false,
-          "title": "Setup Commands",
-          "type": "array"
+          "title": "Sandbox Id",
+          "type": "string"
         },
-        "variables": {
-          "additionalProperties": true,
-          "advanced": false,
-          "description": "Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type.",
-          "secret": false,
-          "title": "Variables (Python/JS only)",
-          "type": "object"
-        },
-        "code": {
+        "step_code": {
           "advanced": false,
           "default": "",
           "description": "Code to execute in the sandbox",
           "placeholder": "print('Hello, World!')",
           "secret": false,
-          "title": "Code",
+          "title": "Step Code",
           "type": "string"
         },
         "language": {
@@ -538,32 +521,16 @@
           "description": "Programming language to execute",
           "secret": false
         },
-        "timeout": {
-          "advanced": true,
-          "default": 300,
-          "description": "Execution timeout in seconds",
-          "secret": false,
-          "title": "Timeout",
-          "type": "integer"
-        },
         "dispose_sandbox": {
           "advanced": true,
-          "default": true,
-          "description": "Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires.",
+          "default": false,
+          "description": "Whether to dispose of the sandbox after executing this code.",
           "secret": false,
           "title": "Dispose Sandbox",
           "type": "boolean"
-        },
-        "template_id": {
-          "advanced": true,
-          "default": "",
-          "description": "You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template)",
-          "secret": false,
-          "title": "Template Id",
-          "type": "string"
         }
       },
-      "required": ["credentials"],
+      "required": ["credentials", "sandbox_id"],
       "title": "Input",
       "type": "object"
     }

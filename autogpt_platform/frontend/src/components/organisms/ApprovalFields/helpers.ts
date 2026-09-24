@@ -36,7 +36,7 @@ export function fieldKind(key: string, value: unknown): FieldKind {
       : "json";
   }
   const text = String(value);
-  if (CODE_KEYS.has(key)) return "code";
+  if (CODE_KEYS.has(key) || key.endsWith("_code")) return "code";
   if (text.length > CLAMP_CHARS || lineCount(text) > CLAMP_LINES) return "long";
   return "short";
 }
