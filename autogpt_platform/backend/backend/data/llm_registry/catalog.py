@@ -1118,6 +1118,21 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="x-ai/grok-4.7",
+                display_name="Grok 4.7",
+                provider="open_router",
+                creator="xai",
+                context_window=500000,
+                max_output_tokens=450000,
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=240.0,
+                    output_credits_per_1m=720.0,
+                    cache_read_credits_per_1m=60.0,
+                ),
+            ),
+            CatalogModel(
                 slug="x-ai/grok-4.20-multi-agent",
                 display_name="Grok 4.20 Multi-Agent",
                 provider="open_router",
