@@ -40,4 +40,29 @@ describe("Sentry client instrumentation", () => {
     expect(types).not.toContain("deprecation");
     expect(types).toEqual(expect.arrayContaining(["crash", "intervention"]));
   });
+
+  it("drops Next's handled RSC fetch fallback but keeps other fetch errors", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const fetchError = {
+      exception: {
+        values: [{ type: "TypeError", value: "Failed to fetch" }],
+      },
+    };
+    const rscFallback = {
+      ...fetchError,
+      logger: "console",
+      extra: {
+        arguments: [
+          "Failed to fetch RSC payload for https://platform.agpt.co/login. Falling back to browser navigation.",
+          { name: "TypeError", message: "Failed to fetch" },
+        ],
+      },
+    };
+
+    expect(beforeSend).toBeTypeOf("function");
+    expect(beforeSend(rscFallback, {})).toBeNull();
+    expect(beforeSend(fetchError, {})).toBe(fetchError);
+  });
 });
