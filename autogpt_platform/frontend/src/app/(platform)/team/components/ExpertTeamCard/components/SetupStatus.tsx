@@ -33,14 +33,16 @@ export function SetupStatus({ expert, isRetrying, onRetry }: Props) {
           ? `Couldn't install: ${failures.join(", ")}`
           : "Setup didn't finish"}
       </Text>
-      <Button
-        variant="secondary"
-        size="small"
-        loading={isRetrying}
-        onClick={onRetry}
-      >
-        Retry setup
-      </Button>
+      {expert.source_template_id ? (
+        <Button
+          variant="secondary"
+          size="small"
+          loading={isRetrying}
+          onClick={onRetry}
+        >
+          Retry setup
+        </Button>
+      ) : null}
     </div>
   );
 }
