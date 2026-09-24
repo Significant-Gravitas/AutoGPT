@@ -453,6 +453,28 @@ def scrub_replacements(
     return triples
 
 
+def scrub_bytes(
+    data: bytes,
+    credentials: Iterable[Credential],
+    encoded: Iterable[tuple[str, str]] = (),
+) -> bytes:
+    """``scrub_text`` on bytes, with every value as UTF-8 and as UTF-16 in
+    either byte order, whatever charset the body declares.  For a body that
+    does not decode as declared (one stray byte, an unknown charset name), and
+    for one the box may read in another charset than the proxy did."""
+    for swapped, original in encoded:
+        data = data.replace(swapped.encode(), original.encode())
+    for value, placeholder, whole_token in scrub_replacements(credentials):
+        if whole_token:
+            pattern = rb"(?<!\d)" + re.escape(value.encode()) + rb"(?!\d)"
+            data = re.sub(pattern, placeholder.encode(), data)
+            continue
+        for codec in ("utf-8", "utf-16-le", "utf-16-be"):
+            if (raw := value.encode(codec)) in data:
+                data = data.replace(raw, placeholder.encode(codec))
+    return data
+
+
 def scrub_text(
     text: str,
     credentials: Iterable[Credential],

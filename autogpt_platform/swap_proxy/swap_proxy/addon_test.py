@@ -726,3 +726,43 @@ async def test_a_request_body_is_not_held_back_by_default():
     assert not isinstance(flow.request.stream, BufferedBody)
     await addon_for(flow, anywhere=True).requestheaders(flow)
     assert isinstance(flow.request.stream, BufferedBody)
+
+
+# ------------------------------------------------------------ bodies that do not decode
+
+
+@pytest.mark.parametrize(
+    "content_type, body",
+    [
+        # One stray byte in a body that says it is UTF-8.
+        ("application/json; charset=utf-8", b'{"echo": "%s", "x": "\xff"}'),
+        ("text/plain; charset=bogus", b"echo %s"),
+        # Declared UTF-16, but the box can read the bytes as ASCII.
+        ("text/plain; charset=utf-16", b"echo %s!"),
+    ],
+    ids=["stray byte", "unknown charset", "declared utf-16"],
+)
+async def test_a_body_that_does_not_decode_as_declared_is_still_scrubbed(
+    caplog, content_type, body
+):
+    flow = text_response(body % TOKEN.encode())
+    assert flow.response is not None
+    flow.response.headers["content-type"] = content_type
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon_for(flow).response(flow)
+    assert flow.error is None
+    raw = flow.response.raw_content or b""
+    assert TOKEN.encode() not in raw and b"hsurr:github" in raw
+    assert flow.response.headers["content-length"] == str(len(raw))
+    assert audit(caplog) == [("scrubbed", None)]
+
+
+async def test_a_utf16_value_in_a_body_that_does_not_decode_is_scrubbed():
+    body = "echo ".encode("utf-16-le") + TOKEN.encode("utf-16-le") + b"\x00"
+    flow = text_response(body)
+    assert flow.response is not None
+    flow.response.headers["content-type"] = "text/plain; charset=utf-16-le"
+    await addon_for(flow).response(flow)
+    raw = flow.response.raw_content or b""
+    assert TOKEN.encode("utf-16-le") not in raw
+    assert "hsurr:github".encode("utf-16-le") in raw

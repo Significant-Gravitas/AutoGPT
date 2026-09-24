@@ -94,6 +94,7 @@ from swap_proxy.swap import (
     SwapEvent,
     is_scrubbable,
     placeholder_names,
+    scrub_bytes,
     scrub_text,
 )
 
@@ -645,18 +646,28 @@ class SwapProxyAddon:
         if not credentials or not message.raw_content:
             return False
         plain = plain_copy(message)
+        changed = False
         try:
             text = plain.get_text(strict=True)
         except ValueError:
-            return False
-        if text is None:
-            return False
-        scrubbed = scrub_text(text, credentials, encoded)
-        if scrubbed == text:
-            return False
-        plain.text = scrubbed
-        put_back(message, plain)
-        return True
+            # Not in the charset it declares, or an unknown one: the box may
+            # read it anyway, so it is scrubbed as bytes below, never let by.
+            text = None
+        if text:
+            scrubbed = scrub_text(text, credentials, encoded)
+            if scrubbed != text:
+                plain.text = scrubbed
+                changed = True
+        # Also as bytes, always: the charset the proxy decoded with need not be
+        # the one the box reads with.
+        raw = plain.raw_content or b""
+        cleaned = scrub_bytes(raw, credentials, encoded)
+        if cleaned != raw:
+            plain.content = cleaned
+            changed = True
+        if changed:
+            put_back(message, plain)
+        return changed
 
     async def _lookup(
         self,
