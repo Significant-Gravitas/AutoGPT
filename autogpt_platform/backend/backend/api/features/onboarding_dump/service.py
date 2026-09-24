@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from backend.api.features.experts.experts_db import list_templates
 from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
+    completion,
     db,
     intro,
     prompts,
@@ -355,9 +356,7 @@ async def _run_background_jobs(
     )
     if results[0] is True:
         try:
-            await db.update_dump(
-                user_id, recording_id, status=BrainDumpStatus.completed
-            )
+            await completion.complete_dump(user_id, recording_id)
         except Exception as e:
             logger.error("Brain dump completion failed for user %s: %s", user_id, e)
             await db.mark_failed(user_id, recording_id, "understanding_failed")

@@ -1,9 +1,19 @@
 """Shared fixtures for the onboarding brain dump tests."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
+
+
+@pytest.fixture(autouse=True)
+def posthog_client(mocker: MockerFixture) -> MagicMock:
+    client = MagicMock()
+    mocker.patch(
+        "backend.api.features.onboarding_dump.completion.posthog_client.get_posthog_client",
+        return_value=client,
+    )
+    return client
 
 
 @pytest.fixture(autouse=True)

@@ -8,7 +8,7 @@ stored row rather than inferred from a response body.
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import BackgroundTasks
@@ -99,6 +99,7 @@ class DumpStore:
             # plain attribute access raises instead of returning the DB
             # default. A different take starts from the cleared set.
             self.row = OnboardingBrainDump.model_construct(
+                id="dump-1",
                 userId=user_id,
                 recordingId=recording_id,
                 status=BrainDumpStatus.recording_uploaded,
@@ -242,7 +243,7 @@ async def finalize_voice(duration_secs: float = 12.0, mime_type: str | None = No
 
 @pytest.mark.asyncio
 async def test_transcription_failure_keeps_the_audio_and_records_the_error(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, posthog_client: MagicMock
 ):
     await start_voice_take(dumps)
     transcribe.side_effect = RuntimeError("provider blew up")
@@ -256,6 +257,7 @@ async def test_transcription_failure_keeps_the_audio_and_records_the_error(
     assert dumps.row.errorCode == "transcription_failed"
     # The zero-lost-recordings guarantee: the audio is still addressable.
     assert dumps.row.audioPath == AUDIO_PATH
+    posthog_client.capture.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -297,7 +299,7 @@ async def test_audio_storage_failure_is_retryable(
 
 @pytest.mark.asyncio
 async def test_transcript_lands_in_the_business_understanding(
-    dumps: DumpStore, extraction: dict[str, AsyncMock]
+    dumps: DumpStore, extraction: dict[str, AsyncMock], posthog_client: MagicMock
 ):
     await start_voice_take(dumps)
 
@@ -311,11 +313,16 @@ async def test_transcript_lands_in_the_business_understanding(
     assert understanding.additional_notes == (
         f"Onboarding brain dump (spoken): {TRANSCRIPT}"
     )
+    posthog_client.capture.assert_called_once()
+    assert (
+        posthog_client.capture.call_args.kwargs["properties"]["transcript"]
+        == TRANSCRIPT
+    )
 
 
 @pytest.mark.asyncio
 async def test_typed_dump_is_labelled_as_typed_in_the_understanding(
-    extraction: dict[str, AsyncMock]
+    extraction: dict[str, AsyncMock], posthog_client: MagicMock
 ):
     background = BackgroundTasks()
     await service.finalize_typed_dump(
@@ -327,11 +334,15 @@ async def test_typed_dump_is_labelled_as_typed_in_the_understanding(
     assert understanding.additional_notes == (
         "Onboarding brain dump (typed): I run a bakery."
     )
+    posthog_client.capture.assert_called_once()
+    assert (
+        posthog_client.capture.call_args.kwargs["properties"]["input_mode"] == "typed"
+    )
 
 
 @pytest.mark.asyncio
 async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
-    dumps: DumpStore, extraction: dict[str, AsyncMock]
+    dumps: DumpStore, extraction: dict[str, AsyncMock], posthog_client: MagicMock
 ):
     """A second submit of the same typed take is a no-op.
 
@@ -355,6 +366,7 @@ async def test_repeating_a_typed_finalize_does_not_restart_the_pipeline(
     # Nothing queued the second time round.
     assert second.tasks == []
     assert extraction["upsert_business_understanding"].await_count == 1
+    posthog_client.capture.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -479,7 +491,10 @@ async def test_two_concurrent_voice_finalizes_only_process_the_take_once(
 
 @pytest.mark.asyncio
 async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
-    mocker: MockerFixture, dumps: DumpStore, extraction: dict[str, AsyncMock]
+    mocker: MockerFixture,
+    dumps: DumpStore,
+    extraction: dict[str, AsyncMock],
+    posthog_client: MagicMock,
 ):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.typed)
     release_both_past_the_guard(mocker, dumps)
@@ -500,6 +515,7 @@ async def test_two_concurrent_typed_finalizes_only_queue_one_pipeline(
     # One winner queues the extraction/greeting pair; the loser queues
     # nothing, so the understanding is written exactly once.
     assert extraction["upsert_business_understanding"].await_count == 1
+    posthog_client.capture.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -584,7 +600,7 @@ async def test_a_voice_finalize_for_a_superseded_take_reports_its_own_take(
 
 @pytest.mark.asyncio
 async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
-    dumps: DumpStore, transcribe: AsyncMock
+    dumps: DumpStore, transcribe: AsyncMock, posthog_client: MagicMock
 ):
     """The old take loses the row the moment a second tab claims it.
 
@@ -611,6 +627,7 @@ async def test_a_take_superseded_mid_transcription_never_writes_to_the_new_row(
     assert dumps.row.transcript is None
     assert dumps.row.greeting is None
     assert dumps.row.status == BrainDumpStatus.recording_uploaded
+    posthog_client.capture.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1026,7 +1043,10 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
 
 @pytest.mark.asyncio
 async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
-    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    posthog_client: MagicMock,
 ):
     await start_voice_take(dumps)
     quality_gate.return_value = "no_usable_speech"
@@ -1049,11 +1069,15 @@ async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
     assert background.tasks == []
     extraction["extract_business_understanding"].assert_not_awaited()
     extraction["upsert_business_understanding"].assert_not_awaited()
+    posthog_client.capture.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_quality_rejected_typed_dump_records_the_error(
-    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+    dumps: DumpStore,
+    quality_gate: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    posthog_client: MagicMock,
 ):
     quality_gate.return_value = "insufficient_content"
     background = BackgroundTasks()
@@ -1069,6 +1093,7 @@ async def test_quality_rejected_typed_dump_records_the_error(
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "insufficient_content"
     assert dumps.row.transcript == "hello hello testing"
+    posthog_client.capture.assert_not_called()
     assert background.tasks == []
     extraction["upsert_business_understanding"].assert_not_awaited()
 
@@ -1508,7 +1533,10 @@ async def test_a_team_written_while_the_flag_was_off_is_recomputed(
 
 @pytest.mark.asyncio
 async def test_a_skipped_dump_still_gets_a_team(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+    dumps: DumpStore,
+    team_flag: AsyncMock,
+    templates: AsyncMock,
+    posthog_client: MagicMock,
 ):
     """Path B has no transcript, so the job never ran for it.
 
@@ -1523,6 +1551,7 @@ async def test_a_skipped_dump_still_gets_a_team(
     assert card.team is not None
     assert card.team.source == "fallback"
     assert card.team_pending is False
+    posthog_client.capture.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1580,6 +1609,7 @@ async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishe
     templates: AsyncMock,
     generate_team: AsyncMock,
     extraction: dict[str, AsyncMock],
+    posthog_client: MagicMock,
 ):
     saved = asyncio.Event()
     release_team = asyncio.Event()
@@ -1614,6 +1644,7 @@ async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishe
         pending = await service.get_recommended_experts(USER_ID)
         assert pending.ready is False
         assert pending.team is None
+        posthog_client.capture.assert_not_called()
     finally:
         release_team.set()
         await asyncio.wait_for(task, timeout=2)
@@ -1621,20 +1652,22 @@ async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishe
     assert ready.ready is True
     assert ready.team is not None
     assert ready.team.source == "llm"
+    posthog_client.capture.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_failed_final_status_write_does_not_leave_the_dump_pending(
-    dumps: DumpStore, mocker: MockerFixture
+    dumps: DumpStore, mocker: MockerFixture, posthog_client: MagicMock
 ):
-    async def update(user_id, recording_id, **fields):
-        if fields.get("status") == BrainDumpStatus.completed:
+    async def claim(user_id, recording_id, **fields):
+        if fields.get("new") == BrainDumpStatus.completed:
             raise RuntimeError("completion write failed")
-        return await dumps.update_dump(user_id, recording_id, **fields)
+        return await dumps.claim_transition(user_id, recording_id, **fields)
 
-    mocker.patch.object(service.db, "update_dump", side_effect=update)
+    mocker.patch.object(service.db, "claim_transition", side_effect=claim)
     await start_voice_take(dumps)
     await finalize_voice()
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "understanding_failed"
+    posthog_client.capture.assert_not_called()
