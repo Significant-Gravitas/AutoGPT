@@ -135,7 +135,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
-  extractReviewTarget: () => null,
+  extractReviewTarget: vi.fn(() => null),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -1515,6 +1515,40 @@ describe("ChatMessagesContainer — held call cards", () => {
     // One held call on screen: fetched, but polled only if a card comes back.
     expect(mounted.mock.calls.at(-1)?.[0].refetchKey).toBe(1);
     expect(mounted.mock.calls.at(-1)?.[0].pollWhileEmpty).toBe(false);
+  });
+
+  it("fetches a new held card at once while a block review holds the chat's slot", async () => {
+    const { CopilotPendingReviews } = await import(
+      "../../CopilotPendingReviews/CopilotPendingReviews"
+    );
+    const { extractReviewTarget } = await import("../helpers");
+    vi.mocked(extractReviewTarget).mockReturnValueOnce({
+      graphExecId: "copilot-session-sess-123",
+    });
+    const mounted = vi.mocked(CopilotPendingReviews);
+    mounted.mockClear();
+    const messages = [
+      {
+        id: "a1",
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-create_folder",
+            toolCallId: "c1",
+            state: "output-available",
+            input: {},
+            output: { type: "approval_required", review_id: "r1" },
+          },
+        ],
+      },
+    ] as unknown as Message[];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    const [props] = mounted.mock.calls.at(-1) ?? [];
+    expect(props?.graphExecId).toBe("copilot-session-sess-123");
+    expect(props?.pollWhileEmpty).toBeUndefined();
+    expect(props?.refetchKey).toBe(1);
   });
 
   it("still finds held cards whose call has paged out of the loaded history", async () => {

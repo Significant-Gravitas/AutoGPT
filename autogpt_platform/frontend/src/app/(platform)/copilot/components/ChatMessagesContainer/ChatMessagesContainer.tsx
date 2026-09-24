@@ -840,6 +840,11 @@ export function ChatMessagesContainer({
             <CopilotPendingReviews
               graphExecId={reviewTarget.graphExecId}
               graphId={reviewTarget.graphId}
+              refetchKey={
+                reviewTarget.graphExecId === `copilot-session-${sessionID}`
+                  ? countHeldCalls(messages)
+                  : undefined
+              }
             />
           )}
           {!readOnly &&
