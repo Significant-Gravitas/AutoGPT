@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Union
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.copilot.constants import legacy_chat_session_id
+
 if TYPE_CHECKING:
     from prisma.models import PendingHumanReview
 
@@ -43,9 +45,14 @@ class PendingHumanReviewModel(BaseModel):
         default="",  # Temporary default for test compatibility
     )
     user_id: str = Field(description="User ID associated with the review")
-    graph_exec_id: str = Field(description="Graph execution ID")
-    graph_id: str = Field(description="Graph ID")
-    graph_version: int = Field(description="Graph version")
+    graph_exec_id: str | None = Field(
+        default=None, description="Graph execution ID; None for a chat review"
+    )
+    graph_id: str | None = Field(default=None, description="Graph ID")
+    graph_version: int | None = Field(default=None, description="Graph version")
+    session_id: str | None = Field(
+        default=None, description="Chat session ID; None for a graph review"
+    )
     payload: SafeJsonData = Field(description="The actual data payload awaiting review")
     instructions: str | None = Field(
         description="Instructions or message for the reviewer", default=None
@@ -64,9 +71,6 @@ class PendingHumanReviewModel(BaseModel):
         default=None, description="Display name of the agent that requested the review"
     )
     library_agent_id: str | None = Field(default=None, description="For run deep links")
-    session_id: str | None = Field(
-        default=None, description="Chat session id for copilot run_capability reviews"
-    )
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None
     )
@@ -98,13 +102,17 @@ class PendingHumanReviewModel(BaseModel):
             review: Database review object
             node_id: Node definition ID (fetched from NodeExecution)
         """
+        # A row written in the old synthetic-graph shape reads as a chat review.
+        legacy_session_id = legacy_chat_session_id(review.graphExecId)
+        is_graph = legacy_session_id is None and review.chatSessionId is None
         return cls(
             node_exec_id=review.nodeExecId,
             node_id=node_id,
             user_id=review.userId,
-            graph_exec_id=review.graphExecId,
-            graph_id=review.graphId,
-            graph_version=review.graphVersion,
+            graph_exec_id=review.graphExecId if is_graph else None,
+            graph_id=review.graphId if is_graph else None,
+            graph_version=review.graphVersion if is_graph else None,
+            session_id=review.chatSessionId or legacy_session_id,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,
