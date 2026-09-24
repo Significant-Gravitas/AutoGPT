@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import NotificationType, SubscriptionTier
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import NotificationResult, SubscriptionPlan
 from backend.notifications import lifecycle, lifecycle_plan
 from backend.notifications.lifecycle_plan import card_from_invoice
@@ -333,6 +334,30 @@ async def test_a_subscription_end_is_sent_to_analytics_once():
         claim=False,
     )
     replay["ended"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_our_own_cancel_after_a_failed_renewal_is_involuntary_churn():
+    # Stripe stamps any API cancel "cancellation_requested"; the comment
+    # handle_subscription_payment_failure leaves is what tells them apart.
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": PAYMENT_FAILURE_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+    assert calls["notify"].await_args.args[0].data.due_to_payment is True
 
 
 @pytest.mark.asyncio

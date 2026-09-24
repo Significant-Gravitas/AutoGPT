@@ -12,6 +12,7 @@ from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
+    PAYMENT_FAILURE_CANCELLATION_COMMENT,
     UserCredit,
     _get_active_subscription_cached,
     _is_stripe_reconcilable,
@@ -30,6 +31,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
+from backend.util.exceptions import InsufficientBalanceError
 
 
 class _CacheClearable(Protocol):
@@ -1858,6 +1860,61 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
         mock_add_tx.assert_called_once()
         _, kwargs = mock_add_tx.call_args
         assert kwargs.get("transaction_key") == "in_idempotency_test"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_failure_marks_its_cancel_as_payment_failed():
+    """Stripe stamps our API cancel ``cancellation_requested``; the comment is
+    what lets the deletion webhook report it as involuntary churn."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_uncovered",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_due": 2000,
+    }
+    active_subs = MagicMock()
+    active_subs.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_abc123", "schedule": None}, "sk_test"
+        )
+    ]
+    active_subs.has_more = False
+    no_subs = MagicMock()
+    no_subs.data = []
+    no_subs.has_more = False
+
+    def list_side_effect(*args, **kwargs):
+        return no_subs if kwargs.get("status") == "trialing" else active_subs
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new_callable=AsyncMock,
+            side_effect=InsufficientBalanceError(
+                message="no balance", user_id="user-1", balance=0, amount=2000
+            ),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            side_effect=list_side_effect,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
+    ):
+        await handle_subscription_payment_failure(invoice)
+
+    mock_cancel.assert_called_once_with(
+        "sub_abc123",
+        cancellation_details={"comment": PAYMENT_FAILURE_CANCELLATION_COMMENT},
+    )
 
 
 def _patch_credit_grant_config(enabled: bool):

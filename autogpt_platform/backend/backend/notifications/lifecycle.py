@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     AudienceEventModel,
@@ -290,7 +291,7 @@ async def on_subscription_deleted(subscription: dict) -> None:
     if not await claim_once(claim_key):
         return
 
-    reason = (subscription.get("cancellation_details") or {}).get("reason")
+    reason = _churn_reason(subscription)
     plan = await plan_from_subscription(subscription)
     await _publish(
         NotificationEventModel[SubscriptionEndedData](
@@ -317,6 +318,15 @@ async def on_subscription_deleted(subscription: dict) -> None:
             action=AudienceAction.REMOVE_CHANGELOG, email=user.email, user_id=user.id
         )
     )
+
+
+def _churn_reason(subscription: dict) -> str | None:
+    """Stripe's ``cancellation_details.reason``, except that our own cancel
+    after a failed renewal is involuntary churn, not a requested one."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == PAYMENT_FAILURE_CANCELLATION_COMMENT:
+        return "payment_failed"
+    return details.get("reason")
 
 
 async def _user_for(customer_id: object) -> BillingEmailRecipient | None:
