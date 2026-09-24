@@ -36,6 +36,10 @@ def _resolving(guard: EgressGuard, answers: dict[str, list[str]]):
         "64:ff9b:1::a9fe:a9fe",  # NAT64's local-use prefix
         "2002:a9fe:a9fe::",  # 6to4 of 169.254.169.254
         "2002:7f00:1::1",  # 6to4 of 127.0.0.1
+        "fec0::1",  # site-local
+        "::127.0.0.1",  # IPv4-compatible
+        "::a9fe:a9fe",
+        "::ffff:0:a9fe:a9fe",  # SIIT IPv4-translated
     ],
 )
 def test_private_space(ip):

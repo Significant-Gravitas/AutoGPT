@@ -44,10 +44,12 @@ PRIVATE_NETS: tuple[IPNetwork, ...] = tuple(
         "198.18.0.0/15",
         "224.0.0.0/4",
         "240.0.0.0/4",
-        "::1/128",
+        "::/96",  # IPv4-compatible (deprecated): ::127.0.0.1, ::1 and :: too
+        "::ffff:0:0:0/96",  # SIIT's IPv4-translated: ::ffff:0:a9fe:a9fe
         "64:ff9b:1::/48",
         "fc00::/7",
         "fe80::/10",
+        "fec0::/10",  # site-local (deprecated, still routed by some stacks)
         "ff00::/8",
     )
 )
