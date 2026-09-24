@@ -1756,7 +1756,7 @@ async def _apply_building_mode_restart(
     # of the turn.
     system_prompt = (
         base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b)
+        + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -4918,7 +4918,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         session.guide_in_system_prompt = bool(builder_session_suffix)
         system_prompt = (
             base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b)
+            + get_sdk_supplement(
+                use_e2b=use_e2b, expert_session=bool(session.expert_id)
+            )
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
