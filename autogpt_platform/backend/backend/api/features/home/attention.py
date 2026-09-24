@@ -88,7 +88,7 @@ def _gate_attention(
         id=f"approval-{review.node_exec_id}",
         kind="approval",
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
-        title=gate.headline,
+        title=gate.headline.text,
         description=_gate_reason(gate),
         why_it_matters="Nothing runs until you approve it.",
         expert=_review_expert(review),
@@ -97,7 +97,8 @@ def _gate_attention(
             " · ".join(
                 f"{field.label}: {gate.arguments[field.key]}"
                 for field in gate.fields
-                if gate.arguments.get(field.key) not in (None, "", [], {})
+                if field.key != gate.headline.object_key
+                and gate.arguments.get(field.key) not in (None, "", [], {})
             )
         )
         or None,

@@ -28,6 +28,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for
 
 logger = logging.getLogger(__name__)
@@ -67,32 +68,10 @@ class GateReviewPayload(BaseModel):
     subject: Subject
     reason: str = ""
     reason_kind: ReasonKind = "mode"
-    # Chat-scoped allow and judge arrive with L5b; until then no rule is offered.
+    # The gate records no chat-scoped rule yet, so none is offered.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
-    # Microdollars, from L6.
-    spend: dict[str, int] | None = None
-    headline: str
+    headline: Headline
 
-
-# The argument a headline names, in the order a tool is most likely to carry it.
-_SUBJECT_KEYS = (
-    "name",
-    "title",
-    "folder_name",
-    "agent_name",
-    "expert_name",
-    "path",
-    "filename",
-    "file_path",
-    "url",
-    "query",
-)
-_HEADLINE_VERBS = {
-    "bash_exec": "Run a command in the sandbox",
-    "browser_act": "Use the browser",
-    "post_to_chat_platform": "Post a message",
-    "edit_chat_platform_message": "Edit a posted message",
-}
 
 # An approval must not run a call long after the user gave it; the answered
 # card's turn normally runs it within seconds.
@@ -157,23 +136,6 @@ def review_payload(
         reason_kind=reason_kind,
         headline=headline_for(tool_name, args),
     ).model_dump()
-
-
-def headline_for(tool_name: str, args: dict[str, Any]) -> str:
-    """The card's action line for readers without the frontend catalog.
-
-    Built from our own registry name and one argument, never from the reason,
-    which the model can influence.
-    """
-    label = _HEADLINE_VERBS.get(tool_name) or _label(tool_name)
-    for key in _SUBJECT_KEYS:
-        value = args.get(key)
-        if isinstance(value, str) and value.strip():
-            subject = " ".join(value.split())
-            if len(subject) > 60:
-                subject = subject[:59] + "…"
-            return f"{label} “{subject}”"
-    return label
 
 
 async def find_decision(
@@ -248,7 +210,7 @@ async def open_review(
             graph_id=session_exec_id(session.session_id),
             graph_version=1,
             input_data=payload,
-            message=payload["headline"],
+            message=headline_for(tool_name, args).text,
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,

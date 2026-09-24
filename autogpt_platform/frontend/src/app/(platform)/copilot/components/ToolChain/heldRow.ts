@@ -1,8 +1,7 @@
-import { beautifyString } from "@/lib/utils";
 import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
+import { fallbackAsk } from "../ApprovalQueue/helpers";
 import type { ChainRow } from "./helpers";
-import { asObject } from "./resultHelpers";
-import { askText, getAskLabel } from "./toolCatalog.ask";
+import { asObject, str } from "./resultHelpers";
 import { getCatalogLabel } from "./toolCatalog";
 
 export type HeldState =
@@ -10,6 +9,7 @@ export type HeldState =
   | "approved"
   | "rejected"
   | "expired"
+  | "closed"
   | "not-run";
 
 export interface HeldRowInfo {
@@ -24,9 +24,9 @@ export function applyHeldOutcome(
 ): ChainRow {
   const data = asObject(row.output);
   if (!row.tool || data?.type !== "approval_required") return row;
-  const reviewId = typeof data.review_id === "string" ? data.review_id : null;
+  const reviewId = str(data, "review_id");
   const tool = heldToolName(data, row.tool);
-  const ask = heldAskText(tool, row.input);
+  const ask = heldAskText(data, tool);
   const didnt = `Didn't ${lowerFirst(ask)}`;
   if (!reviewId) {
     return settle(
@@ -45,24 +45,21 @@ export function applyHeldOutcome(
       held: { state: "waiting", reviewId },
     };
   }
-  switch (outcome.outcome) {
-    case "approved":
-      return {
-        ...settle(
-          row,
-          getCatalogLabel(tool, row.input, "done")?.text ?? ask,
-          "approved",
-          reviewId,
-        ),
-        output: outcome.output,
-      };
-    case "rejected":
-      return settle(row, didnt, "rejected", reviewId);
-    case "expired":
-      return settle(row, didnt, "expired", reviewId);
-    default:
-      return settle(row, didnt, "not-run", reviewId);
+  if (outcome.outcome !== "approved") {
+    return settle(row, didnt, outcome.outcome, reviewId);
   }
+  const result = asObject(outcome.output);
+  const done = getCatalogLabel(tool, row.input, "done")?.text ?? ask;
+  // It ran and failed: the normal error row, still marked as approved.
+  if (result?.type === "error") {
+    return {
+      ...settle(row, done, "approved", reviewId),
+      state: "error",
+      detail: str(result, "message", "error") ?? undefined,
+      output: outcome.output,
+    };
+  }
+  return { ...settle(row, done, "approved", reviewId), output: outcome.output };
 }
 
 // The held call's own tool, which a capability row names only in its output.
@@ -70,15 +67,14 @@ export function heldToolName(
   output: Record<string, unknown>,
   fallback: string,
 ) {
-  const name = output.tool_name;
-  return typeof name === "string" && name.trim() ? name.trim() : fallback;
+  return str(output, "tool_name")?.trim() ?? fallback;
 }
 
-export function heldAskText(toolName: string, input: unknown) {
-  const label = getAskLabel(toolName, asObject(input) ?? {});
-  return label
-    ? askText(label)
-    : `Run ${beautifyString(toolName.replace(/^run_/, "")).toLowerCase()}`;
+// The server's words for the call, quoted as every other chain row quotes.
+export function heldAskText(output: Record<string, unknown>, toolName: string) {
+  const ask = str(output, "ask") ?? fallbackAsk(toolName);
+  const object = str(output, "object");
+  return object ? `${ask} "${object}"` : ask;
 }
 
 function settle(

@@ -413,3 +413,20 @@ async def test_an_answer_on_an_idle_chat_starts_its_turn(
 
     dispatch.assert_awaited_once()
     assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_chain_row_and_the_card_name_the_call_alike(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The tool output labels the chain row; the row's payload heads the card."""
+    session = await _new_session(test_user_id, "ask_first")
+
+    result = await post_tool.execute(test_user_id, session, "call-9", text="hi")
+
+    output = json.loads(result.output)
+    row = await _row(output["review_id"], test_user_id)
+    assert row is not None
+    assert output["type"] == "approval_required"
+    assert (output["ask"], output["object"]) == ("Post a message", None)
+    assert row.payload["headline"]["ask"] == output["ask"]

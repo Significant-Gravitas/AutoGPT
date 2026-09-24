@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
-import { type ApprovalItem, type ChatRule, isHeldRead } from "./helpers";
+import type { ApprovalItem, ChatRule } from "./helpers";
 
 export interface Receipt {
   item: ApprovalItem;
@@ -61,7 +61,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
         batch.map((item) => ({
           node_exec_id: item.reviewId,
           approved,
-          // The chat-scoped rule rides the approval; the gate honours it from L5b.
+          // The chat-scoped rule rides the approval; the gate reads it once it records rules.
           auto_approve_future: approved && !!rule,
           message: rule,
         })),
@@ -74,7 +74,10 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     if (ok) {
       setReceipts((prev) => [
         ...prev,
-        ...batch.map((item) => ({ item, text: receiptText(item, approved) })),
+        ...batch.map((item) => ({
+          item,
+          text: approved ? "Approved" : "Rejected",
+        })),
       ]);
       setConfirmRejectAll(false);
       onAnswered();
@@ -107,9 +110,4 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     setConfirmRejectAll,
     answer,
   };
-}
-
-function receiptText(item: ApprovalItem, approved: boolean) {
-  if (isHeldRead(item)) return approved ? "Released" : "Kept out";
-  return approved ? "Approved" : "Rejected";
 }

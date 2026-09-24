@@ -269,7 +269,12 @@ describe("toChainRow", () => {
       toolPart(
         "bash_exec",
         { command: "ls" },
-        { type: "approval_required", tool_name: "bash_exec", reason: "why" },
+        {
+          type: "approval_required",
+          tool_name: "bash_exec",
+          reason: "why",
+          ask: "Run a command in the sandbox",
+        },
       ),
       0,
     );
@@ -286,7 +291,7 @@ describe("toChainRow", () => {
     [{ type: "review_required" }, "Review this action"],
     [
       { type: "approval_required", tool_name: "post_to_chat_platform" },
-      "Post a message",
+      "Run post to chat platform",
     ],
     [{ type: "approval_required" }, "Run block"],
     [{ type: "approval_required", tool_name: "   " }, "Run block"],

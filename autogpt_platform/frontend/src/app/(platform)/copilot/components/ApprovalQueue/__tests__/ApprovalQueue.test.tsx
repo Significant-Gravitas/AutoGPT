@@ -12,7 +12,14 @@ import {
 } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { folder, mail, SESSION_EXEC, shell } from "./fixtures";
+import {
+  deleteFolder,
+  folder,
+  heldReview,
+  mail,
+  SESSION_EXEC,
+  shell,
+} from "./fixtures";
 
 function serve(reviews: PendingHumanReviewModel[], status = 200) {
   server.use(
@@ -155,5 +162,53 @@ test("a failed send says so on the card and lets you try again", async () => {
       (screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement)
         .disabled,
     ).toBe(false),
+  );
+});
+
+test.each([
+  ["supervisor", "Not sure this is safe: it uploads a file."],
+  ["rule", "it uploads a file."],
+])("a %s reason about this call shows on its card", async (kind, line) => {
+  serve([
+    heldReview({
+      id: "r",
+      tool: "bash_exec",
+      args: { command: "ls" },
+      reason: "it uploads a file.",
+      reasonKind: kind,
+      headline: { ask: "Run a command in the sandbox" },
+    }),
+  ]);
+  renderQueue();
+
+  expect(await screen.findByText(line)).toBeDefined();
+});
+
+test("a call told apart only by its id shows the id and is not approved as a set", async () => {
+  serve([deleteFolder("a", "f-111"), deleteFolder("b", "f-222")]);
+  renderQueue();
+
+  expect(await screen.findByText("f-111")).toBeDefined();
+  expect(screen.getByText("f-222")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Approve both" })).toBeNull();
+});
+
+test("a failed answer from a compact line opens its card with the error", async () => {
+  serve(
+    [
+      folder("a", "One", 9),
+      folder("b", "Two", 8),
+      folder("c", "Three", 7),
+      folder("d", "Four", 6),
+    ],
+    500,
+  );
+  renderQueue();
+
+  const [first] = await screen.findAllByRole("button", { name: "Approve" });
+  await userEvent.click(first);
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "Couldn't send your answer",
   );
 });

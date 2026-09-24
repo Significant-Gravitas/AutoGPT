@@ -41,10 +41,32 @@ export function fieldKind(key: string, value: unknown): FieldKind {
   return "short";
 }
 
-export function isShown(key: string, value: unknown, hiddenKeys: string[]) {
-  if (hiddenKeys.includes(key)) return false;
-  // Ids the user never typed say nothing to them; a card that resolves one to a name shows that instead.
-  if (/(^|_)ids?$/.test(key)) return false;
+interface VisibleKeysArgs {
+  keys: string[];
+  values: Record<string, unknown>;
+  hiddenKeys: string[];
+  // Show ids when nothing else would tell this call from another.
+  idsWhenAlone: boolean;
+}
+
+export function visibleKeys({
+  keys,
+  values,
+  hiddenKeys,
+  idsWhenAlone,
+}: VisibleKeysArgs) {
+  const present = [...new Set(keys)].filter(
+    (key) => !hiddenKeys.includes(key) && hasValue(values[key]),
+  );
+  const named = present.filter((key) => !isIdKey(key));
+  return named.length > 0 || !idsWhenAlone ? named : present;
+}
+
+export function isIdKey(key: string) {
+  return /(^|_)ids?$/.test(key);
+}
+
+function hasValue(value: unknown) {
   if (value === null || value === undefined || value === "") return false;
   if (value === false) return false;
   if (Array.isArray(value)) return value.length > 0;

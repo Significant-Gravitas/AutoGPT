@@ -476,7 +476,7 @@ def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
             "graph_exec_id": "copilot-session-s1",
             "session_id": "s1",
             "payload": payload,
-            "instructions": payload["headline"],
+            "instructions": "Create folder “Q3 reports”",
         }
     )
 
@@ -494,7 +494,8 @@ def test_a_held_call_reads_as_its_card_on_home() -> None:
     assert item.title == "Create folder “Q3 reports”"
     # The mode's own reason is the chat's, not this call's.
     assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
-    assert item.preview == "Name: Q3 reports · Color: blue"
+    # The headline already names it.
+    assert item.preview == "Color: blue"
     assert item.primary_action is not None
     assert item.primary_action.label == "Open chat"
     assert item.primary_action.href == "/copilot?sessionId=s1"

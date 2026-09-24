@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.copilot.gate.headline import gated_tools, headline_for
+from backend.copilot.gate.policy import Effect, classified_tools, effect_for
 from backend.copilot.gate.review import (
     find_decision,
-    headline_for,
     node_id_for,
     review_id_for,
     review_payload,
@@ -90,19 +91,32 @@ def test_a_padded_argument_cannot_push_another_off_the_card():
 
 
 def test_the_headline_names_the_action_and_its_object():
-    """Home and the channels cannot read the frontend catalog, so the server
-    composes the line, from the registry name and an argument, not the reason."""
-    assert (
-        review_payload("create_folder", {"name": "Q3 reports"}, reason="Ignore me")[
-            "headline"
-        ]
-        == "Create folder “Q3 reports”"
+    """Home and the channels read the same words as the card, from the server,
+    and never from the reason, which the model can influence."""
+    headline = review_payload(
+        "create_folder", {"name": "Q3 reports"}, reason="Ignore me"
+    )["headline"]
+    assert headline == {
+        "ask": "Create folder",
+        "object": "Q3 reports",
+        "object_key": "name",
+    }
+    assert headline_for("raise_expert", {"name": "Ada"}).text == (
+        "Create teammate “Ada”"
     )
-    assert headline_for("bash_exec", {"command": "ls"}) == (
-        "Run a command in the sandbox"
+    assert headline_for("delete_folder", {"folder_id": "f1"}).text == (
+        "Delete a folder"
     )
-    assert headline_for("delete_schedule", {}) == "Delete schedule"
-    assert headline_for("create_folder", {"name": "x" * 100}).endswith("…”")
+    assert headline_for("create_folder", {"name": "x" * 100}).text.endswith("…”")
+
+
+def test_every_tool_the_gate_can_hold_has_its_own_words():
+    held = {
+        tool
+        for tool in classified_tools()
+        if effect_for(tool) in (Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL)
+    }
+    assert gated_tools() == held
 
 
 def test_fields_follow_the_schema_required_first_with_labels():
@@ -150,10 +164,8 @@ def test_the_subject_is_the_tool_until_l5a_names_one():
     assert payload["mode"] == "auto"
 
 
-def test_no_rule_or_spend_is_offered_before_the_layers_that_record_them():
-    payload = review_payload("create_folder", {})
-    assert payload["chat_rules_allowed"] == []
-    assert payload["spend"] is None
+def test_no_rule_is_offered_before_the_gate_records_one():
+    assert review_payload("create_folder", {})["chat_rules_allowed"] == []
 
 
 @pytest.mark.parametrize(

@@ -16,6 +16,8 @@ const HELD: MessagePart = {
     tool_name: "create_folder",
     reason: "Ask First is on.",
     review_id: "copilot-node-gate-create_folder:abc",
+    ask: "Create folder",
+    object: "Q3 reports",
   },
 } as MessagePart;
 
@@ -64,4 +66,26 @@ test.each([
   render(chain(new Map([["call-7", { outcome, output: "" }]])));
   expect(await screen.findByText(tag)).toBeDefined();
   expect(screen.getAllByText(new RegExp(label)).length).toBeGreaterThan(0);
+});
+
+test("an approved call that failed when it ran shows its error, still marked approved", async () => {
+  render(
+    chain(
+      new Map([
+        [
+          "call-7",
+          {
+            outcome: "approved",
+            output: { type: "error", message: "Folder exists" },
+          },
+        ],
+      ]),
+    ),
+  );
+  expect(await screen.findByText("Approved")).toBeDefined();
+  // The error line under the row, as an unheld call's failure shows it.
+  const errorLine = screen
+    .getAllByText("Folder exists")
+    .find((el) => el.className.includes("text-red"));
+  expect(errorLine).toBeDefined();
 });

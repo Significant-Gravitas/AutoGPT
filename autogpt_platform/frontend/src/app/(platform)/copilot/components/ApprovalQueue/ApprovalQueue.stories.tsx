@@ -11,12 +11,11 @@ import { AttentionRow } from "../../../home/components/NeedsYou/components/Atten
 import { ApprovalQueue } from "./ApprovalQueue";
 import { toApprovalItem } from "./helpers";
 import {
+  deleteFolder,
   folder,
-  heldRead,
   heldReview,
   mail,
   shell,
-  spendCard,
 } from "./__tests__/fixtures";
 
 function answerAfter(ms: number, status = 200) {
@@ -64,9 +63,9 @@ export const IrreversibleWithInputs: Story = { args: queueOf([mail()]) };
 
 export const SupervisorCouldNotVouch: Story = { args: queueOf([shell()]) };
 
-export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
-
-export const HeldRead: Story = { args: queueOf([heldRead()]) };
+export const IdentifiedOnlyById: Story = {
+  args: queueOf([deleteFolder("f1", "f-111"), deleteFolder("f2", "f-222")]),
+};
 
 export const FiveWaiting: Story = {
   args: queueOf([
@@ -75,6 +74,11 @@ export const FiveWaiting: Story = {
       tool: "delete_skill",
       args: { name: "Old drafts" },
       fields: [{ key: "name", label: "Name" }],
+      headline: {
+        ask: "Delete skill",
+        object: "Old drafts",
+        object_key: "name",
+      },
       mode: "auto",
       reason:
         "This action reaches outside the platform, so it needs your approval.",
@@ -82,8 +86,8 @@ export const FiveWaiting: Story = {
     }),
     mail("m", []),
     shell(),
-    heldRead(),
-    spendCard(),
+    folder("f", "Receipts"),
+    deleteFolder("x", "f-333"),
   ]),
 };
 
@@ -107,6 +111,8 @@ const HELD_PART = (id: string, name: string): MessagePart =>
       type: "approval_required",
       tool_name: "create_folder",
       review_id: `copilot-node-gate-create_folder:${id}`,
+      ask: "Create folder",
+      object: name,
     },
   }) as MessagePart;
 
@@ -129,6 +135,7 @@ export const ChainRows: StoryObj = {
           type: "approval_required",
           tool_name: "create_folder",
           review_id: null,
+          ask: "Create folder",
         },
       } as MessagePart,
     ];

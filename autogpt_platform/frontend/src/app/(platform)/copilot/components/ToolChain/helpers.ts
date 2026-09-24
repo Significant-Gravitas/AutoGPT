@@ -131,7 +131,7 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
       : "Review this action";
   }
   if (data.type === "approval_required")
-    return heldAskText(heldToolName(data, toolName), tool.input);
+    return heldAskText(data, heldToolName(data, toolName));
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { FieldValue } from "./components/FieldValue";
-import { type FieldSpec, humanize, isShown, MAX_FIELDS } from "./helpers";
+import { type FieldSpec, humanize, MAX_FIELDS, visibleKeys } from "./helpers";
 
 interface Props {
   // Labels and order from the tool's or block's input schema.
@@ -13,6 +13,7 @@ interface Props {
   clipped?: string[];
   // Keys the card's headline already names.
   hiddenKeys?: string[];
+  idsWhenAlone?: boolean;
 }
 
 export function ApprovalFields({
@@ -20,15 +21,16 @@ export function ApprovalFields({
   values,
   clipped = [],
   hiddenKeys = [],
+  idsWhenAlone = false,
 }: Props) {
   const [showAll, setShowAll] = useState(false);
-  const known = new Set(fields.map((f) => f.key));
-  const ordered = [
-    ...fields,
-    ...Object.keys(values)
-      .filter((key) => !known.has(key))
-      .map((key) => ({ key, label: humanize(key) })),
-  ].filter((field) => isShown(field.key, values[field.key], hiddenKeys));
+  const labels = new Map(fields.map((f) => [f.key, f.label]));
+  const ordered = visibleKeys({
+    keys: [...fields.map((f) => f.key), ...Object.keys(values)],
+    values,
+    hiddenKeys,
+    idsWhenAlone,
+  }).map((key) => ({ key, label: labels.get(key) ?? humanize(key) }));
 
   if (ordered.length === 0) return null;
   const shown = showAll ? ordered : ordered.slice(0, MAX_FIELDS);
