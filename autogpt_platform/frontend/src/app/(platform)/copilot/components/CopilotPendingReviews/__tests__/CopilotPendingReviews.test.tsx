@@ -58,7 +58,7 @@ test("a chat's queue is read from the chat, and the resume is AutoPilot's", asyn
     }),
   );
 
-  render(<CopilotPendingReviews sessionId="chat-1" />);
+  render(<CopilotPendingReviews chatSessionId="chat-1" />);
 
   expect(await screen.findByText("Create Folder")).toBeDefined();
   expect(screen.queryByText("Not this chat's review")).toBeNull();

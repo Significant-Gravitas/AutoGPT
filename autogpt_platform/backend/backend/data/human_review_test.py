@@ -21,7 +21,7 @@ def sample_db_review():
     mock_review.nodeExecId = "test_node_123"
     mock_review.userId = "test-user-123"
     mock_review.graphExecId = "test_graph_exec_456"
-    mock_review.sessionId = None
+    mock_review.chatSessionId = None
     mock_review.graphId = "test_graph_789"
     mock_review.graphVersion = 1
     mock_review.payload = {"data": "test payload"}
@@ -210,7 +210,7 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.nodeExecId = "test_node_123"
     updated_review.userId = "test-user-123"
     updated_review.graphExecId = "test_graph_exec_456"
-    updated_review.sessionId = None
+    updated_review.chatSessionId = None
     updated_review.graphId = "test_graph_789"
     updated_review.graphVersion = 1
     updated_review.payload = {"data": "modified"}
@@ -309,7 +309,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.nodeExecId = "test_node_456"
     second_review.userId = "test-user-123"
     second_review.graphExecId = "test_graph_exec_456"
-    second_review.sessionId = None
+    second_review.chatSessionId = None
     second_review.graphId = "test_graph_789"
     second_review.graphVersion = 1
     second_review.payload = {"data": "original"}
@@ -334,7 +334,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.nodeExecId = "test_node_123"
     approved_review.userId = "test-user-123"
     approved_review.graphExecId = "test_graph_exec_456"
-    approved_review.sessionId = None
+    approved_review.chatSessionId = None
     approved_review.graphId = "test_graph_789"
     approved_review.graphVersion = 1
     approved_review.payload = {"data": "modified"}
@@ -352,7 +352,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.nodeExecId = "test_node_456"
     rejected_review.userId = "test-user-123"
     rejected_review.graphExecId = "test_graph_exec_456"
-    rejected_review.sessionId = None
+    rejected_review.chatSessionId = None
     rejected_review.graphId = "test_graph_789"
     rejected_review.graphVersion = 1
     rejected_review.payload = {"data": "original"}
@@ -405,7 +405,7 @@ async def test_a_chat_with_legacy_and_new_rows_syncs_one_alert(
         r.graphExecId = graph_exec_id
         r.graphId = graph_id
         r.graphVersion = 1 if graph_id else None
-        r.sessionId = session_id
+        r.chatSessionId = session_id
         r.payload = {}
         r.instructions = "Review"
         r.editable = True

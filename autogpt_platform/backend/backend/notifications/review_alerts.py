@@ -25,27 +25,27 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[ReviewAlerts]")
 
 
 async def sync_awaiting_review(
-    user_id: str, graph_id: str | None = None, *, session_id: str | None = None
+    user_id: str, graph_id: str | None = None, *, chat_session_id: str | None = None
 ) -> None:
     """Raise, update or clear the review-queue alert for one agent or one chat.
 
     Never raises: a notification must not fail the review flow that triggered
     it.
     """
-    scope = f"chat {session_id}" if session_id else f"agent {graph_id}"
+    scope = f"chat {chat_session_id}" if chat_session_id else f"agent {graph_id}"
     try:
-        if session_id:
+        if chat_session_id:
             where: PendingHumanReviewWhereInput = {
                 "OR": [
-                    {"sessionId": session_id},
+                    {"chatSessionId": chat_session_id},
                     # Rows an older deploy wrote in the synthetic-graph shape.
-                    {"graphExecId": f"{COPILOT_SESSION_PREFIX}{session_id}"},
+                    {"graphExecId": f"{COPILOT_SESSION_PREFIX}{chat_session_id}"},
                 ]
             }
-            cause_key = f"awaiting_review:chat:{session_id}"
+            cause_key = f"awaiting_review:chat:{chat_session_id}"
             # The alert an older deploy raised for this chat, keyed as an agent.
             await alerts_db.resolve_alert_condition(
-                user_id, f"awaiting_review:{COPILOT_SESSION_PREFIX}{session_id}"
+                user_id, f"awaiting_review:{COPILOT_SESSION_PREFIX}{chat_session_id}"
             )
         elif graph_id:
             where = {"graphId": graph_id}
@@ -61,9 +61,9 @@ async def sync_awaiting_review(
             return
 
         oldest = waiting[0].createdAt
-        if session_id:
+        if chat_session_id:
             agent = AUTOPILOT_NAME
-            cta_path = f"/copilot?sessionId={quote(session_id)}"
+            cta_path = f"/copilot?sessionId={quote(chat_session_id)}"
         else:
             assert graph_id
             metadata = await get_graph_metadata(graph_id=graph_id)

@@ -31,10 +31,10 @@ async def test_a_chat_alert_counts_old_shape_rows_and_clears_the_old_key(
 ):
     find_many = _waiting(mocker, [])
 
-    await review_alerts.sync_awaiting_review("u1", session_id="s1")
+    await review_alerts.sync_awaiting_review("u1", chat_session_id="s1")
 
     where = find_many.await_args.kwargs["where"]
-    assert {"sessionId": "s1"} in where["OR"]
+    assert {"chatSessionId": "s1"} in where["OR"]
     assert {"graphExecId": "copilot-session-s1"} in where["OR"]
     resolved = [c.args[1] for c in alerts.resolve_alert_condition.await_args_list]
     assert resolved == ["awaiting_review:copilot-session-s1", "awaiting_review:chat:s1"]
@@ -44,7 +44,7 @@ async def test_a_chat_alert_counts_old_shape_rows_and_clears_the_old_key(
 async def test_a_waiting_chat_review_raises_a_chat_alert(mocker, alerts):
     _waiting(mocker, [MagicMock(createdAt=datetime(2026, 9, 24, tzinfo=timezone.utc))])
 
-    await review_alerts.sync_awaiting_review("u1", session_id="s1")
+    await review_alerts.sync_awaiting_review("u1", chat_session_id="s1")
 
     kwargs = alerts.raise_alert_condition.await_args.kwargs
     assert kwargs["cause_key"] == "awaiting_review:chat:s1"

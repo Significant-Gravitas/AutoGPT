@@ -16,8 +16,8 @@ from backend.data.execution import (
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
     create_auto_approval_record,
+    get_pending_reviews_for_chat_session,
     get_pending_reviews_for_execution,
-    get_pending_reviews_for_session,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
@@ -146,7 +146,7 @@ async def list_pending_reviews_for_execution(
     # Clients built before chat reviews had their own route ask for a chat
     # under its old synthetic id.
     if session_id := legacy_chat_session_id(graph_exec_id):
-        return await get_pending_reviews_for_session(session_id, user_id)
+        return await get_pending_reviews_for_chat_session(session_id, user_id)
 
     graph_exec = await get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
@@ -161,7 +161,7 @@ async def list_pending_reviews_for_execution(
 
 
 @router.get(
-    "/session/{session_id}",
+    "/session/{chat_session_id}",
     summary="Get Pending Reviews for Chat Session",
     response_model=List[PendingHumanReviewModel],
     responses={
@@ -169,16 +169,16 @@ async def list_pending_reviews_for_execution(
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
-async def list_pending_reviews_for_session(
-    session_id: str,
+async def list_pending_reviews_for_chat_session(
+    chat_session_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> List[PendingHumanReviewModel]:
     """Get the reviews an AutoPilot chat is waiting on, oldest first.
 
-    Only the caller's own reviews are returned, so another user's session id
-    yields an empty list.
+    Only the caller's own reviews are returned, so another user's chat session
+    id yields an empty list.
     """
-    return await get_pending_reviews_for_session(session_id, user_id)
+    return await get_pending_reviews_for_chat_session(chat_session_id, user_id)
 
 
 @router.post("/action", response_model=ReviewResponse)
@@ -283,7 +283,7 @@ async def process_review_action(
                 graph_exec_id=review_result.graph_exec_id,
                 graph_id=review_result.graph_id,
                 graph_version=review_result.graph_version,
-                session_id=review_result.session_id,
+                chat_session_id=review_result.session_id,
             )
             return (node_id, True)
         except Exception as e:

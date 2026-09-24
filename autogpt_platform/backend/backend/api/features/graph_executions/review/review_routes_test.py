@@ -171,13 +171,13 @@ def _chat_review(user_id: str, status: ReviewStatus) -> PendingHumanReviewModel:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_pending_reviews_for_session(
+async def test_get_pending_reviews_for_chat_session(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
     lookup = mocker.patch(
-        f"{_ROUTES}.get_pending_reviews_for_session",
+        f"{_ROUTES}.get_pending_reviews_for_chat_session",
         return_value=[_chat_review(test_user_id, ReviewStatus.WAITING)],
     )
 
@@ -197,7 +197,7 @@ async def test_old_synthetic_execution_id_is_answered_from_the_chat(
     test_user_id: str,
 ) -> None:
     by_session = mocker.patch(
-        f"{_ROUTES}.get_pending_reviews_for_session", return_value=[]
+        f"{_ROUTES}.get_pending_reviews_for_chat_session", return_value=[]
     )
     by_execution = mocker.patch(f"{_ROUTES}.get_pending_reviews_for_execution")
     graph_exec_meta = mocker.patch(f"{_ROUTES}.get_graph_execution_meta")
@@ -250,8 +250,45 @@ async def test_approving_a_chat_review_resumes_no_graph_and_scopes_auto_approval
     resume.assert_not_called()
     auto_approve.assert_awaited_once()
     kwargs = auto_approve.await_args.kwargs
-    assert (kwargs["session_id"], kwargs["graph_exec_id"]) == ("chat-1", None)
+    assert (kwargs["chat_session_id"], kwargs["graph_exec_id"]) == ("chat-1", None)
     assert kwargs["node_id"] == "copilot-node-blk"
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"session_id": None, "graph_exec_id": "ge-1", "graph_id": "g-1"},
+        {"session_id": "chat-2"},
+    ],
+    ids=["chat-and-graph", "two-chats"],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_one_request_cannot_act_on_reviews_from_two_scopes(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    other: dict,
+) -> None:
+    chat = _chat_review(test_user_id, ReviewStatus.WAITING)
+    second = chat.model_copy(update={"node_exec_id": "second", **other})
+    mocker.patch(
+        f"{_ROUTES}.get_reviews_by_node_exec_ids",
+        return_value={chat.node_exec_id: chat, second.node_exec_id: second},
+    )
+    process = mocker.patch(f"{_ROUTES}.process_all_reviews_for_execution")
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {"node_exec_id": chat.node_exec_id, "approved": True},
+                {"node_exec_id": "second", "approved": True},
+            ]
+        },
+    )
+
+    assert response.status_code == 409
+    process.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -812,7 +849,7 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
-        session_id=None,
+        chat_session_id=None,
         node_id="test_node_def_456",
         payload={"data": "test payload"},
     )
@@ -1113,7 +1150,7 @@ async def test_process_review_action_auto_approve_only_applies_to_approved_revie
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
-        session_id=None,
+        chat_session_id=None,
         node_id="test_node_def_approved",
         payload={"data": "approved"},
     )

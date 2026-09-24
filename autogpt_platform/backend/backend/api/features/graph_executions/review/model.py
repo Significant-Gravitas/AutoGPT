@@ -104,7 +104,7 @@ class PendingHumanReviewModel(BaseModel):
         """
         # A row written in the old synthetic-graph shape reads as a chat review.
         legacy_session_id = legacy_chat_session_id(review.graphExecId)
-        is_graph = legacy_session_id is None and review.sessionId is None
+        is_graph = legacy_session_id is None and review.chatSessionId is None
         return cls(
             node_exec_id=review.nodeExecId,
             node_id=node_id,
@@ -112,7 +112,7 @@ class PendingHumanReviewModel(BaseModel):
             graph_exec_id=review.graphExecId if is_graph else None,
             graph_id=review.graphId if is_graph else None,
             graph_version=review.graphVersion if is_graph else None,
-            session_id=review.sessionId or legacy_session_id,
+            session_id=review.chatSessionId or legacy_session_id,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,

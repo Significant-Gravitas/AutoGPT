@@ -853,7 +853,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             is_graph_execution=is_graph_execution,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
-            session_id=None if is_graph_execution else execution_context.session_id,
+            chat_session_id=(
+                None if is_graph_execution else execution_context.session_id
+            ),
         )
 
         if decision is None:
