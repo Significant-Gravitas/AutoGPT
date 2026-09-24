@@ -43,6 +43,7 @@ import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
+import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -113,12 +114,15 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** Follow a turn the server started, e.g. after an approval card is answered. */
+  onBackendTurn?: () => void;
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports; the thread header clears them. */
   hasFloatingControls?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
+const CONTINUE_AFTER_HELD_CALL = "Continue from where you left off.";
 
 export const ChatContainer = ({
   messages,
@@ -154,6 +158,7 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  onBackendTurn,
   hasFloatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -268,7 +273,14 @@ export const ChatContainer = ({
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastRow = [...messages].reverse().find((m) => m.role === "user");
+    // A turn an answered card started failed after the call ran: resuming it
+    // must not re-send the request that led to the call.
+    if (lastRow && isHeldCallRow(lastRow)) {
+      guardedOnSend(CONTINUE_AFTER_HELD_CALL);
+      return;
+    }
+    const lastUserMsg = lastRow;
     const lastText = lastUserMsg?.parts
       .filter(
         (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
@@ -300,7 +312,10 @@ export const ChatContainer = ({
   }, [guardedOnSend, messages]);
 
   return (
-    <CopilotChatActionsProvider onSend={guardedOnSend}>
+    <CopilotChatActionsProvider
+      onSend={guardedOnSend}
+      onBackendTurn={onBackendTurn}
+    >
       <PendingAnswerContexts messages={messages}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">

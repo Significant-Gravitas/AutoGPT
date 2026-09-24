@@ -24,6 +24,7 @@ from .tool_adapter import (
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     create_tool_handler,
     get_sdk_disallowed_tools,
@@ -1533,3 +1534,23 @@ def test_set_execution_context_carries_hidden_tools():
     finally:
         set_execution_context(None, session)
     assert get_current_hidden_tools() == frozenset()
+
+
+class TestLateToolResultCap:
+    """A held call's late result must read as the direct result would have."""
+
+    @pytest.mark.asyncio
+    async def test_a_late_result_is_cut_exactly_as_the_wrapper_cuts_a_direct_one(
+        self,
+    ):
+        text = "x" * (_MCP_MAX_CHARS + 20_000)
+
+        async def handler(_args):
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+
+        _init_ctx(_make_test_session())
+        wrapper = _make_truncating_wrapper(handler, "read_workspace_file")
+        direct = _text_from_mcp_result(await wrapper({}))
+
+        assert len(direct) < len(text)
+        assert cap_late_tool_result(text) == direct

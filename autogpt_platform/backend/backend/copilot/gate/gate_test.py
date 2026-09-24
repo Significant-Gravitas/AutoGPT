@@ -6,13 +6,12 @@ it should break these.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
-from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -24,7 +23,6 @@ from backend.copilot.model import (
 _GATE = "backend.copilot.gate"
 # The fixtures stub the rule lookup; the outage tests need the real one.
 _REAL_ASK_REASON = chat_rules.ask_reason
-_REAL_HAS_OPEN_REVIEW = review_store.has_open_review
 _MODES: tuple[AutopilotMode, ...] = ("ask_first", "auto", "unsupervised")
 
 
@@ -51,10 +49,10 @@ def gate_on():
 
 @pytest.fixture
 def clean_session_state():
-    """No prior approval, nothing rejected in this chat, nothing waiting."""
+    """No prior approval and nothing rejected in this chat."""
     with (
         patch(f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)),
-        patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=False)),
+        patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
@@ -186,7 +184,6 @@ async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert not decision.allowed
-    assert not decision.already_waiting
 
 
 async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
@@ -244,38 +241,17 @@ async def test_calls_that_always_run_never_query_the_review_store(
     find.assert_not_awaited()
 
 
-async def test_only_one_action_waits_at_a_time(gate_on, clean_session_state):
+async def test_a_call_that_cannot_be_kept_is_not_parked(gate_on, clean_session_state):
+    """A card whose call is lost could be approved and then run nothing."""
     open_review = AsyncMock(return_value=True)
     with (
-        patch(f"{_GATE}.review_store.has_open_review", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.remember", AsyncMock(return_value=False)),
         patch(f"{_GATE}.review_store.open_review", open_review),
     ):
         decision = await check_action(
             "post_to_chat_platform", {"text": "hi"}, "u", _session()
         )
     assert not decision.allowed
-    assert decision.already_waiting
-    open_review.assert_not_awaited()
-
-
-@pytest.mark.parametrize("mode", _MODES)
-async def test_an_unreadable_review_queue_refuses_without_opening_a_second_card(
-    gate_on, clean_session_state, mode
-):
-    reviews = MagicMock()
-    reviews.get_pending_reviews_for_execution = AsyncMock(
-        side_effect=ConnectionError("db down")
-    )
-    open_review = AsyncMock(return_value=True)
-    with (
-        patch(f"{_GATE}.review_store.has_open_review", _REAL_HAS_OPEN_REVIEW),
-        patch(f"{_GATE}.review_store.review_db", MagicMock(return_value=reviews)),
-        patch(f"{_GATE}.review_store.open_review", open_review),
-        patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value="declined")),
-    ):
-        decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
-    assert not decision.allowed
-    assert not decision.already_waiting
     assert decision.review_id is None
     open_review.assert_not_awaited()
 

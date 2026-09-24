@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
@@ -12,6 +12,10 @@ interface Args {
   graphExecId?: string;
   graphId?: string;
   chatSessionId?: string;
+  // Off for the chat's own list: it polls only while it holds cards, and
+  // fetches again whenever ``refetchKey`` changes (a new held call).
+  pollWhileEmpty?: boolean;
+  refetchKey?: number;
 }
 
 const POLL_MS = 2000;
@@ -22,7 +26,10 @@ export function useCopilotPendingReviews({
   graphExecId = "",
   graphId,
   chatSessionId = "",
+  pollWhileEmpty = true,
+  refetchKey,
 }: Args) {
+  const [hasRows, setHasRows] = useState(false);
   const isRun = !!graphId;
   // A run's chat message never changes, so its live status decides polling.
   const { data: execution, isFetched } = useGetV1GetExecutionDetails(
@@ -45,7 +52,7 @@ export function useCopilotPendingReviews({
 
   const forChat = usePendingReviewsForChatSession(chatSessionId, {
     enabled: !!chatSessionId,
-    refetchInterval: POLL_MS,
+    refetchInterval: pollWhileEmpty || hasRows ? POLL_MS : false,
   });
   const forRun = usePendingReviewsForExecution(graphExecId, {
     enabled: !!graphExecId && (!isRun || !!status || statusUnavailable),
@@ -57,6 +64,14 @@ export function useCopilotPendingReviews({
           : false,
   });
   const { pendingReviews, refetch } = chatSessionId ? forChat : forRun;
+
+  useEffect(() => {
+    setHasRows(pendingReviews.length > 0);
+  }, [pendingReviews.length]);
+
+  useEffect(() => {
+    if (refetchKey !== undefined) refetch();
+  }, [refetchKey, refetch]);
 
   useEffect(() => {
     if (status) refetch();

@@ -21,6 +21,8 @@ import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
+import { Text } from "@/components/atoms/Text/Text";
+import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -561,6 +563,20 @@ export function ChatMessagesContainer({
               );
             }
 
+            const heldCallRow = getHeldCallRowKind(message.metadata);
+            if (heldCallRow === "result") return null;
+            if (heldCallRow === "answered") {
+              return (
+                <Text
+                  key={message.id}
+                  variant="small"
+                  className="py-1 text-center text-zinc-500"
+                >
+                  Approval answered
+                </Text>
+              );
+            }
+
             const isLastAssistant =
               rowIndex === renderRows.length - 1 &&
               message.role === "assistant";
@@ -826,8 +842,12 @@ export function ChatMessagesContainer({
               graphId={reviewTarget.graphId}
             />
           )}
-          {!readOnly && reviewTarget?.kind === "chat" && sessionID && (
-            <CopilotPendingReviews chatSessionId={sessionID} />
+          {!readOnly && sessionID && (
+            <CopilotPendingReviews
+              chatSessionId={sessionID}
+              pollWhileEmpty={reviewTarget?.kind === "chat"}
+              refetchKey={countHeldCalls(messages)}
+            />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

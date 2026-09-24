@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
 
-from . import chat_rules
+from . import chat_rules, held
 from . import review as review_store
 from .classifier import classify
 from .policy import (
@@ -34,10 +34,7 @@ from .policy import (
 
 logger = logging.getLogger(__name__)
 
-_ALREADY_WAITING = (
-    "Another action in this chat is already waiting for the user's approval. "
-    "Stop and let them answer that one first; do not retry or try another way."
-)
+_ALREADY_HELD = "This exact call is already waiting for the user's approval."
 _CONSUMED = (
     "This approval was already used by an identical call that ran. "
     "Do not retry; tell the user what ran."
@@ -64,7 +61,6 @@ class Decision(BaseModel):
     allowed: bool
     reason: str = ""
     review_id: str | None = None
-    already_waiting: bool = False
 
 
 ALLOW = Decision(allowed=True)
@@ -94,6 +90,7 @@ async def check_action(
     args: dict[str, Any],
     user_id: str | None,
     session: ChatSession,
+    tool_call_id: str = "",
 ) -> Decision:
     if not await gate_active(user_id, session):
         return ALLOW
@@ -116,6 +113,10 @@ async def check_action(
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(session_id, tool_name)
         return Decision(allowed=False, reason=_REJECTED)
+    if status == ReviewStatus.WAITING:
+        # The first call's card and stored call stand; re-storing would
+        # re-point the late result at the retry's tool call id.
+        return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
     mode = resolve_mode(session)
     verdict = verdict_for(mode, tool_name)
@@ -133,27 +134,39 @@ async def check_action(
         )
         if allowed:
             return ALLOW
-    return await _park(review_id, user_id, session, tool_name, args, reason)
+    call = held.HeldCall(
+        review_id=review_id, tool_name=tool_name, tool_call_id=tool_call_id, args=args
+    )
+    return await _park(call, user_id, session, reason)
 
 
 async def _park(
-    review_id: str,
-    user_id: str,
-    session: ChatSession,
-    tool_name: str,
-    args: dict[str, Any],
-    reason: str,
+    call: held.HeldCall, user_id: str, session: ChatSession, reason: str
 ) -> Decision:
-    waiting = await review_store.has_open_review(user_id, session.session_id)
-    if waiting is None:
+    """Cards queue per chat: the call is kept so its answer can finish it."""
+    if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    if waiting:
-        return Decision(allowed=False, reason=_ALREADY_WAITING, already_waiting=True)
     if not await review_store.open_review(
-        review_id, user_id, session, tool_name, args, reason
+        call.review_id, user_id, session, call.tool_name, call.args, reason
     ):
+        await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    return Decision(allowed=False, reason=reason, review_id=review_id)
+    return Decision(allowed=False, reason=reason, review_id=call.review_id)
+
+
+def refusal_message(reason: str, review_id: str | None) -> str:
+    """What the model reads instead of a result."""
+    if review_id is None:
+        return (
+            f"Nothing ran. {reason} Tell the user what you wanted to do and why, "
+            "then stop. Do not retry or reach the same effect another way."
+        )
+    return (
+        f"Held for the user's approval (review {review_id}); nothing has run "
+        f"yet. {reason} If they approve, the result arrives later as a "
+        "<held_call_result> naming this call. Carry on with whatever does not "
+        "depend on it. Do not retry it or reach the same effect another way."
+    )
 
 
 def _last_user_message(session: ChatSession) -> str:
@@ -163,4 +176,11 @@ def _last_user_message(session: ChatSession) -> str:
     return ""
 
 
-__all__ = ["Decision", "active_mode", "check_action", "gate_active", "resolve_mode"]
+__all__ = [
+    "Decision",
+    "active_mode",
+    "check_action",
+    "gate_active",
+    "refusal_message",
+    "resolve_mode",
+]

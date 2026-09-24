@@ -1452,6 +1452,41 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
   });
 });
 
+describe("ChatMessagesContainer — held call rows", () => {
+  it("never shows the server's wake row or a late result as the user's words", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-5",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      {
+        id: "sess-123-seq-6",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: '<held_call_result tool="create_folder">folder_created Q3</held_call_result>',
+          },
+        ],
+        metadata: { held_call: { review_id: "r1" } },
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByText(/I answered an action/)).toBeNull();
+    expect(screen.queryByText(/folder_created/)).toBeNull();
+    expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+});
+
 describe("ChatMessagesContainer — pending reviews", () => {
   function withToolOutput(output: object): Message[] {
     return [
@@ -1471,10 +1506,17 @@ describe("ChatMessagesContainer — pending reviews", () => {
     ];
   }
 
-  function mountedProps() {
-    const el = screen.queryByTestId("pending-reviews");
-    return el ? JSON.parse(el.getAttribute("data-props") ?? "{}") : null;
+  function mounted() {
+    return screen
+      .queryAllByTestId("pending-reviews")
+      .map((el) => JSON.parse(el.getAttribute("data-props") ?? "{}"));
   }
+
+  const chatList = (pollWhileEmpty: boolean, refetchKey: number) => ({
+    chatSessionId: "sess-123",
+    pollWhileEmpty,
+    refetchKey,
+  });
 
   afterEach(() => {
     cleanup();
@@ -1494,7 +1536,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
+    expect(mounted()).toEqual([chatList(true, 0)]);
   });
 
   it("finds a chat review stored before it had a session id of its own", () => {
@@ -1509,7 +1551,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toEqual({ chatSessionId: "sess-123" });
+    expect(mounted()).toEqual([chatList(true, 0)]);
   });
 
   it("finds an agent run's reviews by its graph execution", () => {
@@ -1520,7 +1562,42 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toEqual({ graphExecId: "exec-9" });
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+  });
+
+  it("keeps the chat's held cards loaded while a newer run is the review target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          ...withToolOutput({ type: "approval_required", review_id: "r1" }),
+          ...withToolOutput({ execution_id: "exec-9", status: "RUNNING" }),
+        ]}
+      />,
+    );
+
+    // One held call on screen: fetched, but polled only if a card comes back.
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
+  });
+
+  it("refetches the chat's list at once for a new held call while it is the target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "approval_required",
+          review_id: "r1",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 1)]);
+  });
+
+  it("still finds held cards whose call has paged out of the loaded history", () => {
+    render(<ChatMessagesContainer {...baseProps} messages={[]} />);
+
+    expect(mounted()).toEqual([chatList(false, 0)]);
   });
 
   it("mounts nothing in a read-only transcript", () => {
@@ -1532,6 +1609,6 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mountedProps()).toBeNull();
+    expect(mounted()).toEqual([]);
   });
 });

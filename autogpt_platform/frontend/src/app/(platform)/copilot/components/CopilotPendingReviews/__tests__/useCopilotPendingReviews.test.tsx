@@ -130,4 +130,60 @@ describe("useCopilotPendingReviews", () => {
 
     expect(calls.reviews).toBeGreaterThan(settled);
   }, 10_000);
+
+  test.each([
+    { rows: [], polls: false },
+    { rows: [{ node_exec_id: "copilot-node-gate-x:1" }], polls: true },
+  ])(
+    "a chat with nothing held on screen polls its cards only once it has one ($rows.length)",
+    async ({ rows, polls }) => {
+      let requests = 0;
+      server.use(
+        http.get("*/api/review/session/s1", () => {
+          requests++;
+          return HttpResponse.json(rows);
+        }),
+      );
+      renderHook(
+        () =>
+          useCopilotPendingReviews({
+            chatSessionId: "s1",
+            pollWhileEmpty: false,
+          }),
+        { wrapper },
+      );
+      await waitFor(() => expect(requests).toBeGreaterThan(0));
+
+      await sleep(4500);
+
+      expect(requests > 1).toBe(polls);
+    },
+    15_000,
+  );
+
+  test("a new held call on screen fetches the chat's cards again", async () => {
+    let requests = 0;
+    server.use(
+      http.get("*/api/review/session/s1", () => {
+        requests++;
+        return HttpResponse.json([]);
+      }),
+    );
+    const { rerender } = renderHook(
+      ({ key }) =>
+        useCopilotPendingReviews({
+          chatSessionId: "s1",
+          pollWhileEmpty: false,
+          refetchKey: key,
+        }),
+      { wrapper, initialProps: { key: 0 } },
+    );
+    await waitFor(() => expect(requests).toBeGreaterThan(0));
+    await sleep(300);
+    const settled = requests;
+
+    rerender({ key: 1 });
+
+    await waitFor(() => expect(requests).toBeGreaterThan(settled));
+  }, 10_000);
 });

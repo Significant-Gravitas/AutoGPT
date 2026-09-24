@@ -14,6 +14,7 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.data.db_accessors import review_db
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -32,7 +33,10 @@ async def test_a_parked_call_is_the_chats_review_and_its_approval_is_found(
         review_id, test_user_id, session, "bash_exec", args, "needs you"
     )
 
-    assert await review_store.has_open_review(test_user_id, session.session_id)
+    queue = await review_db().get_pending_reviews_for_chat_session(
+        session.session_id, test_user_id
+    )
+    assert [r.node_exec_id for r in queue] == [review_id]
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": review_id}, data={"status": ReviewStatus.APPROVED}
     )

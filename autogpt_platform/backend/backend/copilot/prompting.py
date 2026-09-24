@@ -452,14 +452,13 @@ VOICE_TURN_PREFIX = (
 # Environment-specific supplement templates
 
 _APPROVAL_RULES = """
-When a tool returns `approval_required`, nothing happened. Tell the user
-plainly what you wanted to do and why it needs them, then stop and wait. Do
-not retry the call, do not adjust the arguments and try again, and do not
-reach for a different tool to achieve the same effect — the gate treats that
-as the same action, and the user will simply be asked again.
-
-Only one action can wait for approval at a time. If you are told one is
-already waiting, stop and let the user answer it.
+When a tool returns `approval_required` with a review id, the call is held
+for the user and nothing has run. Do not retry it, adjust its arguments, or
+reach the same effect with another tool. Carry on with everything that does
+not depend on it; a call that needs its result waits. When nothing is left
+that does not, tell the user what is waiting on them and stop. If they
+approve, its result reaches you later in a `<held_call_result>` naming the
+call; pick up from there.
 """
 
 _MODE_SUPPLEMENTS = {

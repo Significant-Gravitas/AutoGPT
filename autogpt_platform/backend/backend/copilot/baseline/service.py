@@ -51,6 +51,7 @@ from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -2332,6 +2333,16 @@ async def stream_chat_completion_baseline(
     if e2b_sandbox is not None:
         # From here the finally below always runs, so the turn can be counted.
         await count_expert_turn(session_id, session.expert_id)
+
+    # After the execution context: an approved held call runs here, in this
+    # turn's sandbox and tool bounds, and its result opens the turn.
+    held_results = await resolve_answered(user_id, session)
+    if held_results and await persist_pending_as_user_rows(
+        session, transcript_builder, held_results, log_prefix="[Baseline]"
+    ):
+        openai_messages.extend(
+            format_pending_as_user_message(pm) for pm in held_results
+        )
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.
