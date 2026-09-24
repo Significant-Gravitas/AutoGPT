@@ -748,7 +748,10 @@ describe("PaywallModal — PostHog paywall funnel", () => {
         ],
       ]);
       expect(historySpy).toHaveBeenCalledTimes(1);
-      expect(historySpy.mock.calls[0][2]).toBe("https://app.test/copilot");
+      // Null, not Next's own state: with it Next skips syncing its router URL
+      // and writes the marker back on its next update.
+      expect(historySpy.mock.calls[0][0]).toBeNull();
+      expect(historySpy.mock.calls[0][2]).toBe("/copilot");
     } finally {
       historySpy.mockRestore();
     }

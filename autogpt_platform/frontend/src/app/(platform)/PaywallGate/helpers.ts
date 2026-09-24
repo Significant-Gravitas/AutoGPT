@@ -16,7 +16,9 @@ export function buildPaywallCancelUrl(href: string) {
 }
 
 // Reads the marker once and drops it from the address bar, so a refresh or a
-// shared link does not report the same abandonment again.
+// shared link does not report the same abandonment again. The state is null
+// on purpose: Next's own history state would make it skip syncing its router
+// URL, and its next update would write the marker back.
 export function consumePaywallCheckoutCancel() {
   try {
     const url = new URL(window.location.href);
@@ -26,7 +28,11 @@ export function consumePaywallCheckoutCancel() {
     )
       return false;
     url.searchParams.delete(CHECKOUT_CANCELLED_PARAM);
-    window.history.replaceState(window.history.state, "", url.toString());
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
     return true;
   } catch {
     return false;
