@@ -534,3 +534,14 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
     assert item.headline is None
     assert item.primary_action is not None
     assert item.primary_action.label == "Review"
+
+
+def test_home_previews_lists_and_flags_as_the_card_does() -> None:
+    review = _gate_review(
+        arguments={"to": ["dana@acme.com", "ops@acme.com"], "notify": True},
+        fields=[
+            {"key": "to", "label": "To"},
+            {"key": "notify", "label": "Notify"},
+        ],
+    )
+    assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"

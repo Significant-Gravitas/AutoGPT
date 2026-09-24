@@ -96,7 +96,7 @@ def _gate_attention(
         created_at=created_at,
         preview=_clip(
             " · ".join(
-                f"{field.label}: {gate.arguments[field.key]}"
+                f"{field.label}: {_preview_value(gate.arguments[field.key])}"
                 for field in gate.fields
                 if field.key != gate.headline.object_key
                 and gate.arguments.get(field.key) not in (None, "", [], {})
@@ -124,6 +124,19 @@ def _gate_reason(gate: GateReviewPayload) -> str:
     if gate.reason_kind in ("subject", "rule", "content") and gate.reason:
         return gate.reason
     return f"{AUTOPILOT_NAME} is waiting for your approval."
+
+
+def _preview_value(value: object) -> str:
+    """As the card shows it: a list of names joined, never a Python repr."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and all(
+        isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in value
+    ):
+        return ", ".join(str(v) for v in value)
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return json.dumps(value, default=str, ensure_ascii=False)
 
 
 def _waiting_on(review: PendingHumanReviewModel) -> str:
