@@ -233,9 +233,19 @@ jobs:
             sed -i '/NEXT_PUBLIC_PW_TEST/a\        NEXT_PUBLIC_SOURCEMAPS: "true"' docker-compose.resolved.yml
           fi
 
+          # frontend/.env is in the frontend image's build context, and a fresh
+          # BETTER_AUTH_SECRET every run made every frontend layer miss the cache.
+          # The resolved compose file already hands the secret to the container.
+          sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=/' frontend/.env
+
           cache_to=""
+          cache_to_components="backend frontend"
           if [[ "$PUBLISH_BUILD_CACHE" == "true" ]]; then
             cache_to="type=gha,mode=max"
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            # Just the final frontend image, so a push that leaves the frontend alone reuses it
+            cache_to="type=gha,mode=min"
+            cache_to_components="frontend"
           fi
 
           python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
@@ -244,7 +254,8 @@ jobs:
             --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend/**') }}" \
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}-sourcemaps" \
             --git-ref "$GIT_REF" \
-            --cache-to "$cache_to"
+            --cache-to "$cache_to" \
+            --cache-to-components $cache_to_components
 
       - name: Set up Platform - Wait for BuildKit image
         wait: [buildkit-image]
@@ -415,25 +426,6 @@ jobs:
       - name: Wait for frontend image build
         wait: [platform-build-frontend]
 
-      - name: Export Next.js build cache from BuildKit
-        id: next-build-cache-export
-        if: steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
-        continue-on-error: true
-        working-directory: /tmp
-        background: true
-        run: |
-          rm -rf /tmp/next-build-cache
-          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
-          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
-          FROM node:24.18-alpine3.23 AS export
-          ARG RUN_ID
-          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
-              mkdir /out && cp -a /app/.next/cache/. /out/
-          FROM scratch
-          COPY --from=export /out /
-          EOF
-          du -sh /tmp/next-build-cache
-
       - name: Set up Platform - Start frontend
         run: |
           docker compose -f ../docker-compose.resolved.yml up -d --no-build --no-deps frontend
@@ -456,6 +448,26 @@ jobs:
           PLAYWRIGHT_RETRIES: "0"
           # One worker per vCPU on the 4-vCPU standard runner; the CI default of 8 starves the stack.
           PLAYWRIGHT_WORKERS: "4"
+
+      - name: Export Next.js build cache from BuildKit
+        id: next-build-cache-export
+        # Copying ~3.7 GB competes with the browser tests, so it waits for them
+        if: ${{ !cancelled() && steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group' }}
+        continue-on-error: true
+        working-directory: /tmp
+        background: true
+        run: |
+          rm -rf /tmp/next-build-cache
+          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
+          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
+          FROM node:24.18-alpine3.23 AS export
+          ARG RUN_ID
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              mkdir /out && cp -a /app/.next/cache/. /out/
+          FROM scratch
+          COPY --from=export /out /
+          EOF
+          du -sh /tmp/next-build-cache
 
       - name: Validate Playwright JSON report
         if: ${{ always() }}
