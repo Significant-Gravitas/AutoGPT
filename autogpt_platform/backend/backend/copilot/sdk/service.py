@@ -4,6 +4,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import base64
 import functools
 from copy import copy
@@ -2084,12 +2085,21 @@ async def _iter_sdk_messages(
     timeout.  On timeout we yield a heartbeat sentinel but keep the Task
     alive so it can deliver the next message.
 
+    Every fetch Task runs in one context, copied once up front.  The
+    langsmith tracing wrapper around ``receive_response()`` stores the
+    ``claude.conversation`` run in a ContextVar during the first fetch and
+    parents each reply's ``claude.assistant.turn`` span on it; a Task given
+    a fresh copy of the caller's context per message never sees that run,
+    so every reply after the first message would drop out of the trace.
+    Only one fetch is in flight at a time, so sharing the context is safe.
+
     Yields `None` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
     On stream end (`StopAsyncIteration`), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
     """
     msg_iter = client.receive_response().__aiter__()
+    fetch_context = contextvars.copy_context()
     pending_task: asyncio.Task[Any] | None = None
     wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
@@ -2100,7 +2110,7 @@ async def _iter_sdk_messages(
     try:
         while True:
             if pending_task is None:
-                pending_task = asyncio.create_task(_next_msg())
+                pending_task = asyncio.create_task(_next_msg(), context=fetch_context)
             waiters: set[asyncio.Task[Any]] = {pending_task}
             for event in (wake, tool_display_wake):
                 if event is not None and event not in wake_tasks.values():
@@ -4528,6 +4538,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     organization_id: str | None = None,
     team_id: str | None = None,
     credential_lease: CredentialLease | CodexCredentialLease | None = None,
+    message_metadata: dict[str, Any] | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4620,7 +4631,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
-        session, message, is_user_message
+        session, message, is_user_message, message_metadata
     )
     if _user_message_appended and is_user_message:
         track_user_message(

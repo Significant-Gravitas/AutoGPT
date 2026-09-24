@@ -4635,7 +4635,7 @@
       "post": {
         "tags": ["v2", "chat", "share", "chat", "share"],
         "summary": "Enable Chat Sharing",
-        "description": "Enable sharing for a chat session.\n\nFlag-gated: refuses with 403 when ``chat-sharing`` is off so a stale\nfrontend cannot enable shares post-rollback.",
+        "description": "Enable sharing for a chat session.",
         "operationId": "postV2EnableChatSharing",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4665,7 +4665,6 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "403": { "description": "Chat sharing is not enabled for this user" },
           "404": { "description": "Chat session not found for user" },
           "422": {
             "description": "Validation Error",
@@ -5957,6 +5956,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -14024,7 +14031,7 @@
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
-        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
+        "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-expert cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -15727,7 +15734,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Skill or expert not found" },
-          "409": { "description": "Per-user skill limit reached" },
+          "409": {
+            "description": "Skill limit reached, or the skill name is already used by an owner-saved skill"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -15919,17 +15928,31 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["submission", "expert-avatar"],
+              "type": "string",
+              "default": "submission",
+              "title": "Purpose"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -15954,8 +15977,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
@@ -16222,7 +16244,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16318,10 +16340,22 @@
                 { "type": "string", "minLength": 1 },
                 { "type": "null" }
               ],
-              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id.",
               "title": "Expert Id"
             },
-            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
+            "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id."
+          },
+          {
+            "name": "include_user_files",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id.",
+              "default": false,
+              "title": "Include User Files"
+            },
+            "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
           }
         ],
         "responses": {
@@ -16483,7 +16517,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "File not found" },
-          "409": { "description": "A file with this name already exists here" },
+          "409": {
+            "description": "File name conflict or skill capacity reached"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16591,6 +16627,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace folders",
+        "description": "Every folder in the workspace, flat; nesting is read off ``parent_id``.\n\n``file_count`` counts the files directly in each folder, not its subtree.",
         "operationId": "listWorkspaceFolders",
         "responses": {
           "200": {
@@ -16635,6 +16672,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Parent folder not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -16693,6 +16731,7 @@
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete workspace folder",
+        "description": "Delete a folder and its subfolders; their files return to the root.",
         "operationId": "deleteWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16722,6 +16761,7 @@
       "patch": {
         "tags": ["workspace"],
         "summary": "Update workspace folder",
+        "description": "Rename a folder, change its icon, and/or move it.\n\nSending ``parent_id: null`` moves the folder to the workspace root;\nleaving the field out keeps it where it is. Move and rename are applied\ntogether or not at all, and the new name is checked for a clash against\nthe destination.",
         "operationId": "updateWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16751,10 +16791,13 @@
               }
             }
           },
+          "400": {
+            "description": "A folder cannot be moved into its own subtree"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Folder or destination not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -21972,7 +22015,7 @@
           "skills": {
             "items": { "type": "string" },
             "type": "array",
-            "maxItems": 50,
+            "maxItems": 150,
             "title": "Skills"
           },
           "marketplace_listing_ids": {
@@ -27629,6 +27672,13 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids"
           }
         },
         "type": "object",
@@ -28350,7 +28400,12 @@
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
           },
-          "name": { "type": "string", "title": "Name" },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "inputs": {
             "additionalProperties": true,
@@ -29980,6 +30035,14 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids",
+            "description": "Workspace folder IDs attached to this message. Named in the message for the model to open, never expanded into their files."
           },
           "model": {
             "anyOf": [
@@ -33198,6 +33261,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
           },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -33230,6 +33297,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",
@@ -33260,6 +33331,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",

@@ -81,6 +81,11 @@ class PendingMessage(BaseModel):
     # Enqueue time (unix seconds) so the turn-start drain can order pending
     # messages relative to the turn's ``current`` message.
     enqueued_at: float = Field(default_factory=time.time)
+    # Persisted onto the user row this message becomes (e.g. the
+    # ``from_session_id`` / ``from_expert_id`` provenance of a message another
+    # session sent).  Set only by internal callers; the HTTP pending route
+    # never forwards it, so a human message stays metadata-free.
+    metadata: dict[str, Any] | None = None
 
 
 def _buffer_key(session_id: str) -> str:

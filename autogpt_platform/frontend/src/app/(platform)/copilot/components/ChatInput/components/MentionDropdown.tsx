@@ -1,18 +1,25 @@
 "use client";
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
+import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { cn } from "@/lib/utils";
 import type { MutableRefObject, ReactNode } from "react";
-import { AlertCircleIcon, Loading03Icon } from "@hugeicons/core-free-icons";
+import {
+  AlertCircleIcon,
+  Folder01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import type { IntegrationMention } from "../helpers";
-import type { MentionItem } from "../useChatMentions";
+import type { MentionOption } from "../useChatMentions";
 
 interface Props {
-  /** Integrations first, then files — indices match the highlight cursor. */
-  items: MentionItem[];
+  /** Integrations first, then folders and files — indices match the
+   *  highlight cursor. */
+  options: MentionOption[];
   /** Whether workspace files are part of this picker; drives the file
    *  loading/error/empty copy. */
   showFiles: boolean;
@@ -22,12 +29,12 @@ interface Props {
   isError: boolean;
   highlightedIndex: number;
   highlightedRef: MutableRefObject<HTMLButtonElement | null>;
-  onSelect: (item: MentionItem) => void;
+  onSelect: (option: MentionOption) => void;
   onHighlight: (index: number) => void;
 }
 
 export function MentionDropdown({
-  items,
+  options,
   showFiles,
   hasIntegrations,
   isLoading,
@@ -37,30 +44,36 @@ export function MentionDropdown({
   onSelect,
   onHighlight,
 }: Props) {
-  const showEmpty = !isLoading && !isError && items.length === 0;
-  const integrationCount = items.filter(
-    (item) => item.kind === "integration",
+  const showEmpty = !isLoading && !isError && options.length === 0;
+  const integrationCount = options.filter(
+    (option) => option.kind === "integration",
   ).length;
-  const fileCount = items.length - integrationCount;
+  const workspaceCount = options.length - integrationCount;
   // Headings only earn their space when both kinds can appear together.
   const showHeadings = showFiles && integrationCount > 0;
   const showFilesHeading =
-    showHeadings && (fileCount > 0 || isLoading || isError);
+    showHeadings && (workspaceCount > 0 || isLoading || isError);
 
-  function renderOption(item: MentionItem, index: number, children: ReactNode) {
+  function renderOption(
+    option: MentionOption,
+    index: number,
+    children: ReactNode,
+    ariaLabel?: string,
+  ) {
     const isHighlighted = index === highlightedIndex;
     return (
       <button
-        key={mentionItemKey(item)}
+        key={mentionOptionKey(option)}
         ref={isHighlighted ? highlightedRef : undefined}
         type="button"
         role="option"
         aria-selected={isHighlighted}
+        aria-label={ariaLabel}
         // preventDefault on mousedown keeps focus in the textarea so the
         // caret/selection used to strip the @query stays valid.
         onMouseDown={(e) => {
           e.preventDefault();
-          onSelect(item);
+          onSelect(option);
         }}
         onMouseEnter={() => onHighlight(index)}
         className={cn(
@@ -84,21 +97,34 @@ export function MentionDropdown({
       className="absolute bottom-full left-0 z-50 mb-2 max-h-60 w-72 overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-md"
     >
       {showHeadings && <SectionHeading label="Integrations" />}
-      {items.map((item, index) =>
-        item.kind === "integration"
+      {options.map((option, index) =>
+        option.kind === "integration"
           ? renderOption(
-              item,
+              option,
               index,
-              <IntegrationOption integration={item.integration} />,
+              <IntegrationOption integration={option.integration} />,
             )
           : null,
       )}
       {showFilesHeading && <SectionHeading label="Files" />}
-      {items.map((item, index) =>
-        item.kind === "file"
-          ? renderOption(item, index, <FileOption file={item.file} />)
-          : null,
-      )}
+      {options.map((option, index) => {
+        if (option.kind === "folder") {
+          const count = folderSummary(
+            option.folder.file_count ?? 0,
+            option.subfolderCount,
+          );
+          return renderOption(
+            option,
+            index,
+            <FolderOption folder={option.folder} count={count} />,
+            `Folder ${option.folder.name}, ${count}`,
+          );
+        }
+        if (option.kind === "file") {
+          return renderOption(option, index, <FileOption file={option.file} />);
+        }
+        return null;
+      })}
       {isError ? (
         <p className="flex items-center gap-2 px-3 py-2 text-sm text-red-600">
           <Icon icon={AlertCircleIcon} className="h-4 w-4 shrink-0" />
@@ -143,6 +169,22 @@ function IntegrationOption({
   );
 }
 
+function FolderOption({
+  folder,
+  count,
+}: {
+  folder: WorkspaceFolder;
+  count: string;
+}) {
+  return (
+    <>
+      <Icon icon={Folder01Icon} className="h-4 w-4 shrink-0 text-zinc-900" />
+      <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+      <span className="shrink-0 text-xs text-zinc-500">{count}</span>
+    </>
+  );
+}
+
 function FileOption({ file }: { file: WorkspaceFileItem }) {
   return (
     <>
@@ -166,10 +208,10 @@ function SectionHeading({ label }: { label: string }) {
   );
 }
 
-function mentionItemKey(item: MentionItem): string {
-  return item.kind === "file"
-    ? `file:${item.file.id}`
-    : `integration:${item.integration.provider}`;
+function mentionOptionKey(option: MentionOption): string {
+  if (option.kind === "file") return `file:${option.file.id}`;
+  if (option.kind === "folder") return `folder:${option.folder.id}`;
+  return `integration:${option.integration.provider}`;
 }
 
 function emptyMessage(showFiles: boolean, hasIntegrations: boolean): string {

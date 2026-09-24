@@ -40,15 +40,15 @@ function Picker() {
 }
 
 describe("recipient colors", () => {
-  it("keeps roster colors in the selected avatar and menu", async () => {
+  it("keeps the saved appearance color independent of the owner token", async () => {
     server.use(
       http.get("*/api/experts/identities", () =>
         HttpResponse.json([
           {
             id: "expert-maria",
             name: "Maria",
-            color: "orange-500",
-            avatar_url: null,
+            color: "violet-300",
+            avatar_url: "/avatars/notion/0-0-0-0-0-0-0-0-0-0.orange.svg",
             role: "Marketing",
             is_archived: false,
           },

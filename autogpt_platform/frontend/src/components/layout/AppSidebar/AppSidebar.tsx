@@ -250,9 +250,12 @@ export function AppSidebar(props: Props) {
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
-  const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
-    : WORKSPACE_LINKS;
+  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const workspaceLinks = (
+    isHireExpertsEnabled
+      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
+      : WORKSPACE_LINKS
+  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
@@ -305,11 +308,13 @@ export function AppSidebar(props: Props) {
             </SidebarGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={workspaceLinks} />
-            </CollapsibleNavGroup>
-          </motion.div>
+          {workspaceLinks.length > 0 ? (
+            <motion.div variants={itemVariants}>
+              <CollapsibleNavGroup label="Workspace">
+                <NavMenu links={workspaceLinks} />
+              </CollapsibleNavGroup>
+            </motion.div>
+          ) : null}
 
           <motion.div
             variants={itemVariants}

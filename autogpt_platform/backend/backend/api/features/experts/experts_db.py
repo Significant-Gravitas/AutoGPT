@@ -65,6 +65,7 @@ from backend.api.features.experts.models import (
     decode_day_one,
     decode_voice_preferences,
 )
+from backend.api.features.experts.presentation import template_presentation
 from backend.api.features.experts.routine_jobs import (
     mark_routine_unscheduled as mark_routine_unscheduled,
 )
@@ -131,7 +132,7 @@ logger = logging.getLogger(__name__)
 def _raised_identity(name: str) -> str:
     # f-string, not str.format on a template: user names may contain { or },
     # which str.format would choke on.
-    return f"I'm {name}, raised by you. I learn how you work and grow with you."
+    return f"I'm {name}, an AI Expert created by you. I use your instructions to help with your work."
 
 
 # Postgres promises no row order without this, so the profile's workflow grid
@@ -257,18 +258,19 @@ def _to_model(
         )
     else:
         voice_preferences, voice_samples = row.voicePreferences, []
+    presentation = template_presentation(row)
     return Expert(
         id=row.id,
         name=row.name,
-        avatar_url=row.avatarUrl,
+        avatar_url=presentation["avatarUrl"],
         color=row.color,
         role=row.role,
         job_title=row.jobTitle,
-        tagline=row.tagline,
-        bio=row.bio,
+        tagline=presentation["tagline"],
+        bio=presentation["bio"],
         skills=row.skills or [],
         categories=row.categories or [],
-        identity=row.identity,
+        identity=presentation["identity"],
         voice_preferences=voice_preferences,
         voice_samples=voice_samples,
         day_one=decode_day_one(row.dayOne),
@@ -925,22 +927,23 @@ async def _hire_expert_impl(
     # Copy the plain description, never the template's sample envelope: a hire
     # that skips the voice pick must not leave raw JSON in the prompt, and the
     # pick (when made) overwrites this via the soul PATCH anyway.
+    presentation = template_presentation(template)
     template_voice, _ = decode_voice_preferences(template.voicePreferences)
     create_data: prisma.types.ExpertCreateInput = {
         "ownerUserId": user_id,
         "name": name or template.name,
-        "avatarUrl": template.avatarUrl,
+        "avatarUrl": presentation["avatarUrl"],
         "color": template.color,
         "role": template.role,
         "jobTitle": template.jobTitle,
-        "tagline": template.tagline,
-        "bio": template.bio,
+        "tagline": presentation["tagline"],
+        "bio": presentation["bio"],
         # The bundled installs below record each name, so the row lists only
         # skills the hire actually owns.
         "skills": [],
         "categories": template.categories or [],
         # No dayOne: it is the template's pre-hire promise, not the hire's.
-        "identity": template.identity,
+        "identity": presentation["identity"],
         "voicePreferences": template_voice,
         "boundaries": template.boundaries,
         "sourceTemplateId": template.id,
@@ -1388,6 +1391,13 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Record a skill the expert now owns; idempotent, and a display name and
     its slug count as one name."""
+    await add_expert_skill_names(user_id, expert_id, [name])
+
+
+async def add_expert_skill_names(
+    user_id: str, expert_id: str, names: list[str]
+) -> None:
+    """:func:`add_expert_skill_name` for several names in one row write."""
     await _rewrite_skill_names(
         {
             "id": expert_id,
@@ -1395,12 +1405,18 @@ async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None
             "isTemplate": False,
             "isArchived": False,
         },
-        lambda names: (
-            names
-            if skill_name_key(name) in {skill_name_key(n) for n in names}
-            else [*names, name]
-        ),
+        lambda current: _with_names(current, names),
     )
+
+
+def _with_names(current: list[str], names: list[str]) -> list[str]:
+    merged = list(current)
+    keys = {skill_name_key(n) for n in merged}
+    for name in names:
+        if skill_name_key(name) not in keys:
+            keys.add(skill_name_key(name))
+            merged.append(name)
+    return merged
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
@@ -1789,14 +1805,22 @@ async def _install_bundled_skills(
     leaves no name, so the hire never lists a skill it does not have.
     """
     bundled = await _live_bundled_skills(user_id, [template_id])
-    for skill in bundled.get(template_id, []):
-        try:
-            await skill_db.install_marketplace_skill(
-                user_id, skill.slug, expert_id=expert_id
+    skills = bundled.get(template_id, [])
+    if not skills:
+        return
+    try:
+        outcomes: list[object] = list(
+            await skill_db.install_marketplace_skills(
+                user_id, [s.slug for s in skills], expert_id=expert_id
             )
-        except Exception:
-            logger.exception(
-                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}"
+        )
+    except Exception as e:
+        outcomes = [e] * len(skills)
+    for skill, outcome in zip(skills, outcomes):
+        if isinstance(outcome, Exception):
+            logger.error(
+                f"Failed to install bundled skill {skill.slug!r} on expert #{expert_id}",
+                exc_info=outcome,
             )
 
 

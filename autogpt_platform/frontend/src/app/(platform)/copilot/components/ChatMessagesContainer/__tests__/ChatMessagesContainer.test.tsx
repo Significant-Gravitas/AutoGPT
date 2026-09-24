@@ -1,9 +1,13 @@
+import type { ComponentProps } from "react";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
+import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -97,12 +101,17 @@ vi.mock("../components/QueueBadge", () => ({
   ),
 }));
 
-vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
+vi.mock("../components/CopyButton", () => ({
+  CopyButton: ({ text }: { text: string }) => (
+    <span data-testid="copy-message" data-text={text} />
+  ),
+}));
 vi.mock("../components/MessageAttachments", () => ({
   MessageAttachments: () => null,
 }));
 vi.mock("../components/MessagePartRenderer", () => ({
-  MessagePartRenderer: () => null,
+  MessagePartRenderer: ({ part }: { part: { type: string; text?: string } }) =>
+    part.type === "text" ? <span>{part.text}</span> : null,
 }));
 vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
@@ -169,8 +178,8 @@ class MockIntersectionObserver {
 }
 
 const baseProps = {
-  messages: [] as any[],
-  status: "ready" as const,
+  messages: [] as Message[],
+  status: "ready",
   error: undefined,
   isLoading: false,
   sessionID: "sess-123",
@@ -179,7 +188,7 @@ const baseProps = {
   isLoadingMore: false,
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
-};
+} satisfies ComponentProps<typeof ChatMessagesContainer>;
 
 describe("ChatMessagesContainer — assistant rendering", () => {
   const messages = [
@@ -541,10 +550,10 @@ describe("ChatMessagesContainer — turnStats", () => {
 
   it("renders the local timestamp on a user message (hover reveal)", () => {
     const userId = "user-1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -552,11 +561,10 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
       />,
     );
     // The timestamp is rendered in the MessageActions area alongside CopyButton;
@@ -570,7 +578,7 @@ describe("ChatMessagesContainer — turnStats", () => {
   });
 
   it("skips the user timestamp when turnStats has no entry for that message id", () => {
-    const messages = [
+    const messages: Message[] = [
       {
         id: "user-unknown",
         role: "user" as const,
@@ -578,11 +586,10 @@ describe("ChatMessagesContainer — turnStats", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={new Map() as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={new Map()}
       />,
     );
     const labels = screen.queryAllByText((_, el) =>
@@ -610,7 +617,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
 
   it("renders a QueueBadge when the row is the latest user in a queued session", () => {
     const userId = "user-q1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [
         userId,
         {
@@ -619,7 +626,7 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
         },
       ],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -629,11 +636,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
         sessionChatStatus="queued"
       />,
     );
@@ -641,12 +647,186 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     expect(badge.getAttribute("data-session-id")).toBe("sess-123");
   });
 
+  it.each([false, true])(
+    "shows and copies only the delegated task (readOnly=%s)",
+    (readOnly) => {
+      const preamble =
+        "[Delegated task from Ari, a teammate on this user's team — not " +
+        "the user. They cannot see your thread, so report the outcome in your " +
+        "final message. If the task needs something only the user can " +
+        "provide, say what is missing instead of guessing.]";
+      const message = {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: `${preamble}\n\nDraft the update.` },
+        ],
+        metadata: readOnly
+          ? undefined
+          : {
+              from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+              from_expert_name: "Ari",
+            },
+      };
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[message]}
+          readOnly={readOnly}
+        />,
+      );
+
+      expect(screen.getByText("Draft the update.")).toBeDefined();
+      expect(screen.queryByText(/They cannot see your thread/)).toBeNull();
+      expect(screen.getByTestId("copy-message").dataset.text).toBe(
+        "Draft the update.",
+      );
+      expect(screen.queryAllByTestId("sent-from-badge")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(message.parts[0].text).toBe(`${preamble}\n\nDraft the update.`);
+    },
+  );
+
+  it("renders a Sent from badge linking to the session a delegated message came from", () => {
+    const messages: Message[] = [
+      {
+        id: "user-d1",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+    const card = screen.getByTestId("sent-from-badge");
+    expect(card.textContent).toContain("Sent from Ari");
+    expect(card.getAttribute("href")).toBe(
+      "/copilot?sessionId=3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    );
+  });
+
+  const sessionSentFrom = {
+    sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+    expertId: null,
+    expertName: null,
+  };
+
+  function userRow(id: string, text: string) {
+    return {
+      id,
+      role: "user" as const,
+      parts: [{ type: "text" as const, text }],
+    };
+  }
+
+  it("falls back to the session's delegation provenance on the opening message only", () => {
+    const messages: Message[] = [
+      userRow("sess-123-seq-0", "first task"),
+      {
+        id: "sess-123-seq-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      userRow("sess-123-seq-2", "typed by the user"),
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    const cards = screen.getAllByTestId("sent-from-badge");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("Sent from Otto");
+  });
+
+  it("does NOT fall back onto a later row when pagination stopped short of the opening row", () => {
+    // hasMoreMessages goes false after repeated load errors or at the
+    // history cap while older rows still exist; the first retained row is
+    // then a later human message, not the one the delegation opened with.
+    const messages: Message[] = [
+      userRow("sess-123-seq-40", "typed by the user"),
+      {
+        id: "sess-123-seq-41",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "sure" }],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("keeps the fallback on the opening row while more history is still loadable", () => {
+    // The pagination flag flips true during a refetch; the opening row's
+    // identity does not depend on it.
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "first task")]}
+        hasMoreMessages={true}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.getByTestId("sent-from-badge").textContent).toContain(
+      "Sent from Otto",
+    );
+  });
+
+  it("does NOT fall back onto a row whose id carries no DB sequence", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("user-streamed", "first task")]}
+        hasMoreMessages={false}
+        sessionSentFrom={sessionSentFrom}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT fall back when the session carries no delegation provenance", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[userRow("sess-123-seq-0", "hello")]}
+        hasMoreMessages={false}
+        sessionSentFrom={null}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
+  it("does NOT render a Sent from badge for an ordinary user message", () => {
+    const messages: Message[] = [
+      {
+        id: "user-plain",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hello" }],
+      },
+    ];
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
   it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
     const userId = "user-n1";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -654,11 +834,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
       />,
     );
     expect(screen.queryByTestId("queue-badge")).toBeNull();
@@ -669,10 +848,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
     // latest user message, the badge should stay hidden unless the
     // OWNING session is in the queued state.
     const userId = "user-q2";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,
@@ -680,11 +859,10 @@ describe("ChatMessagesContainer — queue badges on user messages", () => {
       },
     ];
     render(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       <ChatMessagesContainer
-        {...(baseProps as any)}
-        messages={messages as any}
-        turnStats={turnStats as any}
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
         sessionChatStatus="idle"
       />,
     );
@@ -759,6 +937,45 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     },
   );
 
+  it("renders no Sent from badge in a read-only transcript", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-0",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "first task" }],
+      },
+      {
+        id: "sess-123-seq-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "done" }],
+      },
+      {
+        id: "sess-123-seq-2",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "draft the ops update" }],
+        metadata: {
+          from_session_id: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          from_expert_id: null,
+          from_expert_name: "Ari",
+        },
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        readOnly
+        hasMoreMessages={false}
+        sessionSentFrom={{
+          sessionId: "3f2c1a9e-7b4d-4e8a-9c1b-2d3e4f5a6b7c",
+          expertId: null,
+          expertName: null,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("sent-from-badge")).toBeNull();
+  });
+
   it("hides the load-older-messages sentinel even when more history exists", () => {
     render(
       <ChatMessagesContainer
@@ -807,10 +1024,10 @@ describe("ChatMessagesContainer — readOnly mode", () => {
 
   it("hides the queue-badge gate even when the session is queued", () => {
     const userId = "user-q-readonly";
-    const turnStats = new Map([
+    const turnStats: TurnStatsMap = new Map([
       [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
     ]);
-    const messages = [
+    const messages: Message[] = [
       {
         id: userId,
         role: "user" as const,

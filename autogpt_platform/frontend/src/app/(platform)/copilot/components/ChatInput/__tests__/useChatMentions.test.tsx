@@ -12,8 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatMentions } from "../useChatMentions";
 
 const mockListWorkspaceFiles = vi.fn();
+const mockFolders = vi.fn(() => ({ data: { folders: [] } }));
 vi.mock("@/app/api/__generated__/endpoints/workspace/workspace", () => ({
   listWorkspaceFiles: (...args: unknown[]) => mockListWorkspaceFiles(...args),
+  useListWorkspaceFolders: () => mockFolders(),
 }));
 
 const FILE = {
@@ -80,6 +82,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -87,7 +90,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
 
-    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
     await waitFor(() =>
       expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
         limit: 8,
@@ -104,6 +107,7 @@ describe("useChatMentions", () => {
           value: "hello world",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -120,6 +124,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -143,12 +148,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     let handled = false;
     act(() => {
@@ -175,12 +181,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     act(() => {
       result.current.onKeyDown(keyEvent("Escape"));
@@ -206,12 +213,13 @@ describe("useChatMentions", () => {
           value: "hi @",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @")));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     act(() => {
       expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
@@ -244,12 +252,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     for (const event of [
       keyEvent("Enter", true),
@@ -282,12 +291,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     // A shrinking result list can leave the highlighted index pointing past
     // the end before the clamp effect runs — accepting that must be a no-op,
@@ -311,6 +321,7 @@ describe("useChatMentions", () => {
           value: "hi @g",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
           integrations: [GITHUB, GOOGLE],
         }),
       { wrapper: Wrapper },
@@ -318,13 +329,13 @@ describe("useChatMentions", () => {
 
     act(() => result.current.detect(fakeTextarea("hi @g")));
     expect(result.current.hasIntegrations).toBe(true);
-    expect(result.current.items).toEqual([
+    expect(result.current.options).toEqual([
       { kind: "integration", integration: GITHUB },
       { kind: "integration", integration: GOOGLE },
     ]);
 
-    await waitFor(() => expect(result.current.items).toHaveLength(3));
-    expect(result.current.items[2]).toEqual({ kind: "file", file: FILE });
+    await waitFor(() => expect(result.current.options).toHaveLength(3));
+    expect(result.current.options[2]).toEqual({ kind: "file", file: FILE });
   });
 
   it("narrows integrations by the typed query without waiting on the debounce", () => {
@@ -340,13 +351,14 @@ describe("useChatMentions", () => {
           value: "hi @goo",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
           integrations: [GITHUB, GOOGLE],
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @goo")));
-    expect(result.current.items).toEqual([
+    expect(result.current.options).toEqual([
       { kind: "integration", integration: GOOGLE },
     ]);
   });
@@ -365,6 +377,7 @@ describe("useChatMentions", () => {
         value,
         setValue,
         addWorkspaceFile,
+        addWorkspaceFolder: vi.fn(),
         integrations: [GOOGLE],
       });
       return (
@@ -410,6 +423,7 @@ describe("useChatMentions", () => {
           value: "hi @",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
           includeWorkspaceFiles: false,
           integrations: [GOOGLE],
         }),
@@ -420,7 +434,7 @@ describe("useChatMentions", () => {
     expect(result.current.isOpen).toBe(true);
     expect(result.current.showFiles).toBe(false);
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.items).toEqual([
+    expect(result.current.options).toEqual([
       { kind: "integration", integration: GOOGLE },
     ]);
     expect(mockListWorkspaceFiles).not.toHaveBeenCalled();

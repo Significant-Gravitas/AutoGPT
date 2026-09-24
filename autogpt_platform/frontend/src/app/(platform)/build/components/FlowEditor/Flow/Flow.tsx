@@ -3,7 +3,6 @@ import { okData } from "@/app/api/helpers";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { BuilderChatPanel } from "../../BuilderChatPanel/BuilderChatPanel";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Background, ReactFlow } from "@xyflow/react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { MouseEvent, useCallback, useMemo } from "react";
@@ -103,8 +102,6 @@ export const Flow = () => {
     useShallow((state) => state.isGraphRunning),
   );
 
-  const isBuilderChatEnabled = useGetFlag(Flag.BUILDER_CHAT_PANEL);
-
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -153,11 +150,9 @@ export const Flow = () => {
         executionId={flowExecutionID || undefined}
         graphId={flowID || undefined}
       />
-      {isBuilderChatEnabled && (
-        <ErrorBoundary context="BuilderChatPanel" fallback={null}>
-          <BuilderChatPanel />
-        </ErrorBoundary>
-      )}
+      <ErrorBoundary context="BuilderChatPanel" fallback={null}>
+        <BuilderChatPanel />
+      </ErrorBoundary>
     </div>
   );
 };

@@ -40,6 +40,7 @@ import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
+import type { SentFrom } from "../../sentFrom";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -53,6 +54,7 @@ export interface ChatContainerProps {
   error: Error | undefined;
   sessionId: string | null;
   sessionChatStatus?: string;
+  sessionSentFrom?: SentFrom | null;
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isCreatingSession: boolean;
@@ -120,6 +122,7 @@ export const ChatContainer = ({
   error,
   sessionId,
   sessionChatStatus,
+  sessionSentFrom,
   isLoadingSession,
   isSessionError,
   isCreatingSession,
@@ -148,7 +151,6 @@ export const ChatContainer = ({
   isKickoffStarting,
   hasFloatingControls,
 }: ChatContainerProps) => {
-  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   // The composer and the message column only slide aside while the floating
   // files card is shown; this host is the one that mounts the card.
@@ -157,7 +159,6 @@ export const ChatContainer = ({
     sessionId,
     messages,
     isLoadingSession,
-    isArtifactsEnabled,
   });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
@@ -296,14 +297,10 @@ export const ChatContainer = ({
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isArtifactsEnabled && (
-                  <>
-                    <div className="absolute right-0 top-0 z-30">
-                      <ContextPanelToggle sessionId={sessionId} />
-                    </div>
-                    <WorkspaceFileCards sessionId={sessionId} />
-                  </>
-                )}
+                <div className="absolute right-0 top-0 z-30">
+                  <ContextPanelToggle sessionId={sessionId} />
+                </div>
+                <WorkspaceFileCards sessionId={sessionId} />
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -314,6 +311,7 @@ export const ChatContainer = ({
                   activeStreamStartedAt={activeStreamStartedAt}
                   sessionID={sessionId}
                   sessionChatStatus={sessionChatStatus}
+                  sessionSentFrom={sessionSentFrom}
                   hasMoreMessages={hasMoreMessages}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={onLoadMore}
@@ -325,7 +323,7 @@ export const ChatContainer = ({
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
-                  canOpenActivity={isArtifactsEnabled}
+                  canOpenActivity
                   areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
@@ -390,6 +388,7 @@ export const ChatContainer = ({
                             hasSession={!!sessionId}
                             sessionId={sessionId}
                             expertId={expertIdentity?.id ?? null}
+                            expertName={expertIdentity?.name ?? null}
                             voiceToggle={
                               isVoiceModeEnabled ? (
                                 <VoiceModeButton

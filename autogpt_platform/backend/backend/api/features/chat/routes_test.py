@@ -829,7 +829,9 @@ def test_stream_chat_returns_429_on_daily_rate_limit(mocker: pytest_mock.MockerF
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    assert "daily" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert "daily" in detail["message"].lower()
+    assert detail["kind"] == "usage_limit"
 
 
 def test_stream_chat_codex_skips_platform_paywall_and_cost_limit(
@@ -902,9 +904,10 @@ def test_stream_chat_returns_429_on_weekly_rate_limit(
         json={"message": "hello"},
     )
     assert response.status_code == 429
-    detail = response.json()["detail"].lower()
-    assert "weekly" in detail
-    assert "resets in" in detail
+    detail = response.json()["detail"]
+    message = detail["message"].lower()
+    assert "weekly" in message
+    assert "resets in" in message
 
 
 def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
@@ -927,8 +930,41 @@ def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
     )
     assert response.status_code == 429
     detail = response.json()["detail"]
-    assert "2h" in detail
-    assert "Resets in" in detail
+    assert "2h" in detail["message"]
+    assert "Resets in" in detail["message"]
+
+
+def test_stream_chat_429_carries_provider_failure_envelope_for_switch_connection(
+    mocker: pytest_mock.MockerFixture,
+):
+    """The platform usage-cap 429 must be a structured ProviderFailure, not a
+    bare string, so the frontend can offer "switch to another connection"
+    (e.g. a connected BYOSUB/Codex credential) instead of only "upgrade your
+    plan". A plain string here silently drops that UI even though the
+    frontend already supports it end-to-end.
+    """
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_stream_internals(mocker)
+    mocker.patch.object(chat_routes.config, "daily_cost_limit_microdollars", 10000)
+    mocker.patch.object(chat_routes.config, "weekly_cost_limit_microdollars", 50000)
+    resets_at = datetime.now(UTC) + timedelta(hours=1)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("daily", resets_at),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["kind"] == "usage_limit"
+    assert detail["authProvider"] == "platform"
+    assert detail["resetsAt"] == int(resets_at.timestamp())
 
 
 def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(

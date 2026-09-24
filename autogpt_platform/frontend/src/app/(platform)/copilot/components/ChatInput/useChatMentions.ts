@@ -1,5 +1,11 @@
-import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import {
+  listWorkspaceFiles,
+  useListWorkspaceFolders,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
+import { okData } from "@/app/api/helpers";
+import { subfolderCountOf } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKeyboardNav";
 import { useQuery } from "@tanstack/react-query";
@@ -15,6 +21,7 @@ import {
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
 const MENTION_RESULT_LIMIT = 8;
+const MENTION_FOLDER_LIMIT = 3;
 const INTEGRATION_RESULT_LIMIT = 6;
 
 interface ActiveMention {
@@ -23,8 +30,9 @@ interface ActiveMention {
   end: number;
 }
 
-export type MentionItem =
+export type MentionOption =
   | { kind: "file"; file: WorkspaceFileItem }
+  | { kind: "folder"; folder: WorkspaceFolder; subfolderCount: number }
   | { kind: "integration"; integration: IntegrationMention };
 
 interface Args {
@@ -32,29 +40,31 @@ interface Args {
   value: string;
   setValue: (value: string) => void;
   addWorkspaceFile: (item: WorkspaceFileItem) => void;
+  addWorkspaceFolder: (folder: WorkspaceFolder, subfolderCount: number) => void;
   /** Expert the chat is scoped to; suggests only files that expert can attach. */
   expertId?: string | null;
   /** False while the workspace-files flag is off: the picker then only
-   *  offers integrations and never queries the file API. */
+   *  offers integrations and never queries the file or folder APIs. */
   includeWorkspaceFiles?: boolean;
-  /** Connected integrations offered above the file results. */
+  /** Connected integrations offered above the folder and file results. */
   integrations?: IntegrationMention[];
 }
 
 /**
  * Detects an active `@token` at the textarea caret and drives a mention
- * autocomplete over connected integrations and workspace files. Selecting a
- * file strips the `@query` from the message and adds the file as an
- * attachment chip; selecting an integration replaces the `@query` with the
- * integration's `@Token` so the reference stays in the prompt text. Keyboard
- * nav stays in the textarea (focus never leaves), so this owns the highlight
- * cursor and the key handler.
+ * autocomplete over connected integrations, workspace folders and workspace
+ * files. Selecting a file or folder strips the `@query` from the message and
+ * adds it as an attachment chip; selecting an integration replaces the
+ * `@query` with the integration's `@Token` so the reference stays in the
+ * prompt text. Keyboard nav stays in the textarea (focus never leaves), so
+ * this owns the highlight cursor and the key handler.
  */
 export function useChatMentions({
   enabled,
   value,
   setValue,
   addWorkspaceFile,
+  addWorkspaceFolder,
   expertId,
   includeWorkspaceFiles = true,
   integrations = [],
@@ -79,6 +89,9 @@ export function useChatMentions({
         limit: MENTION_RESULT_LIMIT,
         q: debouncedQuery || undefined,
         expert_id: expertId ?? undefined,
+        // A typed name is a deliberate search, so it always spans everything
+        // the chat may attach — the picker's narrower default is for browsing.
+        include_user_files: expertId ? true : undefined,
       }),
     enabled: isOpen && includeWorkspaceFiles,
     // Keep results while the same expert's query refines; drop them when the
@@ -93,16 +106,34 @@ export function useChatMentions({
     includeWorkspaceFiles && search.data?.status === 200
       ? (search.data.data.files ?? [])
       : [];
+
+  const foldersQuery = useListWorkspaceFolders({
+    query: { select: okData, enabled: isOpen && includeWorkspaceFiles },
+  });
+  const allFolders = includeWorkspaceFiles
+    ? (foldersQuery.data?.folders ?? [])
+    : [];
+  const folders = matchFolders(allFolders, debouncedQuery);
+
   const matchedIntegrations = filterIntegrationMentions(
     integrations,
     query,
   ).slice(0, INTEGRATION_RESULT_LIMIT);
 
-  const items: MentionItem[] = [
+  // Integrations, then folders, then files: the keyboard cursor spans all
+  // three groups as one list.
+  const options: MentionOption[] = [
     ...matchedIntegrations.map(
-      (integration): MentionItem => ({ kind: "integration", integration }),
+      (integration): MentionOption => ({ kind: "integration", integration }),
     ),
-    ...files.map((file): MentionItem => ({ kind: "file", file })),
+    ...folders.map(
+      (folder): MentionOption => ({
+        kind: "folder",
+        folder,
+        subfolderCount: subfolderCountOf(allFolders, folder.id),
+      }),
+    ),
+    ...files.map((file): MentionOption => ({ kind: "file", file })),
   ];
 
   const {
@@ -110,7 +141,7 @@ export function useChatMentions({
     highlightedRef,
     moveHighlight,
     setHighlightedIndex,
-  } = useKeyboardNav(items.length, query);
+  } = useKeyboardNav(options.length, query);
 
   // The caret lands wherever the browser puts it after a programmatic value
   // change (usually the end); move it to just after the inserted mention once
@@ -141,18 +172,20 @@ export function useChatMentions({
     setActive(null);
   }
 
-  function accept(item: MentionItem | undefined) {
+  function accept(option: MentionOption | undefined) {
     // The highlighted index is clamped in an effect, so a shrinking result
     // list can momentarily leave it pointing past the end — guard against the
-    // out-of-bounds `undefined` before touching the item.
-    if (!active || !item) return;
-    if (item.kind === "file") {
-      setValue(value.slice(0, active.start) + value.slice(active.end));
-      addWorkspaceFile(item.file);
-    } else {
-      const next = insertIntegrationMention(value, active, item.integration);
+    // out-of-bounds `undefined` before touching the option.
+    if (!active || !option) return;
+    if (option.kind === "integration") {
+      const next = insertIntegrationMention(value, active, option.integration);
       setValue(next.value);
       setPendingCaret(next.caret);
+    } else {
+      setValue(value.slice(0, active.start) + value.slice(active.end));
+      if (option.kind === "folder")
+        addWorkspaceFolder(option.folder, option.subfolderCount);
+      else addWorkspaceFile(option.file);
     }
     setActive(null);
   }
@@ -164,7 +197,7 @@ export function useChatMentions({
       close();
       return true;
     }
-    if (items.length === 0) return false;
+    if (options.length === 0) return false;
     if (isKey(e, "ArrowDown")) {
       e.preventDefault();
       moveHighlight(1);
@@ -177,7 +210,7 @@ export function useChatMentions({
     }
     if (isKey(e, "Enter", "Tab")) {
       e.preventDefault();
-      accept(items[highlightedIndex]);
+      accept(options[highlightedIndex]);
       return true;
     }
     return false;
@@ -185,7 +218,7 @@ export function useChatMentions({
 
   return {
     isOpen,
-    items,
+    options,
     showFiles: includeWorkspaceFiles,
     hasIntegrations: integrations.length > 0,
     isLoading: includeWorkspaceFiles && search.isLoading,
@@ -198,4 +231,15 @@ export function useChatMentions({
     accept,
     onKeyDown,
   };
+}
+
+function matchFolders(
+  folders: WorkspaceFolder[],
+  query: string,
+): WorkspaceFolder[] {
+  const needle = query.trim().toLowerCase();
+  return folders
+    .filter((folder) => folder.name.toLowerCase().includes(needle))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MENTION_FOLDER_LIMIT);
 }

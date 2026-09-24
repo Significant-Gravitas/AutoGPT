@@ -603,9 +603,10 @@ class SDKResponseAdapter:
                 responses.append(
                     StreamError(
                         errorText=(
-                            "The turn ended because it exceeded the budget. "
-                            "Try a smaller scope, or wait for the next "
-                            "billing window."
+                            "This turn reached its spending limit. "
+                            "Send a follow-up to continue with a smaller scope. "
+                            "If your account usage limit is also reached, "
+                            "wait for it to reset."
                         ),
                         code="max_budget_exhausted",
                     )

@@ -190,6 +190,29 @@ async def test_push_and_drain_single_message(fake_redis: _FakeRedis) -> None:
 
 
 @pytest.mark.asyncio
+async def test_push_and_drain_round_trips_metadata(fake_redis: _FakeRedis) -> None:
+    """Sender provenance rides the Redis payload so the row persisted at the
+    other end can say where the message came from."""
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    await push_pending_message(
+        "sess-meta", PendingMessage(content="hello", metadata=provenance)
+    )
+    await push_pending_message("sess-meta", PendingMessage(content="typed"))
+
+    drained = await drain_pending_messages("sess-meta")
+    assert [m.metadata for m in drained] == [provenance, None]
+
+
+def test_pending_message_metadata_survives_json() -> None:
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+    payload = PendingMessage(content="hi", metadata=provenance).model_dump_json()
+    assert PendingMessage.model_validate_json(payload).metadata == provenance
+    # A human message carries none, and a pre-metadata payload still parses.
+    assert PendingMessage(content="hi").metadata is None
+    assert PendingMessage.model_validate_json('{"content": "old"}').metadata is None
+
+
+@pytest.mark.asyncio
 async def test_push_and_drain_preserves_order(fake_redis: _FakeRedis) -> None:
     for i in range(3):
         await push_pending_message("sess2", PendingMessage(content=f"msg {i}"))

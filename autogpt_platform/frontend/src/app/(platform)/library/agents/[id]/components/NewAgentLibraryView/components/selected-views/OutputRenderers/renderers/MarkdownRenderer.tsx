@@ -16,6 +16,7 @@ import {
 } from "../types";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
+import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 
 const markdownPatterns = [
   /```[\s\S]*?```/u, // Fenced code blocks (check first)
@@ -158,7 +159,7 @@ function renderMarkdown(
   value: unknown,
   _metadata?: OutputMetadata,
 ): React.ReactNode {
-  const markdownContent = String(value);
+  const markdownContent = escapeCurrencyAmounts(String(value));
 
   return (
     <div className="markdown-output">
@@ -166,7 +167,7 @@ function renderMarkdown(
         className="prose prose-sm dark:prose-invert max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
-          [remarkMath, { singleDollarTextMath: false }], // Math support for LaTeX
+          [remarkMath, { singleDollarTextMath: true }], // Math support for LaTeX
         ]}
         rehypePlugins={[
           [rehypeKatex, { strict: false }], // Render math with KaTeX

@@ -3,7 +3,7 @@ import {
   prefetchGetV2ListStoreAgentsQuery,
   prefetchGetV2ListStoreCreatorsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { SHELF_SIZE } from "./components/SkillsSection/helpers";
+import { SHELF_PREVIEW_SIZE } from "./components/Shelf/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { buildPageMetadata } from "@/lib/metadata";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
@@ -79,7 +79,7 @@ export default async function MarketplacePage(): Promise<React.ReactElement> {
     // client gate hides the shelf either way.
     prefetchGetV2ListMarketplaceSkillsQuery(
       queryClient,
-      { page_size: SHELF_SIZE },
+      { page_size: SHELF_PREVIEW_SIZE },
       {
         query: {
           staleTime: 60 * 1000, // 60 seconds
