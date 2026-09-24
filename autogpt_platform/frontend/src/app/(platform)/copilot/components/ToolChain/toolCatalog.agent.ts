@@ -180,7 +180,7 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   raise_expert: {
     category: "team",
     running: "Writing a charter for",
-    done: "Ready to raise",
+    done: "Ready to create",
     subject: (input) => quoted(input, "name", 30),
   },
   update_expert: {

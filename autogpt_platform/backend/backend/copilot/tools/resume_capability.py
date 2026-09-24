@@ -20,7 +20,6 @@ from backend.copilot.capabilities.mcp_review import (
 )
 from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
     SPEND_REVIEW_MARKER,
     parse_node_id_from_exec_id,
 )
@@ -138,7 +137,7 @@ async def _load_approved_review(
             ),
             session_id=session_id,
         )
-    if review.graph_exec_id != f"{COPILOT_SESSION_PREFIX}{session_id}":
+    if review.session_id != session_id:
         return ErrorResponse(
             message="Review does not belong to this session.", session_id=session_id
         )
@@ -203,7 +202,6 @@ async def _resume_mcp(
             block_id=payload.server_url,
             block_name=f"{host}/{payload.tool}",
             review_id=new_id,
-            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
             input_data=fresh.model_dump(),
         )
     result = await RunMCPToolTool()._execute(

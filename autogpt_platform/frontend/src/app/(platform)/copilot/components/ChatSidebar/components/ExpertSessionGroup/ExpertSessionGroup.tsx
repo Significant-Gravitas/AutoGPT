@@ -1,4 +1,5 @@
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -47,7 +48,18 @@ export function ExpertSessionGroup({
         data-testid={`expert-group-header-${groupKey}`}
         className="flex items-center justify-between gap-2 px-3 pb-1 pt-2 text-zinc-500 hover:text-zinc-700"
       >
-        <ExpertIdentityDetails name={label} role={role} size="compact" />
+        {groupKey === "pinned" ? (
+          <Text as="span" variant="body-medium">
+            {label}
+          </Text>
+        ) : (
+          <ExpertIdentityDetails
+            isOtto={groupKey === "autopilot"}
+            name={label}
+            role={role}
+            size="compact"
+          />
+        )}
         <Icon
           icon={ArrowDown01Icon}
           className="size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"

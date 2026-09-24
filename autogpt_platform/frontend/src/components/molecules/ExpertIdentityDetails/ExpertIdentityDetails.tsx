@@ -6,19 +6,25 @@ import { ExpertAreaChip } from "./components/ExpertAreaChip";
 
 interface Props {
   name: string;
+  isOtto?: boolean;
   role?: string | null;
   jobTitle?: string | null;
   size?: "compact" | "card" | "page";
   nameAccessory?: ReactNode;
+  /** Badges and icons ride the middle of the name; a second line of type
+   *  sits on its baseline. */
+  nameAlign?: "center" | "baseline";
   areaClassName?: string;
 }
 
 export function ExpertIdentityDetails({
   name,
+  isOtto = false,
   role,
   jobTitle,
   size = "card",
   nameAccessory,
+  nameAlign = "center",
   areaClassName,
 }: Props) {
   const compact = size === "compact";
@@ -32,7 +38,12 @@ export function ExpertIdentityDetails({
         compact ? "gap-0" : "gap-1",
       )}
     >
-      <Container className="flex min-w-0 items-center gap-2">
+      <Container
+        className={cn(
+          "flex min-w-0 gap-2",
+          nameAlign === "baseline" ? "items-baseline" : "items-center",
+        )}
+      >
         <Text
           as={size === "page" ? "h1" : "span"}
           variant={compact ? "body-medium" : "lead-semibold"}
@@ -48,6 +59,11 @@ export function ExpertIdentityDetails({
         </Text>
         {nameAccessory}
       </Container>
+      {!area || (!isOtto && !compact) ? (
+        <Text as="span" variant="small" tone="muted">
+          {isOtto ? "Your personal Head of AI" : "AI Expert"}
+        </Text>
+      ) : null}
       {!compact && area ? (
         <ExpertAreaChip role={role ?? ""} label={area} />
       ) : area ? (

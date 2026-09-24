@@ -198,6 +198,24 @@ def test_claude_opus_5_bills_at_authored_rates():
     assert MODEL_METADATA[opus].max_output_tokens == 128000
 
 
+def test_claude_opus_5_5_bills_at_authored_rates():
+    """Claude Opus 5.5 (Anthropic list price $4/$20 per 1M, undercutting
+    Opus 5's $5/$25) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    opus55 = LLMModel("claude-opus-5-5")
+    assert MODEL_COST[opus55] == 11
+    assert TOKEN_COST[opus55].model_dump() == {
+        "input": 600.0,
+        "output": 3000.0,
+        "cache_read": 30.0,
+        "cache_creation": 750.0,
+    }
+    assert MODEL_METADATA[opus55].max_output_tokens == 128000
+    opus55_entry = next(m for m in CATALOG.models if m.slug == "claude-opus-5-5")
+    assert opus55_entry.price_tier == 3
+    assert opus55_entry.context_window == 200000
+
+
 def test_gpt6_astra_bills_at_authored_rates():
     """GPT-6 Astra (OpenAI list price $10/$50 per 1M) — flat tier and
     per-1M projections must match the authored catalog entry."""
@@ -213,6 +231,42 @@ def test_gpt6_astra_bills_at_authored_rates():
     astra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-astra")
     assert astra_entry.price_tier == 3
     assert astra_entry.context_window == 1050000
+
+
+def test_gpt6_sol_bills_at_authored_rates():
+    """GPT-6 Sol (OpenAI list price $2/$10 per 1M, the cost-efficient
+    high-end tier below Astra) — flat tier and per-1M projections must
+    match the authored catalog entry."""
+    sol = LLMModel("gpt-6-sol")
+    assert MODEL_COST[sol] == 4
+    assert TOKEN_COST[sol].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[sol].max_output_tokens == 128000
+    sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-sol")
+    assert sol_entry.price_tier == 2
+    assert sol_entry.context_window == 1050000
+
+
+def test_gpt6_luna_bills_at_authored_rates():
+    """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
+    GPT-6 tier) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    luna = LLMModel("gpt-6-luna")
+    assert MODEL_COST[luna] == 1
+    assert TOKEN_COST[luna].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[luna].max_output_tokens == 128000
+    luna_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-luna")
+    assert luna_entry.price_tier == 1
+    assert luna_entry.context_window == 1050000
 
 
 def test_claude_fable_5_1_bills_at_authored_rates():
@@ -340,14 +394,14 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
-    """DeepSeek V4.1 Flash (OpenRouter live rate $0.06/$0.32 per 1M,
-    $0.01/1M cached input as of 2026-09-23) — flat tier and per-1M
+    """DeepSeek V4.1 Flash (OpenRouter live rate $0.14/$0.42 per 1M,
+    $0.01/1M cached input as of 2026-09-24) — flat tier and per-1M
     projections must match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
-        "input": 9.0,
-        "output": 48.0,
+        "input": 21.0,
+        "output": 63.0,
         "cache_read": 1.5,
         "cache_creation": 0.0,
     }

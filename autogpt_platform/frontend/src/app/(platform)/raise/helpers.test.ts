@@ -43,7 +43,7 @@ describe("raise helpers", () => {
 
   test("builds the same complete raised identity shown by the backend", () => {
     expect(raisedIdentity("Otto")).toBe(
-      "I'm Otto, raised by you. I learn how you work and grow with you.",
+      "I'm Otto, an AI Expert created by you. I use your instructions to help with your work.",
     );
   });
 

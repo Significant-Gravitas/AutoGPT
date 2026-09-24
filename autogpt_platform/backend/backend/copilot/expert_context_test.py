@@ -530,7 +530,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert(is_archived=True))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -541,7 +544,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=None)
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -552,7 +558,10 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=MagicMock(e2b_active=False)),
+        ):
             result = await build_expert_context("user-1", "exp-1")
 
         assert result == ""
@@ -1205,6 +1214,76 @@ class TestExpertComputerBlock:
         assert "start_desktop" in result
         # Sits with the other first-message blocks, after the workflows.
         assert result.index("</expert_workflows>") < result.index("<expert_computer>")
+
+    @pytest.mark.asyncio
+    async def test_expert_learns_the_screen_shows_only_its_own_machine(self):
+        from backend.blocks.desktop._api import DISPLAY
+        from backend.copilot.expert_context import build_expert_context
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert f"DISPLAY={DISPLAY}" in result
+        assert "browser_* tools run elsewhere" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "get_expert",
+        [
+            AsyncMock(return_value=None),
+            AsyncMock(return_value=_expert(is_archived=True)),
+            AsyncMock(side_effect=RuntimeError("db down")),
+        ],
+        ids=["missing", "archived", "lookup-error"],
+    )
+    async def test_failed_expert_lookup_still_tells_the_expert_once(self, get_expert):
+        """The system prompt drops the plain chat's note for every expert
+        session, so a failed lookup must not cost the expert its block."""
+        from backend.copilot.expert_context import (
+            build_expert_context,
+            render_expert_computer_block,
+        )
+        from backend.copilot.prompting import get_sdk_supplement
+
+        mock_db = self._db()
+        mock_db.get_expert = get_expert
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            context = await build_expert_context("user-1", "exp-1")
+            assert context == render_expert_computer_block()
+        turn = get_sdk_supplement(use_e2b=True, expert_session=True) + context
+
+        assert turn.count("### Your computer") + turn.count("<expert_computer>") == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_id", [None, "exp-1"])
+    async def test_a_session_is_told_about_its_computer_exactly_once(self, expert_id):
+        """The system prompt carries the plain chat's note and the first user
+        message carries the expert's block; a turn sees both strings."""
+        from backend.copilot.expert_context import build_expert_context
+        from backend.copilot.prompting import get_sdk_supplement
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch(f"{_EC}.ChatConfig", return_value=config),
+        ):
+            context = await build_expert_context("user-1", expert_id)
+        supplement = get_sdk_supplement(use_e2b=True, expert_session=bool(expert_id))
+        turn = supplement + context
+
+        assert turn.count("### Your computer") + turn.count("<expert_computer>") == 1
+        assert ("<expert_computer>" in turn) is bool(expert_id)
 
     @pytest.mark.asyncio
     async def test_rendered_context_is_hidden_from_chat_history(self):
