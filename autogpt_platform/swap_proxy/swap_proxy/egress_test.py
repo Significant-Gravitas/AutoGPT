@@ -139,3 +139,19 @@ async def test_a_failed_lookup_is_not_remembered(monkeypatch):
     # A good answer is what gets remembered.
     assert (await guard.check("api.github.com")).ip == "140.82.112.5"
     assert calls == 2
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["db.internal:.169.254.169.254.nip.io", "db.internal:443", ":db.internal"],
+)
+async def test_a_name_with_a_colon_is_refused_before_the_allow_list_sees_it(host):
+    """``host_in_list`` cuts at the first ':', so this would have matched the
+    allowed name and gone wherever the rest of it resolves."""
+    guard = _resolving(EgressGuard(["db.internal"]), {host: ["169.254.169.254"]})
+    assert (await guard.check(host)).refused == "malformed-host"
+
+
+async def test_an_ipv6_literal_is_not_a_name_with_a_colon():
+    guard = EgressGuard(["::1"])
+    assert (await guard.check("::1")).ip == "::1"

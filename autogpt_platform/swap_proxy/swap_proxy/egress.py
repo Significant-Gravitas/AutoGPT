@@ -122,6 +122,12 @@ class EgressGuard:
         self._dns: dict[str, tuple[float, list[str]]] = {}
 
     async def check(self, host: str) -> Verdict:
+        if ":" in host and normalize_ip(host) is None:
+            # No name holds a ':', but a SOCKS5 domain can, and the allow-list
+            # match (``host_in_list``) cuts at the first one:
+            # ``allowed.example:.169.254.169.254.nip.io`` would pass as
+            # ``allowed.example`` and resolve to the metadata address.
+            return Verdict(refused="malformed-host")
         ips = await self._resolve(host)
         if not ips:
             return Verdict(refused="unresolvable")
