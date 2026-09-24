@@ -26678,6 +26678,16 @@
             "title": "Agent Name",
             "description": "Display name of the agent that requested the review"
           },
+          "block_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Id",
+            "description": "The block awaiting approval, when a block asked"
+          },
+          "action": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Action",
+            "description": "What that block does, e.g. 'Send Discord Message'"
+          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id",

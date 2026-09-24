@@ -3,15 +3,12 @@
 import { useCallback } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import {
-  usePendingReviewsForExecution,
-  usePendingReviewsForChatSession,
-} from "@/hooks/usePendingReviews";
 import { okData } from "@/app/api/helpers";
+import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
-type Props = { graphExecId: string } | { chatSessionId: string };
-
-const POLL = { refetchInterval: 2000 };
+type Props =
+  | { graphExecId: string; graphId?: string }
+  | { chatSessionId: string };
 
 /**
  * Renders a single consolidated PendingReviewsList for the chat's own reviews
@@ -21,16 +18,7 @@ const POLL = { refetchInterval: 2000 };
 export function CopilotPendingReviews(props: Props) {
   const { onSend } = useCopilotChatActions();
   const graphExecId = "graphExecId" in props ? props.graphExecId : "";
-  const chatSessionId = "chatSessionId" in props ? props.chatSessionId : "";
-  const forRun = usePendingReviewsForExecution(graphExecId, {
-    ...POLL,
-    enabled: !!graphExecId,
-  });
-  const forChat = usePendingReviewsForChatSession(chatSessionId, {
-    ...POLL,
-    enabled: !!chatSessionId,
-  });
-  const { pendingReviews, refetch } = graphExecId ? forRun : forChat;
+  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
 
   const handleReviewComplete = useCallback(async () => {
     // Brief delay for the server to propagate the approval

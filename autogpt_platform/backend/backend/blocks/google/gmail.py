@@ -622,6 +622,7 @@ class GmailSendBlock(GmailBase):
             test_mock={
                 "_send_email": lambda *args, **kwargs: {"id": "1", "status": "sent"},
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -1349,6 +1350,7 @@ class GmailReplyBlock(GmailBase):
                     "threadId": "t1",
                 }
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -1663,6 +1665,7 @@ class GmailForwardBlock(GmailBase):
                     "threadId": "t1",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(

@@ -44,13 +44,18 @@ def compose_attention_items(
 def _review_attention(
     review: PendingHumanReviewModel, now: datetime
 ) -> HomeAttentionItem:
-    title = review.instructions or review.agent_name or "Review an agent decision"
+    title = (
+        review.action
+        or review.instructions
+        or review.agent_name
+        or "Review a workflow step"
+    )
     created_at = as_utc(review.created_at)
     if is_spend_review(review.node_exec_id):
         description = "Spending threshold reached; this work is on hold."
         why_it_matters = "It runs once you approve; declining cancels it."
     else:
-        description = "Your agent paused before taking an external action."
+        description = f"{_waiting_on(review)} is waiting for your approval."
         why_it_matters = "The task cannot continue until you approve or decline it."
     return HomeAttentionItem(
         id=f"approval-{review.node_exec_id}",
@@ -66,6 +71,14 @@ def _review_attention(
         review=review,
         primary_action=HomeAction(label="Review", href=_review_link(review)),
     )
+
+
+def _waiting_on(review: PendingHumanReviewModel) -> str:
+    if review.session_id:
+        return AUTOPILOT_NAME
+    if review.agent_name:
+        return f"Workflow “{review.agent_name}”"
+    return "A workflow"
 
 
 def _expert_attention(expert: Expert) -> HomeAttentionItem:

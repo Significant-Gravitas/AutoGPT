@@ -22,6 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import {
+  extractReviewTarget,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
@@ -146,52 +147,6 @@ interface Props {
   /** Hosts that already name the thread (e.g. the expert chat drawer)
    *  turn the floating identity chip off. */
   showThreadHeader?: boolean;
-}
-
-type ReviewTarget = { kind: "chat" } | { kind: "graph"; graphExecId: string };
-
-/**
- * Which review queue the latest tool output that needs review belongs to:
- * the chat's own (a `review_required` output) or an agent run's (run_agent
- * with status "REVIEW").
- */
-function extractReviewTarget(
-  messages: UIMessage<unknown, UIDataTypes, UITools>[],
-): ReviewTarget | null {
-  // Scan backwards — the most recent review output decides
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    for (const part of msg.parts) {
-      if ("output" in part && part.output) {
-        const out =
-          typeof part.output === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(part.output);
-                } catch {
-                  return null;
-                }
-              })()
-            : part.output;
-        if (out && typeof out === "object") {
-          if ((out as { type?: unknown }).type === "review_required") {
-            return { kind: "chat" };
-          }
-          if (
-            "execution_id" in out &&
-            "status" in out &&
-            (out as { status: string }).status === "REVIEW"
-          ) {
-            return {
-              kind: "graph",
-              graphExecId: (out as { execution_id: string }).execution_id,
-            };
-          }
-        }
-      }
-    }
-  }
-  return null;
 }
 
 // Max consecutive auto-triggered loads where the container remains
@@ -866,7 +821,10 @@ export function ChatMessagesContainer({
             </Message>
           )}
           {!readOnly && reviewTarget?.kind === "graph" && (
-            <CopilotPendingReviews graphExecId={reviewTarget.graphExecId} />
+            <CopilotPendingReviews
+              graphExecId={reviewTarget.graphExecId}
+              graphId={reviewTarget.graphId}
+            />
           )}
           {!readOnly && reviewTarget?.kind === "chat" && sessionID && (
             <CopilotPendingReviews chatSessionId={sessionID} />

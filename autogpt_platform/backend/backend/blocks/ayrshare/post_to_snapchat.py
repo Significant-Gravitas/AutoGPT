@@ -68,6 +68,7 @@ class PostToSnapchatBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToSnapchatBlock.Input,
             output_schema=PostToSnapchatBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

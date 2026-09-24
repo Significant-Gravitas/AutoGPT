@@ -6320,6 +6320,7 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
                     "share_link": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -6466,6 +6467,7 @@ class GoogleSheetsSetPublicAccessBlock(Block):
                     "share_link": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing",
                 },
             },
+            is_irreversible_action=True,
         )
 
     async def run(

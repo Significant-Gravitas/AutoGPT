@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
+  extractReviewTarget,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
   getLatestCompactionPhase,
@@ -467,5 +468,67 @@ describe("getLatestCompactionStats", () => {
       textPart("hi"),
     ];
     expect(getLatestCompactionStats(parts)).toEqual({});
+  });
+});
+
+describe("extractReviewTarget", () => {
+  function toolOutput(output: unknown) {
+    return {
+      id: `m-${Math.random()}`,
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-run_agent",
+          toolCallId: "c1",
+          state: "output-available",
+          input: {},
+          output,
+        },
+      ],
+    } as unknown as UIMessage<unknown, UIDataTypes, UITools>;
+  }
+
+  it("returns a run still in flight with its graph, so a later pause shows in the chat", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({
+          execution_id: "exec-running",
+          graph_id: "graph-1",
+          status: "RUNNING",
+        }),
+      ]),
+    ).toEqual({
+      kind: "graph",
+      graphExecId: "exec-running",
+      graphId: "graph-1",
+    });
+  });
+
+  it("ignores a run that already finished", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ execution_id: "exec-done", status: "COMPLETED" }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("prefers a newer in-flight run over an earlier run that paused", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ execution_id: "exec-a", status: "REVIEW" }),
+        toolOutput(
+          JSON.stringify({ execution_id: "exec-b", status: "QUEUED" }),
+        ),
+      ]),
+    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+  });
+
+  it("prefers a newer in-flight run over an earlier block review", () => {
+    expect(
+      extractReviewTarget([
+        toolOutput({ type: "review_required", review_id: "r1" }),
+        toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
+      ]),
+    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
   });
 });

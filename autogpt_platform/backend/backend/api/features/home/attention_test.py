@@ -420,3 +420,40 @@ def test_spend_hold_is_described_as_such() -> None:
     assert [item.kind for item in items] == ["approval"]
     assert items[0].title == "Send the prepared message"
     assert items[0].description == "Spending threshold reached; this work is on hold."
+
+
+def test_block_review_names_the_action_and_the_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"action": "Send Discord Message", "agent_name": "Post launch note"}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.title == "Send Discord Message"
+    assert (
+        item.description == "Workflow “Post launch note” is waiting for your approval."
+    )
+
+
+def test_a_direct_autopilot_review_is_not_called_a_workflow() -> None:
+    review = _review(NOW).model_copy(
+        update={"graph_exec_id": None, "session_id": "abc", "agent_name": None}
+    )
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "Otto is waiting for your approval."
+
+
+def test_a_workflow_review_without_a_name_still_says_workflow() -> None:
+    review = _review(NOW).model_copy(update={"agent_name": None})
+
+    [item] = compose_attention_items(
+        now=NOW, experts=[], reviews=[review], schedules=[], credits_balance=None
+    )
+
+    assert item.description == "A workflow is waiting for your approval."

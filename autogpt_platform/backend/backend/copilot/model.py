@@ -156,6 +156,12 @@ class ChatSessionMetadata(BaseModel):
     # session, latest wins.
     pending_question: PendingQuestion | None = None
 
+    @property
+    def pauses_irreversible_actions(self) -> bool:
+        """Whether a workflow this chat starts pauses before irreversible blocks."""
+        # A legacy row cannot prove nobody is watching, so it pauses too.
+        return self.origin != "automation"
+
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     """Origin for a fresh session a tool opens on *parent*'s behalf.

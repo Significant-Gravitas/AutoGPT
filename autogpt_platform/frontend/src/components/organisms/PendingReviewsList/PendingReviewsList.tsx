@@ -229,8 +229,8 @@ export function PendingReviewsList({
           </Text>
         </div>
         <Text variant="large" className="text-textGrey">
-          This task is paused until you approve the changes below. Please review
-          and edit if needed.
+          This workflow is paused until you approve the step below. Check what
+          it will do, and edit it if needed.
         </Text>
       </div>
 
@@ -242,8 +242,9 @@ export function PendingReviewsList({
             pendingAction?.nodeId === nodeId ? pendingAction.action : null;
 
           const firstReview = nodeReviews[0];
-          const blockName = firstReview?.instructions;
-          const reviewTitle = `Review required for ${blockName}`;
+          const reviewTitle =
+            firstReview?.action ?? firstReview?.instructions ?? "Review";
+          const workflowName = firstReview?.agent_name;
 
           const getShortenedNodeId = (id: string) => {
             if (id.length <= 8) return id;
@@ -273,9 +274,13 @@ export function PendingReviewsList({
                   <Text variant="body" className="font-semibold text-gray-900">
                     {reviewTitle}
                   </Text>
-                  <Text variant="small" className="text-gray-500">
-                    Node #{getShortenedNodeId(nodeId)}
-                  </Text>
+                  {(workflowName || !firstReview?.action) && (
+                    <Text variant="small" className="text-gray-500">
+                      {workflowName
+                        ? `In workflow “${workflowName}”`
+                        : `Node #${getShortenedNodeId(nodeId)}`}
+                    </Text>
+                  )}
                 </div>
                 <span className="text-xs text-gray-600">
                   {reviewCount} {reviewCount === 1 ? "review" : "reviews"}
