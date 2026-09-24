@@ -13,7 +13,7 @@ lists what is not aligned yet.
 In code the names live in two modules. Browser call sites may still pass a
 literal (`trackBrainDump("brain_dump_started")`), which is type-checked
 against these modules, and backend funnel `data_index` keys embed the name
-too (`briefing_generated:<id>`, `expert_run_completed:<graph_exec_id>`). A
+too (`briefing_generated:<id>`, `briefing_delivered:<id>`). A
 rename therefore has to search for the old string, not just edit the modules:
 
 | Sender | Module | Pin test |
@@ -187,7 +187,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | --- | --- | --- | --- | --- |
 | `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
 | `chat_message_sent` | backend | live | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
-| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. |
+| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
 | `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `session_id` | Any schedule is registered, from any surface. |
 | `chat_tool_called` | backend | live | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
