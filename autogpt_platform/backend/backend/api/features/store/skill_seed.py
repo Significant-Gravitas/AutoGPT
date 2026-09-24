@@ -5,7 +5,7 @@ roster seed. Idempotent: re-running rewrites each listing's live version in
 place rather than stacking a new one, so the marketplace is edited by editing
 the catalog and seeding again.
 
-The catalog is the private ``Significant-Gravitas/skills-catalog`` repo. Its
+The catalog is the public ``Significant-Gravitas/skills-catalog`` repo. Its
 ``catalog.yml`` names every listing with its categories and the integrations
 its instructions assume; ``skills/<slug>/`` holds the SKILL.md beside the
 references it points at. Each SKILL.md is parsed with the same
@@ -20,7 +20,9 @@ Environment:
 ``SKILLS_CATALOG_REPO`` / ``SKILLS_CATALOG_REF``
     The repo (``owner/name``) and branch, tag or commit to download.
 ``SKILLS_CATALOG_TOKEN``
-    A GitHub token that can read the repo; ``GITHUB_TOKEN`` is the fallback.
+    Optional GitHub token; ``GITHUB_TOKEN`` is the fallback. Without one the
+    public repo downloads anonymously; set one to lift GitHub's anonymous
+    rate limit or to read a private fork.
 """
 
 import asyncio
@@ -1572,22 +1574,27 @@ def _download_catalog(into: Path) -> Path:
     repo = os.environ.get("SKILLS_CATALOG_REPO") or DEFAULT_CATALOG_REPO
     ref = os.environ.get("SKILLS_CATALOG_REF") or DEFAULT_CATALOG_REF
     token = os.environ.get("SKILLS_CATALOG_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "SKILLS_CATALOG_TOKEN (or GITHUB_TOKEN) is required to download "
-            f"{repo}; set SKILLS_CATALOG_PATH to seed from a local checkout"
-        )
-    logger.info(f"Downloading {repo}@{ref}")
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "autogpt-platform-skill-seed",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    logger.info(f"Downloading {repo}@{ref}" + ("" if token else " anonymously"))
     response = httpx.get(
         f"https://api.github.com/repos/{repo}/tarball/{ref}",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "autogpt-platform-skill-seed",
-        },
+        headers=headers,
         follow_redirects=True,
         timeout=60,
     )
+    if not token and response.status_code in (401, 403, 404, 429):
+        raise RuntimeError(
+            f"GitHub refused an anonymous download of {repo}@{ref} "
+            f"(HTTP {response.status_code}): the repo may be private or the "
+            "anonymous rate limit (60 requests an hour per IP) reached. Set "
+            "SKILLS_CATALOG_TOKEN (or GITHUB_TOKEN), or SKILLS_CATALOG_PATH to "
+            "seed from a local checkout"
+        )
     response.raise_for_status()
     with tarfile.open(fileobj=io.BytesIO(response.content), mode="r:gz") as tar:
         _extract_catalog_archive(tar, into)
