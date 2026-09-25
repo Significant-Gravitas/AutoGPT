@@ -13,6 +13,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
+from backend.copilot.gate.headline import Headline
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -59,7 +60,10 @@ def clean_session_state():
         patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.held._held", AsyncMock(return_value={})),
-        patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
+        patch(
+            f"{_GATE}.review_store.open_review",
+            AsyncMock(return_value=Headline(ask="Run it")),
+        ),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
     ):
@@ -249,7 +253,7 @@ async def test_calls_that_always_run_never_query_the_review_store(
 
 async def test_a_call_that_cannot_be_kept_is_not_parked(gate_on, clean_session_state):
     """A card whose call is lost could be approved and then run nothing."""
-    open_review = AsyncMock(return_value=True)
+    open_review = AsyncMock(return_value=Headline(ask="Run it"))
     with (
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=False)),
         patch(f"{_GATE}.review_store.open_review", open_review),
@@ -265,7 +269,7 @@ async def test_a_call_that_cannot_be_kept_is_not_parked(gate_on, clean_session_s
 async def test_an_unrecordable_approval_refuses_rather_than_runs(
     gate_on, clean_session_state
 ):
-    with patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=False)):
+    with patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=None)):
         decision = await check_action(
             "post_to_chat_platform", {"text": "hi"}, "u", _session()
         )

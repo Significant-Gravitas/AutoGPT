@@ -22,8 +22,9 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
+from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import review_payload
+from backend.copilot.gate.review import open_review, review_payload
 from backend.copilot.gate.subject import Subject, block_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
@@ -113,7 +114,7 @@ def chat(redis):
 def gate(redis):
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
-        open_review=AsyncMock(return_value=True),
+        open_review=AsyncMock(return_value=Headline(ask="Run it")),
         consume=AsyncMock(return_value=True),
     )
     with (
@@ -387,6 +388,21 @@ async def test_a_workspace_block_is_priced_with_the_credentials_it_will_run_with
     assert subject.estimate == 1_000_000
 
 
+async def test_a_held_money_card_stores_its_spend_beside_its_headline():
+    """Kills: a resolution of ``open_review`` that drops ``spend`` (the card
+    loses its money block and its approval raises nothing)."""
+    spend = {"estimate": 50_000, "spent": 0, "ceiling": 0, "unit": 1_000_000}
+    reviews = MagicMock(get_or_create_human_review=AsyncMock())
+    with patch("backend.copilot.gate.review.review_db", return_value=reviews):
+        headline = await open_review(
+            "rid", "user-1", _session(), "t", {"q": 1}, "", _PAID, spend=spend
+        )
+    assert headline is not None and headline.text == "Run “Paid Search”"
+    stored = reviews.get_or_create_human_review.await_args.kwargs
+    assert stored["message"] == headline.text
+    assert stored["input_data"]["spend"] == spend
+
+
 def test_a_money_card_offers_no_chat_rule():
     """Reads never consult a rule, so the card must offer none."""
     spend = {"estimate": 50_000, "spent": 0, "ceiling": 0, "unit": 1_000_000}
@@ -461,6 +477,18 @@ async def test_an_unreachable_chat_ledger_refuses_the_paid_read(gate):
     with (
         patch.object(tree, "get_redis_async", AsyncMock(return_value=BrokenRedis())),
         pytest.raises(ConnectionError),
+    ):
+        await _check(_PAID)
+
+
+async def test_a_chat_ledger_that_will_not_open_refuses_the_paid_read(gate, redis):
+    """Kills: reading a ledger that is still missing as "under the ceiling"."""
+    redis.eval = AsyncMock(return_value=0)
+    with (
+        patch.object(
+            tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=0)
+        ),
+        pytest.raises(RuntimeError, match="could not be opened"),
     ):
         await _check(_PAID)
 

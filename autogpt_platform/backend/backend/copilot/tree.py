@@ -634,8 +634,8 @@ async def charge_credits(user_id: str | None, credits: Callable[[], int]) -> Non
 async def spent_past_ceiling(user_id: str) -> tuple[int, int] | None:
     """``(spent, ceiling)`` once the running turn's chat has spent its ceiling;
     None under it, or where no chat meters this turn. A ledger that failed to
-    open at admission opens here, and a Redis error raises so the call is
-    refused. Runs are charged when they finish, so paid calls issued together
+    open at admission opens here; a Redis error, or a ledger that still reads
+    empty, raises so the call is refused. Runs are charged when they finish, so paid calls issued together
     can overshoot by one batch."""
     envelope = get_current_envelope()
     if envelope is None or envelope.spend_session_id is None:
@@ -646,6 +646,8 @@ async def spent_past_ceiling(user_id: str) -> tuple[int, int] | None:
     if "ceiling" not in snapshot:
         await _open_chat_ledger(envelope.spend_session_id, user_id)
         snapshot = await ledger.snapshot(ledger_id)
+    if "ceiling" not in snapshot:
+        raise RuntimeError(f"Chat spend ledger {ledger_id} could not be opened")
     spent, ceiling = snapshot.get("spent", 0), snapshot["ceiling"]
     return (spent, ceiling) if spent >= ceiling else None
 

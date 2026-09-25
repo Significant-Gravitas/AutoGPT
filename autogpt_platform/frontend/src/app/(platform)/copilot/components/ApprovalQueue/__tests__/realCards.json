@@ -36,6 +36,8 @@
             "label": "Body"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -219,6 +221,8 @@
             "label": "Values"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -436,6 +440,8 @@
             "label": "Step code"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -582,6 +588,8 @@
             "label": "Body"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -722,6 +730,8 @@
             "label": "Shorten links"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_capability",
         "turn": 1,
         "mode": "auto",
@@ -1062,6 +1072,8 @@
             "label": "Inputs"
           }
         ],
+        "references": [],
+        "reference_totals": {},
         "tool_call_id": "call-run_agent",
         "turn": 1,
         "mode": "auto",
