@@ -27,6 +27,7 @@ export interface ApprovalSpend {
 }
 
 export type ChatRule = "allow" | "judge";
+export type RuleScope = "chat" | "expert" | "team";
 
 export interface ApprovalItem {
   reviewId: string;
