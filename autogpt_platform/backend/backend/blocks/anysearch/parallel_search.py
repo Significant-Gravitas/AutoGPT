@@ -7,6 +7,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -90,6 +91,7 @@ class AnySearchParallelSearchBlock(Block):
             description="Runs several AnySearch queries in parallel "
             "(client-side concurrency via asyncio)",
             categories={BlockCategory.SEARCH},
+            effect=BlockEffect.READ,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

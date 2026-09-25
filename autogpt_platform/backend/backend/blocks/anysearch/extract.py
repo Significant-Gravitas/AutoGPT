@@ -4,6 +4,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -48,6 +49,7 @@ class AnySearchExtractBlock(Block):
             description="Extracts readable content from a single URL using "
             "AnySearch, optimized for LLM consumption",
             categories={BlockCategory.SEARCH},
+            effect=BlockEffect.READ,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

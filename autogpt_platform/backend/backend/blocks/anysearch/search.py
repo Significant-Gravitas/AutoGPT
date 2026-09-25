@@ -6,6 +6,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -90,6 +91,7 @@ class AnySearchBlock(Block):
             "vertical domains (finance, academic, health, legal, and more) "
             "via domain/sub_domain filters",
             categories={BlockCategory.SEARCH},
+            effect=BlockEffect.READ,
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
