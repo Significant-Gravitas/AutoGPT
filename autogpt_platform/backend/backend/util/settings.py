@@ -1164,6 +1164,21 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
+    stripe_link_client_id: str = Field(
+        default="",
+        description="Link Agent Wallet confidential OAuth client ID. With the "
+        "secret and publishable key set, Stripe Link connects through an OAuth "
+        "redirect instead of the public device-code client.",
+    )
+    stripe_link_client_secret: str = Field(
+        default="", description="Link Agent Wallet confidential OAuth client secret"
+    )
+    stripe_link_publishable_key: str = Field(
+        default="",
+        description="Publishable key of the Stripe account that registered the "
+        "Link OAuth client; login.link.com requires it on every call",
+    )
+
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
 
     tally_api_key: str = Field(

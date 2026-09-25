@@ -9,6 +9,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import _get_provider_oauth_handler, router
+from backend.api.features.integrations.router import settings as router_settings
 from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
@@ -16,6 +17,7 @@ from backend.data.model import (
     OAuth2Credentials,
     UserPasswordCredentials,
 )
+from backend.integrations.oauth.stripe_link_hosted import StripeLinkHostedOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 
@@ -913,6 +915,79 @@ class TestOAuthHandlerResolutionForDeviceProviders:
 
         assert exc.value.status_code == 404
         assert "does not support OAuth" in exc.value.detail
+
+
+class TestStripeLinkClientSelection:
+    """Stripe Link connects by device code unless a confidential client is
+    configured, and each grant is revoked by the client that issued it."""
+
+    def test_without_a_confidential_client_login_points_at_device_auth(self):
+        with (
+            patch.object(router_settings.secrets, "stripe_link_client_id", ""),
+            patch.object(router_settings.secrets, "stripe_link_client_secret", ""),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), ProviderName.STRIPE_LINK)
+
+        assert exc.value.status_code == 400
+        assert "/api/integrations/stripe_link/device-auth/initiate" in (
+            exc.value.detail
+        )
+
+    def test_with_a_confidential_client_login_uses_the_redirect_flow(self, monkeypatch):
+        monkeypatch.setenv("STRIPE_LINK_PUBLISHABLE_KEY", "pk_test_publishable")
+        with (
+            patch.object(router_settings.secrets, "stripe_link_client_id", "cid"),
+            patch.object(router_settings.secrets, "stripe_link_client_secret", "cs"),
+            patch.object(
+                router_settings.config, "frontend_base_url", "https://app.example"
+            ),
+        ):
+            handler = _get_provider_oauth_handler(MagicMock(), ProviderName.STRIPE_LINK)
+
+        assert isinstance(handler, StripeLinkHostedOAuthHandler)
+        assert handler.redirect_uri == (
+            "https://app.example/auth/integrations/oauth_callback"
+        )
+
+    @pytest.mark.parametrize("hosted", [True, False])
+    def test_delete_revokes_through_the_issuing_client(self, hosted):
+        cred = _make_oauth2_cred("link-cred", "stripe_link")
+        if hosted:
+            cred.metadata = {"link_oauth_flow": "authorization_code"}
+        oauth_handler = MagicMock(revoke_tokens=AsyncMock(return_value=True))
+        device_handler = MagicMock(revoke_tokens=AsyncMock(return_value=True))
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router."
+                "remove_all_webhooks_for_credentials",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "_get_provider_oauth_handler",
+                return_value=oauth_handler,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {"stripe_link": MagicMock(return_value=device_handler)},
+            ),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            mgr.delete = AsyncMock()
+            resp = client.request("DELETE", "/stripe_link/credentials/link-cred")
+
+        assert resp.status_code == 200
+        assert resp.json()["revoked"] is True
+        used, unused = (
+            (oauth_handler, device_handler)
+            if hosted
+            else (device_handler, oauth_handler)
+        )
+        used.revoke_tokens.assert_awaited_once_with(cred)
+        unused.revoke_tokens.assert_not_awaited()
 
 
 class TestDeviceAuthEndpoints:

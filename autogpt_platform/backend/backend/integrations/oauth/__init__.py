@@ -15,6 +15,7 @@ from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
 from .rmfg import RMFGDeviceAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
+from .stripe_link_hosted import StripeLinkHostedOAuthHandler
 from .twitter import TwitterOAuthHandler
 
 if TYPE_CHECKING:
@@ -30,6 +31,9 @@ _ORIGINAL_HANDLERS = [
     RedditOAuthHandler,
     TwitterOAuthHandler,
     TodoistOAuthHandler,
+    # Registered alongside the device handler; which one serves a credential
+    # is decided by how it was issued (see `is_hosted_link_credential`).
+    StripeLinkHostedOAuthHandler,
 ]
 
 # Start with original handlers

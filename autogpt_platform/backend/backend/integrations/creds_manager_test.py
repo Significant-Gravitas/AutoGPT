@@ -12,6 +12,7 @@ from backend.integrations.creds_manager import (
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
+from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
 
 
 @pytest.fixture(autouse=True)
@@ -407,3 +408,36 @@ def _provider_runtime_credentials() -> OAuth2Credentials:
         provider_state=SecretStr("state"),
         provider_state_version=1,
     )
+
+
+def _link_credentials(metadata: dict[str, str]) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        provider="stripe_link",
+        access_token=SecretStr("liwltoken"),
+        refresh_token=SecretStr("liwlrefresh"),
+        scopes=["payment_methods.agentic"],
+        metadata=metadata,
+    )
+
+
+@pytest.mark.asyncio
+async def test_link_grants_refresh_through_the_client_that_issued_them(mocker):
+    """Stripe Link has a public device client and an optional confidential
+    one; a refresh sent to the wrong one is rejected by Link."""
+    hosted_handler = MagicMock()
+    resolve_hosted = mocker.patch(
+        "backend.integrations.creds_manager._get_provider_oauth_handler",
+        new=AsyncMock(return_value=hosted_handler),
+    )
+    manager = IntegrationCredentialsManager()
+
+    device = await manager._get_oauth_handler(_link_credentials({}))
+    hosted = await manager._get_oauth_handler(
+        _link_credentials(
+            {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+        )
+    )
+
+    assert isinstance(device, StripeLinkDeviceAuthHandler)
+    assert hosted is hosted_handler
+    resolve_hosted.assert_awaited_once_with("stripe_link")
