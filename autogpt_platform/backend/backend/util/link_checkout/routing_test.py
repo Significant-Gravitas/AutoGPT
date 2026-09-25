@@ -1,4 +1,5 @@
 import json
+import os
 from unittest.mock import AsyncMock
 
 import pytest
@@ -77,3 +78,22 @@ def test_a_route_is_a_bare_https_origin(monkeypatch, tmp_path, url):
     monkeypatch.setenv("CHECKOUT_BROKER_ROUTES_FILE", str(registry))
     with pytest.raises(ValueError):
         route_for("alice")
+
+
+def test_routes_are_read_again_only_when_the_file_changes(monkeypatch, tmp_path):
+    registry = tmp_path / "routes.json"
+    common = dict(ca="ca", client_cert="cert", client_key="key", secret_file="secret")
+    alice = {**common, "user_id": "alice", "url": "https://alice-broker:8443"}
+    registry.write_text(json.dumps([alice]))
+    monkeypatch.setenv("CHECKOUT_BROKER_ROUTES_FILE", str(registry))
+
+    first = route_for("alice")
+    assert route_for("alice") is first
+
+    bob = {**common, "user_id": "bob", "url": "https://bob-broker:8443"}
+    registry.write_text(json.dumps([bob]))
+    stat = registry.stat()
+    os.utime(registry, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    with pytest.raises(ValueError):
+        route_for("alice")
+    assert route_for("bob").url == "https://bob-broker:8443"

@@ -38,7 +38,7 @@ export function LinkCheckout({ output }: Props) {
           <p className="font-semibold text-zinc-900">
             {fromRecord ? "Link purchase" : merchant}
           </p>
-          <p className="text-sm text-zinc-600">{status}</p>
+          {!fromRecord && <p className="text-sm text-zinc-600">{status}</p>}
         </div>
         {!fromRecord && (
           <p className="text-lg font-semibold text-zinc-900">{total}</p>

@@ -13,6 +13,7 @@ from backend.util.link_checkout import (
     runtime,
 )
 from backend.util.link_checkout.broker_protocol import Principal
+from backend.util.link_checkout.checkout_record import current_intent
 from backend.util.link_checkout.models import (
     BrowserBinding,
     CheckoutIntent,
@@ -89,6 +90,9 @@ class FakeWorker:
 
     def __init__(self):
         self.calls: list[str] = []
+        # Whether the chat was sealed, with the attempt recorded, each time
+        # the worker was asked for the card.
+        self.sealed_when_paying: list[bool] = []
         self.status = "approved"
         self.receipt = WorkerReceipt(status="submitted", browser_closed=True)
         # Link's refusal of the next create: "link_rejected", "link_duplicate".
@@ -98,6 +102,11 @@ class FakeWorker:
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
         if job.action == "pay":
+            directory = runtime.session_home(job.intent.session_id)
+            self.sealed_when_paying.append(
+                (directory / "sensitive").exists()
+                and current_intent(directory).attempted
+            )
             return WorkerResult(receipt=self.receipt.model_copy())
         if job.action == "create_delegated" and self.delegated_error:
             return WorkerResult(error=self.delegated_error)

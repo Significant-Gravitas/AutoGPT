@@ -58,7 +58,9 @@ def _covers(rule: ApprovalRule, plan: CheckoutPlan) -> bool:
 async def _fetch_policy(access_token: str) -> ApprovalPolicy | None:
     # Any failure falls back to approval in Link; nothing is lost but a click.
     try:
-        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=LINK_HTTP_TIMEOUT, trust_env=False, follow_redirects=False
+        ) as client:
             response = await client.get(
                 f"{LINK_API_BASE_URL}/approval-policy",
                 headers={"Authorization": f"Bearer {access_token}"},

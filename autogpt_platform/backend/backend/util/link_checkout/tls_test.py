@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import ipaddress
+import os
 import socket
 import ssl
 from unittest.mock import AsyncMock
@@ -15,6 +16,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from backend.util.link_checkout import broker_client
 from backend.util.link_checkout.broker_protocol import BrowserCommand, BrowserOutput
+from backend.util.link_checkout.broker_routing import BrokerRoute
 from backend.util.link_checkout.broker_service import create_app
 from backend.util.link_checkout.refusals import FIELDS_NOT_READY, CheckoutRefused
 
@@ -177,3 +179,22 @@ async def test_broker_requires_client_certificate_controller_secret_and_tenant(
         server.should_exit = True
         await serving
         listener.close()
+
+
+def test_a_routes_tls_context_is_reused_until_its_files_change(tmp_path):
+    certificates(tmp_path)
+    route = BrokerRoute(
+        url="https://127.0.0.1:8443",
+        ca=str(tmp_path / "ca.crt"),
+        client_cert=str(tmp_path / "client.crt"),
+        client_key=str(tmp_path / "client.key"),
+        secret_file=str(tmp_path / "secret"),
+    )
+
+    first = route.tls_context()
+    assert route.tls_context() is first
+
+    certificate = tmp_path / "client.crt"
+    stat = certificate.stat()
+    os.utime(certificate, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    assert route.tls_context() is not first

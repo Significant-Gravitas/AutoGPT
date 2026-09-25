@@ -121,6 +121,8 @@ async def test_link_approval_pays_once_then_waits_for_links_final_status(
         assert first.status_code == replay.status_code == 200
         assert first.json()["attempted"] is replay.json()["attempted"] is True
         assert local_broker.calls.count("pay") == 1
+        # Sealed, with the attempt on record, before the card was asked for.
+        assert local_broker.sealed_when_paying == [True]
 
         # The browser that held the card was retired, so browsing resumes in a
         # fresh one; another checkout waits for this one's final status.
@@ -233,6 +235,7 @@ async def test_in_chat_approval_creates_an_approved_request_then_pays(
         assert paid.status_code == 200, paid.text
         assert paid.json()["status"] == "submitted"
         assert local_broker.calls == ["create_delegated", "pay"]
+        assert local_broker.sealed_when_paying == [True]
 
 
 @pytest.mark.asyncio
