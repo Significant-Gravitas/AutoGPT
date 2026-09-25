@@ -105,7 +105,26 @@ describe("sitemap", () => {
     expect(urls).not.toContain(`${SITE_URL}/marketplace/experts/hired`);
   });
 
-  test("still returns the static entries when the fetch throws", async () => {
+  test("rejects when the fetch throws so ISR keeps the last full sitemap", async () => {
+    vi.mocked(listExpertTemplates).mockRejectedValue(new Error("backend down"));
+
+    await expect(sitemap()).rejects.toThrow("backend down");
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  test("rejects on a non-200 response so ISR keeps the last full sitemap", async () => {
+    vi.mocked(listExpertTemplates).mockResolvedValue({
+      data: { detail: [] },
+      status: 422,
+      headers: new Headers(),
+    });
+
+    await expect(sitemap()).rejects.toThrow("status 422");
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  test("falls back to the static entries when the fetch throws during next build", async () => {
+    vi.stubEnv("NEXT_PHASE", "phase-production-build");
     vi.mocked(listExpertTemplates).mockRejectedValue(new Error("backend down"));
 
     const urls = urlsOf(await sitemap());
@@ -114,7 +133,8 @@ describe("sitemap", () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  test("still returns the static entries on a non-200 response", async () => {
+  test("falls back to the static entries on a non-200 response during next build", async () => {
+    vi.stubEnv("NEXT_PHASE", "phase-production-build");
     vi.mocked(listExpertTemplates).mockResolvedValue({
       data: { detail: [] },
       status: 422,

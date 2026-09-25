@@ -2,6 +2,7 @@ import { listExpertTemplates } from "@/app/api/__generated__/endpoints/experts/e
 import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { getSiteUrl } from "@/lib/metadata";
 import type { MetadataRoute } from "next";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 // Static at build, re-rendered at most hourly, so experts published or
 // archived after a deploy show up without one.
@@ -21,20 +22,25 @@ async function listPublicExpertPaths(): Promise<string[]> {
   try {
     const response = await listExpertTemplates();
     if (response.status !== 200) {
-      console.error(
-        "sitemap: expert templates request failed",
-        response.status,
+      throw new Error(
+        `expert templates request failed with status ${response.status}`,
       );
-      return [];
     }
     return response.data
       .filter(isPublicTemplate)
       .map((template) => `/marketplace/experts/${template.id}`);
   } catch (error) {
-    // The crawler must still get the static pages when the API is down.
     console.error("sitemap: could not list expert templates", error);
-    return [];
+    // `next build` prerenders this route without a reachable backend, so the
+    // build keeps the static pages. At runtime, throwing makes ISR keep
+    // serving the last complete sitemap instead of caching a static-only one.
+    if (isBuildPhase()) return [];
+    throw error;
   }
+}
+
+function isBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
 }
 
 function isPublicTemplate(template: ExpertTemplate): boolean {
