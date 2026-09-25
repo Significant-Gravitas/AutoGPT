@@ -30,7 +30,7 @@ export function MoneyBlock({ spend }: Props) {
       </div>
       <div
         role="progressbar"
-        aria-label="Spent of this chat's budget"
+        aria-label="Spent of this chat's ceiling"
         aria-valuenow={Math.round(share * 100)}
         aria-valuemin={0}
         aria-valuemax={100}

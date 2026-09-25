@@ -34,7 +34,7 @@ test("a spend card shows this step's cost, the chat's spend against its ceiling,
     ),
   ).toBeDefined();
   expect(
-    screen.getByRole("progressbar", { name: "Spent of this chat's budget" }),
+    screen.getByRole("progressbar", { name: "Spent of this chat's ceiling" }),
   ).toBeDefined();
   // The money block says it; the model's sentence is not repeated on the card.
   expect(screen.queryByText(/costs about/)).toBeNull();

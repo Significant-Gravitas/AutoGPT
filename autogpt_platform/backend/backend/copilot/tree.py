@@ -601,7 +601,11 @@ async def _open_metered_root(
 
 
 async def _open_chat_ledger(session_id: str, user_id: str | None) -> None:
-    await (await get_chat_ledger()).open(
+    ledger = await get_chat_ledger()
+    # Open once per ledger; resolving the ceiling reads the user's rate limits.
+    if await ledger.exists(chat_ledger_id(session_id)):
+        return
+    await ledger.open(
         chat_ledger_id(session_id),
         ceiling_microdollars=await resolve_chat_ceiling_microdollars(user_id),
         max_nodes=1,

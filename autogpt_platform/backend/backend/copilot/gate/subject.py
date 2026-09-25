@@ -37,7 +37,7 @@ class Subject(BaseModel):
     # rule still covers it.
     irreversible: bool = False
     # What one call is expected to cost, in microdollars; a paid read or
-    # workspace step asks once the turn's tree is over its ceiling.
+    # workspace step asks once the chat has spent its ceiling.
     estimate: int = 0
 
 
