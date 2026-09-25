@@ -32,7 +32,7 @@ class AnySearchBlock(Block):
             title="Authentication",
             description="Anonymous tier (lower rate limit, no key) or an "
             "AnySearch API key credential",
-            default=AnySearchAuth.API_KEY,
+            default=AnySearchAuth.ANONYMOUS,
             advanced=False,
         )
         credentials: CredentialsMetaInput = anysearch.credentials_field(

@@ -589,7 +589,7 @@ async def test_parallel_runs_anonymously_without_credentials():
 
 
 def test_api_key_auth_still_requires_credentials():
-    """auth=api_key (the default) keeps the credentials field required -
+    """auth=api_key keeps the credentials field required -
     unchanged for existing graphs."""
     info = AnySearchBlock.Input.get_credentials_fields_info()["credentials"]
     mapping = info.discriminator_mapping or {}
@@ -599,31 +599,66 @@ def test_api_key_auth_still_requires_credentials():
     assert not info.requires_credentials("anonymous")
 
 
-@pytest.mark.asyncio
-async def test_api_key_auth_without_credentials_errors():
-    """api_key auth with no credential resolved must not silently run
-    anonymous - same runtime guard the LLM block applies for non-Ollama
-    providers."""
-    block = AnySearchBlock()
-    _mock_block(block, {"_search": lambda c, p: _search_response([])})
-    with pytest.raises(Exception, match="credentials are required"):
-        await _collect(block, {"query": "q"}, credentials=None)
+_AUTH_CASES = [
+    (AnySearchBlock, {"query": "q"}, "_search"),
+    (AnySearchParallelSearchBlock, {"queries": ["q"]}, "_search"),
+    (AnySearchExtractBlock, {"url": "https://x.test"}, "_extract"),
+]
 
 
-@pytest.mark.asyncio
-async def test_anonymous_auth_ignores_selected_credential():
-    """A stale credential left attached when auth flips to anonymous is
-    not sent - mirrors AutoPilot honouring an explicit credential-free
-    transport."""
-    captured = {}
-
-    def spy(creds, payload):
-        captured["creds"] = creds
+def _spy(captured: list):
+    def spy(creds, arg):
+        captured.append(creds)
+        if isinstance(arg, str):
+            data = {"url": arg, "title": "t", "content": "c"}
+            return {"code": 0, "message": "success", "data": data}
         return _search_response([])
 
-    block = AnySearchBlock()
-    _mock_block(block, {"_search": spy})
+    return spy
+
+
+def test_auth_defaults_to_anonymous():
+    """anonymous is the default auth - the zero-setup tier; selecting
+    api_key is an explicit opt-in."""
+    for block_cls, minimal_input, _method in _AUTH_CASES:
+        input_data = block_cls.Input.model_validate(minimal_input)
+        assert input_data.auth == AnySearchAuth.ANONYMOUS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("block_cls,minimal_input,method", _AUTH_CASES)
+async def test_api_key_auth_without_credentials_errors(
+    block_cls, minimal_input, method
+):
+    captured = []
+    block = block_cls()
+    _mock_block(block, {method: _spy(captured)})
+    with pytest.raises(ValueError, match="credentials are required"):
+        await _collect(block, {**minimal_input, "auth": "api_key"}, credentials=None)
+    assert captured == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("block_cls,minimal_input,method", _AUTH_CASES)
+async def test_anonymous_auth_ignores_selected_credential(
+    block_cls, minimal_input, method
+):
+    captured = []
+    block = block_cls()
+    _mock_block(block, {method: _spy(captured)})
     await _collect(
-        block, {"query": "q", "auth": "anonymous"}, credentials=TEST_CREDENTIALS
+        block, {**minimal_input, "auth": "anonymous"}, credentials=TEST_CREDENTIALS
     )
-    assert captured["creds"] is None
+    assert captured and all(c is None for c in captured)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("block_cls,minimal_input,method", _AUTH_CASES)
+async def test_api_key_auth_forwards_credentials(block_cls, minimal_input, method):
+    captured = []
+    block = block_cls()
+    _mock_block(block, {method: _spy(captured)})
+    await _collect(
+        block, {**minimal_input, "auth": "api_key"}, credentials=TEST_CREDENTIALS
+    )
+    assert captured and all(c is TEST_CREDENTIALS for c in captured)

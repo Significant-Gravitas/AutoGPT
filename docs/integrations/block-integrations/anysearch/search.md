@@ -10,7 +10,7 @@ Searches the web using AnySearch - general queries plus vertical domains (financ
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block sends the query to the AnySearch REST endpoint `POST https://api.anysearch.com/v1/search` with Bearer API-key auth and parses a `{code, message, data}` envelope; a non-zero code or any HTTP/transport failure raises a block error instead of producing partial output. Each row in `data.results` becomes an AnySearchResult (title, url, snippet, content) and the `context` output renders the results as markdown for LLM use - that text is untrusted web content, so treat it as data, not instructions, before passing it to a model.
+The block sends the query to the AnySearch REST endpoint `POST https://api.anysearch.com/v1/search` (Bearer API-key auth when a credential is used; anonymous calls send no `Authorization` header) and parses a `{code, message, data}` envelope; a non-zero code or any HTTP/transport failure raises a block error instead of producing partial output. Each row in `data.results` becomes an AnySearchResult (title, url, snippet, content) and the `context` output renders the results as markdown for LLM use - that text is untrusted web content, so treat it as data, not instructions, before passing it to a model.
 
 Leaving `sub_domain` empty runs a general search. Setting `sub_domain` picks a capability tag in `{domain}.{sub_domain}` form (e.g. `finance.quote` or `academic.search`) which is sent to the API as `tag`, and `sub_domain_params` is forwarded as `params` carrying the structured parameters that capability requires (e.g. `{"type": "stock", "symbol": "NVDA"}`). The optional `domain` input must agree with `sub_domain` - setting `domain` without `sub_domain`, or a `sub_domain` that does not start with `{domain}.`, is rejected by input validation before any request is sent; the API itself rejects unknown tags or malformed params with HTTP 400, surfaced as a block error. The complete catalog of sub-domains and their parameters is exposed by the AnySearch get_sub_domains tool - see the notes below.
 <!-- END MANUAL -->
@@ -53,7 +53,7 @@ AnySearch issues API keys in the as_sk_... format. Sign up at https://anysearch.
 
 ## Anonymous tier
 
-The AnySearch API accepts unauthenticated requests at a lower rate limit. Set a block's Authentication input to Anonymous to run with no credential at all - the API-key field hides and requests are sent without an `Authorization` header. Hosts can also set a default `ANYSEARCH_API_KEY` in .env so users pick the pre-seeded "AnySearch API Key" credential instead of creating their own; a credential whose key value is left empty likewise sends no `Authorization` header.
+The AnySearch API accepts unauthenticated requests at a lower rate limit. Blocks run anonymously by default; set Authentication to API key to use a credential - on Anonymous the API-key field hides and requests are sent without an `Authorization` header. Hosts can also set a default `ANYSEARCH_API_KEY` in .env so users pick the pre-seeded "AnySearch API Key" credential instead of creating their own; a credential whose key value is left empty likewise sends no `Authorization` header.
 
 ## Billing and cost tracking
 
