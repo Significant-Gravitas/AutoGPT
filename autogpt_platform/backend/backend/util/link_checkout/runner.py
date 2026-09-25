@@ -53,10 +53,13 @@ async def run_worker(job: WorkerJob) -> WorkerResult:
         if process.returncode or len(output) > 8192:
             raise RuntimeError("Private checkout worker failed")
         return WorkerResult.model_validate_json(output)
-    except BaseException:
-        if process.returncode is None:
-            os.killpg(process.pid, signal.SIGKILL)
-            await process.wait()
+    except Exception:
+        # Whatever went wrong could quote the worker's output.
         raise RuntimeError(
             "Private checkout worker failed; never retry payment"
         ) from None
+    finally:
+        # Also on cancellation, which then propagates as itself.
+        if process.returncode is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            await process.wait()
