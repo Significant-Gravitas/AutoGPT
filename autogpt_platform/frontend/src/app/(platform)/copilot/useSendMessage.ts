@@ -12,9 +12,11 @@ import {
 import { describeSendFailure } from "./components/ChatInput/helpers";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
-  buildWorkspaceFilePart,
+  buildStoredAttachmentParts,
+  isFolderPart,
   MAX_ATTACHMENTS,
   workspaceFileDownloadUrl,
+  type StoredAttachmentPart,
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
@@ -109,7 +111,7 @@ export function useSendMessage({
     sid: string,
     text: string,
     files: File[],
-    prebuiltParts: FileUIPart[],
+    prebuiltParts: StoredAttachmentPart[],
     metadata?: ExpertKickoffMetadata,
   ) {
     // The per-click UUID that becomes the backend's ``ChatMessage.id``
@@ -121,11 +123,7 @@ export function useSendMessage({
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
     if (files.length === 0) {
-      await sendMessage({
-        text,
-        files: prebuiltParts.length > 0 ? prebuiltParts : undefined,
-        metadata,
-      });
+      await sendMessage(messageInput(text, prebuiltParts, metadata));
       return;
     }
     // The bubble shows right away; the transcript reads "Uploading N files…"
@@ -149,12 +147,12 @@ export function useSendMessage({
         if (prebuiltParts.length === 0) {
           throw new Error("All file uploads failed");
         }
-        send = sendMessage({ text, files: prebuiltParts, metadata });
+        send = sendMessage(messageInput(text, prebuiltParts, metadata));
       } else {
         // Merge already-stored workspace parts with the freshly uploaded ones so
         // a single message can mix both kinds of attachment.
         const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
-        send = sendMessage({ text, files: allParts, metadata });
+        send = sendMessage(messageInput(text, allParts, metadata));
       }
     } finally {
       // `sendMessage` pushes the user bubble into `messages` synchronously,
@@ -164,6 +162,29 @@ export function useSendMessage({
       useCopilotStreamStore.getState().clearPendingUploadSend(sid, pending);
     }
     await send;
+  }
+
+  function messageInput(
+    text: string,
+    parts: StoredAttachmentPart[],
+    metadata?: ExpertKickoffMetadata,
+  ) {
+    // `{ text, files }` only accepts FileUIParts, so a message carrying a
+    // folder is built from its parts instead.
+    if (!parts.some(isFolderPart)) {
+      return {
+        text,
+        files: parts.length > 0 ? (parts as FileUIPart[]) : undefined,
+        metadata,
+      };
+    }
+    return {
+      parts: [
+        ...parts,
+        ...(text ? [{ type: "text" as const, text }] : []),
+      ] as UIMessage["parts"],
+      metadata,
+    };
   }
 
   // Hold dispatchToSession in a ref so the queued-send effect can fire
@@ -230,7 +251,7 @@ export function useSendMessage({
 
     isUserStoppingRef.current = false;
 
-    const workspaceParts = (workspaceFiles ?? []).map(buildWorkspaceFilePart);
+    const workspaceParts = buildStoredAttachmentParts(workspaceFiles ?? []);
 
     if (sessionId) {
       const { pendingFileParts, setPendingFileParts } =
@@ -291,7 +312,7 @@ export function useSendMessage({
     }
   }
 
-  function setPendingFileParts(parts: FileUIPart[]) {
+  function setPendingFileParts(parts: StoredAttachmentPart[]) {
     useCopilotStreamStore.getState().setPendingFileParts(parts);
   }
 
@@ -320,7 +341,7 @@ export function useSendMessage({
  */
 function recoverFailedFirstSend(
   text: string,
-  parts: FileUIPart[],
+  parts: StoredAttachmentPart[],
   error: unknown,
 ) {
   if (text) useCopilotUIStore.getState().setInitialPrompt(text);
@@ -341,13 +362,17 @@ function recoverFailedFirstSend(
 function describePendingUpload(
   text: string,
   files: File[],
-  prebuiltParts: FileUIPart[],
+  prebuiltParts: StoredAttachmentPart[],
 ): PendingUploadSend {
-  const stored: PendingUploadAttachment[] = prebuiltParts.map((part) => ({
-    name: part.filename ?? "file",
-    mediaType: part.mediaType,
-    isUploading: false,
-  }));
+  const stored: PendingUploadAttachment[] = prebuiltParts.map((part) =>
+    isFolderPart(part)
+      ? { name: part.data.name, mediaType: "folder", isUploading: false }
+      : {
+          name: part.filename ?? "file",
+          mediaType: part.mediaType,
+          isUploading: false,
+        },
+  );
   const local: PendingUploadAttachment[] = files.map((file) => ({
     name: file.name,
     mediaType: file.type || "application/octet-stream",

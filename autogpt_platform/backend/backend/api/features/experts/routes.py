@@ -5,6 +5,7 @@ import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
@@ -53,6 +54,8 @@ router = APIRouter(
     tags=["experts", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+router.include_router(avatar_routes.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
@@ -555,6 +558,9 @@ async def update_expert_avatar(
     request: ExpertAvatarUpdate,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
+    current = await experts_db.get_expert(user_id, expert_id)
+    if current is None:
+        raise fastapi.HTTPException(404, "Expert not found")
     try:
         return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
     except experts_db.ExpertNotFoundError as e:

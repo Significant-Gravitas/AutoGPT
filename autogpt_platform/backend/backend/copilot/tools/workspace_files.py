@@ -4,6 +4,7 @@ import base64
 import logging
 import mimetypes
 import os
+from collections import deque
 from typing import Any, Optional
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -22,12 +23,19 @@ from backend.copilot.tools.workdir import (
     validate_ephemeral_path,
 )
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData
+from .models import (
+    ErrorResponse,
+    ResponseType,
+    ToolResponseBase,
+    WorkspaceFileInfoData,
+    WorkspaceFolderInfoData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +191,10 @@ class WorkspaceFileListResponse(ToolResponseBase):
     type: ResponseType = ResponseType.WORKSPACE_FILE_LIST
     files: list[WorkspaceFileInfoData]
     total_count: int
+    # Folders at the listed level, so the model can walk the tree without a
+    # second tool. Folders are user-level: an expert sees the whole tree and
+    # only the files inside it are filtered by its scope.
+    folders: list[WorkspaceFolderInfoData] = []
 
 
 class WorkspaceFileContentResponse(ToolResponseBase):
@@ -329,7 +341,13 @@ class ListWorkspaceFilesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
+        return (
+            "List persistent workspace files, with the folders at that level. "
+            "Files uploaded on the Files page sit at the workspace root or in "
+            "a folder; pass folder_id to list one, then read a file with "
+            "read_workspace_file. For ephemeral session files, use SDK "
+            "Glob/Read instead."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -340,6 +358,20 @@ class ListWorkspaceFilesTool(BaseTool):
                     "type": "string",
                     "description": "Filter by path prefix (e.g. '/documents/').",
                 },
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Files in this folder. Omit for this chat's files and "
+                        "the folders at the workspace root."
+                    ),
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "description": (
+                        "With folder_id, also list files in its subfolders "
+                        "(default: false)."
+                    ),
+                },
                 "limit": {
                     "type": "integer",
                     "description": "Max files to return (default 50, max 100).",
@@ -349,9 +381,9 @@ class ListWorkspaceFilesTool(BaseTool):
                 "include_all_sessions": {
                     "type": "boolean",
                     "description": (
-                        "Include files from all sessions (default: false). "
-                        "Expert chats only ever see files from their own "
-                        "conversations and ones they delegated."
+                        "Include files from every chat, not just this one "
+                        "(default: false). An expert chat sees its own "
+                        "conversations, ones it delegated, and the user's files."
                     ),
                 },
             },
@@ -367,6 +399,8 @@ class ListWorkspaceFilesTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         path_prefix: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        recursive: bool = False,
         limit: int = 50,
         include_all_sessions: bool = False,
         **kwargs,
@@ -379,13 +413,35 @@ class ListWorkspaceFilesTool(BaseTool):
 
         limit = min(limit, 100)
 
+        # "" is not "no folder": it survives the manager's `is not None` test,
+        # which drops the current-session filter, and then reads as false in the
+        # query, which drops the folder filter — listing the whole workspace.
+        if folder_id is not None and not folder_id.strip():
+            return ErrorResponse(
+                message="folder_id must name a folder; omit it to list the root",
+                session_id=session_id,
+            )
+
         try:
             manager = await get_workspace_manager(user_id, session_id)
+            folders = await manager.list_folders()
+            descend = folder_id if recursive else None
+            subtree, unsearched = (
+                _folder_subtree(folders, descend) if descend else ([], 0)
+            )
+            list_kwargs: dict[str, Any] = (
+                {"folder_ids": subtree} if descend else {"folder_id": folder_id}
+            )
             files = await manager.list_files(
-                path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
+                path=path_prefix,
+                limit=limit,
+                include_all_sessions=include_all_sessions,
+                **list_kwargs,
             )
             total = await manager.get_file_count(
-                path=path_prefix, include_all_sessions=include_all_sessions
+                path=path_prefix,
+                include_all_sessions=include_all_sessions,
+                **list_kwargs,
             )
             file_infos = [
                 WorkspaceFileInfoData(
@@ -397,20 +453,47 @@ class ListWorkspaceFilesTool(BaseTool):
                 )
                 for f in files
             ]
+            folder_infos = [
+                WorkspaceFolderInfoData(
+                    folder_id=f.id,
+                    name=f.name,
+                    parent_id=f.parent_id,
+                    file_count=f.file_count,
+                )
+                for f in folders
+                if f.parent_id == folder_id
+            ]
             scope = "all sessions" if include_all_sessions else "current session"
+            names = {f.id: f.name for f in folders}
+            where = (
+                f"folder {names.get(folder_id, folder_id)}"
+                if folder_id
+                else f"workspace ({scope})"
+            )
             total_size = sum(f.size_bytes for f in file_infos)
 
             # Build a human-readable summary so the agent can relay details.
-            lines = [f"Found {len(files)} file(s) in workspace ({scope}):"]
+            lines = [f"Found {len(files)} file(s) in {where}:"]
             for f in file_infos:
                 lines.append(f"  - {f.path} ({f.size_bytes:,} bytes, {f.mime_type})")
             if total > len(files):
                 lines.append(f"  ... and {total - len(files)} more")
+            for d in folder_infos:
+                lines.append(
+                    f"  [folder] {d.name} ({d.file_count} file(s)), "
+                    f"folder_id={d.folder_id}"
+                )
+            if unsearched:
+                lines.append(
+                    f"  ... and {unsearched} subfolder(s) not searched; "
+                    "list them with folder_id."
+                )
             lines.append(f"Total size: {total_size:,} bytes")
 
             return WorkspaceFileListResponse(
                 files=file_infos,
                 total_count=total,
+                folders=folder_infos,
                 message="\n".join(lines),
                 session_id=session_id,
             )
@@ -425,6 +508,45 @@ class ListWorkspaceFilesTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+
+# A recursive listing walks at most this many folders. Deep trees are the
+# user's own making, and an unbounded ``IN`` grows with every folder they add.
+_MAX_RECURSIVE_FOLDERS = 200
+
+
+def _folder_subtree(
+    folders: list[WorkspaceFolder], folder_id: str
+) -> tuple[list[str], int]:
+    """*folder_id* plus its descendants, capped, and how many were left out.
+
+    Nearest first, so a cap truncates the deepest folders rather than an
+    arbitrary set, and the caller can name the remainder for the model to
+    list directly. Deliberately not shared with ``workspace_folder._subtree_ids``:
+    that one walks DB rows and must not cap, since it drives a delete.
+    """
+    children: dict[str | None, list[str]] = {}
+    for folder in folders:
+        children.setdefault(folder.parent_id, []).append(folder.id)
+
+    subtree = [folder_id]
+    seen = {folder_id}
+    queue = deque([folder_id])
+    overflow = 0
+    while queue:
+        for child in children.get(queue.popleft(), []):
+            if child in seen:
+                continue
+            seen.add(child)
+            queue.append(child)
+            # Past the cap the walk keeps going but stops collecting, so the
+            # count the caller reports is every folder left out, not just the
+            # first one over the line.
+            if len(subtree) >= _MAX_RECURSIVE_FOLDERS:
+                overflow += 1
+            else:
+                subtree.append(child)
+    return subtree, overflow
 
 
 class ReadWorkspaceFileTool(BaseTool):
@@ -444,9 +566,9 @@ class ReadWorkspaceFileTool(BaseTool):
             "Small text/image files return inline; large/binary return metadata+URL. "
             "Use save_to_path to copy to working dir for processing. "
             "Use offset/length for paginated reads. "
-            "Paths scoped to current session; use /sessions/<id>/... for "
-            "cross-session access (expert chats can read their own "
-            "conversations and ones they delegated)."
+            "Paths resolve in the current session; use /sessions/<id>/... or "
+            "file_id to reach elsewhere. An expert chat reads its own "
+            "conversations, ones it delegated, and the user's files."
         )
 
     @property

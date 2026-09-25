@@ -1,14 +1,15 @@
-import { Robot01Icon } from "@hugeicons/core-free-icons";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import type { AvatarStatus } from "@/components/molecules/NotionAvatar/status";
-import { expertNotionConfig } from "@/components/molecules/NotionAvatar/helpers";
-import { NotionAvatarImage } from "@/components/molecules/NotionAvatar/NotionAvatarImage";
+import { StatusDot } from "@/components/molecules/NotionAvatar/StatusDot";
+import { expertPastel } from "./colors";
 import { cn } from "@/lib/utils";
+import { getManagedAvatar, resolveCategoryAvatarUrl } from "./helpers";
+
+import { ManagedExpertImage } from "./components/ManagedExpertImage";
 
 interface Props {
   name: string | null;
@@ -17,58 +18,76 @@ interface Props {
   status?: AvatarStatus;
   size?: number;
   className?: string;
+  backgroundColor?: string;
+  category?: string | null;
 }
 
-/**
- * Expert avatar shared by the copilot home surfaces (briefing card, team
- * strip, needs-attention list). Uploaded pictures render as-is; everything
- * else gets the generated Notion-style face — as a flat image unless there
- * is something to animate.
- */
 export function ExpertAvatar({
   name,
   avatarUrl,
-  color,
   status = "idle",
   size = 40,
   className,
+  backgroundColor,
+  category,
 }: Props) {
-  const style = { width: size, height: size };
-
-  if (!name) {
+  const src = resolveCategoryAvatarUrl(avatarUrl, category);
+  const managed = getManagedAvatar(src, size);
+  if (managed && !backgroundColor) {
     return (
-      <div
-        style={style}
-        className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-zinc-100",
-          className,
-        )}
-      >
-        <Icon icon={Robot01Icon} size={size / 2} className="text-zinc-500" />
-      </div>
-    );
-  }
-
-  const config = expertNotionConfig({ name, avatarUrl, color });
-  if (config) {
-    return (
-      <NotionAvatarImage
-        config={config}
-        status={status}
+      <ManagedExpertImage
+        key={`${managed.base}:${size}`}
+        name={name ?? "Expert"}
+        base={managed.base}
+        pixels={managed.pixels}
         size={size}
-        title={name}
+        isOtto={managed.assetID === "otto"}
         className={className}
       />
     );
   }
-
   return (
-    <Avatar
-      style={style}
-      className={cn("shrink-0 border border-stone-500", className)}
+    <span
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: backgroundColor
+          ? expertPastel(backgroundColor)
+          : undefined,
+      }}
+      className={cn(
+        "relative inline-flex shrink-0",
+        backgroundColor && "rounded-full",
+        className,
+      )}
     >
-      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-      <AvatarFallback>{name}</AvatarFallback>
-    </Avatar>
+      <Avatar className="size-full rounded-[inherit]">
+        <AvatarImage
+          src={
+            managed && backgroundColor
+              ? `/experts/transparent/${managed.assetID.replace("expert-", "")}.webp`
+              : src
+          }
+          alt={name ?? "Expert"}
+          width={size}
+          height={size}
+          className="object-contain"
+        />
+        <AvatarFallback
+          accessibleLabel={name ? `${name}, AI Expert` : "AI Expert"}
+        >
+          <span className="text-sm">
+            {name?.slice(0, 1).toUpperCase() ?? "?"}
+          </span>
+        </AvatarFallback>
+      </Avatar>
+      {status !== "idle" && (
+        <StatusDot
+          status={status}
+          size={Math.round(size * 0.34)}
+          className="absolute -bottom-0.5 -right-0.5"
+        />
+      )}
+    </span>
   );
 }

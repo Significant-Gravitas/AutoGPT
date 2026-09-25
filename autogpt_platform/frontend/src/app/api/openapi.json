@@ -4452,6 +4452,59 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/feedback": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Submit message feedback",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. Langfuse being down does not fail the request; the response\nsays where the score went.",
+        "operationId": "postV2Submit message feedback",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "Session or reply not found, or not the caller's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -5956,6 +6009,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -6642,6 +6703,80 @@
           "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Generate Expert Avatar",
+        "operationId": "generate_expert_avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertAvatarRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations/{job_id}": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Get Expert Avatar Generation",
+        "operationId": "get_expert_avatar_generation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid", "title": "Job Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experts/identities": {
@@ -13813,6 +13948,54 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Pending Reviews for Chat Session",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
+        "operationId": "getV2Get pending reviews for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the chat session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -15920,17 +16103,31 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["submission", "expert-avatar"],
+              "type": "string",
+              "default": "submission",
+              "title": "Purpose"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -15955,8 +16152,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
@@ -16223,7 +16419,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to that hired expert's own\nconversations. It conflicts with ``session_id`` — both name which\nconversations to show — but composes with the folder filters, which select\nacross the whole workspace. An expert the caller does not own (or no\nlonger has) yields an empty list.\n\n``include_user_files`` widens an ``expert_id`` listing with the user's own\nfiles, which an expert may read but which are nobody's conversation. It is\nopt-in so that a view already filtered to one expert keeps showing that\nexpert's files and nothing else; the composer's picker sends it when its\n\"only this expert\" filter is switched off.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16319,10 +16515,22 @@
                 { "type": "string", "minLength": 1 },
                 { "type": "null" }
               ],
-              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id.",
               "title": "Expert Id"
             },
-            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
+            "description": "Only return files from this hired expert's own conversations. Combines with folder_id, root_only and include_user_files; cannot be combined with session_id."
+          },
+          {
+            "name": "include_user_files",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id.",
+              "default": false,
+              "title": "Include User Files"
+            },
+            "description": "With expert_id, also return the user's own files — everything outside /sessions/, /experts/ and /skills/ — which the expert may read but which are not its own. Requires expert_id."
           }
         ],
         "responses": {
@@ -16594,6 +16802,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace folders",
+        "description": "Every folder in the workspace, flat; nesting is read off ``parent_id``.\n\n``file_count`` counts the files directly in each folder, not its subtree.",
         "operationId": "listWorkspaceFolders",
         "responses": {
           "200": {
@@ -16638,6 +16847,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Parent folder not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -16696,6 +16906,7 @@
       "delete": {
         "tags": ["workspace"],
         "summary": "Delete workspace folder",
+        "description": "Delete a folder and its subfolders; their files return to the root.",
         "operationId": "deleteWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16725,6 +16936,7 @@
       "patch": {
         "tags": ["workspace"],
         "summary": "Update workspace folder",
+        "description": "Rename a folder, change its icon, and/or move it.\n\nSending ``parent_id: null`` moves the folder to the workspace root;\nleaving the field out keeps it where it is. Move and rename are applied\ntogether or not at all, and the new name is checked for a clash against\nthe destination.",
         "operationId": "updateWorkspaceFolder",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16754,10 +16966,13 @@
               }
             }
           },
+          "400": {
+            "description": "A folder cannot be moved into its own subtree"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Folder or destination not found" },
           "409": { "description": "A folder with this name already exists" },
           "422": {
             "description": "Validation Error",
@@ -18600,7 +18815,10 @@
       "BriefingDecisionItem": {
         "properties": {
           "node_exec_id": { "type": "string", "title": "Node Exec Id" },
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
           "title": { "type": "string", "title": "Title" },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18877,6 +19095,16 @@
               { "type": "null" }
             ],
             "title": "Origin"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
           },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
@@ -19637,6 +19865,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
           },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Node Exec Id"
@@ -20304,6 +20536,11 @@
           "usage_execution_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
+          },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
           },
           "usage_node_count": {
             "type": "integer",
@@ -21595,6 +21832,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           }
         },
         "type": "object",
@@ -21641,6 +21890,149 @@
         "required": ["day", "sessions", "runs"],
         "title": "ExpertActivityDay",
         "description": "One calendar day, in the owner's timezone, of expert activity."
+      },
+      "ExpertAvatarJob": {
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "complete", "failed"],
+            "title": "Status",
+            "default": "pending"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "created_at": { "type": "number", "title": "Created At" }
+        },
+        "type": "object",
+        "title": "ExpertAvatarJob"
+      },
+      "ExpertAvatarRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "marketing",
+              "sales",
+              "finance",
+              "support",
+              "operations",
+              "research",
+              "content",
+              "development"
+            ],
+            "title": "Category",
+            "default": "content"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "terracotta",
+                  "ochre",
+                  "sage",
+                  "coral",
+                  "slate",
+                  "olive",
+                  "stone",
+                  "charcoal",
+                  "rust",
+                  "rose",
+                  "seaglass",
+                  "pine",
+                  "denim",
+                  "sand",
+                  "bluegray",
+                  "redclay",
+                  "apricot",
+                  "moss",
+                  "chalk",
+                  "copper",
+                  "mist",
+                  "ink",
+                  "umber",
+                  "lagoon",
+                  "limestone",
+                  "fern"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "pebble",
+              "slab",
+              "wedge",
+              "dome",
+              "capsule",
+              "bean",
+              "saddle",
+              "kite",
+              "fan",
+              "arch",
+              "shield",
+              "crescent"
+            ],
+            "title": "Shape",
+            "default": "pebble"
+          },
+          "base": {
+            "type": "string",
+            "enum": ["compact", "wide", "tall"],
+            "title": "Base",
+            "default": "compact"
+          },
+          "tilt": {
+            "type": "string",
+            "enum": ["level", "left", "right"],
+            "title": "Tilt",
+            "default": "level"
+          },
+          "inlay": {
+            "type": "string",
+            "enum": ["sweep", "pool", "curl", "patch", "cap", "teardrop"],
+            "title": "Inlay",
+            "default": "sweep"
+          },
+          "accent_placement": {
+            "type": "string",
+            "enum": ["body", "head", "both"],
+            "title": "Accent Placement",
+            "default": "body"
+          },
+          "accent_count": {
+            "type": "string",
+            "enum": ["one", "two", "three"],
+            "title": "Accent Count",
+            "default": "one"
+          },
+          "shade": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "light", "dark"] },
+              { "type": "null" }
+            ],
+            "title": "Shade"
+          },
+          "expression": {
+            "type": "string",
+            "enum": ["friendly", "curious", "focused", "pleased"],
+            "title": "Expression",
+            "default": "friendly"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpertAvatarRequest"
       },
       "ExpertAvatarUpdate": {
         "properties": {
@@ -22159,6 +22551,18 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           },
           "bundled_skills": {
             "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
@@ -23535,16 +23939,9 @@
         "title": "HireRequest"
       },
       "HireResult": {
-        "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "failed_preloads": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Failed Preloads"
-          }
-        },
+        "properties": { "expert": { "$ref": "#/components/schemas/Expert" } },
         "type": "object",
-        "required": ["expert", "failed_preloads"],
+        "required": ["expert"],
         "title": "HireResult"
       },
       "HomeAction": {
@@ -23631,6 +24028,12 @@
             "title": "Priority"
           },
           "title": { "type": "string", "title": "Title" },
+          "headline": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeHeadline" },
+              { "type": "null" }
+            ]
+          },
           "description": { "type": "string", "title": "Description" },
           "why_it_matters": { "type": "string", "title": "Why It Matters" },
           "expert": {
@@ -23855,6 +24258,18 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeHeadline": {
+        "properties": {
+          "ask": { "type": "string", "title": "Ask" },
+          "object": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Object"
+          }
+        },
+        "type": "object",
+        "required": ["ask"],
+        "title": "HomeHeadline"
       },
       "HomeRecentWork": {
         "properties": {
@@ -25652,6 +26067,62 @@
         "required": ["query", "response"],
         "title": "Message"
       },
+      "MessageFeedbackRequest": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Message Id",
+            "description": "The reply as the chat UI knows it: ``<session id>-seq-<N>`` for a reply loaded from the chat history, or the message's own id."
+          },
+          "score_name": {
+            "type": "string",
+            "enum": ["user-feedback", "copy"],
+            "title": "Score Name",
+            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply."
+          },
+          "score_value": {
+            "type": "integer",
+            "enum": [0, 1],
+            "title": "Score Value",
+            "description": "1 for thumbs up or a copy, 0 for thumbs down."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment",
+            "description": "What the user said was wrong, from the thumbs-down form."
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "score_name", "score_value"],
+        "title": "MessageFeedbackRequest",
+        "description": "One rating of one reply."
+      },
+      "MessageFeedbackResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The rating's id, which its Langfuse score shares."
+          },
+          "langfuse_target": {
+            "anyOf": [
+              { "type": "string", "enum": ["trace", "session"] },
+              { "type": "null" }
+            ],
+            "title": "Langfuse Target",
+            "description": "Where the Langfuse score went: the trace of the turn that wrote the reply, or the chat's Langfuse session when that trace is not known. Null when Langfuse is not configured or did not take the score; the rating is saved either way."
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "MessageFeedbackResponse",
+        "description": "A saved rating of an AutoPilot reply."
+      },
       "ModelInfo": {
         "properties": {
           "value": { "type": "string", "title": "Value" },
@@ -26492,19 +26963,24 @@
             "description": "User ID associated with the review"
           },
           "graph_exec_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id",
-            "description": "Graph execution ID"
+            "description": "Graph execution ID; None for a chat review"
           },
           "graph_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id",
             "description": "Graph ID"
           },
           "graph_version": {
-            "type": "integer",
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session ID; None for a graph review"
           },
           "payload": {
             "anyOf": [
@@ -26556,15 +27032,20 @@
             "title": "Agent Name",
             "description": "Display name of the agent that requested the review"
           },
+          "block_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Id",
+            "description": "The block awaiting approval, when a block asked"
+          },
+          "action": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Action",
+            "description": "What that block does, e.g. 'Send Discord Message'"
+          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id",
             "description": "For run deep links"
-          },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id",
-            "description": "Chat session id for copilot run_capability reviews"
           },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -26604,9 +27085,6 @@
         "required": [
           "node_exec_id",
           "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
           "payload",
           "editable",
           "status",
@@ -27632,6 +28110,13 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids"
           }
         },
         "type": "object",
@@ -28051,6 +28536,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "capability_list",
           "capability_details",
           "schedule_list",
@@ -29989,6 +30475,14 @@
             ],
             "title": "File Ids"
           },
+          "folder_ids": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array", "maxItems": 5 },
+              { "type": "null" }
+            ],
+            "title": "Folder Ids",
+            "description": "Workspace folder IDs attached to this message. Named in the message for the model to open, never expanded into their files."
+          },
           "model": {
             "anyOf": [
               { "type": "string", "enum": ["standard", "advanced"] },
@@ -30010,6 +30504,17 @@
             "title": "Expert Kickoff",
             "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode",
+            "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
           }
         },
         "type": "object",
@@ -33206,6 +33711,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
           },
+          "parent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Id"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -33238,6 +33747,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",
@@ -33268,6 +33781,10 @@
           "icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Icon"
+          },
+          "parent_id": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Parent Id"
           }
         },
         "type": "object",

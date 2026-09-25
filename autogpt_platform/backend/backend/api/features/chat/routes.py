@@ -44,6 +44,7 @@ from backend.copilot.expert_kickoff import (
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
+    AutopilotMode,
     ChatSessionInfo,
     ChatSessionMetadata,
     create_chat_session,
@@ -52,6 +53,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_autopilot_mode,
     update_session_llm_route,
     update_session_pinned,
     update_session_title,
@@ -157,11 +159,13 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
+from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -290,6 +294,12 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    folder_ids: list[str] | None = Field(
+        default=None,
+        max_length=5,
+        description="Workspace folder IDs attached to this message. Named in "
+        "the message for the model to open, never expanded into their files.",
+    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -318,6 +328,11 @@ class StreamChatRequest(BaseModel):
             "derives its owner-scoped message ID and persistence metadata."
         ),
     )
+    autopilot_mode: AutopilotMode | None = Field(
+        default=None,
+        description="The chat's approval mode from this turn on; None keeps "
+        "the mode it already has.",
+    )
 
 
 class QueuePendingMessageRequest(BaseModel):
@@ -326,6 +341,7 @@ class QueuePendingMessageRequest(BaseModel):
     message: str = Field(max_length=64_000)
     context: dict[str, str] | None = None
     file_ids: list[str] | None = Field(default=None, max_length=20)
+    folder_ids: list[str] | None = Field(default=None, max_length=5)
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -1620,7 +1636,7 @@ async def cancel_session_task(
     # the "assistant encountered an error" banner over their own cancel.
     await stream_registry.mark_session_completed(
         session_id,
-        error_message="Operation cancelled",
+        error_message=stream_registry.CANCELLED_MESSAGE,
         skip_error_publish=True,
     )
     # Status is now force-flipped out of "running"; re-clear to drop any
@@ -1629,6 +1645,18 @@ async def cancel_session_task(
     return CancelSessionResponse(
         cancelled=True, reason="cancel_published_not_confirmed"
     )
+
+
+async def _apply_autopilot_mode(
+    session: ChatSessionInfo, user_id: str, mode: AutopilotMode | None
+) -> None:
+    """Persist a changed mode before the turn is scheduled, so the turn runs on it."""
+    if mode is None or mode == session.metadata.autopilot_mode:
+        return
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return
+    await update_session_autopilot_mode(session.session_id, user_id, mode)
+    session.metadata.autopilot_mode = mode
 
 
 def _ui_message_stream_headers() -> dict[str, str]:
@@ -1723,6 +1751,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+    await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
 
     # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
     # Every other route can spend platform-gated premium inference, so a client
@@ -1828,6 +1857,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
@@ -1901,15 +1931,18 @@ async def stream_chat_post(
     # Expert sessions may only attach files from the expert's own
     # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
-    if request.file_ids:
+    if request.file_ids or request.folder_ids:
         files = await resolve_attachments_for_http(
             user_id,
-            request.file_ids,
+            request.file_ids or [],
             session_id=session_id,
             expert_id=session.expert_id,
         )
+        folders = await resolve_attachable_workspace_folders(
+            user_id, request.folder_ids or [], expert_id=session.expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
-        message += build_files_block(files)
+        message += build_files_block(files, folders)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -2189,6 +2222,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        folder_ids=request.folder_ids,
         expert_id=session.expert_id,
     )
 

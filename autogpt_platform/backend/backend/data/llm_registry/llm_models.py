@@ -143,6 +143,8 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O1_MINI = "o1-mini"
     # GPT-6 models (September 2026)
     GPT6_ASTRA = "gpt-6-astra"
+    GPT6_SOL = "gpt-6-sol"
+    GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
@@ -176,6 +178,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_5_OPUS = "claude-opus-5"
+    CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
@@ -235,6 +238,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
     GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_7 = "x-ai/grok-4.7"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
@@ -253,6 +257,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    ZAI_GLM_5_3 = "z-ai/glm-5.3"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Inception Labs models

@@ -123,11 +123,44 @@ describe("Marketplace category filter over experts", () => {
     );
   });
 
+  test("category dots and multi-category cards use the selected category", async () => {
+    const expert = template("Quinn", ["research", "finance"]);
+    expert.avatar_url = "/experts/clay/v3/quinn.png";
+    server.use(
+      getGetV2ListStoreCategoriesMockHandler([
+        { value: "research", label: "Research", description: "Research" },
+        { value: "finance", label: "Finance", description: "Finance" },
+      ]),
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json([expert]),
+      ),
+    );
+    render(<MainMarkeplacePage />);
+    const finance = await findCategoryChip("Finance");
+    expect(
+      finance.querySelector('[aria-hidden="true"]')?.getAttribute("style"),
+    ).toContain("#A5B09A");
+    await userEvent.click(finance);
+    const card = await screen.findByRole("link", { name: /Quinn/ });
+    await waitFor(() =>
+      expect(card.querySelector("img")?.getAttribute("src")).toContain(
+        "quinn-finance.png",
+      ),
+    );
+    expect(finance.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(await findCategoryChip("All"));
+    await waitFor(() =>
+      expect(card.querySelector("img")?.getAttribute("src")).toContain(
+        "/v3/quinn.png",
+      ),
+    );
+  });
+
   test("the chip row sits above the experts shelf it narrows", async () => {
     render(<MainMarkeplacePage />);
 
     const chips = await screen.findByRole("group", {
-      name: "Browse by category",
+      name: "Browse experts by category",
     });
     const shelf = await screen.findByRole("link", { name: /Maria/ });
 
@@ -181,7 +214,7 @@ describe("Marketplace category filter over experts", () => {
     );
     // Not the empty-roster fallback either: a filtered shelf offers no
     // invitation to raise an expert.
-    expect(screen.queryByRole("link", { name: "Raise your own" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Create an Expert" })).toBeNull();
   });
 
   test("a failed roster request under a category still offers the raise link", async () => {
@@ -199,20 +232,22 @@ describe("Marketplace category filter over experts", () => {
 
     await userEvent.click(await findCategoryChip("Sales"));
 
-    // The header carries its own "Raise your own" link, so wait for it to go:
+    // The header carries its own "Create an Expert" link, so wait for it to go:
     // a failure is not an answer about the category, so the fallback stays.
     await waitFor(() =>
       expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
     );
     expect(
-      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Create an Expert" })
+        .getAttribute("href"),
     ).toBe("/raise");
   });
 });
 
 async function findCategoryChip(name: string) {
   const group = await screen.findByRole("group", {
-    name: "Browse by category",
+    name: "Browse experts by category",
   });
   return within(group).findByRole("button", { name });
 }

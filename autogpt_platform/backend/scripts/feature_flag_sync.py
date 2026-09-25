@@ -21,7 +21,12 @@ from pydantic import BaseModel
 
 # What `_person_properties` in `backend.util.feature_flag` sends for a user;
 # the SDK adds `distinct_id` (the user id, LaunchDarkly's context key) itself.
-PERSON_PROPERTIES = frozenset({"email", "email_domain", "role", "created_at"})
+# `country` is not stored on the person: it is the visitor's ISO country code,
+# passed per evaluation by callers that know it (the trial offer, from the
+# country token the proxy signs), so it is absent whenever a caller does not.
+PERSON_PROPERTIES = frozenset(
+    {"email", "email_domain", "role", "created_at", "country"}
+)
 ATTRIBUTE_ALIASES = {
     "/custom/role": "role",
     "custom.role": "role",
@@ -336,7 +341,7 @@ def _segment_groups(
         if any(c.get("op") == "segmentMatch" for c in clauses):
             raise Unmappable("segment rule references another segment")
         if _reachable(clauses, notes):
-            groups.append([_clause_property(c) for c in clauses])
+            groups.append([p for c in clauses for p in _clause_properties(c)])
     if excluded:
         groups = [g + [_person("distinct_id", "is_not", excluded)] for g in groups]
     return groups
@@ -425,10 +430,10 @@ def _rule_groups(
     clauses: list[dict[str, Any]], cohorts: dict[str, MappedCohort]
 ) -> list[list[dict[str, Any]]]:
     """A rule's clauses as condition groups: AND within, a segment list fans out into OR."""
-    alternatives: list[list[dict[str, Any]]] = []
+    alternatives: list[list[list[dict[str, Any]]]] = []
     for clause in clauses:
         if clause.get("op") != "segmentMatch":
-            alternatives.append([_clause_property(clause)])
+            alternatives.append([_clause_properties(clause)])
             continue
         if clause.get("negate"):
             raise Unmappable("negated segment match")
@@ -441,13 +446,31 @@ def _rule_groups(
                 raise Unmappable(f"references segment `{seg}`, which needs a decision")
             if cohort.payload is not None:
                 options.append(
-                    {"key": "id", "type": "cohort", "value": cohort_name(seg)}
+                    [{"key": "id", "type": "cohort", "value": cohort_name(seg)}]
                 )
         # A rule naming only empty segments matches nobody.
         if not options:
             return []
         alternatives.append(options)
-    return [list(combo) for combo in itertools.product(*alternatives)]
+    return [
+        [prop for option in combo for prop in option]
+        for combo in itertools.product(*alternatives)
+    ]
+
+
+def _clause_properties(clause: dict[str, Any]) -> list[dict[str, Any]]:
+    """One LaunchDarkly clause as PostHog properties, all of which must hold.
+
+    A negated LaunchDarkly clause never matches a context that lacks the
+    attribute: "country is not one of IN" serves nothing to a visitor with no
+    country. PostHog's negated operators promise nothing about a missing
+    property, so the property is required to be set as well -- otherwise the
+    port would widen who is served exactly where the attribute is unknown.
+    """
+    prop = _clause_property(clause)
+    if clause.get("negate"):
+        return [_person(prop["key"], "is_set", "is_set"), prop]
+    return [prop]
 
 
 def _clause_property(clause: dict[str, Any]) -> dict[str, Any]:

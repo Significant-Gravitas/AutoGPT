@@ -24,7 +24,7 @@ export function EmptyTeamState() {
           Browse the marketplace
         </Button>
         <Button as="NextLink" href="/raise" variant="secondary" size="small">
-          Raise your own
+          Create an Expert
         </Button>
       </div>
     </div>

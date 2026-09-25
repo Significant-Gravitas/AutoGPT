@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from enum import Enum
@@ -20,6 +21,8 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -44,6 +47,33 @@ class AppEnvironment(str, Enum):
 class BehaveAs(str, Enum):
     LOCAL = "local"
     CLOUD = "cloud"
+
+
+class FeatureFlagBackend(str, Enum):
+    """Which vendor answers a feature flag read.
+
+    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
+    disagreement is measurable before the switch. The backend always serves
+    LaunchDarkly in this mode; the frontend falls back to PostHog where
+    LaunchDarkly is not configured, because there its answer never arrives.
+    """
+
+    LAUNCHDARKLY = "launchdarkly"
+    POSTHOG = "posthog"
+    DUAL = "dual"
+
+
+class FlagDefinitionCacheBackend(str, Enum):
+    """Where PostHog flag definitions are shared between processes.
+
+    PostHog bills one definitions fetch as ten flag requests, so a poller in
+    every process makes the bill scale with replica count. ``REDIS`` elects one
+    refresher and serves every other process from its copy.
+    """
+
+    REDIS = "redis"
+    MEMORY = "memory"
+    NONE = "none"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -442,6 +472,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    e2b_egress_proxy_address: str = Field(
+        default="",
+        description="host:port of the SOCKS5 credential swap proxy every E2B box "
+        "egresses through (see backend.util.e2b_network). Empty leaves egress "
+        "direct. Do not set it before the proxy exists: E2B fails closed, so a "
+        "box pointed at nothing has no egress at all.",
+    )
+
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
@@ -584,6 +622,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     mailerlite_changelog_group_id: str = Field(
         default="",
         description="MailerLite group that receives the monthly changelog campaign",
+    )
+
+    expert_avatar_model: str = Field(
+        default="gpt-image-1.5",
+        description="OpenAI model for transparent expert PNG avatars",
     )
 
     use_agent_image_generation_v2: bool = Field(
@@ -740,6 +783,70 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     app_env: AppEnvironment = Field(
         default=AppEnvironment.LOCAL,
         description="The name of the app environment: local or dev or prod",
+    )
+
+    feature_flag_backend: FeatureFlagBackend = Field(
+        default=FeatureFlagBackend.LAUNCHDARKLY,
+        description="Which vendor answers feature flag reads: launchdarkly "
+        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
+        "every disagreement).",
+    )
+
+    @field_validator("feature_flag_backend", mode="before")
+    @classmethod
+    def _default_unknown_flag_backend(cls, v):
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
+        if not isinstance(v, str):
+            return v
+        try:
+            return FeatureFlagBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
+                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+            )
+            return FeatureFlagBackend.LAUNCHDARKLY
+
+    posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
+        default=FlagDefinitionCacheBackend.REDIS,
+        description="Where PostHog flag definitions are shared: redis "
+        "(default; one elected refresher, every other process reads its copy), "
+        "memory (process-local), or none (every process polls PostHog itself). "
+        "Only read when PostHog answers flag reads.",
+    )
+
+    @field_validator("posthog_flag_definition_cache", mode="before")
+    @classmethod
+    def _default_unknown_definition_cache(cls, v):
+        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        if not isinstance(v, str):
+            return v
+        try:
+            return FlagDefinitionCacheBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown POSTHOG_FLAG_DEFINITION_CACHE {v!r}, "
+                f"falling back to {FlagDefinitionCacheBackend.REDIS.value}"
+            )
+            return FlagDefinitionCacheBackend.REDIS
+
+    posthog_flag_definition_refresh_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="How often the elected refresher fetches PostHog flag "
+        "definitions, and how often every other process re-reads the shared copy.",
+    )
+
+    posthog_flag_definition_cache_ttl_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="How long a shared copy of the PostHog flag definitions stays "
+        "readable. Past it the cache is empty and the next process to poll fetches "
+        "from PostHog directly.",
     )
 
     behave_as: BehaveAs = Field(
@@ -1130,6 +1237,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key. Only used for local feature-flag "
+        "evaluation; without it flag reads fall back to a remote /flags call.",
     )
 
     # Add more secret fields as needed

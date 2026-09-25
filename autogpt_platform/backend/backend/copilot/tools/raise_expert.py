@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.avatar_catalog import PRESETS
+from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -26,7 +28,6 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import AVATAR_BEARD, AVATAR_GLASSES, AVATAR_HAT, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -90,7 +91,10 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling tool:confirm_expert_change with that id."
+        return (
+            EXPERT_CREATION_COPY_POLICY
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -99,50 +103,36 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "Personal first name, not a job title (use job_title for that)."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short name for the area they own, e.g. 'SEO & Content'.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
                 },
                 "job_title": {
                     "type": "string",
-                    "description": "What they would be called on a team, e.g. 'SEO Content Manager'.",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": ("Accent token for the avatar and chat theme."),
+                    "description": "Avatar/chat accent token.",
                 },
-                "avatar_glasses": {
+                "avatar_category": {
                     "type": "string",
-                    "enum": list(AVATAR_GLASSES),
-                    "description": (
-                        "Eyewear suited to their role; omit for a name-seeded choice."
-                    ),
-                },
-                "avatar_beard": {
-                    "type": "string",
-                    "enum": list(AVATAR_BEARD),
-                    "description": ("Facial hair; omit for a name-seeded choice."),
-                },
-                "avatar_hat": {
-                    "type": "string",
-                    "enum": list(AVATAR_HAT),
-                    "description": ("Headwear; omit for a name-seeded choice."),
+                    "enum": list(PRESETS),
+                    "description": "Starting clay avatar palette. Saved independently of name and role; omit for warm stone.",
                 },
                 "about": {
                     "type": "string",
                     "description": (
-                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {
@@ -174,9 +164,7 @@ class RaiseExpertTool(BaseTool):
         job_title: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_glasses: str = "",
-        avatar_beard: str = "",
-        avatar_hat: str = "",
+        avatar_category: str = "content",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -197,22 +185,10 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        avatar_glasses = avatar_glasses.strip()
-        avatar_beard = avatar_beard.strip()
-        avatar_hat = avatar_hat.strip()
-        for field, value, options in (
-            ("avatar_glasses", avatar_glasses, AVATAR_GLASSES),
-            ("avatar_beard", avatar_beard, AVATAR_BEARD),
-            ("avatar_hat", avatar_hat, AVATAR_HAT),
-        ):
-            if value and value not in options:
-                return ErrorResponse(
-                    message=(
-                        f"Invalid expert charter — {field} must be one of: "
-                        + ", ".join(options)
-                    ),
-                    session_id=session_id,
-                )
+        if avatar_category not in PRESETS:
+            return ErrorResponse(
+                message="Invalid avatar_category", session_id=session_id
+            )
         try:
             params = _RaiseParams(
                 # Collapsed, not just stripped: the roster block in
@@ -276,13 +252,7 @@ class RaiseExpertTool(BaseTool):
             job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
-            avatar_url=build_avatar_url(
-                params.name,
-                glasses=avatar_glasses or None,
-                beard=avatar_beard or None,
-                hat=avatar_hat or None,
-                color_token=params.color or None,
-            ),
+            avatar_url=PRESETS[avatar_category].url,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",

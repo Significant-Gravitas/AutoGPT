@@ -37,7 +37,9 @@ STREAM_ERROR_MARKER = f"{COPILOT_SYSTEM_PREFIX} The assistant ran into an error 
 # in PendingHumanReview and other tables.
 COPILOT_SYNTHETIC_ID_PREFIX = "copilot-"
 
-# Sub-prefixes for session-scoped and node-scoped synthetic IDs.
+# Sub-prefixes for session-scoped and node-scoped synthetic IDs. The session
+# prefix names a chat's block runs in credit history; reviews carry a real
+# session id instead and only read it back from rows written before that.
 COPILOT_SESSION_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}session-"
 COPILOT_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}node-"
 
@@ -83,6 +85,13 @@ STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 def is_copilot_synthetic_id(id_value: str) -> bool:
     """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""
     return id_value.startswith(COPILOT_SYNTHETIC_ID_PREFIX)
+
+
+def legacy_chat_session_id(graph_exec_id: str | None) -> str | None:
+    """The chat session behind an old ``copilot-session-<id>`` graph exec id."""
+    if graph_exec_id and graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+        return graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+    return None
 
 
 def parse_node_id_from_exec_id(node_exec_id: str) -> str:
