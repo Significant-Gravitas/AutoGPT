@@ -32,9 +32,11 @@ Sends your list of requests to the Docs API `documents.batchUpdate` endpoint. Go
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Add bullets, headers, footers or footnotes in one step.
-- Create named ranges so later updates can find a section.
-- Let the copilot make precise structural edits it has worked out from the document's structure.
+**Document Structure**: Add bullets, headers, footers or footnotes in one step.
+
+**Named Sections**: Create named ranges so later updates can find a section.
+
+**Precise AI Edits**: Let the copilot make structural edits it has planned from the document's structure.
 <!-- END MANUAL -->
 
 ---

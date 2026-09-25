@@ -30,9 +30,11 @@ Sends your list of requests to the Sheets API `spreadsheets.batchUpdate` endpoin
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Add a chart or conditional formatting to a report sheet.
-- Merge header cells, freeze rows and resize columns in one step.
-- Let the copilot apply formatting it has worked out from the sheet's metadata.
+**Report Charts**: Add a chart or conditional formatting to a report sheet.
+
+**Sheet Layout**: Merge header cells, freeze rows and resize columns in one step.
+
+**AI Formatting**: Let the copilot apply formatting it has planned from the sheet's metadata.
 <!-- END MANUAL -->
 
 ---
