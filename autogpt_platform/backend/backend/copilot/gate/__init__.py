@@ -25,6 +25,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from . import chat_rules, held
 from . import review as review_store
 from .classifier import classify
+from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
     AutopilotMode,
@@ -71,10 +72,10 @@ class Decision(BaseModel):
     allowed: bool
     reason: str = ""
     review_id: str | None = None
+    # The held card's headline, ids resolved, for the chat's own row.
+    headline: Headline | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
-    # The block or workflow the card names, so the chain row names it too.
-    subject_name: str | None = None
 
 
 ALLOW = Decision(allowed=True)
@@ -129,7 +130,10 @@ async def check_action(
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(
-            session_id, await held.rule_key(session_id, review_id, tool_name)
+            session_id,
+            await held.rule_key(session_id, review_id, tool_name),
+            user_id,
+            session.expert_id,
         )
         return Decision(allowed=False, reason=_REJECTED)
     if review is not None and review.status == ReviewStatus.WAITING:
@@ -145,15 +149,17 @@ async def check_action(
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
-    rule = (
-        await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    hit = (
+        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
+        if effect in _PARKABLE
+        else None
     )
+    rule = hit.rule if hit else None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     reason_kind: review_store.ReasonKind
-    if rule in ("ask", "unreadable"):
-        reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
-        reason_kind = "rule"
+    if hit and rule in ("ask", "unreadable"):
+        reason, reason_kind = hit.reason, "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
@@ -191,7 +197,7 @@ async def _park(
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    if not await review_store.open_review(
+    headline = await review_store.open_review(
         call.review_id,
         user_id,
         session,
@@ -201,14 +207,12 @@ async def _park(
         subject,
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
-    ):
+    )
+    if headline is None:
         await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
-        allowed=False,
-        reason=reason,
-        review_id=call.review_id,
-        subject_name=subject.name if subject is not None else None,
+        allowed=False, reason=reason, review_id=call.review_id, headline=headline
     )
 
 

@@ -338,7 +338,12 @@ async def _outcome(
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
-        await chat_rules.set_ask(session.session_id, call.rule_key or call.tool_name)
+        await chat_rules.set_ask(
+            session.session_id,
+            call.rule_key or call.tool_name,
+            user_id,
+            session.expert_id,
+        )
         return "rejected", (
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."

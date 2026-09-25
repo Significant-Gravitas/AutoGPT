@@ -28,7 +28,9 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot.gate.effects import block_effect, graph_effect
+from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.review import review_payload
 from backend.copilot.gate.subject import workflow_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
@@ -58,7 +60,7 @@ def gate():
     """The gate on, no approval on record, nothing rejected in this chat."""
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
-        open_review=AsyncMock(return_value=True),
+        open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
     )
     with (
@@ -237,7 +239,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
         patch(f"{_GATE}.review_store.review_id_for", return_value="x"),
     ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
-    set_ask.assert_awaited_once_with("session-1", "block:abc")
+    set_ask.assert_awaited_once_with("session-1", "block:abc", "user-1", None)
 
 
 async def test_the_gate_off_resolves_no_subject():
@@ -677,3 +679,10 @@ async def test_a_workflow_called_without_its_inputs_asks_nothing(gate):
         )
     gate.open_review.assert_not_awaited()
     run.assert_awaited_once()
+
+
+async def _opened(
+    review_id, user_id, session, tool_name, args, reason, subject=None, **_
+) -> Headline:
+    # The headline the real card stores, so the chat row names what it names.
+    return Headline.model_validate(review_payload(tool_name, args, subject)["headline"])
