@@ -168,6 +168,25 @@ def test_link_may_normalize_the_merchant_page(intent):
 
 
 @pytest.mark.parametrize(
+    "sent,returned",
+    [
+        ("https://shop.example:443/checkout", "https://shop.example/checkout"),
+        ("https://shop.example/checkout", "https://shop.example:443/checkout"),
+    ],
+)
+def test_an_explicit_default_port_is_the_same_page(intent, sent, returned):
+    intent.plan.checkout_url = sent
+    validate_spend(intent, spend_for(intent, merchant_url=returned))
+
+
+def test_another_port_is_another_page(intent):
+    with pytest.raises(RuntimeError):
+        validate_spend(
+            intent, spend_for(intent, merchant_url="https://shop.example:8443/checkout")
+        )
+
+
+@pytest.mark.parametrize(
     "status,expired",
     [("pending_approval", False), ("denied", False), ("approved", True)],
 )

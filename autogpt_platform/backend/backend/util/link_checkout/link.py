@@ -7,7 +7,7 @@ the one process that ever holds them.
 
 import time
 from datetime import UTC, datetime
-from urllib.parse import quote, urlsplit
+from urllib.parse import SplitResult, quote, urlsplit
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -19,6 +19,7 @@ LINK_API_BASE_URL = "https://api.link.com"
 LINK_HTTP_TIMEOUT = 15.0
 # Hosts Link sends a customer to for approval or a required action.
 _LINK_ACTION_DOMAINS = ("link.com", "stripe.com")
+_DEFAULT_PORTS = {"https": 443, "http": 80}
 
 
 class LinkRejected(Exception):
@@ -155,9 +156,14 @@ def _same_page(returned: str | None, sent: str) -> bool:
     return (
         a.scheme == b.scheme
         and (a.hostname or "").lower() == (b.hostname or "").lower()
-        and a.port == b.port
+        and _port(a) == _port(b)
         and a.path.rstrip("/") == b.path.rstrip("/")
     )
+
+
+def _port(url: SplitResult) -> int | None:
+    # An explicit default port names the same page as none: Link may drop it.
+    return url.port or _DEFAULT_PORTS.get(url.scheme)
 
 
 def link_action_url(value: str | None) -> str:
