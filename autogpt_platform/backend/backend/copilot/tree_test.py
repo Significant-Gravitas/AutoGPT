@@ -437,7 +437,12 @@ async def test_first_spawn_opens_the_tree_with_the_root_counted(monkeypatch) -> 
     async def _ceiling(_user_id):
         return 42
 
+    async def _auto_mode_off(*_args, **_kwargs):
+        return False
+
     monkeypatch.setattr(tree, "resolve_root_ceiling_microdollars", _ceiling)
+    # Auto mode opens the tree at the root; this is the unmetered path.
+    monkeypatch.setattr(tree, "is_feature_enabled", _auto_mode_off)
     monkeypatch.setattr(tree.config, "tree_max_nodes", 2)
     redis = FakeRedis()
     ledger = TreeLedger(cast(AsyncRedisClient, redis))
