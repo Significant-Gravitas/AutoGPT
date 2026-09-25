@@ -163,7 +163,9 @@ test("the approve menu offers the rules the server allows", async () => {
   await userEvent.click(
     await screen.findByRole("button", { name: "More ways to approve" }),
   );
-  expect(await screen.findByText("Approve for this chat")).toBeDefined();
+  expect(
+    await screen.findByText("Approve Gmail Send from now on"),
+  ).toBeDefined();
   expect(screen.queryByText(/^Let Otto judge/)).toBeNull();
   expect(screen.queryByText(/Always allow/)).toBeNull();
 });

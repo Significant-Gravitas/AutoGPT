@@ -129,7 +129,10 @@ async def check_action(
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(
-            session_id, await held.rule_key(session_id, review_id, tool_name), user_id
+            session_id,
+            await held.rule_key(session_id, review_id, tool_name),
+            user_id,
+            session.expert_id,
         )
         return Decision(allowed=False, reason=_REJECTED)
     if review is not None and review.status == ReviewStatus.WAITING:
@@ -146,7 +149,7 @@ async def check_action(
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
     hit = (
-        await chat_rules.rule_for(session_id, rule_key, user_id)
+        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
         if effect in _PARKABLE
         else None
     )

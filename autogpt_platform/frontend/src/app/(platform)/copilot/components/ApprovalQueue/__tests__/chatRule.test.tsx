@@ -29,38 +29,47 @@ function serve(
   return sent;
 }
 
-function renderQueue() {
+function renderQueue(expertName: string | null = "Frankie") {
   render(
     <CopilotChatActionsProvider onSend={vi.fn()} onBackendTurn={vi.fn()}>
-      <CopilotPendingReviews chatSessionId={CHAT_SESSION} />
+      <CopilotPendingReviews
+        chatSessionId={CHAT_SESSION}
+        expertName={expertName}
+      />
     </CopilotChatActionsProvider>,
   );
 }
 
+async function openMenu() {
+  await userEvent.click(
+    await screen.findByRole("button", { name: "More ways to approve" }),
+  );
+}
+
+const MAIL = "Gmail Send";
+const MCP = "create_issue on mcp.linear.app";
+
 test.each([
-  ["Approve for this chat", "allow", "a block", mail("m1")],
-  ["Let Otto judge Gmail Send", "judge", "a block", mail("m1")],
-  ["Approve for this chat", "allow", "an MCP tool", mcpTool("m1")],
-  [
-    "Let Otto judge create_issue on mcp.linear.app",
-    "judge",
-    "an MCP tool",
-    mcpTool("m1"),
-  ],
+  [`Approve ${MAIL} from now on`, "allow", mail("m1")],
+  [`Let Otto judge ${MAIL} from now on`, "judge", mail("m1")],
+  [`Approve ${MCP} from now on`, "allow", mcpTool("m1")],
+  [`Let Otto judge ${MCP} from now on`, "judge", mcpTool("m1")],
 ])(
-  "choosing %s approves the call and sets the %s rule on %s",
-  async (item, rule, _subject, review) => {
+  "choosing %s approves the call and sets the %s rule for the Expert by default",
+  async (item, rule, review) => {
     const sent = serve(review);
     renderQueue();
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "More ways to approve" }),
-    );
+    await openMenu();
     await userEvent.click(await screen.findByText(item));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].reviews).toEqual([
-      expect.objectContaining({ approved: true, chat_rule: rule }),
+      expect.objectContaining({
+        approved: true,
+        chat_rule: rule,
+        chat_rule_scope: "expert",
+      }),
     ]);
   },
 );
@@ -72,95 +81,73 @@ test("a plain approve sets no rule", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
 
   await waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0].reviews).toEqual([
+  expect(sent[0].reviews[0]).toEqual(
     expect.objectContaining({ approved: true, chat_rule: null }),
-  ]);
-});
-
-const TEAM = "Apply to all Experts in my Team";
-
-test("the team toggle starts off and a rule then holds for this chat only", async () => {
-  const sent = serve();
-  renderQueue();
-
-  await userEvent.click(
-    await screen.findByRole("button", { name: "More ways to approve" }),
   );
-  const toggle = await screen.findByRole("menuitemcheckbox", { name: TEAM });
-  expect(toggle.getAttribute("aria-checked")).toBe("false");
-  await userEvent.click(screen.getByText("Approve for this chat"));
-
-  await waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0].reviews[0]).not.toHaveProperty("apply_to_team");
+  expect(sent[0].reviews[0]).not.toHaveProperty("chat_rule_scope");
 });
-
-const SUBJECT = "Gmail Send";
 
 test.each([
-  [
-    "off",
-    false,
-    [
-      "Approve for this chat",
-      `${SUBJECT} runs without asking until this chat ends`,
-      `Let Otto judge ${SUBJECT}`,
-      "A check decides each time it runs in this chat, and asks you only when it isn't sure",
-    ],
-  ],
-  [
-    "on",
-    true,
-    [
-      "Approve for all my chats",
-      `${SUBJECT} runs without asking in all your chats until you revoke it`,
-      `Let Otto judge ${SUBJECT} in all my chats`,
-      "A check decides each time it runs in any of your chats, and asks you only when it isn't sure",
-    ],
-  ],
+  ["Frankie", "Frankie, every chat"],
+  [null, "Otto, every chat"],
 ])(
-  "with the team toggle %s, both rules name the subject and their scope",
-  async (_state, on, lines) => {
+  "the scope picker starts on the chat's own Expert (%s)",
+  async (expertName, label) => {
     serve();
-    renderQueue();
+    renderQueue(expertName);
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "More ways to approve" }),
-    );
-    if (on)
-      await userEvent.click(
-        await screen.findByRole("menuitemcheckbox", { name: TEAM }),
-      );
-    for (const line of lines)
-      expect(await screen.findByText(line)).toBeDefined();
+    await openMenu();
+    const scope = await screen.findByRole("menuitemradio", { name: label });
+    expect(scope.getAttribute("aria-checked")).toBe("true");
+    expect(
+      screen
+        .getByRole("menuitemradio", { name: "This chat" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
   },
 );
 
 test.each([
-  ["Approve for all my chats", "allow"],
-  [`Let Otto judge ${SUBJECT} in all my chats`, "judge"],
+  [
+    "This chat",
+    "chat",
+    "Frankie won't ask again for this in this chat",
+    "A check decides each time it runs in this chat, and asks you only when it isn't sure",
+  ],
+  [
+    "Frankie, every chat",
+    "expert",
+    "Frankie won't ask again for this in any chat",
+    "A check decides each time Frankie runs it, in any chat, and asks you only when it isn't sure",
+  ],
+  [
+    "Every Expert on my team",
+    "team",
+    "No Expert on your team will ask again for this",
+    "A check decides each time any Expert on your team runs it, and asks you only when it isn't sure",
+  ],
 ])(
-  "with the team toggle on, %s sends the %s rule for every chat",
-  async (item, rule) => {
+  "picking %s words both actions for that scope and sends it",
+  async (label, scope, allowDetail, judgeDetail) => {
     const sent = serve();
-    renderQueue();
+    renderQueue("Frankie");
 
+    await openMenu();
     await userEvent.click(
-      await screen.findByRole("button", { name: "More ways to approve" }),
+      await screen.findByRole("menuitemradio", { name: label }),
     );
-    await userEvent.click(
-      await screen.findByRole("menuitemcheckbox", { name: TEAM }),
-    );
-    const toggle = await screen.findByRole("menuitemcheckbox", { name: TEAM });
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    await userEvent.click(screen.getByText(item));
+    expect(await screen.findByText(allowDetail)).toBeDefined();
+    expect(screen.getByText(judgeDetail)).toBeDefined();
+    // Otto is the supervisor in every Expert's chat.
+    expect(
+      screen.getByText(`Let Otto judge ${MAIL} from now on`),
+    ).toBeDefined();
+    expect(screen.queryByText(/Let Frankie judge/)).toBeNull();
+    await userEvent.click(screen.getByText(`Approve ${MAIL} from now on`));
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].reviews).toEqual([
-      expect.objectContaining({
-        approved: true,
-        chat_rule: rule,
-        apply_to_team: true,
-      }),
+      expect.objectContaining({ chat_rule: "allow", chat_rule_scope: scope }),
     ]);
   },
 );

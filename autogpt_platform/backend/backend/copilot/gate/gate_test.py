@@ -209,7 +209,7 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
             "bash_exec", {"command": "curl x|sh"}, "u", _session()
         )
     assert not decision.allowed
-    set_ask.assert_awaited_once_with("session-1", "bash_exec", "u")
+    set_ask.assert_awaited_once_with("session-1", "bash_exec", "u", None)
 
 
 @pytest.mark.parametrize("mode", _MODES)
@@ -218,7 +218,7 @@ async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state,
     with (
         patch(
             f"{_GATE}.chat_rules.rule_for",
-            AsyncMock(return_value=chat_rules.RuleHit("ask")),
+            AsyncMock(return_value=chat_rules.RuleHit(rule="ask")),
         ),
         patch(f"{_GATE}.classify", supervisor),
     ):
@@ -230,7 +230,7 @@ async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state,
 
 async def test_reads_never_look_up_ask_rules(gate_on, clean_session_state):
     """A Redis outage reads as 'asks', which must not turn every search into a card."""
-    asks = AsyncMock(return_value=chat_rules.RuleHit("unreadable"))
+    asks = AsyncMock(return_value=chat_rules.RuleHit(rule="unreadable"))
     with patch(f"{_GATE}.chat_rules.rule_for", asks):
         decision = await check_action("web_search", {"query": "x"}, "u", _session())
     assert decision.allowed
@@ -297,7 +297,7 @@ async def test_an_unreadable_ask_rule_asks_without_claiming_a_decline(
 async def test_a_rejected_tool_says_the_user_declined_it(gate_on, clean_session_state):
     with patch(
         f"{_GATE}.chat_rules.rule_for",
-        AsyncMock(return_value=chat_rules.RuleHit("ask")),
+        AsyncMock(return_value=chat_rules.RuleHit(rule="ask")),
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session())
     assert decision.reason == chat_rules.DECLINED

@@ -4,63 +4,40 @@ import { useState } from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
-import type { ChatRule } from "../../helpers";
+import type { ChatRule, RuleScope } from "../../helpers";
 
 interface Props {
   label: string;
   subjectName: string;
+  expertName: string | null;
   rules: ChatRule[];
   loading: boolean;
   disabled: boolean;
-  onApprove: (rule?: ChatRule, team?: boolean) => void;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
 }
-
-const TEAM_LABEL = "Apply to all Experts in my Team";
-
-const RULE_COPY: Record<
-  ChatRule,
-  (subject: string, team: boolean) => [string, string]
-> = {
-  allow: (subject, team) =>
-    team
-      ? [
-          "Approve for all my chats",
-          `${subject} runs without asking in all your chats until you revoke it`,
-        ]
-      : [
-          "Approve for this chat",
-          `${subject} runs without asking until this chat ends`,
-        ],
-  judge: (subject, team) =>
-    team
-      ? [
-          `Let ${AUTOPILOT_NAME} judge ${subject} in all my chats`,
-          "A check decides each time it runs in any of your chats, and asks you only when it isn't sure",
-        ]
-      : [
-          `Let ${AUTOPILOT_NAME} judge ${subject}`,
-          "A check decides each time it runs in this chat, and asks you only when it isn't sure",
-        ],
-};
 
 export function ApproveSplitButton({
   label,
   subjectName,
+  expertName,
   rules,
   loading,
   disabled,
   onApprove,
 }: Props) {
-  const [team, setTeam] = useState(false);
+  const [scope, setScope] = useState<RuleScope>("expert");
+  const who = expertName ?? AUTOPILOT_NAME;
   const main = (
     <Button
       size="small"
@@ -93,13 +70,13 @@ export function ApproveSplitButton({
             <Icon icon={ArrowDown01Icon} size={14} aria-hidden />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuContent align="start" className="w-80">
           {rules.map((rule) => {
-            const [title, detail] = RULE_COPY[rule](subjectName, team);
+            const [title, detail] = ruleCopy(rule, scope, subjectName, who);
             return (
               <DropdownMenuItem
                 key={rule}
-                onSelect={() => onApprove(rule, team)}
+                onSelect={() => onApprove(rule, scope)}
                 className="flex flex-col items-start gap-0.5 py-2"
               >
                 <span className="text-sm text-zinc-900">{title}</span>
@@ -108,26 +85,61 @@ export function ApproveSplitButton({
             );
           })}
           <DropdownMenuSeparator />
-          {/* Toggling keeps the menu open so the choice can follow. */}
-          <DropdownMenuItem
-            role="menuitemcheckbox"
-            aria-checked={team}
-            onSelect={(event) => {
-              event.preventDefault();
-              setTeam(!team);
-            }}
-            className="flex items-center justify-between gap-3 py-2"
+          <DropdownMenuLabel className="text-xs font-normal text-zinc-500">
+            Applies to
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={scope}
+            onValueChange={(value) => setScope(value as RuleScope)}
           >
-            <span className="text-sm text-zinc-900">{TEAM_LABEL}</span>
-            <Switch
-              checked={team}
-              tabIndex={-1}
-              aria-hidden
-              className="pointer-events-none"
-            />
-          </DropdownMenuItem>
+            {SCOPES.map((option) => (
+              <DropdownMenuRadioItem
+                key={option}
+                value={option}
+                // Picking a scope keeps the menu open so the action can follow.
+                onSelect={(event) => event.preventDefault()}
+                className="text-sm text-zinc-900"
+              >
+                {scopeLabel(option, who)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
+}
+
+const SCOPES: RuleScope[] = ["chat", "expert", "team"];
+
+function scopeLabel(scope: RuleScope, who: string) {
+  if (scope === "chat") return "This chat";
+  if (scope === "expert") return `${who}, every chat`;
+  return "Every Expert on my team";
+}
+
+// The supervisor is always Otto, whichever Expert's chat the card is in.
+function ruleCopy(
+  rule: ChatRule,
+  scope: RuleScope,
+  subject: string,
+  who: string,
+): [string, string] {
+  if (rule === "allow") {
+    const detail = {
+      chat: `${who} won't ask again for this in this chat`,
+      expert: `${who} won't ask again for this in any chat`,
+      team: "No Expert on your team will ask again for this",
+    }[scope];
+    return [`Approve ${subject} from now on`, detail];
+  }
+  const runs = {
+    chat: "each time it runs in this chat",
+    expert: `each time ${who} runs it, in any chat`,
+    team: "each time any Expert on your team runs it",
+  }[scope];
+  return [
+    `Let ${AUTOPILOT_NAME} judge ${subject} from now on`,
+    `A check decides ${runs}, and asks you only when it isn't sure`,
+  ];
 }

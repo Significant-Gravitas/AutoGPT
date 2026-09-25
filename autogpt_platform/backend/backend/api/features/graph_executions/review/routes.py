@@ -363,7 +363,7 @@ async def process_review_action(
             updated_reviews,
             {review.node_exec_id: review.chat_rule for review in request.reviews},
             chat_rule_keys,
-            frozenset(r.node_exec_id for r in request.reviews if r.apply_to_team),
+            {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
         )
 
     # A held call finishes on its own: the answer starts the chat's next turn.

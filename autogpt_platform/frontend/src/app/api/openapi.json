@@ -28654,11 +28654,12 @@
             "title": "Chat Rule",
             "description": "AutoPilot cards naming a subject only: once approved, the subject runs ('allow') or goes to the supervisor ('judge') for the rest of the chat instead of asking."
           },
-          "apply_to_team": {
-            "type": "boolean",
-            "title": "Apply To Team",
-            "description": "With chat_rule: the rule also holds in every other chat of the user's, below any rule that chat sets itself.",
-            "default": false
+          "chat_rule_scope": {
+            "type": "string",
+            "enum": ["chat", "expert", "team"],
+            "title": "Chat Rule Scope",
+            "description": "Where chat_rule holds: this chat, every chat with this chat's Expert (or Otto), or every Expert on the user's team.",
+            "default": "chat"
           }
         },
         "type": "object",

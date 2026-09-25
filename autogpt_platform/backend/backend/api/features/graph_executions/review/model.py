@@ -166,11 +166,11 @@ class ReviewItem(BaseModel):
             "the chat instead of asking."
         ),
     )
-    apply_to_team: bool = Field(
-        default=False,
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
         description=(
-            "With chat_rule: the rule also holds in every other chat of the "
-            "user's, below any rule that chat sets itself."
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
         ),
     )
 

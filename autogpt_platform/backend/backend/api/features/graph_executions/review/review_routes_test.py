@@ -1,4 +1,5 @@
 import datetime
+from types import SimpleNamespace
 from typing import AsyncGenerator
 
 import httpx
@@ -1423,13 +1424,13 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("apply_to_team", [False, True])
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
 async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
-    apply_to_team: bool,
+    scope: str,
 ) -> None:
     """The rule lands on the subject the gate stored with the held call."""
     review = sample_pending_review.model_copy(
@@ -1463,7 +1464,11 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     )
     mocker.patch(f"{routes}.wake_for_held_calls")
     set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
-    set_team_rule = mocker.patch("backend.copilot.gate.chat_rules.set_team_rule")
+    set_scoped_rule = mocker.patch("backend.copilot.gate.chat_rules.set_scoped_rule")
+    mocker.patch(
+        "backend.copilot.gate.chat_rules.get_chat_session_metadata",
+        return_value=SimpleNamespace(expert_id="frankie"),
+    )
 
     response = await client.post(
         "/api/review/action",
@@ -1473,7 +1478,7 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
                     "node_exec_id": "test_node_123",
                     "approved": True,
                     "chat_rule": "allow",
-                    "apply_to_team": apply_to_team,
+                    "chat_rule_scope": scope,
                 }
             ]
         },
@@ -1481,7 +1486,10 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
 
     assert response.status_code == 200
     set_rule.assert_awaited_once_with("s1", "mcp:h/t", "allow")
-    if apply_to_team:
-        set_team_rule.assert_awaited_once_with(test_user_id, "mcp:h/t", "allow")
+    if scope == "chat":
+        set_scoped_rule.assert_not_called()
     else:
-        set_team_rule.assert_not_called()
+        expert = "frankie" if scope == "expert" else None
+        set_scoped_rule.assert_awaited_once_with(
+            scope, test_user_id, expert, "mcp:h/t", "allow"
+        )
