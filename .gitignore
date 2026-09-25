@@ -180,6 +180,10 @@ ig*
 # `git status` at all until this was added), so re-include those two trees.
 !autogpt_platform/backend/backend/copilot/eval/style/fixtures/*.json
 !autogpt_platform/backend/backend/api/features/store/starter_skills/*.md
+# Same trap: `pri*` hid Priya's clay avatars, so the catalog shipped pointing
+# at files git never tracked. Expert artwork is named after the expert, so
+# re-include the whole tree rather than one name at a time.
+!autogpt_platform/frontend/public/experts/**
 .github_access_token
 LICENSE.rtf
 autogpt_platform/backend/settings.py

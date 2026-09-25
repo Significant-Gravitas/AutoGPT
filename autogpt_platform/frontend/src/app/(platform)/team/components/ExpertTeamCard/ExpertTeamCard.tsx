@@ -2,6 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -50,6 +51,8 @@ export function ExpertTeamCard({
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const cover = getExpertCover(expert);
+  // The area the expert works in, in the chip the marketplace already uses.
+  const topic = expert.categories?.[0];
   const {
     handleResume,
     isResuming,
@@ -105,6 +108,7 @@ export function ExpertTeamCard({
               name={expert.name}
               avatarUrl={expert.avatar_url}
               color={expert.color}
+              backgroundColor={cover.color}
               size={88}
               className="rounded-full ring-4 ring-background"
             />
@@ -139,6 +143,7 @@ export function ExpertTeamCard({
             name={expert.name}
             role={expert.role}
             jobTitle={expert.job_title}
+            nameAlign="baseline"
             nameAccessory={
               <IntegrationIcons
                 expertName={expert.name}
@@ -146,6 +151,7 @@ export function ExpertTeamCard({
               />
             }
           />
+          {topic ? <CategoryTag category={topic} /> : null}
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 
