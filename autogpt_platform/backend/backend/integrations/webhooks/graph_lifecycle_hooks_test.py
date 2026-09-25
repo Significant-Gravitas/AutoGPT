@@ -195,8 +195,10 @@ async def test_before_graph_activate_keeps_only_files_picked_with_own_credential
 @pytest.mark.asyncio
 async def test_before_graph_activate_skips_the_lookup_without_picked_files():
     """Saving a graph without any picked file must not load the user's
-    credentials just to check ownership."""
-    graph = _graph_of((StoreValueBlock().id, {"input": "value"}))
+    credentials just to check ownership, and must leave inputs that aren't
+    pickers alone even when they hold a `_credentials_id` key."""
+    data = {"_credentials_id": "someone-elses-cred"}
+    graph = _graph_of((StoreValueBlock().id, {"data": data}))
 
     with patch(
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
@@ -206,6 +208,7 @@ async def test_before_graph_activate_skips_the_lookup_without_picked_files():
         await before_graph_activate(graph, "user-1")
 
     mgr.store.get_all_creds.assert_not_awaited()
+    assert graph.nodes[0].input_default == {"data": data}
 
 
 @pytest.mark.asyncio

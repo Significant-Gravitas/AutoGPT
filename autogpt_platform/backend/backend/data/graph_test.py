@@ -17,6 +17,7 @@ from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
@@ -260,7 +261,9 @@ async def test_clean_graph(server: SpinTestServer):
     2. Drops the value of any field the schema marks `secret: true` via
        `SchemaField(secret=True)`.
     3. Nulls out `webhook_id`.
-    4. Leaves every other field in `input_default` untouched.
+    4. Leaves every other field in `input_default` untouched, apart from files
+       picked with an auto-credentials picker, which are nulled (see
+       `test_stripped_for_export_nulls_picked_files`).
     """
     graph = Graph(
         id="test_clean_graph",
@@ -359,10 +362,15 @@ def test_stripped_for_export_drops_declared_credentials_field():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_access_store_listing_graph(server: SpinTestServer):
+async def test_access_store_listing_graph(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
     """
-    Test the access of a store listing graph.
+    Test the access of a store listing graph, and that a reader who doesn't
+    own it doesn't get the file the publisher picked [SECRT-1772].
     """
+    # Google blocks disable themselves without an OAuth client, as in CI.
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
     graph = Graph(
         id="test_clean_graph",
         name="Test Clean Graph",
@@ -377,15 +385,21 @@ async def test_access_store_listing_graph(server: SpinTestServer):
                     "description": "Test input description",
                 },
             ),
+            _sheets_node("sheets_node", _picked_file("publisher-cred")),
         ],
         links=[],
     )
 
-    # Create graph and get model
+    # Create graph and get model. The publisher owns the picked file's
+    # credential, so the save keeps it.
     create_graph = CreateGraph(graph=graph)
-    created_graph = await server.agent_server.test_create_graph(
-        create_graph, DEFAULT_USER_ID
-    )
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager.store.get_all_creds",
+        new=AsyncMock(return_value=[MagicMock(id="publisher-cred")]),
+    ):
+        created_graph = await server.agent_server.test_create_graph(
+            create_graph, DEFAULT_USER_ID
+        )
 
     # Ensure the default user has a Profile (required for store submissions)
     existing_profile = await prisma.models.Profile.prisma().find_first(
@@ -467,6 +481,17 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         created_graph.id, created_graph.version, other_user.id
     )
     assert got_graph is not None
+
+    # The reader gets the graph without the publisher's picked file or the
+    # credentials embedded in it; the publisher still has it.
+    owner_graph = await server.agent_server.test_get_graph(
+        created_graph.id, created_graph.version, DEFAULT_USER_ID
+    )
+    sheets_block_id = GoogleSheetsReadBlock().id
+    [reader_sheets] = [n for n in got_graph.nodes if n.block_id == sheets_block_id]
+    [owner_sheets] = [n for n in owner_graph.nodes if n.block_id == sheets_block_id]
+    assert reader_sheets.input_default["spreadsheet"] is None
+    assert owner_sheets.input_default["spreadsheet"] == _picked_file("publisher-cred")
 
 
 # ============================================================================
@@ -597,30 +622,27 @@ def _picked_file(credentials_id: Any) -> dict[str, Any]:
     }
 
 
-def _graph_with_inputs(
-    input_default: dict[str, Any],
-    sub_graph_input_default: dict[str, Any] | None = None,
-) -> GraphModel:
+def _sheets_node(node_id: str, spreadsheet: Any) -> Node:
+    return Node(
+        id=node_id,
+        block_id=GoogleSheetsReadBlock().id,
+        input_default={"spreadsheet": spreadsheet, "range": "A1"},
+    )
+
+
+def _graph_of(*nodes: Node, sub_graph_nodes: list[Node] | None = None) -> GraphModel:
     sub_graphs = []
-    if sub_graph_input_default is not None:
-        sub_node = Node(
-            id="sub-node",
-            block_id=StoreValueBlock().id,
-            input_default=sub_graph_input_default,
-        )
+    if sub_graph_nodes:
         sub_graphs.append(
-            BaseGraph(id="sub-graph", name="Sub", description="Sub", nodes=[sub_node])
+            BaseGraph(
+                id="sub-graph", name="Sub", description="Sub", nodes=sub_graph_nodes
+            )
         )
     graph = Graph(
         id="test-graph",
         name="Test",
         description="Test",
-        nodes=[
-            Node(
-                id="node-1", block_id=StoreValueBlock().id, input_default=input_default
-            )
-        ],
-        links=[],
+        nodes=list(nodes),
         sub_graphs=sub_graphs,
     )
     return make_graph_model(graph, user_id="test-user")
@@ -632,7 +654,7 @@ def test_reassign_ids_keeps_picked_files():
     which used to null every picker-selected input. Saving your own agent
     kept the range but dropped the Drive file you had just picked.
     """
-    graph = _graph_with_inputs({"spreadsheet": _picked_file("own-cred"), "range": "A1"})
+    graph = _graph_of(_sheets_node("node-1", _picked_file("own-cred")))
 
     graph.reassign_ids(user_id="test-user", reassign_graph_id=True)
 
@@ -642,64 +664,66 @@ def test_reassign_ids_keeps_picked_files():
     }
 
 
-def test_clear_auto_credentials_nulls_every_picked_file():
+def test_stripped_for_export_nulls_picked_files():
     """
-    [SECRT-1772] A fork or copy keeps no picked file, because the embedded
-    credentials belong to the original owner. The whole field is nulled: a
-    file object left without `_credentials_id` fails graph validation. Plain
-    dicts and values without a `_credentials_id` are left alone.
+    [SECRT-1772] Exports, marketplace downloads, forks and copies never carry
+    a picked file: it names the owner's file and embeds their credentials. The
+    field is nulled, as a fork's always was, and other inputs are untouched,
+    including a plain dict that happens to hold a `_credentials_id` key.
     """
-    graph = _graph_with_inputs(
-        {
-            "spreadsheet": _picked_file("cred-1"),
-            "doc_file": _picked_file("cred-2"),
-            "config": {"id": "file-123", "name": "test.xlsx"},
-            "plain_input": "not a dict",
-        },
-        sub_graph_input_default={"spreadsheet": _picked_file("cred-3")},
+    data = {"_credentials_id": "cred-2", "note": "plain data"}
+    graph = _graph_of(
+        _sheets_node("node-1", _picked_file("cred-1")),
+        Node(id="node-2", block_id=StoreValueBlock().id, input_default={"data": data}),
     )
 
-    graph.clear_auto_credentials()
+    sheets, store_value = (node.stripped_for_export() for node in graph.nodes)
 
-    assert graph.nodes[0].input_default == {
-        "spreadsheet": None,
-        "doc_file": None,
-        "config": {"id": "file-123", "name": "test.xlsx"},
-        "plain_input": "not a dict",
-    }
-    assert graph.sub_graphs[0].nodes[0].input_default == {"spreadsheet": None}
+    assert sheets.input_default == {"spreadsheet": None, "range": "A1"}
+    assert store_value.input_default == {"data": data}
+    assert graph.nodes[0].input_default["spreadsheet"] == _picked_file("cred-1")
 
 
 def test_clear_auto_credentials_keeps_only_listed_ids():
     """
     A save keeps files picked with the saving user's own credentials and
-    clears the rest, including malformed IDs a raw API caller could send.
+    clears the rest, sub-graphs included, along with malformed IDs a raw API
+    caller could send. Inputs that aren't pickers are never touched.
     """
-    graph = _graph_with_inputs(
-        {
-            "own": _picked_file("own-cred"),
-            "foreign": _picked_file("someone-elses-cred"),
-            "empty": _picked_file(""),
-            "missing": _picked_file(None),
-            "malformed": _picked_file({"id": "own-cred"}),
-        }
+    data = {"_credentials_id": "someone-elses-cred"}
+    graph = _graph_of(
+        _sheets_node("own", _picked_file("own-cred")),
+        _sheets_node("foreign", _picked_file("someone-elses-cred")),
+        _sheets_node("empty", _picked_file("")),
+        _sheets_node("missing", _picked_file(None)),
+        _sheets_node("malformed", _picked_file({"id": "own-cred"})),
+        Node(id="data", block_id=StoreValueBlock().id, input_default={"data": data}),
+        sub_graph_nodes=[_sheets_node("sub", _picked_file("someone-elses-cred"))],
     )
 
     cleared = graph.clear_auto_credentials(keep_ids={"own-cred"})
 
-    assert [field_name for _, field_name, _ in cleared] == [
+    assert [node.id for node, _, _ in cleared] == [
         "foreign",
         "empty",
         "missing",
         "malformed",
+        "sub",
     ]
-    assert graph.nodes[0].input_default == {
+    spreadsheets = {
+        node.id: node.input_default["spreadsheet"]
+        for node in [*graph.nodes, *graph.sub_graphs[0].nodes]
+        if node.block_id == GoogleSheetsReadBlock().id
+    }
+    assert spreadsheets == {
         "own": _picked_file("own-cred"),
         "foreign": None,
         "empty": None,
         "missing": None,
         "malformed": None,
+        "sub": None,
     }
+    assert graph.nodes[5].input_default == {"data": data}
 
 
 # ============================================================================
@@ -2319,7 +2343,7 @@ def test_auto_credentials_fully_hydrated_object_accepted():
     """Author pre-selected a file via the builder's Drive picker: the
     object carries a real `_credentials_id` plus metadata. Validator
     must NOT flag this — it's the legitimate author-flow shape and
-    forking clears `_credentials_id` separately via `clear_auto_credentials`."""
+    forking clears `_credentials_id` separately via `stripped_for_export`."""
     graph = _sheets_graph(
         {
             "_credentials_id": "cred-abc-def",

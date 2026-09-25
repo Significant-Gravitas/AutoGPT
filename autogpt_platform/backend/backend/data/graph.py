@@ -169,6 +169,10 @@ class NodeModel(Node):
           wire up their own)
         - fields the block schema marks with `secret: true` via
           `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
         - `webhook_id` (points at the original owner's webhook subscription)
         """
         stripped_node = self.model_copy(deep=True)
@@ -185,9 +189,22 @@ class NodeModel(Node):
                 ):
                     stripped_node.input_default.pop(field_name, None)
 
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
         stripped_node.webhook_id = None
 
         return stripped_node
+
+
+def _auto_credentials_field_names(node: Node) -> list[str]:
+    """Inputs of the node's block that take a file from an auto-credentials
+    picker (e.g. a GoogleDriveFile carrying `_credentials_id`)."""
+    return [
+        info["field_name"]
+        for info in node.block.input_schema.get_auto_credentials_fields().values()
+    ]
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -787,16 +804,16 @@ class GraphModel(Graph, GraphMeta):
         self, keep_ids: Container[str] = frozenset()
     ) -> list[tuple[Node, str, Any]]:
         """
-        Null every picker-selected input (e.g. a GoogleDriveFile) whose embedded
+        Null every picked file (see `auto_credentials_refs`) whose embedded
         `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
         and return the cleared ones in the shape `auto_credentials_refs` uses.
 
-        A fork or copy keeps none: the credentials belong to the original owner,
-        so the new owner has to pick the file again with their own account. A
-        save keeps the saving user's own (see `before_graph_activate`). The whole
-        field is nulled, not just the key, because a file object without a
-        `_credentials_id` is rejected by the auto-credentials check in
-        `_validate_graph`.
+        A save keeps the saving user's own (see `before_graph_activate`), and a
+        read by someone who doesn't own the graph keeps none (see `get_graph`).
+        Exports, forks and copies strip picked files in
+        `NodeModel.stripped_for_export`. The whole field is nulled, not just the
+        key, because a file object without a `_credentials_id` is rejected by
+        the auto-credentials check in `_validate_graph`.
         """
         cleared = [
             (node, field_name, credentials_id)
@@ -808,14 +825,17 @@ class GraphModel(Graph, GraphMeta):
         return cleared
 
     def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
-        """Picker-selected inputs that embed a `_credentials_id`, in this graph
-        and its sub-graphs, as (node, input name, embedded credentials ID)."""
+        """Files picked into auto-credentials inputs (e.g. a GoogleDriveFile), in
+        this graph and its sub-graphs, as (node, input name, embedded
+        `_credentials_id`). Other inputs are left alone even when they happen to
+        hold a `_credentials_id` key."""
         return [
             (node, field_name, value["_credentials_id"])
             for graph in (self, *self.sub_graphs)
             for node in graph.nodes
-            for field_name, value in node.input_default.items()
-            if isinstance(value, dict) and "_credentials_id" in value
+            for field_name in _auto_credentials_field_names(node)
+            if isinstance(value := node.input_default.get(field_name), dict)
+            and "_credentials_id" in value
         ]
 
     def validate_graph(
@@ -1441,6 +1461,7 @@ async def get_graph(
     # access, so there is deliberately no marketplace lookup beside this one.
     # validate_graph_execution_permissions() reuses this same filter, so
     # execute can never be looser than read. See the invariant note there.
+    read_by_non_owner = False
     if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, version),
@@ -1449,19 +1470,26 @@ async def get_graph(
         )
         if library_agent and library_agent.AgentGraph:
             graph = library_agent.AgentGraph
+            read_by_non_owner = True
 
     if graph is None:
         return None
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
-        return GraphModel.from_db(
+        graph_model = GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
             for_export=for_export,
         )
+    else:
+        graph_model = GraphModel.from_db(graph, for_export)
 
-    return GraphModel.from_db(graph, for_export)
+    if read_by_non_owner:
+        # The publisher's picked files, and the credentials embedded in them,
+        # aren't the reader's to see or use.
+        graph_model.clear_auto_credentials()
+    return graph_model
 
 
 # PENDING is included so admin review can open a not-yet-approved submission
@@ -1928,7 +1956,6 @@ async def fork_graph(
     graph.forked_from_version = graph.version
     graph.name = f"{graph.name} (copy)"
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
-    graph.clear_auto_credentials()
     graph.validate_graph(for_run=False)
 
     async with transaction() as tx:
@@ -1966,7 +1993,6 @@ async def copy_graph(
     graph.forked_from_version = graph.version
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
-    graph.clear_auto_credentials()
     graph.validate_graph(for_run=False)
 
     dest_team = target_team_id or team_id
