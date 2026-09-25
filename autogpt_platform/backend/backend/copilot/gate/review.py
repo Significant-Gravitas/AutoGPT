@@ -28,6 +28,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .classifier import DecidedBy
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
 from .references import Reference, listed_ids, resolve_references
@@ -78,6 +79,8 @@ class GateReviewPayload(BaseModel):
     subject: Subject
     reason: str = ""
     reason_kind: ReasonKind = "mode"
+    # Which supervisor stage decided a ``supervisor`` card.
+    decided_by: DecidedBy | None = None
     # Only a card naming a subject can set a rule on it.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
@@ -117,6 +120,7 @@ def review_payload(
     *,
     reason: str = "",
     reason_kind: ReasonKind = "mode",
+    decided_by: DecidedBy | None = None,
     mode: str | None = None,
     tool_call_id: str = "",
     turn: int = 0,
@@ -149,6 +153,7 @@ def review_payload(
         subject=_payload_subject(tool_name, args, subject),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
+        decided_by=decided_by,
         chat_rules_allowed=["allow", "judge"] if subject is not None else [],
         headline=(
             Headline(ask="Run", object=subject.name)
@@ -220,6 +225,7 @@ async def open_review(
     subject: "GateSubject | None" = None,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
+    decided_by: DecidedBy | None = None,
 ) -> Headline | None:
     """Park the call for approval; the card's headline, or None if nothing was
     recorded."""
@@ -231,6 +237,7 @@ async def open_review(
             subject,
             reason=reason,
             reason_kind=reason_kind,
+            decided_by=decided_by,
             mode=session.metadata.autopilot_mode or DEFAULT_MODE,
             tool_call_id=tool_call_id,
             turn=turn_of(session),

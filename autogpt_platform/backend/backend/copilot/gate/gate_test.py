@@ -13,6 +13,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import active_mode, chat_rules, check_action, gate_active
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
 from backend.copilot.model import (
     AutopilotMode,
@@ -125,8 +126,8 @@ async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session
 async def test_every_shell_command_in_auto_reaches_the_supervisor(
     gate_on, clean_session_state, mode, reaches_supervisor
 ):
-    supervisor = AsyncMock(return_value=(True, "fine"))
-    with patch(f"{_GATE}.classify", supervisor):
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+    with patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
             "bash_exec", {"command": "ls"}, "u", _session(mode)
         )
@@ -135,19 +136,28 @@ async def test_every_shell_command_in_auto_reaches_the_supervisor(
 
 
 async def test_a_supervisor_ask_parks_the_call(gate_on, clean_session_state):
-    with patch(f"{_GATE}.classify", AsyncMock(return_value=(False, "out of scope"))):
+    judged = Judgement(allowed=False, reason="out of scope", decided_by="jev+llm")
+    with (
+        patch(f"{_GATE}.supervise", AsyncMock(return_value=judged)),
+        patch(
+            f"{_GATE}.review_store.open_review",
+            AsyncMock(return_value=Headline(ask="Run it")),
+        ) as row,
+    ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session())
     assert not decision.allowed
     assert decision.review_id
     assert decision.reason == "out of scope"
+    assert row.await_args.kwargs["decided_by"] == "jev+llm"
+    assert row.await_args.kwargs["reason_kind"] == "supervisor"
 
 
 @pytest.mark.parametrize("mode", ["ask_first", "auto"])
 async def test_outward_actions_ask_without_the_supervisor(
     gate_on, clean_session_state, mode
 ):
-    supervisor = AsyncMock(return_value=(True, "fine"))
-    with patch(f"{_GATE}.classify", supervisor):
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
+    with patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
             "post_to_chat_platform", {"text": "hi"}, "u", _session(mode)
         )
@@ -178,7 +188,10 @@ async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state
         patch(
             f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)
         ) as other,
-        patch(f"{_GATE}.classify", AsyncMock(return_value=(False, "ask"))),
+        patch(
+            f"{_GATE}.supervise",
+            AsyncMock(return_value=Judgement(allowed=False, reason="ask")),
+        ),
     ):
         await check_action("bash_exec", {"command": "rm -rf /"}, "u", _session())
     assert other.await_args.args[0] != reviewed_id
@@ -218,13 +231,13 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
 
 @pytest.mark.parametrize("mode", _MODES)
 async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state, mode):
-    supervisor = AsyncMock(return_value=(True, "fine"))
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="fine"))
     with (
         patch(
             f"{_GATE}.chat_rules.rule_for",
             AsyncMock(return_value=chat_rules.RuleHit(rule="ask")),
         ),
-        patch(f"{_GATE}.classify", supervisor),
+        patch(f"{_GATE}.supervise", supervisor),
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
     assert not decision.allowed
@@ -291,7 +304,10 @@ async def test_an_unreadable_ask_rule_asks_without_claiming_a_decline(
             AsyncMock(side_effect=ConnectionError("redis down")),
         ),
         patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
-        patch(f"{_GATE}.classify", AsyncMock(return_value=(True, "fine"))),
+        patch(
+            f"{_GATE}.supervise",
+            AsyncMock(return_value=Judgement(allowed=True, reason="fine")),
+        ),
     ):
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
     assert not decision.allowed

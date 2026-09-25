@@ -285,6 +285,22 @@ class ChatConfig(BaseSettings):
         description="Hard timeout for one gate classification. Expiry is not "
         "an error path — it resolves to 'ask'.",
     )
+    gate_first_stage: Literal["none", "jev"] = Field(
+        default="jev",
+        description="First stage of the action supervisor: Jev decides every "
+        "judged call and the LLM (``gate_model``) runs only on an ask, to write "
+        "the reason. Off without ``TYPESAFE_API_KEY``.",
+    )
+    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
+    )
+    gate_jev_timeout_s: float = Field(
+        default=2.0,
+        description="Timeout for one Jev call; expiry falls through to the LLM.",
+    )
     content_judge_timeout_s: float = Field(
         default=15.0,
         description="Hard timeout for one content-judge call on an outside "

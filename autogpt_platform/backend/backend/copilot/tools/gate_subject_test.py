@@ -27,6 +27,7 @@ from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.effects import block_effect, graph_effect
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
@@ -595,8 +596,8 @@ async def test_a_code_block_in_auto_goes_to_the_supervisor_and_runs_on_a_vouch(
     gate, ran
 ):
     """Its effect is the code the call carries, so the check reads that code."""
-    classify = AsyncMock(return_value=(True, ""))
-    with patch(f"{_GATE}.classify", classify):
+    classify = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with patch(f"{_GATE}.supervise", classify):
         result = await _run_capability(
             _session("auto"), ExecuteCodeStepBlock().id, dict(_CODE)
         )
@@ -610,8 +611,12 @@ async def test_a_code_block_in_auto_goes_to_the_supervisor_and_runs_on_a_vouch(
 async def test_a_code_block_the_supervisor_cannot_vouch_for_asks_with_its_reason(
     gate, ran
 ):
-    classify = AsyncMock(return_value=(False, "it reads a local file of invoices"))
-    with patch(f"{_GATE}.classify", classify):
+    classify = AsyncMock(
+        return_value=Judgement(
+            allowed=False, reason="it reads a local file of invoices"
+        )
+    )
+    with patch(f"{_GATE}.supervise", classify):
         result = await _run_capability(
             _session("auto"), ExecuteCodeStepBlock().id, dict(_CODE)
         )
@@ -623,8 +628,8 @@ async def test_a_code_block_the_supervisor_cannot_vouch_for_asks_with_its_reason
 
 
 async def test_a_code_block_in_ask_first_asks_without_the_supervisor(gate, ran):
-    classify = AsyncMock(return_value=(True, ""))
-    with patch(f"{_GATE}.classify", classify):
+    classify = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with patch(f"{_GATE}.supervise", classify):
         result = await _run_capability(
             _session("ask_first"), ExecuteCodeStepBlock().id, dict(_CODE)
         )
