@@ -19,6 +19,8 @@ class Resolved(NamedTuple):
     effect: BlockEffect | None
     # The block that decided it: the worst node, or the one nobody can read.
     decided_by: Block | None = None
+    # A node nobody can read, kept even where an irreversible one decided.
+    unreadable: Block | None = None
 
 
 def block_effect(
@@ -62,8 +64,8 @@ def graph_effect(graph: "GraphModel") -> Resolved:
             elif _worse(effect, block, worst):
                 worst = Resolved(effect, block)
     if unreadable is None or _irreversible(worst):
-        return worst
-    return Resolved(None, unreadable)
+        return worst._replace(unreadable=unreadable)
+    return Resolved(None, unreadable, unreadable)
 
 
 RANK = {effect: rank for rank, effect in enumerate(BlockEffect)}
