@@ -162,7 +162,7 @@ async def check_action(
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
     spend = spend_shown = None
     if effect in METERED and estimate > 0 and mode != "unsupervised":
-        spend = await spent_past_ceiling()
+        spend = await spent_past_ceiling(user_id)
     reason_kind: review_store.ReasonKind
     if rule in ("ask", "unreadable"):
         reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
@@ -170,8 +170,9 @@ async def check_action(
     elif spend is not None:
         spend_shown = _spend_shown(estimate, *spend)
         reason = (
-            f"costs about {_dollars(estimate)}, and this turn has spent "
-            f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling"
+            f"costs about {_dollars(estimate)}, and this chat has spent "
+            f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; approving "
+            f"adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
         )
         reason_kind = "spend"
     elif verdict is Verdict.RUN:

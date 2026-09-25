@@ -20,7 +20,7 @@ function renderQueue(reviews: PendingHumanReviewModel[]) {
   );
 }
 
-test("a spend card shows this step's cost, the task's spend against its ceiling, and what approving adds", async () => {
+test("a spend card shows this step's cost, the chat's spend against its ceiling, and what approving adds", async () => {
   renderQueue([spendCard()]);
 
   expect(
@@ -28,9 +28,13 @@ test("a spend card shows this step's cost, the task's spend against its ceiling,
   ).toBeDefined();
   expect(screen.getByText("about $0.05")).toBeDefined();
   expect(screen.getByText("$2.41 of $2.00")).toBeDefined();
-  expect(screen.getByText("Approving runs this step.")).toBeDefined();
   expect(
-    screen.getByRole("progressbar", { name: "Spent of this turn's budget" }),
+    screen.getByText(
+      "Approving runs this step and adds $1.00 to this chat's ceiling.",
+    ),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("progressbar", { name: "Spent of this chat's budget" }),
   ).toBeDefined();
   // The money block says it; the model's sentence is not repeated on the card.
   expect(screen.queryByText(/costs about/)).toBeNull();

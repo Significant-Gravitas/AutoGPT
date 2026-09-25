@@ -1,8 +1,8 @@
-"""A paid read asks once the turn's tree has spent its ceiling.
+"""A paid read asks once the chat has spent its ceiling.
 
-Driven through ``check_action`` against the real tree ledger on the in-memory
-Redis ``tree_test`` uses, so the ceiling read, the charges and the raise are
-the ones production runs.
+Driven through ``check_action`` against the real tree and chat ledgers on the
+in-memory Redis ``tree_test`` uses, so the ceiling read, the charges and the
+raise are the ones production runs.
 """
 
 import logging
@@ -30,8 +30,17 @@ from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
 from backend.copilot.tools.helpers import _charge_block_credits
 from backend.copilot.tools.run_agent import RunAgentTool
 from backend.copilot.tools.run_capability import RunCapabilityTool
-from backend.copilot.tree import TreeLedger, admit_turn, charge_credits, root_envelope
-from backend.copilot.tree_test import FakeRedis
+from backend.copilot.tree import (
+    CHAT_LEDGER_TTL_SECONDS,
+    SpawnRequest,
+    TreeLedger,
+    admit_turn,
+    charge_credits,
+    charge_turn,
+    derive_child_envelope,
+    root_envelope,
+)
+from backend.copilot.tree_test import BrokenRedis, FakeRedis
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
@@ -59,31 +68,49 @@ _SEND = Subject(
 )
 
 
-def _session(mode: AutopilotMode = "auto") -> ChatSession:
+_CHAT = "session-1"
+
+
+def _session(mode: AutopilotMode = "auto", origin="interactive") -> ChatSession:
     return ChatSession(
-        session_id="session-1",
+        session_id=_CHAT,
         user_id="user-1",
         usage=[],
         started_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata=ChatSessionMetadata(origin="interactive", autopilot_mode=mode),
+        metadata=ChatSessionMetadata(origin=origin, autopilot_mode=mode),
         messages=[],
     )
 
 
 @pytest.fixture
-def ledger():
-    """A metered root turn, its tree open on an in-memory Redis."""
-    redis = FakeRedis()
-    ledger = TreeLedger(cast(AsyncRedisClient, redis))
-    set_execution_context("user-1", None, envelope=root_envelope("turn-1"))
-    with patch.object(tree, "get_tree_ledger", AsyncMock(return_value=ledger)):
-        yield ledger
+def redis():
+    """A metered root turn of the chat, its ledgers on an in-memory Redis."""
+    fake = FakeRedis()
+    _enter(root_envelope("turn-1", session_id=_CHAT))
+    with patch.object(tree, "get_redis_async", AsyncMock(return_value=fake)):
+        yield fake
     set_execution_context(None, None)
 
 
 @pytest.fixture
-def gate(ledger):
+def ledger(redis):
+    """The running turn's tree."""
+    return TreeLedger(cast(AsyncRedisClient, redis))
+
+
+@pytest.fixture
+def chat(redis):
+    """The chat's ledger, which a paid read asks against."""
+    return TreeLedger(
+        cast(AsyncRedisClient, redis),
+        prefix="copilot:chat-spend:",
+        ttl_seconds=CHAT_LEDGER_TTL_SECONDS,
+    )
+
+
+@pytest.fixture
+def gate(redis):
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(return_value=True),
@@ -101,30 +128,45 @@ def gate(ledger):
         yield store
 
 
-async def _open(ledger: TreeLedger, ceiling: int, spent: int = 0) -> None:
-    await ledger.open("turn-1", ceiling_microdollars=ceiling, max_nodes=8)
-    await ledger.charge("turn-1", spent)
+def _enter(envelope):
+    set_execution_context("user-1", None, envelope=envelope)
 
 
-async def _check(subject: Subject | None, mode: AutopilotMode = "auto", tool="t"):
+async def _open(chat: TreeLedger, ceiling: int, spent: int = 0) -> None:
+    await chat.open(_CHAT, ceiling_microdollars=ceiling, max_nodes=1)
+    await chat.charge(_CHAT, spent)
+
+
+async def _check(
+    subject: Subject | None,
+    mode: AutopilotMode = "auto",
+    tool="t",
+    origin="interactive",
+):
     async def subject_of():
         return subject
 
     return await check_action(
-        tool, {"q": 1}, "user-1", _session(mode), "call-1", subject_of=subject_of
+        tool,
+        {"q": 1},
+        "user-1",
+        _session(mode, origin),
+        "call-1",
+        subject_of=subject_of,
     )
 
 
 @pytest.mark.parametrize("mode", ["auto", "ask_first"])
 async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
-    gate, ledger, mode
+    gate, chat, mode
 ):
     """Kills: dropping ``estimate > 0`` (the free read asks)."""
-    await _open(ledger, ceiling=0)
+    await _open(chat, ceiling=0)
     paid = await _check(_PAID, mode)
     assert not paid.allowed and paid.review_id
     assert paid.reason == (
-        "costs about $0.05, and this turn has spent $0.00 of its $0.00 ceiling"
+        "costs about $0.05, and this chat has spent $0.00 of its $0.00 ceiling; "
+        "approving adds $1.00 to it"
     )
     _, kwargs = gate.open_review.await_args
     # Microdollars: the card formats money itself.
@@ -137,33 +179,33 @@ async def test_at_a_zero_ceiling_every_paid_read_asks_and_a_free_one_never(
     assert (await _check(_FREE, mode)).allowed
 
 
-async def test_over_the_ceiling_a_paid_workspace_block_asks(gate, ledger):
+async def test_over_the_ceiling_a_paid_workspace_block_asks(gate, chat):
     """Kills: metering reads only (the costliest blocks never meet the ceiling)."""
-    await _open(ledger, ceiling=0)
+    await _open(chat, ceiling=0)
     decision = await _check(_VIDEO)
     assert not decision.allowed and decision.review_id
     _, kwargs = gate.open_review.await_args
     assert kwargs["spend"]["estimate"] == 1_000_000
 
 
-async def test_consulting_a_teammate_is_a_paid_read(gate, ledger):
-    await _open(ledger, ceiling=0)
+async def test_consulting_a_teammate_is_a_paid_read(gate, chat):
+    await _open(chat, ceiling=0)
     assert not (await _check(None, tool="consult_teammate")).allowed
 
 
-async def test_unsupervised_never_asks_for_money(gate, ledger):
-    await _open(ledger, ceiling=0)
+async def test_unsupervised_never_asks_for_money(gate, chat):
+    await _open(chat, ceiling=0)
     assert (await _check(_PAID, "unsupervised")).allowed
 
 
-async def test_under_the_ceiling_a_paid_read_runs(gate, ledger):
-    await _open(ledger, ceiling=1_000_000, spent=999_999)
+async def test_under_the_ceiling_a_paid_read_runs(gate, chat):
+    await _open(chat, ceiling=1_000_000, spent=999_999)
     assert (await _check(_PAID)).allowed
 
 
-async def test_an_over_cap_external_shows_the_write_reason(gate, ledger):
+async def test_an_over_cap_external_shows_the_write_reason(gate, chat):
     """Kills: dropping the effect check (the money reason replaces it)."""
-    await _open(ledger, ceiling=0)
+    await _open(chat, ceiling=0)
     decision = await _check(_SEND)
     assert not decision.allowed
     assert decision.reason == "reaches outside the platform"
@@ -171,34 +213,58 @@ async def test_an_over_cap_external_shows_the_write_reason(gate, ledger):
     assert kwargs["spend"] is None
 
 
-async def test_one_approval_raises_the_ceiling_by_one_unit(gate, ledger):
-    """Kills: raising by zero (the next paid read asks again)."""
-    await _open(ledger, ceiling=0)
+async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
+    gate, ledger, chat
+):
+    """Turn 1 crosses the chat's ceiling and asks; the approved call runs in
+    turn 2, and turn 2's next paid reads spend the dollar it bought.
+    Kills: raising the running turn's tree (turn 2 asks again at once), and
+    reading the tree for the ceiling (turn 1 never asks)."""
+    with (
+        patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
+        patch.object(
+            tree, "resolve_root_ceiling_microdollars", AsyncMock(return_value=10**7)
+        ),
+        patch.object(
+            tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=10**6)
+        ),
+    ):
+        turn_1 = root_envelope("turn-1", session_id=_CHAT)
+        await admit_turn(turn_1, user_id="user-1")
+        await charge_turn(turn_1, 10**6)
+        assert not (await _check(_PAID)).allowed
+
+        turn_2 = root_envelope("turn-2", session_id=_CHAT)
+        await admit_turn(turn_2, user_id="user-1")
+        _enter(turn_2)
     gate.find_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={"spend": {}}
     )
     assert (await _check(_PAID)).allowed
-    assert (await ledger.snapshot("turn-1"))["ceiling"] == CEILING_UNIT_MICRODOLLARS
+    assert (await chat.snapshot(_CHAT))["ceiling"] == 2 * 10**6
+    assert (await ledger.snapshot("turn-2"))["ceiling"] == 10**7
 
     gate.find_review.return_value = None
-    await ledger.charge("turn-1", CEILING_UNIT_MICRODOLLARS - 1)
+    await charge_turn(turn_2, CEILING_UNIT_MICRODOLLARS - 1)
     assert (await _check(_PAID)).allowed
-    await ledger.charge("turn-1", 1)
+    await charge_turn(turn_2, 1)
     assert not (await _check(_PAID)).allowed
 
 
-async def test_an_approval_of_any_other_card_raises_nothing(gate, ledger):
-    await _open(ledger, ceiling=0)
+async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):
+    await _open(chat, ceiling=0)
     gate.find_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={}
     )
     assert (await _check(_SEND)).allowed
-    assert (await ledger.snapshot("turn-1"))["ceiling"] == 0
+    assert (await chat.snapshot(_CHAT))["ceiling"] == 0
 
 
-async def test_a_block_run_charges_what_it_cost(gate, ledger):
-    """Kills: charging nothing at the block's charge site. One credit is $0.01."""
-    await _open(ledger, ceiling=10_000_000)
+async def test_a_block_run_charges_what_it_cost(gate, ledger, chat):
+    """Kills: charging nothing at the block's charge site, or charging the chat
+    twice. One credit is $0.01."""
+    await _open(chat, ceiling=10_000_000)
+    await ledger.open("turn-1", ceiling_microdollars=10_000_000, max_nodes=8)
     await _charge_block_credits(
         SimpleNamespace(spend_credits=AsyncMock()),
         user_id="user-1",
@@ -210,6 +276,7 @@ async def test_a_block_run_charges_what_it_cost(gate, ledger):
         session_id="s1",
     )
     assert (await ledger.snapshot("turn-1"))["spent"] == 70_000
+    assert (await chat.snapshot(_CHAT))["spent"] == 70_000
 
 
 @pytest.mark.parametrize("charge_fails", [False, True])
@@ -240,9 +307,9 @@ async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_f
     assert any("BILLING_LEAK" in line for line in lines) is charge_fails
 
 
-async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, ledger):
+async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
     """Kills: charging nothing at the workflow's charge site; sub-graph nodes count."""
-    await _open(ledger, ceiling=10_000_000)
+    await _open(chat, ceiling=10_000_000)
     graph = _graph(
         [
             _node("query", PineconeQueryBlock(), {}),
@@ -263,7 +330,7 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, ledger):
         await RunAgentTool()._run_agent(
             "user-1", _session(), graph, {}, {}, dry_run=False
         )
-    assert (await ledger.snapshot("turn-1"))["spent"] == 20_000
+    assert (await chat.snapshot(_CHAT))["spent"] == 20_000
 
 
 def test_a_paid_block_carries_its_estimate_and_pure_computation_none():
@@ -331,26 +398,107 @@ def test_a_money_card_offers_no_chat_rule():
     assert sent["chat_rules_allowed"] == ["allow", "judge"]
 
 
-async def test_flag_on_a_root_turn_opens_its_tree(ledger):
+async def test_flag_on_a_root_turn_opens_its_tree_and_its_chat(ledger, chat):
     with (
         patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(
             tree, "resolve_root_ceiling_microdollars", AsyncMock(return_value=42)
         ),
+        patch.object(
+            tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=99)
+        ),
     ):
-        await admit_turn(root_envelope("turn-1"), user_id="user-1", ledger=ledger)
+        await admit_turn(root_envelope("turn-1", session_id=_CHAT), user_id="user-1")
     snapshot = await ledger.snapshot("turn-1")
     assert (snapshot["ceiling"], snapshot["spent"], snapshot["nodes"]) == (42, 0, 1)
+    assert (await chat.snapshot(_CHAT))["ceiling"] == 99
 
 
-async def test_flag_off_opens_no_ledger_and_charges_nothing(ledger):
+async def test_flag_off_opens_no_ledger_and_charges_nothing(ledger, chat):
     """Kills: metering roots or charging spend without the flag."""
     with patch.object(tree, "is_feature_enabled", AsyncMock(return_value=False)):
-        await admit_turn(root_envelope("turn-1"), user_id="user-1", ledger=ledger)
+        await admit_turn(root_envelope("turn-1", session_id=_CHAT), user_id="user-1")
         assert await ledger.snapshot("turn-1") == {}
+        assert await chat.snapshot(_CHAT) == {}
         # A spawned turn's tree exists with the flag off; spend must not reach it.
-        await _open(ledger, ceiling=10_000_000)
+        await ledger.open("turn-1", ceiling_microdollars=10_000_000, max_nodes=8)
         priced = MagicMock(return_value=7)
         await charge_credits("user-1", priced)
     assert (await ledger.snapshot("turn-1"))["spent"] == 0
     priced.assert_not_called()
+
+
+async def test_a_spawned_turn_charges_and_asks_against_the_chat_that_spawned_it(
+    gate, chat
+):
+    """An expert child of the chat, and a sub-session, spend the chat's ceiling;
+    only the sub-session never asks. Kills: dropping the chat id from a child."""
+    await _open(chat, ceiling=10**6)
+    root = root_envelope("turn-1", session_id=_CHAT)
+    expert = derive_child_envelope(root, SpawnRequest(may_spawn=True))
+    isolate = derive_child_envelope(expert, SpawnRequest(shares_memory=True))
+    await charge_turn(expert, 600_000)
+    await charge_turn(isolate, 400_000)
+    assert (await chat.snapshot(_CHAT))["spent"] == 10**6
+
+    _enter(expert)
+    assert not (await _check(_PAID)).allowed
+    _enter(isolate)
+    assert (await _check(_PAID, origin="automation")).allowed
+
+
+async def test_a_chat_ledger_that_never_opened_opens_on_the_first_paid_read(gate, chat):
+    """Kills: running every paid read free when the open at admission failed."""
+    with patch.object(
+        tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=0)
+    ):
+        assert not (await _check(_PAID)).allowed
+    assert (await chat.snapshot(_CHAT))["ceiling"] == 0
+
+
+async def test_an_unreachable_chat_ledger_refuses_the_paid_read(gate):
+    """A9: the read raises, and ``BaseTool._gate`` refuses what raises."""
+    with patch.object(tree, "get_redis_async", AsyncMock(return_value=BrokenRedis())):
+        with pytest.raises(ConnectionError):
+            await _check(_PAID)
+
+
+@pytest.mark.parametrize("reset, ledgers", [("never", 1), ("daily", 2)])
+async def test_a_daily_reset_gives_each_utc_day_its_own_ledger(
+    gate, redis, monkeypatch, reset, ledgers
+):
+    """Kills: a daily key that ignores the date, and one that never resets."""
+    monkeypatch.setattr(tree.config, "spend_ceiling_reset", reset)
+    today = [datetime(2026, 9, 25, 23, tzinfo=UTC)]
+    with (
+        patch.object(tree, "datetime", SimpleNamespace(now=lambda tz: today[0])),
+        patch.object(
+            tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=10**6)
+        ),
+    ):
+        # Day one: opened at the read, then charged to its ceiling.
+        assert (await _check(_PAID)).allowed
+        await charge_turn(root_envelope("turn-1", session_id=_CHAT), 10**6)
+        assert not (await _check(_PAID)).allowed
+        today[0] = datetime(2026, 9, 26, 1, tzinfo=UTC)
+        asked_next_day = not (await _check(_PAID)).allowed
+    keys = [k for k in redis.hashes if k.startswith("copilot:chat-spend:")]
+    assert len(keys) == ledgers
+    # Under "never" the day-one spend still asks on day two.
+    assert asked_next_day is (reset == "never")
+    if reset == "daily":
+        assert set(redis.ttls[k] for k in keys) == {2 * 24 * 3600}
+
+
+async def test_a_chat_ceiling_is_not_clamped_to_what_is_left_of_today():
+    """Kills: carrying a late-night remainder into the days after."""
+    with (
+        patch.object(
+            tree,
+            "get_global_rate_limits",
+            AsyncMock(return_value=(2_500_000, 5_000_000, None)),
+        ),
+        patch.object(tree, "get_remaining_usd_budget", AsyncMock(return_value=0.3)),
+    ):
+        assert await tree.resolve_chat_ceiling_microdollars("user-1") == 1_250_000
+        assert await tree.resolve_root_ceiling_microdollars("user-1") == 300_000

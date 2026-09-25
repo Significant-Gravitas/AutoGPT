@@ -503,6 +503,12 @@ class ChatConfig(BaseSettings):
         "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
         "what bounds it.",
     )
+    spend_ceiling_reset: Literal["never", "daily"] = Field(
+        default="never",
+        description="When a chat's spend ceiling starts over: never within the "
+        "chat, or at each UTC midnight (the ceiling and any approved raises "
+        "reset with the day).",
+    )
     tree_max_nodes: int = Field(
         default=8,
         ge=1,
