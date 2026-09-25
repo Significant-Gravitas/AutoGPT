@@ -1000,6 +1000,38 @@ class TestStripeLinkClientSelection:
         used.revoke_tokens.assert_awaited_once_with(cred)
         unused.revoke_tokens.assert_not_awaited()
 
+    def test_delete_succeeds_when_the_revoking_client_cannot_be_built(self):
+        cred = _make_oauth2_cred("link-cred", "stripe_link")
+        cred.metadata = {"link_oauth_flow": "authorization_code"}
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router."
+                "remove_all_webhooks_for_credentials",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                True,
+            ),
+            patch(
+                "backend.api.features.integrations.router.HANDLERS_BY_NAME",
+                {"stripe_link": StripeLinkHostedOAuthHandler},
+            ),
+            patch.object(router_settings.secrets, "stripe_link_client_id", "cid"),
+            patch.object(router_settings.secrets, "stripe_link_client_secret", "cs"),
+            patch.object(router_settings.config, "frontend_base_url", ""),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            mgr.delete = AsyncMock()
+            resp = client.request("DELETE", "/stripe_link/credentials/link-cred")
+
+        assert resp.status_code == 200
+        assert resp.json()["revoked"] is False
+        mgr.delete.assert_awaited_once()
+
     def test_delete_succeeds_after_the_confidential_client_is_unconfigured(self):
         """The grant can no longer be revoked from here, but the disconnect the
         user asked for has happened and must not come back as an error."""

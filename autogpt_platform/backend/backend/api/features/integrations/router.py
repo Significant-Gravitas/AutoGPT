@@ -1082,12 +1082,15 @@ async def delete_credentials(
             handler = create_mcp_oauth_handler(creds)
         elif provider == ProviderName.STRIPE_LINK and is_hosted_link_credential(creds):
             # Issued by the confidential client, which alone can revoke it. If
-            # that client has since been unconfigured nothing here can end the
-            # grant: the local delete stands, and the customer can revoke it
-            # from their Link account.
+            # that client can no longer be built (unconfigured since, or no
+            # frontend URL) nothing here can end the grant: the local delete
+            # stands, and the customer can revoke it from their Link account.
             if not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
                 return CredentialsDeletionResponse(revoked=False)
-            handler = _get_provider_oauth_handler(request, provider)
+            try:
+                handler = _get_provider_oauth_handler(request, provider)
+            except HTTPException:
+                return CredentialsDeletionResponse(revoked=False)
         elif (
             device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
         ) is not None:
