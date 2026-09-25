@@ -221,6 +221,11 @@ class ChatMessage(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
 
+    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
+    # row; a rating of the reply is scored against it. Internal, so excluded
+    # from payloads like routing_source, and persisted the same way.
+    langfuse_trace_id: str | None = Field(default=None, exclude=True)
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -288,6 +293,7 @@ class ChatMessage(BaseModel):
                 "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
             ),
             llm_credential_id=prisma_message.llmCredentialId,
+            langfuse_trace_id=prisma_message.langfuseTraceId,
         )
 
 
@@ -1161,6 +1167,7 @@ async def _save_session_to_db(
                     "routing_source": msg.routing_source,
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
+                    "langfuse_trace_id": msg.langfuse_trace_id,
                     "metadata": msg.metadata,
                 }
             )
@@ -1214,6 +1221,7 @@ async def _save_session_to_db(
                 routing_source=msg.routing_source,
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
+                langfuse_trace_id=msg.langfuse_trace_id,
             )
         except Exception as e:
             logger.error(

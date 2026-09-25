@@ -1,0 +1,873 @@
+{
+  "revision": 5,
+  "avatars": [
+    {
+      "id": "marketing",
+      "label": "Terracotta",
+      "hex": "#C45F36",
+      "color": "orange-300",
+      "url": "/experts/clay/v5/maria-marketing.png",
+      "color_id": "terracotta"
+    },
+    {
+      "id": "sales",
+      "label": "Gold",
+      "hex": "#D5AB24",
+      "color": "amber-300",
+      "url": "/experts/clay/v5/max-sales.png",
+      "color_id": "ochre"
+    },
+    {
+      "id": "finance",
+      "label": "Sage",
+      "hex": "#A5B09A",
+      "color": "green-300",
+      "url": "/experts/clay/v1/finance.png",
+      "color_id": "sage"
+    },
+    {
+      "id": "support",
+      "label": "Rose",
+      "hex": "#C45B88",
+      "color": "rose-300",
+      "url": "/experts/clay/v5/riley-support.png",
+      "color_id": "coral"
+    },
+    {
+      "id": "operations",
+      "label": "Slate blue",
+      "hex": "#98AFC6",
+      "color": "sky-300",
+      "url": "/experts/clay/v1/operations.png",
+      "color_id": "slate"
+    },
+    {
+      "id": "research",
+      "label": "Olive",
+      "hex": "#AAA77A",
+      "color": "lime-300",
+      "url": "/experts/clay/v1/research.png",
+      "color_id": "olive"
+    },
+    {
+      "id": "content",
+      "label": "Warm stone",
+      "hex": "#B5ADA0",
+      "color": "amber-300",
+      "url": "/experts/clay/v1/content.png",
+      "color_id": "stone"
+    },
+    {
+      "id": "development",
+      "label": "Charcoal",
+      "hex": "#777570",
+      "color": "blue-300",
+      "url": "/experts/clay/v1/development.png",
+      "color_id": "charcoal"
+    }
+  ],
+  "legacy": {
+    "/experts/maria.svg": "/experts/clay/v5/maria-marketing.png",
+    "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg": "/experts/clay/v5/jules-marketing.png",
+    "/avatars/notion/15-10-3-12-4-6-22-0-0-0.indigo.svg": "/experts/clay/v2/nadia.png",
+    "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg": "/experts/clay/v5/remy-marketing.png",
+    "/avatars/notion/10-8-2-6-1-0-51-9-0-0.violet.svg": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+    "/avatars/notion/12-13-6-13-10-0-19-0-0-0.lime.svg": "/experts/clay/v4/theo-finance.png",
+    "/avatars/notion/14-1-3-4-9-2-51-0-0-0.red.svg": "/experts/clay/v3/quinn.png",
+    "/experts/max.svg": "/experts/clay/v5/max-sales.png",
+    "/avatars/notion/12-5-0-1-13-0-29-0-0-0.green.svg": "/experts/clay/v2/devon.png",
+    "/avatars/notion/11-3-7-5-7-7-57-0-0-0.emerald.svg": "/experts/clay/v5/riley-support.png",
+    "/avatars/notion/12-9-10-2-11-0-1-0-0-0.yellow.svg": "/experts/clay/v5/jordan-sales.png",
+    "/experts/frankie.svg": "/experts/clay/v2/frankie.png",
+    "/avatars/notion/9-3-14-3-15-10-36-0-0-0.teal.svg": "/experts/clay/v4/harper-operations.png",
+    "/avatars/notion/1-7-3-5-2-1-11-0-0-0.amber.svg": "/experts/clay/v4/vera-operations.png",
+    "/avatars/notion/15-11-17-8-6-8-30-13-0-0.indigo.svg": "/experts/clay/v4/ellis-operations.png",
+    "/avatars/notion/12-6-14-7-11-12-36-0-0-14.emerald.svg": "/experts/clay/v5/robin-support.png",
+    "/avatars/notion/9-3-17-5-14-0-51-4-6-0.violet.svg": "/experts/clay/v5/anika-sales.png",
+    "/avatars/notion/3-9-11-6-13-7-28-9-8-5.sky.svg": "/experts/clay/v4/alex-development.png",
+    "/avatars/notion/4-2-8-9-12-3-17-6-5-11.amber.svg": "/experts/clay/v4/daniel-finance.png",
+    "/avatars/notion/9-3-17-5-12-14-48-0-0-0.teal.svg": "/experts/clay/v4/sofia-operations.png",
+    "/avatars/notion/10-8-15-9-6-0-41-3-0-0.orange.svg": "/experts/clay/v5/maya-marketing.png",
+    "/avatars/notion/8-9-14-6-11-7-33-5-4-12.blue.svg": "/experts/clay/v4/james-operations.png",
+    "/avatars/notion/13-2-5-3-7-0-0-0-0-0.orange.svg": "/experts/clay/v5/zara-marketing.png",
+    "/avatars/notion/13-1-8-1-9-0-49-11-0-0.orange.svg": "/experts/clay/v5/sasha-support.png",
+    "/avatars/notion/2-12-18-1-15-2-55-11-0-0.blue.svg": "/experts/clay/v4/priya-research.png",
+    "/avatars/notion/11-7-17-4-4-0-30-0-0-0.amber.svg": "/experts/clay/v5/marco-marketing.png",
+    "/avatars/notion/2-2-15-8-2-0-27-0-0-0.sky.svg": "/experts/clay/v5/noor-marketing.png",
+    "/avatars/notion/12-6-14-7-11-3-36-0-0-0.emerald.svg": "/experts/clay/v2/casey.png",
+    "/avatars/notion/4-1-19-1-11-0-34-5-0-0.teal.svg": "/experts/clay/v4/ines-operations.png",
+    "/avatars/notion/0-13-13-2-0-0-36-0-0-0.rose.svg": "/experts/clay/v5/omar-sales.png",
+    "/avatars/notion/1-11-13-6-2-3-21-0-0-0.cyan.svg": "/experts/clay/v4/lena-operations.png",
+    "/avatars/notion/6-0-15-1-9-0-58-11-0-0.violet.svg": "/experts/clay/v5/kai-support.png"
+  },
+  "colors": [
+    {
+      "id": "terracotta",
+      "label": "Terracotta",
+      "hex": "#C45F36"
+    },
+    {
+      "id": "ochre",
+      "label": "Gold",
+      "hex": "#D5AB24"
+    },
+    {
+      "id": "sage",
+      "label": "Sage",
+      "hex": "#A5B09A"
+    },
+    {
+      "id": "coral",
+      "label": "Rose",
+      "hex": "#C45B88"
+    },
+    {
+      "id": "slate",
+      "label": "Slate blue",
+      "hex": "#98AFC6"
+    },
+    {
+      "id": "olive",
+      "label": "Olive",
+      "hex": "#AAA77A"
+    },
+    {
+      "id": "stone",
+      "label": "Warm stone",
+      "hex": "#B5ADA0"
+    },
+    {
+      "id": "charcoal",
+      "label": "Charcoal",
+      "hex": "#777570"
+    },
+    {
+      "id": "rust",
+      "label": "Rust",
+      "hex": "#A94F36"
+    },
+    {
+      "id": "rose",
+      "label": "Dusty rose",
+      "hex": "#C07F91"
+    },
+    {
+      "id": "seaglass",
+      "label": "Sea glass",
+      "hex": "#7DB5A9"
+    },
+    {
+      "id": "pine",
+      "label": "Pine",
+      "hex": "#4F7968"
+    },
+    {
+      "id": "denim",
+      "label": "Denim",
+      "hex": "#607FAD"
+    },
+    {
+      "id": "sand",
+      "label": "Sand",
+      "hex": "#D3BA94"
+    },
+    {
+      "id": "bluegray",
+      "label": "Blue gray",
+      "hex": "#4B6577"
+    },
+    {
+      "id": "redclay",
+      "label": "Red clay",
+      "hex": "#A65D5D"
+    },
+    {
+      "id": "apricot",
+      "label": "Apricot",
+      "hex": "#D6A07C"
+    },
+    {
+      "id": "moss",
+      "label": "Moss",
+      "hex": "#718151"
+    },
+    {
+      "id": "chalk",
+      "label": "Chalk",
+      "hex": "#D5CDBB"
+    },
+    {
+      "id": "copper",
+      "label": "Copper",
+      "hex": "#B07A4D"
+    },
+    {
+      "id": "mist",
+      "label": "Mist blue",
+      "hex": "#B1C8D3"
+    },
+    {
+      "id": "ink",
+      "label": "Ink",
+      "hex": "#454F58"
+    },
+    {
+      "id": "umber",
+      "label": "Umber",
+      "hex": "#89674F"
+    },
+    {
+      "id": "lagoon",
+      "label": "Lagoon",
+      "hex": "#558F94"
+    },
+    {
+      "id": "limestone",
+      "label": "Yellow stone",
+      "hex": "#C5BD79"
+    },
+    {
+      "id": "fern",
+      "label": "Fern",
+      "hex": "#8DAF7A"
+    }
+  ],
+  "identities": [
+    {
+      "id": "maria",
+      "name": "Maria",
+      "url": "/experts/clay/v5/maria-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/autogpt-characters/v1.1/expert-maria/neutral/128.webp",
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/maria-marketing.png",
+          "hex": "#C45F36"
+        },
+        "content": {
+          "url": "/experts/clay/v4/maria-content.png",
+          "hex": "#B5ADA0"
+        }
+      },
+      "previous_urls": [
+        "/autogpt-characters/v1.1/expert-maria/neutral/128.webp"
+      ]
+    },
+    {
+      "id": "jules",
+      "name": "Jules",
+      "url": "/experts/clay/v5/jules-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": [
+        "/experts/clay/v2/jules.png",
+        "/experts/clay/v3/jules.png"
+      ],
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/jules-marketing.png",
+          "hex": "#CB724E"
+        },
+        "content": {
+          "url": "/experts/clay/v4/jules-content.png",
+          "hex": "#BEB7AB"
+        }
+      }
+    },
+    {
+      "id": "nadia",
+      "name": "Nadia",
+      "url": "/experts/clay/v2/nadia.png",
+      "color_id": "olive",
+      "previous_url": "/experts/clay/v1/research.png",
+      "primary_category": "research",
+      "variants": {
+        "research": {
+          "url": "/experts/clay/v2/nadia.png",
+          "hex": "#AAA77A"
+        },
+        "marketing": {
+          "url": "/experts/clay/v5/nadia-marketing.png",
+          "hex": "#AC5430"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v4/nadia-marketing.png"
+      ]
+    },
+    {
+      "id": "remy",
+      "name": "Remy",
+      "url": "/experts/clay/v5/remy-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": [
+        "/experts/clay/v2/remy.png",
+        "/experts/clay/v3/remy.png",
+        "/experts/clay/v4/remy-marketing.png"
+      ],
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/remy-marketing.png",
+          "hex": "#CF7C5A"
+        }
+      }
+    },
+    {
+      "id": "mina",
+      "name": "Mina",
+      "url": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+      "color_id": "sage",
+      "previous_url": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+      "primary_category": "finance",
+      "variants": {
+        "finance": {
+          "url": "/autogpt-characters/v1.1/expert-mina/neutral/128.webp",
+          "hex": "#A5B09A"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/mina-operations.png",
+          "hex": "#98AFC6"
+        }
+      },
+      "previous_urls": []
+    },
+    {
+      "id": "theo",
+      "name": "Theo",
+      "url": "/experts/clay/v4/theo-finance.png",
+      "color_id": "sage",
+      "previous_url": "/experts/clay/v1/finance.png",
+      "primary_category": "finance",
+      "variants": {
+        "finance": {
+          "url": "/experts/clay/v4/theo-finance.png",
+          "hex": "#B0B9A6"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/theo-operations.png",
+          "hex": "#A4B9CD"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/theo.png"
+      ]
+    },
+    {
+      "id": "quinn",
+      "name": "Quinn",
+      "url": "/experts/clay/v3/quinn.png",
+      "color_id": "olive",
+      "previous_url": "/experts/clay/v1/research.png",
+      "previous_urls": [
+        "/experts/clay/v2/quinn.png"
+      ],
+      "primary_category": "research",
+      "variants": {
+        "research": {
+          "url": "/experts/clay/v3/quinn.png",
+          "hex": "#AAA77A"
+        },
+        "finance": {
+          "url": "/experts/clay/v4/quinn-finance.png",
+          "hex": "#8B9481"
+        }
+      }
+    },
+    {
+      "id": "max",
+      "name": "Max",
+      "url": "/experts/clay/v5/max-sales.png",
+      "color_id": "ochre",
+      "previous_url": "/experts/clay/v1/sales.png",
+      "primary_category": "sales",
+      "variants": {
+        "sales": {
+          "url": "/experts/clay/v5/max-sales.png",
+          "hex": "#D5AB24"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/max-operations.png",
+          "hex": "#8093A6"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/max.png"
+      ]
+    },
+    {
+      "id": "devon",
+      "name": "Devon",
+      "url": "/experts/clay/v2/devon.png",
+      "color_id": "charcoal",
+      "previous_url": "/experts/clay/v1/development.png",
+      "primary_category": "development",
+      "variants": {
+        "development": {
+          "url": "/experts/clay/v2/devon.png",
+          "hex": "#777570"
+        }
+      },
+      "previous_urls": []
+    },
+    {
+      "id": "riley",
+      "name": "Riley",
+      "url": "/experts/clay/v5/riley-support.png",
+      "color_id": "coral",
+      "previous_url": "/experts/clay/v1/support.png",
+      "primary_category": "support",
+      "variants": {
+        "support": {
+          "url": "/experts/clay/v5/riley-support.png",
+          "hex": "#C45B88"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/riley.png"
+      ]
+    },
+    {
+      "id": "jordan",
+      "name": "Jordan",
+      "url": "/experts/clay/v5/jordan-sales.png",
+      "color_id": "ochre",
+      "previous_url": "/experts/clay/v1/sales.png",
+      "primary_category": "sales",
+      "variants": {
+        "sales": {
+          "url": "/experts/clay/v5/jordan-sales.png",
+          "hex": "#DAB53E"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/jordan.png",
+        "/experts/clay/v4/jordan-sales.png"
+      ]
+    },
+    {
+      "id": "frankie",
+      "name": "Frankie",
+      "url": "/experts/clay/v2/frankie.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v2/frankie.png",
+          "hex": "#98AFC6"
+        },
+        "support": {
+          "url": "/experts/clay/v5/frankie-support.png",
+          "hex": "#CB6F96"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v4/frankie-support.png"
+      ]
+    },
+    {
+      "id": "harper",
+      "name": "Harper",
+      "url": "/experts/clay/v4/harper-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": [
+        "/experts/clay/v2/harper.png",
+        "/experts/clay/v3/harper.png"
+      ],
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/harper-operations.png",
+          "hex": "#8CA1B6"
+        }
+      }
+    },
+    {
+      "id": "vera",
+      "name": "Vera",
+      "url": "/experts/clay/v4/vera-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": [
+        "/experts/clay/v2/vera.png",
+        "/experts/clay/v3/vera.png"
+      ],
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/vera-operations.png",
+          "hex": "#98AFC6"
+        },
+        "finance": {
+          "url": "/experts/clay/v4/vera-finance.png",
+          "hex": "#B7C0AE"
+        }
+      }
+    },
+    {
+      "id": "ellis",
+      "name": "Ellis",
+      "url": "/experts/clay/v4/ellis-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/ellis-operations.png",
+          "hex": "#A4B9CD"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/ellis.png"
+      ]
+    },
+    {
+      "id": "robin",
+      "name": "Robin",
+      "url": "/experts/clay/v5/robin-support.png",
+      "color_id": "coral",
+      "previous_url": "/experts/clay/v1/support.png",
+      "primary_category": "support",
+      "variants": {
+        "support": {
+          "url": "/experts/clay/v5/robin-support.png",
+          "hex": "#AC5078"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/robin-operations.png",
+          "hex": "#8093A6"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/robin.png",
+        "/experts/clay/v4/robin-support.png"
+      ]
+    },
+    {
+      "id": "anika",
+      "name": "Anika",
+      "url": "/experts/clay/v5/anika-sales.png",
+      "color_id": "ochre",
+      "previous_url": "/experts/clay/v1/sales.png",
+      "previous_urls": [
+        "/experts/clay/v2/anika.png",
+        "/experts/clay/v3/anika.png",
+        "/experts/clay/v4/anika-sales.png"
+      ],
+      "primary_category": "sales",
+      "variants": {
+        "sales": {
+          "url": "/experts/clay/v5/anika-sales.png",
+          "hex": "#BB9620"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/anika-operations.png",
+          "hex": "#ADBFD1"
+        }
+      }
+    },
+    {
+      "id": "alex",
+      "name": "Alex",
+      "url": "/experts/clay/v4/alex-development.png",
+      "color_id": "charcoal",
+      "previous_url": "/experts/clay/v1/development.png",
+      "primary_category": "development",
+      "variants": {
+        "development": {
+          "url": "/experts/clay/v4/alex-development.png",
+          "hex": "#878681"
+        },
+        "research": {
+          "url": "/experts/clay/v4/alex-research.png",
+          "hex": "#8F8C66"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/alex.png"
+      ]
+    },
+    {
+      "id": "daniel",
+      "name": "Daniel",
+      "url": "/experts/clay/v4/daniel-finance.png",
+      "color_id": "sage",
+      "previous_url": "/experts/clay/v1/finance.png",
+      "primary_category": "finance",
+      "variants": {
+        "finance": {
+          "url": "/experts/clay/v4/daniel-finance.png",
+          "hex": "#98A28E"
+        },
+        "research": {
+          "url": "/experts/clay/v4/daniel-research.png",
+          "hex": "#BBB995"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/daniel.png"
+      ]
+    },
+    {
+      "id": "sofia",
+      "name": "Sofia",
+      "url": "/experts/clay/v4/sofia-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/sofia-operations.png",
+          "hex": "#8CA1B6"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/sofia.png"
+      ]
+    },
+    {
+      "id": "maya",
+      "name": "Maya",
+      "url": "/experts/clay/v5/maya-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/maya-marketing.png",
+          "hex": "#B85933"
+        },
+        "content": {
+          "url": "/experts/clay/v4/maya-content.png",
+          "hex": "#989186"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/maya.png",
+        "/experts/clay/v4/maya-marketing.png"
+      ]
+    },
+    {
+      "id": "james",
+      "name": "James",
+      "url": "/experts/clay/v4/james-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/james-operations.png",
+          "hex": "#98AFC6"
+        },
+        "finance": {
+          "url": "/experts/clay/v4/james-finance.png",
+          "hex": "#A5B09A"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/james.png"
+      ]
+    },
+    {
+      "id": "zara",
+      "name": "Zara",
+      "url": "/experts/clay/v5/zara-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/zara-marketing.png",
+          "hex": "#C45F36"
+        },
+        "sales": {
+          "url": "/experts/clay/v5/zara-sales.png",
+          "hex": "#DDBA4B"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/zara.png",
+        "/experts/clay/v4/zara-marketing.png",
+        "/experts/clay/v4/zara-sales.png"
+      ]
+    },
+    {
+      "id": "sasha",
+      "name": "Sasha",
+      "url": "/experts/clay/v5/sasha-support.png",
+      "color_id": "coral",
+      "previous_url": "/experts/clay/v1/support.png",
+      "primary_category": "support",
+      "variants": {
+        "support": {
+          "url": "/experts/clay/v5/sasha-support.png",
+          "hex": "#CF799D"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/sasha.png"
+      ]
+    },
+    {
+      "id": "priya",
+      "name": "Priya",
+      "url": "/experts/clay/v4/priya-research.png",
+      "color_id": "olive",
+      "previous_url": "/experts/clay/v1/research.png",
+      "primary_category": "research",
+      "variants": {
+        "research": {
+          "url": "/experts/clay/v4/priya-research.png",
+          "hex": "#9C9A70"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/priya-operations.png",
+          "hex": "#A4B9CD"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/priya.png"
+      ]
+    },
+    {
+      "id": "marco",
+      "name": "Marco",
+      "url": "/experts/clay/v5/marco-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "previous_urls": [
+        "/experts/clay/v2/marco.png",
+        "/experts/clay/v3/marco.png",
+        "/experts/clay/v4/marco-marketing.png"
+      ],
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/marco-marketing.png",
+          "hex": "#CB724E"
+        }
+      }
+    },
+    {
+      "id": "noor",
+      "name": "Noor",
+      "url": "/experts/clay/v5/noor-marketing.png",
+      "color_id": "terracotta",
+      "previous_url": "/experts/clay/v1/marketing.png",
+      "primary_category": "marketing",
+      "variants": {
+        "marketing": {
+          "url": "/experts/clay/v5/noor-marketing.png",
+          "hex": "#AC5430"
+        },
+        "content": {
+          "url": "/experts/clay/v4/noor-content.png",
+          "hex": "#C4BDB3"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/noor.png",
+        "/experts/clay/v4/noor-marketing.png"
+      ]
+    },
+    {
+      "id": "casey",
+      "name": "Casey",
+      "url": "/experts/clay/v2/casey.png",
+      "color_id": "charcoal",
+      "previous_url": "/experts/clay/v1/development.png",
+      "primary_category": "development",
+      "variants": {
+        "development": {
+          "url": "/experts/clay/v2/casey.png",
+          "hex": "#777570"
+        }
+      },
+      "previous_urls": []
+    },
+    {
+      "id": "ines",
+      "name": "Ines",
+      "url": "/experts/clay/v4/ines-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/ines-operations.png",
+          "hex": "#8093A6"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/ines.png"
+      ]
+    },
+    {
+      "id": "omar",
+      "name": "Omar",
+      "url": "/experts/clay/v5/omar-sales.png",
+      "color_id": "ochre",
+      "previous_url": "/experts/clay/v1/sales.png",
+      "primary_category": "sales",
+      "variants": {
+        "sales": {
+          "url": "/experts/clay/v5/omar-sales.png",
+          "hex": "#C8A122"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/omar-operations.png",
+          "hex": "#ADBFD1"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/omar.png",
+        "/experts/clay/v4/omar-sales.png"
+      ]
+    },
+    {
+      "id": "lena",
+      "name": "Lena",
+      "url": "/experts/clay/v4/lena-operations.png",
+      "color_id": "slate",
+      "previous_url": "/experts/clay/v1/operations.png",
+      "previous_urls": [
+        "/experts/clay/v2/lena.png",
+        "/experts/clay/v3/lena.png"
+      ],
+      "primary_category": "operations",
+      "variants": {
+        "operations": {
+          "url": "/experts/clay/v4/lena-operations.png",
+          "hex": "#8CA1B6"
+        }
+      }
+    },
+    {
+      "id": "kai",
+      "name": "Kai",
+      "url": "/experts/clay/v5/kai-support.png",
+      "color_id": "coral",
+      "previous_url": "/experts/clay/v1/support.png",
+      "primary_category": "support",
+      "variants": {
+        "support": {
+          "url": "/experts/clay/v5/kai-support.png",
+          "hex": "#B85680"
+        },
+        "operations": {
+          "url": "/experts/clay/v4/kai-operations.png",
+          "hex": "#98AFC6"
+        }
+      },
+      "previous_urls": [
+        "/experts/clay/v2/kai.png",
+        "/experts/clay/v4/kai-support.png"
+      ]
+    }
+  ]
+}

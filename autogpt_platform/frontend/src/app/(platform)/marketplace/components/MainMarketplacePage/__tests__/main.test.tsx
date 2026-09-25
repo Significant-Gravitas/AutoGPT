@@ -1,7 +1,4 @@
-import {
-  getGetV2ListStoreAgentsResponseMock,
-  getGetV2ListStoreCreatorsResponseMock,
-} from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getGetV2ListStoreAgentsResponseMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { MainMarkeplacePage } from "../MainMarketplacePage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -35,28 +32,19 @@ describe("MainMarketplacePage", () => {
           },
         ],
       }),
-      featuredCreators: getGetV2ListStoreCreatorsResponseMock({
-        creators: [
-          {
-            ...getGetV2ListStoreCreatorsResponseMock().creators[0],
-            name: "Creator One",
-            username: "creator-one",
-          },
-        ],
-      }),
       isLoading: false,
       hasError: false,
     });
   });
 
-  test("renders featured agents, all agents, and creators", () => {
+  test("renders featured agents and all agents, and no creators shelf", () => {
     render(<MainMarkeplacePage />);
 
     expect(screen.getByText(/hand-picked/i)).toBeDefined();
     expect(screen.getByText("Featured Agent")).toBeDefined();
     expect(screen.getByText("All AI Workflows")).toBeDefined();
     expect(screen.getAllByText("Top Agent").length).toBeGreaterThan(0);
-    expect(screen.getByText("Creator One")).toBeDefined();
+    expect(screen.queryByText("Featured Creators")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Become a Creator" }),
     ).toBeDefined();

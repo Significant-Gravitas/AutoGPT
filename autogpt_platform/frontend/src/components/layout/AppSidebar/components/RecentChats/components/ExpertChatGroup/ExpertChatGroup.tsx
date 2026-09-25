@@ -74,14 +74,18 @@ export function ExpertChatGroup({
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-zinc-900"
         >
           {isAutopilot ? (
-            <AutopilotAvatar size={32} transparent />
+            <AutopilotAvatar
+              size={32}
+              transparent
+              className="rounded-full border border-[#e3e3e3]"
+            />
           ) : (
             <ExpertAvatar
               name={label}
               avatarUrl={avatarUrl}
               color={color}
               size={32}
-              className="border-0"
+              className="rounded-full border border-[#e3e3e3]"
             />
           )}
           <ExpertIdentityDetails
