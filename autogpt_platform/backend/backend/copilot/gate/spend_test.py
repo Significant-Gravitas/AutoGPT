@@ -22,6 +22,7 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
 from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
+from backend.copilot.gate import subject as subject_module
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.review import open_review, review_payload
@@ -344,14 +345,19 @@ def test_a_paid_block_carries_its_estimate_and_pure_computation_none():
         assert block_subject(StoreValueBlock(), {}).estimate == 0
 
 
-async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
-    """Kills: pricing the model's raw arguments (every LLM block estimates $0)."""
+async def test_an_llm_block_is_priced_once_with_the_credentials_it_will_run_with():
+    """Kills: pricing the model's raw arguments (every LLM block estimates $0),
+    and pricing it again before the credentials are known."""
     cost = BLOCK_COSTS[AITextGeneratorBlock][0].cost_filter
     platform = CredentialsMetaInput.model_validate(cost["credentials"])
     session = _session()
-    with patch(
-        f"{_CAP}.resolve_block_credentials",
-        AsyncMock(return_value=({"credentials": platform}, [])),
+    counted = MagicMock(wraps=subject_module.block_usage_cost)
+    with (
+        patch(
+            f"{_CAP}.resolve_block_credentials",
+            AsyncMock(return_value=({"credentials": platform}, [])),
+        ),
+        patch.object(subject_module, "block_usage_cost", counted),
     ):
         subject = await RunCapabilityTool().gate_subject(
             "user-1",
@@ -363,6 +369,7 @@ async def test_an_llm_block_is_priced_with_the_credentials_it_will_run_with():
         )
     assert subject is not None and subject.effect is Effect.READ
     assert subject.estimate > 0
+    assert counted.call_count == 1
 
 
 @pytest.mark.parametrize(

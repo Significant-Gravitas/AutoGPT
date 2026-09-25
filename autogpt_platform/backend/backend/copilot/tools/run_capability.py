@@ -121,7 +121,8 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         if not required_input_keys(block) <= set(payload or {}):
             return NO_OP  # a schema lookup: run_block answers with the schema
-        subject = block_subject(block, payload or {})
+        # Priced once, below, with the credentials the run bills with.
+        subject = block_subject(block, payload or {}, priced=False)
         if subject.effect not in METERED:
             return subject
         # Most cost tables filter on the credentials, which the run injects.

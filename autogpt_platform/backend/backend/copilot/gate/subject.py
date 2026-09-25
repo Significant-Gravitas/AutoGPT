@@ -46,7 +46,10 @@ class Subject(BaseModel):
 NO_OP = Subject(key="", name="", effect=Effect.UNGATED)
 
 
-def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
+def block_subject(
+    block: Block, inputs: dict[str, Any], *, priced: bool = True
+) -> Subject:
+    """``priced=False`` skips the cost lookup, for a caller that prices later."""
     effect = block_effect(block, inputs)
     name = display_name(block)
     if type(block).__name__ in JUDGED_BLOCKS:
@@ -58,7 +61,9 @@ def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
         effect=_gate_effect(effect),
         reason=_reason(effect, name, culprit=None),
         irreversible=_irreversible(effect, block),
-        estimate=_priced(effect, lambda: block_usage_cost(block, inputs)[0]),
+        estimate=(
+            _priced(effect, lambda: block_usage_cost(block, inputs)[0]) if priced else 0
+        ),
     )
 
 
