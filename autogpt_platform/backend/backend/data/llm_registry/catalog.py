@@ -529,13 +529,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-25: $0.15/$0.60 per 1M,
-                # cache read $0.003/1M (drifted again since the prior fix).
+                # Live OpenRouter rate as of 2026-09-25: $0.075/$0.30 per 1M,
+                # cache read $0.0015/1M (dropped again since the prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=22.5,
-                    output_credits_per_1m=90.0,
-                    cache_read_credits_per_1m=0.45,
+                    input_credits_per_1m=11.25,
+                    output_credits_per_1m=45.0,
+                    cache_read_credits_per_1m=0.225,
                 ),
             ),
             CatalogModel(
@@ -886,22 +886,21 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — live OpenRouter rate as of
-                # 2026-09-25: $0.8845/$10.5346 per Mtok, cache read
-                # $0.33/1M (dropped from $3.00/$15.00, previously
-                # unset; verified via check_openrouter_prices.py).
-                # provider_input/output_usd_per_1m now updated to match:
-                # these feed _override_cost_for_moonshot()'s initial
-                # rate-limit cost estimate, and leaving them stale meant
-                # kimi-k3 users' rate limits were consumed ~3.4x their
-                # actual spend (Sentry-flagged, HIGH).
+                # Moonshot's premium tier — re-checked live 2026-09-25:
+                # the $0.8845/$10.5346 rate this entry was briefly moved to
+                # was itself a same-day snapshot that had already drifted;
+                # OpenRouter's default route is back to $3.00/$15.00 per
+                # Mtok (verified via check_openrouter_prices.py), so this
+                # reverts to the pinned $3/$15 rate. Cache read is now
+                # live at $0.30/1M (previously unset) so that's authored
+                # here for the first time.
                 cost=CatalogModelCost(
                     run_credits=9,
-                    input_credits_per_1m=132.675,
-                    output_credits_per_1m=1580.19,
-                    cache_read_credits_per_1m=49.5,
-                    provider_input_usd_per_1m=0.8845,
-                    provider_output_usd_per_1m=10.5346,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=45.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
                 ),
             ),
             CatalogModel(
