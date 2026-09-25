@@ -21,6 +21,7 @@ import {
   realCardSchemaHandler,
   realCards,
   shell,
+  spendCard,
   workflow,
 } from "./__tests__/fixtures";
 
@@ -102,6 +103,9 @@ export const RuleMenu: Story = {
 };
 
 export const RuleMenuWithOtto: Story = { args: queueOf([mcpTool()]) };
+
+// A paid read over the task's spend ceiling.
+export const OverTheSpendCeiling: Story = { args: queueOf([spendCard()]) };
 
 export const BlockChainRow: StoryObj = {
   render: () => {

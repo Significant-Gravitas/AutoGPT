@@ -285,7 +285,9 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
     assert subject.irreversible
     gate.open_review.assert_awaited_once()
 
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.APPROVED)
+    gate.find_review.return_value = SimpleNamespace(
+        status=ReviewStatus.APPROVED, payload={}
+    )
     approved = await _call(_session(), _GITHUB, "merge_pull_request", {"n": 7})
     assert not _is_held(approved)
     ran.assert_awaited_once()
@@ -294,7 +296,9 @@ async def test_an_irreversible_tool_asks_once_on_the_gate_row_only(gate, ran):
 
 async def test_an_approved_first_use_runs_without_a_second_card(gate, ran):
     """The server-side review would ask again for an uncatalogued server."""
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.APPROVED)
+    gate.find_review.return_value = SimpleNamespace(
+        status=ReviewStatus.APPROVED, payload={}
+    )
     result = await _call(_session(), _OPEN_WORLD, "do_thing")
     assert not _is_held(result)
     ran.assert_awaited_once()
@@ -324,7 +328,7 @@ async def _answer_with_rule(
     """What the approve endpoint does for the card the gate just opened."""
     session = session or _session()
     subject = gate.open_review.await_args.args[6]
-    row = SimpleNamespace(status=ReviewStatus.APPROVED)
+    row = SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
     chat = SimpleNamespace(expert_id=session.expert_id)
     with patch(
         f"{_GATE}.chat_rules.get_chat_session_metadata", AsyncMock(return_value=chat)

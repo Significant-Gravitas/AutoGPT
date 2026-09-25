@@ -13,10 +13,16 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
-from backend.copilot.gate.subject import NO_OP, Subject, workflow_subject
+from backend.copilot.gate.subject import (
+    NO_OP,
+    Subject,
+    graph_cost_credits,
+    workflow_subject,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
+from backend.copilot.tree import charge_credits
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import (
     ExecutionStatus,
@@ -1030,6 +1036,7 @@ class RunAgentTool(BaseTool):
             session.successful_agent_runs[library_agent.graph_id] = (
                 session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
             )
+            await charge_credits(user_id, lambda: graph_cost_credits(graph))
 
         # Track in PostHog
         track_agent_run_success(

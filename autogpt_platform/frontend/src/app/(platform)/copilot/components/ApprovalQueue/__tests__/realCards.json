@@ -57,7 +57,8 @@
           "ask": "Run",
           "object": "Gmail Send",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Gmail Send",
       "editable": false,
@@ -242,7 +243,8 @@
           "ask": "Run",
           "object": "Google Sheets Update Row",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Google Sheets Update Row",
       "editable": false,
@@ -461,7 +463,8 @@
           "ask": "Run",
           "object": "Execute Code Step",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Execute Code Step",
       "editable": false,
@@ -609,7 +612,8 @@
           "ask": "Run",
           "object": "Send Web Request",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Send Web Request",
       "editable": false,
@@ -751,7 +755,8 @@
           "ask": "Run",
           "object": "Post To X",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Post To X",
       "editable": false,
@@ -1093,7 +1098,8 @@
           "ask": "Run",
           "object": "Morning digest",
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "Morning digest",
       "editable": false,

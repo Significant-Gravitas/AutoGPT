@@ -272,3 +272,33 @@ export function realCardSchemaHandler(cards: RealCard[]) {
     );
   });
 }
+// A paid read over the task's spend ceiling; money in microdollars.
+export function spendCard(id = "spend", chatRules: string[] = []) {
+  return heldReview({
+    id,
+    tool: "run_capability",
+    mode: "auto",
+    reason:
+      "costs about $0.05, and this chat has spent $2.41 of its $2.00 ceiling; approving adds $1.00 to it",
+    reasonKind: "spend",
+    subject: {
+      kind: "block",
+      key: "block:b-search",
+      name: "Perplexity Search",
+      effect: "read",
+      irreversible: false,
+      block_id: null,
+    },
+    chatRules,
+    args: { query: "Q3 invoice payment terms at Acme" },
+    headline: { ask: "Run", object: "Perplexity Search" },
+    extra: {
+      spend: {
+        estimate: 50_000,
+        spent: 2_410_000,
+        ceiling: 2_000_000,
+        unit: 1_000_000,
+      },
+    },
+  });
+}
