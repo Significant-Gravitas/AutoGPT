@@ -50,6 +50,9 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "delete_skill": ("Delete skill", ("name",)),
     "delete_workspace_file": ("Delete workspace file", ("path",)),
     "memory_forget_confirm": ("Forget memories", ()),
+    # The card names the block or workflow from the call's subject instead.
+    "run_capability": ("Run a block", ()),
+    "run_agent": ("Run a workflow", ()),
 }
 # Tool -> the id whose resolved name is the object when no argument names one.
 _OBJECT_ID: dict[str, str] = {

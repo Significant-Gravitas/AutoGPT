@@ -90,6 +90,8 @@ REFERENCES: dict[tuple[str, str], Entity | None] = {
     ("run_sub_session", "sub_autopilot_session_id"): "chat_session",
     ("delete_skill", "expert_id"): "expert",
     ("delete_workspace_file", "file_id"): "workspace_file",
+    ("run_agent", "library_agent_id"): "agent_or_graph",
+    ("run_agent", "preset_id"): "preset",
     # Another system's ids, or not ids at all though described as one.
     ("create_feature_request", "existing_issue_id"): None,
     ("edit_chat_platform_message", "channel_id"): None,
@@ -97,6 +99,8 @@ REFERENCES: dict[tuple[str, str], Entity | None] = {
     ("memory_forget_confirm", "uuids"): None,
     ("browser_act", "target"): None,
     ("post_to_chat_platform", "channel"): None,
+    # A block or MCP server; the card's subject already names it.
+    ("run_capability", "id"): None,
 }
 
 LOOKUP_SECONDS = 1.0

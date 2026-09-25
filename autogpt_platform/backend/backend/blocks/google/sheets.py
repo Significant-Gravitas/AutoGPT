@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -323,6 +324,7 @@ class GoogleSheetsReadBlock(Block):
                     ["Alice", "85"],
                 ],
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1456,6 +1458,7 @@ class GoogleSheetsFindBlock(Block):
                     "count": 3,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -2349,6 +2352,7 @@ class GoogleSheetsFilterRowsBlock(Block):
                     "count": 2,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -2566,6 +2570,7 @@ class GoogleSheetsLookupRowBlock(Block):
                     "found": True,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -2967,6 +2972,7 @@ class GoogleSheetsGetColumnBlock(Block):
                     "column_index": 2,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -3411,6 +3417,7 @@ class GoogleSheetsGetUniqueValuesBlock(Block):
                     "total_unique": 3,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -3970,6 +3977,7 @@ class GoogleSheetsGetRowCountBlock(Block):
                     "column_count": 5,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -4590,6 +4598,7 @@ class GoogleSheetsGetRowBlock(Block):
                     "row_dict": {"Name": "Alice", "Status": "Active", "Score": "85"},
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -5081,6 +5090,7 @@ class GoogleSheetsListNamedRangesBlock(Block):
                     "count": 2,
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -6159,6 +6169,7 @@ class GoogleSheetsGetNotesBlock(Block):
                     ],
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -6321,6 +6332,7 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
                 },
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -6468,6 +6480,7 @@ class GoogleSheetsSetPublicAccessBlock(Block):
                 },
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

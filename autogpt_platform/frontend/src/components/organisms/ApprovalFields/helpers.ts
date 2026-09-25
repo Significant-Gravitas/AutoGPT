@@ -82,7 +82,7 @@ export function fieldKind(key: string, value: unknown): FieldKind {
       : "json";
   }
   const text = String(value);
-  if (CODE_KEYS.has(key)) return "code";
+  if (CODE_KEYS.has(key) || key.endsWith("_code")) return "code";
   if (text.length > CLAMP_CHARS || lineCount(text) > CLAMP_LINES) return "long";
   return "short";
 }
@@ -140,7 +140,13 @@ export function lineCount(text: string) {
 }
 
 export function humanize(key: string) {
-  const words = key.replace(/_/g, " ").trim();
+  const words = key
+    .replace(/_/g, " ")
+    .replace(
+      /([a-z])([A-Z])/g,
+      (_, a: string, b: string) => `${a} ${b.toLowerCase()}`,
+    )
+    .trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

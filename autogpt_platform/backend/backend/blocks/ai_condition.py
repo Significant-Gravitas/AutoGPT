@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -133,6 +134,7 @@ class AIConditionBlock(AIBlockBase):
                     reasoning=None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(

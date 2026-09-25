@@ -67,7 +67,8 @@
           "key": "delete_folder",
           "name": "Delete folder",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -305,7 +306,8 @@
           "key": "move_agents_to_folder",
           "name": "Move agents to folder",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -389,7 +391,8 @@
           "key": "pause_schedule",
           "name": "Pause schedule",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -471,7 +474,8 @@
           "key": "hire_expert",
           "name": "Hire expert",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -554,7 +558,8 @@
           "key": "message_session",
           "name": "Message session",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -648,8 +653,8 @@
           }
         ],
         "reference_totals": {
-          "credential_id": 1,
-          "expert_id": 1
+          "expert_id": 1,
+          "credential_id": 1
         },
         "tool_call_id": "call-grant_expert_credential",
         "turn": 1,
@@ -659,7 +664,8 @@
           "key": "grant_expert_credential",
           "name": "Grant expert credential",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -743,7 +749,8 @@
           "key": "edit_agent",
           "name": "Edit agent",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -815,7 +822,8 @@
           "key": "update_preset",
           "name": "Update preset",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -887,7 +895,8 @@
           "key": "delete_preset",
           "name": "Delete preset",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -959,7 +968,8 @@
           "key": "schedule_routine",
           "name": "Schedule routine",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -1059,8 +1069,8 @@
           }
         ],
         "reference_totals": {
-          "store_listing_version_id": 1,
-          "expert_id": 1
+          "expert_id": 1,
+          "store_listing_version_id": 1
         },
         "tool_call_id": "call-install_expert_workflow",
         "turn": 1,
@@ -1070,7 +1080,8 @@
           "key": "install_expert_workflow",
           "name": "Install expert workflow",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -1135,7 +1146,8 @@
           "key": "remove_expert_workflow",
           "name": "Remove expert workflow",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -1213,7 +1225,8 @@
           "key": "confirm_expert_change",
           "name": "Confirm expert change",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -1308,7 +1321,8 @@
           "key": "delete_workspace_file",
           "name": "Delete workspace file",
           "effect": "platform",
-          "irreversible": true
+          "irreversible": true,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
@@ -1373,7 +1387,8 @@
           "key": "delete_preset",
           "name": "Delete preset",
           "effect": "platform",
-          "irreversible": false
+          "irreversible": false,
+          "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",

@@ -5,6 +5,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -115,6 +116,7 @@ class PostToTikTokBlock(Block):
             input_schema=PostToTikTokBlock.Input,
             output_schema=PostToTikTokBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

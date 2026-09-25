@@ -11,6 +11,7 @@ from backend.data.execution import ExecutionContext
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -89,6 +90,7 @@ class RMFGGetImageBlock(Block):
                 "fetch_image": lambda *args, **kwargs: TEST_PNG_DATA_URI,
                 "save_image": lambda *args, **kwargs: TEST_PNG_DATA_URI,
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
     @staticmethod

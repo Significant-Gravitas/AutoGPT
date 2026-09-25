@@ -10,6 +10,7 @@ from backend.blocks.dataforb2b._enums import SearchCategory
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -128,6 +129,7 @@ class SmartSearchBlock(Block):
                     "results": [{"id": "1"}],
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

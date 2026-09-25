@@ -19,8 +19,7 @@ class Effect(str, Enum):
     PLATFORM = "platform"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
-    # review that is already open, or answers to L1's irreversible-action pause
-    # until it can name its subject.
+    # review that is already open, or runs nothing.
     UNGATED = "ungated"
 
 
@@ -136,10 +135,12 @@ _UNGATED = frozenset(
         "connect_integration",
         "request_credential_grant",
         "resume_capability",
-        "run_agent",
-        "run_capability",
     }
 )
+
+# Decided by the block or workflow they run (``gate_subject``); without one
+# they cannot be read, and unreadable asks.
+_BY_SUBJECT = frozenset({"run_agent", "run_capability"})
 
 # Registered straight onto the MCP server by ``create_copilot_mcp_server``, so
 # the second seam in ``sdk/tool_adapter.py`` is the only gate they reach.
@@ -153,7 +154,7 @@ _EFFECTS: dict[str, Effect] = {
     **{name: Effect.WORKSPACE for name in _WORKSPACE | MCP_FILE_WRITE_TOOLS},
     "bash_exec": Effect.SHELL,
     **{name: Effect.PLATFORM for name in _PLATFORM},
-    **{name: Effect.EXTERNAL for name in _EXTERNAL},
+    **{name: Effect.EXTERNAL for name in _EXTERNAL | _BY_SUBJECT},
     **{name: Effect.UNGATED for name in _UNGATED},
 }
 
@@ -194,7 +195,10 @@ def effect_for(tool_name: str) -> Effect:
 
 
 def verdict_for(mode: AutopilotMode, tool_name: str) -> Verdict:
-    effect = effect_for(tool_name)
+    return verdict_for_effect(mode, effect_for(tool_name))
+
+
+def verdict_for_effect(mode: AutopilotMode, effect: Effect) -> Verdict:
     if effect is Effect.UNGATED:
         return Verdict.RUN
     return _MODE_VERDICTS[mode][effect]

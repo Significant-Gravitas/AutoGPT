@@ -1,10 +1,10 @@
 """Human review for MCP calls made through ``run_capability``.
 
-MCP tool annotations are untrusted and, on the servers we see today, mostly
-absent, so the gate is conservative: a call to a server that is not in the
-official catalog pauses for review when the tool looks like a write.  Catalog
-servers run without a pause; their tools go through the same review record
-once the per-user tool cache carries ``destructiveHint``.
+With the auto-mode gate off, MCP tool annotations are untrusted and mostly
+absent, so a call to a server that is not in the official catalog pauses for
+review when the tool looks like a write; catalog servers run without a pause.
+With the gate on, none of this runs: the server's effect map decides, or the
+tool asks on first use (``gate/subject.py``).
 
 Records reuse the block review table with a synthetic node id so the
 existing approval UI, the pending-review feed and ``resume_capability`` all

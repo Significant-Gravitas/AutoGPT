@@ -25,6 +25,7 @@ from .models import (
 
 if TYPE_CHECKING:
     from backend.copilot.gate.headline import Headline
+    from backend.copilot.gate.subject import Subject
 
 logger = logging.getLogger(__name__)
 
@@ -308,12 +309,20 @@ async def _record_activity(
         )
 
 
+# Passed to ``_execute`` of a tool with a gate subject when the user approved
+# this exact call; stripped from the model's own arguments so it cannot be forged.
+GATE_APPROVED = "_gate_approved"
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
     # Opt-in for the digest: an outline is only readable back in windows, so a
     # tool whose bulk is one long text (a guide, a docs page) must not set it.
     digest_large_output: bool = False
+    # True where ``gate_subject`` is implemented; ``_execute`` then accepts
+    # GATE_APPROVED.
+    has_gate_subject: bool = False
 
     @property
     def name(self) -> str:
@@ -361,6 +370,16 @@ class BaseTool:
         """
         return None
 
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> "Subject | None":
+        """What this call acts on, where the tool's name alone does not say.
+
+        None leaves the decision to the tool's own effect; a tool that runs a
+        block or a workflow names it, so the gate decides on its effect.
+        """
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -390,6 +409,7 @@ class BaseTool:
             Pydantic response object
 
         """
+        kwargs.pop(GATE_APPROVED, None)
         if self.requires_auth and not user_id:
             logger.warning(
                 "Attempted tool call for %s but user not authenticated",
@@ -452,9 +472,12 @@ class BaseTool:
         # ``_execute_tool_sync`` — so there is one place to add, not two.
         # Must stay AFTER the envelope and name gates: a call the envelope refuses can
         # never run, so approving it would spend a user's decision on nothing.
-        gated = await self._gate(user_id, session, tool_call_id, kwargs)
+        gated, approved = await self._gate(user_id, session, tool_call_id, kwargs)
         if gated is not None:
             return gated
+        run_kwargs = kwargs
+        if approved and self.has_gate_subject:
+            run_kwargs = {**kwargs, GATE_APPROVED: True}
 
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
@@ -462,7 +485,7 @@ class BaseTool:
         session.announce_inflight_tool_call(self.name, kwargs)
 
         try:
-            result = await self._execute(user_id, session, **kwargs)
+            result = await self._execute(user_id, session, **run_kwargs)
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = result.model_dump_json(exclude_none=True)
@@ -503,37 +526,52 @@ class BaseTool:
         session: ChatSession,
         tool_call_id: str,
         kwargs: dict[str, Any],
-    ) -> StreamToolOutputAvailable | None:
-        """Refusal to return instead of running, or None to proceed.
+    ) -> tuple[StreamToolOutputAvailable | None, bool]:
+        """A refusal to return instead of running (or None to proceed), and
+        whether the user approved this exact call.
 
         A gate that crashes must not become a gate that passes, so an
         unexpected failure here refuses the call rather than falling through.
         """
         from backend.copilot.gate import check_action
 
+        async def subject_of() -> "Subject | None":
+            return await self.gate_subject(user_id or "", session, kwargs)
+
         try:
             decision = await check_action(
-                self.name, kwargs, user_id, session, tool_call_id
+                self.name,
+                kwargs,
+                user_id,
+                session,
+                tool_call_id,
+                subject_of=subject_of if self.has_gate_subject else None,
             )
         except Exception:
             logger.warning(f"Action gate failed for {self.name}", exc_info=True)
-            return self._refusal(
-                tool_call_id,
-                session,
-                "This action could not be checked against your approval "
-                "settings, so nothing ran. Tell the user and stop.",
-                args=kwargs,
+            return (
+                self._refusal(
+                    tool_call_id,
+                    session,
+                    "This action could not be checked against your approval "
+                    "settings, so nothing ran. Tell the user and stop.",
+                    args=kwargs,
+                ),
+                False,
             )
 
         if decision.allowed:
-            return None
-        return self._refusal(
-            tool_call_id,
-            session,
-            decision.reason,
-            review_id=decision.review_id,
-            args=kwargs,
-            headline=decision.headline,
+            return None, decision.approved
+        return (
+            self._refusal(
+                tool_call_id,
+                session,
+                decision.reason,
+                review_id=decision.review_id,
+                args=kwargs,
+                headline=decision.headline,
+            ),
+            False,
         )
 
     async def _released_read(

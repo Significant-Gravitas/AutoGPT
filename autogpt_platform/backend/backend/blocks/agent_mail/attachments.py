@@ -15,6 +15,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -78,6 +79,7 @@ class AgentMailGetMessageAttachmentBlock(Block):
             test_mock={
                 "get_attachment": lambda *a, **kw: b"test",
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -170,6 +172,7 @@ class AgentMailGetThreadAttachmentBlock(Block):
             test_mock={
                 "get_attachment": lambda *a, **kw: b"test",
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
