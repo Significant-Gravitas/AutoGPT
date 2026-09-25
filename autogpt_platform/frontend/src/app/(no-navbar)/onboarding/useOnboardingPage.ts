@@ -8,6 +8,7 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
+import { trackTrialCheckoutAbandoned } from "@/services/analytics/monetization-analytics";
 import { environment } from "@/services/environment";
 import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import {
@@ -162,6 +163,10 @@ export function useOnboardingPage() {
   useEffect(() => {
     if (!isReady || hasInitialized.current) return;
     hasInitialized.current = true;
+    // Read before the URL sync below rewrites the query to `?step=N`.
+    if (searchParams.get("trial") === "cancelled") {
+      trackTrialCheckoutAbandoned("onboarding");
+    }
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     // The paywall is the first step, so a successful Stripe checkout return
     // is a trusted intent to advance past it onto the step after it and start

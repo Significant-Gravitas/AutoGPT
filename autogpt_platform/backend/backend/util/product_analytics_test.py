@@ -1,9 +1,11 @@
 """Tests for the activation event vocabulary and its emitters."""
 
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
 
+from backend.data.experiments import ExperimentAssignment
 from backend.util import posthog_client, product_analytics
 from backend.util.posthog_events import PostHogEvent
 
@@ -342,3 +344,138 @@ def test_trigger_fired(capture: Mock) -> None:
     event, properties = _only_call(capture)
     assert event == "trigger_fired"
     assert properties["target"] == "expert"
+
+
+def test_signup_completed_carries_the_auth_provider(capture: Mock) -> None:
+    product_analytics.track_signup_completed(user_id="user-1", signup_method="google")
+
+    event, properties = _only_call(capture)
+    assert capture.call_args.kwargs["distinct_id"] == "user-1"
+    assert event == "signup_completed"
+    assert properties["signup_method"] == "google"
+
+
+def test_signup_completed_without_a_known_provider_omits_it(capture: Mock) -> None:
+    product_analytics.track_signup_completed(user_id="user-1", signup_method=None)
+
+    _, properties = _only_call(capture)
+    assert "signup_method" not in properties
+
+
+def test_onboarding_completed(capture: Mock) -> None:
+    product_analytics.track_onboarding_completed(user_id="user-1")
+
+    event, properties = _only_call(capture)
+    assert event == "onboarding_completed"
+    assert properties["source"] == "platform"
+
+
+@pytest.mark.asyncio
+async def test_checkout_started_carries_plan_surface_and_experiment_arms(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def arms(user_id: str) -> dict[str, str]:
+        assert user_id == "user-1"
+        return {"$feature/subscription-pricing-page-initial-state": "yearly-pro"}
+
+    monkeypatch.setattr(product_analytics, "_experiment_arm_properties", arms)
+
+    await product_analytics.track_checkout_started(
+        user_id="user-1",
+        checkout_kind="subscription",
+        surface="onboarding",
+        subscription_tier="PRO",
+        billing_cycle="yearly",
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "checkout_started"
+    assert properties["checkout_kind"] == "subscription"
+    assert properties["surface"] == "onboarding"
+    assert properties["subscription_tier"] == "PRO"
+    assert properties["billing_cycle"] == "yearly"
+    assert (
+        properties["$feature/subscription-pricing-page-initial-state"] == "yearly-pro"
+    )
+
+
+@pytest.mark.asyncio
+async def test_checkout_started_still_sends_when_arms_cannot_be_read(
+    capture: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def broken(user_id: str) -> dict[str, str]:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(product_analytics, "_experiment_arm_properties", broken)
+
+    await product_analytics.track_checkout_started(
+        user_id="user-1", checkout_kind="top_up", surface="billing"
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "checkout_started"
+    assert properties["checkout_kind"] == "top_up"
+    assert "subscription_tier" not in properties
+    assert not any(key.startswith("$feature/") for key in properties)
+
+
+@pytest.mark.asyncio
+async def test_experiment_arms_become_feature_properties(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def list_assignments(user_id: str) -> list[ExperimentAssignment]:
+        return [
+            ExperimentAssignment(
+                experiment_key="subscription-pricing-page-initial-state",
+                variant="monthly-max",
+                source="posthog",
+                assigned_at=datetime.now(timezone.utc),
+            )
+        ]
+
+    monkeypatch.setattr(product_analytics, "list_assignments", list_assignments)
+
+    assert await product_analytics._experiment_arm_properties("user-1") == {
+        "$feature/subscription-pricing-page-initial-state": "monthly-max"
+    }
+
+
+def test_subscription_ended(capture: Mock) -> None:
+    product_analytics.track_subscription_ended(
+        user_id="user-1",
+        subscription_tier="MAX",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+
+    event, properties = _only_call(capture)
+    assert event == "subscription_ended"
+    assert properties["subscription_tier"] == "MAX"
+    assert properties["billing_cycle"] == "monthly"
+    assert properties["reason"] == "payment_failed"
+
+
+def test_listing_added_to_library_and_downloaded(capture: Mock) -> None:
+    product_analytics.track_listing_added_to_library(
+        user_id="user-1",
+        store_listing_version_id="slv-1",
+        graph_id="graph-1",
+        library_agent_id="lib-1",
+    )
+    product_analytics.track_listing_downloaded(
+        user_id="user-1", store_listing_version_id="slv-1", graph_id="graph-1"
+    )
+
+    added, downloaded = capture.call_args_list
+    assert added.kwargs["event"] == "listing_added_to_library"
+    assert added.kwargs["properties"]["library_agent_id"] == "lib-1"
+    assert downloaded.kwargs["event"] == "listing_downloaded"
+    assert downloaded.kwargs["properties"]["store_listing_version_id"] == "slv-1"
+
+
+def test_signed_out_download_is_not_tracked(capture: Mock) -> None:
+    product_analytics.track_listing_downloaded(
+        user_id=None, store_listing_version_id="slv-1", graph_id="graph-1"
+    )
+
+    capture.assert_not_called()

@@ -17,6 +17,11 @@ import {
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 
+import {
+  trackCheckoutAbandoned,
+  trackTrialCheckoutAbandoned,
+} from "@/services/analytics/monetization-analytics";
+
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
@@ -42,6 +47,7 @@ export default function SettingsBillingPage() {
   const queryClient = useQueryClient();
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
+  const trialStatus = searchParams.get("trial");
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
@@ -76,6 +82,7 @@ export default function SettingsBillingPage() {
           // so a failure here is non-blocking.
         });
       } else if (topupStatus === "cancel") {
+        trackCheckoutAbandoned({ checkout_kind: "top_up", surface: "billing" });
         toast({
           title: "Payment cancelled",
           description: "Your payment method was not charged.",
@@ -104,6 +111,10 @@ export default function SettingsBillingPage() {
           queryKey: getGetSubscriptionStatusQueryKey(),
         });
       } else if (subscriptionStatus === "cancelled") {
+        trackCheckoutAbandoned({
+          checkout_kind: "subscription",
+          surface: "billing",
+        });
         toast({
           title: "Checkout cancelled",
           description: "Your plan was not changed.",
@@ -114,6 +125,13 @@ export default function SettingsBillingPage() {
       router.replace("/settings/billing");
     },
     [subscriptionStatus, queryClient, router],
+  );
+
+  useEffect(
+    function reportTrialCheckoutCancelled() {
+      if (trialStatus === "cancelled") trackTrialCheckoutAbandoned("billing");
+    },
+    [trialStatus],
   );
 
   return (

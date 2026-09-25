@@ -140,7 +140,24 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
-  SUBSCRIPTION_TRIAL_CHECKOUT_STARTED: "subscription_trial_checkout_started",
+} as const;
+
+export const TourEvent = {
+  TOUR_STARTED: "tour_started",
+  TOUR_SCENARIO_STARTED: "tour_scenario_started",
+  TOUR_SCENARIO_COMPLETED: "tour_scenario_completed",
+  TOUR_CTA_CLICKED: "tour_cta_clicked",
+} as const;
+
+export const OnboardingEvent = {
+  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
+} as const;
+
+export const MonetizationEvent = {
+  PAYWALL_VIEWED: "paywall_viewed",
+  PLAN_SELECTED: "plan_selected",
+  BILLING_PORTAL_OPENED: "billing_portal_opened",
+  CHECKOUT_ABANDONED: "checkout_abandoned",
 } as const;
 
 export const PostHogEvent = {
@@ -153,21 +170,14 @@ export const PostHogEvent = {
   ...VoiceModeEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
+  ...TourEvent,
+  ...OnboardingEvent,
+  ...MonetizationEvent,
 } as const;
 
-// In the tracking plan and NOT sent yet (SECRT-2723). Move a name into its
-// group above in the change that starts sending it.
-export const PlannedPostHogEvent = {
-  ONBOARDING_STEP_VIEWED: "onboarding_step_viewed",
-  PAYWALL_VIEWED: "paywall_viewed",
-  PLAN_SELECTED: "plan_selected",
-  BILLING_PORTAL_OPENED: "billing_portal_opened",
-  CHECKOUT_ABANDONED: "checkout_abandoned",
-  TOUR_STARTED: "tour_started",
-  TOUR_SCENARIO_STARTED: "tour_scenario_started",
-  TOUR_SCENARIO_COMPLETED: "tour_scenario_completed",
-  TOUR_CTA_CLICKED: "tour_cta_clicked",
-} as const;
+// In the tracking plan and NOT sent yet. Move a name into its group above in
+// the change that starts sending it.
+export const PlannedPostHogEvent: Record<string, string> = {};
 
 export type EventName<Group extends Record<string, string>> =
   Group[keyof Group];

@@ -50,6 +50,9 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
+    surface: Optional[Literal["billing"]] = pydantic.Field(
+        default=None, description="Where the top-up was started; analytics only."
+    )
 
 
 class CloudStorageUploadResponse(pydantic.BaseModel):

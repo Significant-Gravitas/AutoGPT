@@ -7,6 +7,7 @@ import { PlannedPostHogEvent, PostHogEvent } from "../posthog-events";
 
 const LIVE_EVENT_NAMES = [
   "$pageview",
+  "billing_portal_opened",
   "brain_dump_canceled",
   "brain_dump_completed",
   "brain_dump_download",
@@ -23,6 +24,7 @@ const LIVE_EVENT_NAMES = [
   "capability_card_viewed",
   "capability_cards_completed",
   "capability_cards_skipped",
+  "checkout_abandoned",
   "credential_card_never_rendered",
   "credential_oauth_flow_timed_out",
   "credential_oauth_popup_blocked",
@@ -43,10 +45,16 @@ const LIVE_EVENT_NAMES = [
   "intro_followup_sent",
   "intro_path",
   "later_dump_completed",
-  "subscription_trial_checkout_started",
+  "onboarding_step_viewed",
+  "paywall_viewed",
+  "plan_selected",
   "tab_intro_cta_clicked",
   "tab_intro_dismissed",
   "tab_intro_shown",
+  "tour_cta_clicked",
+  "tour_scenario_completed",
+  "tour_scenario_started",
+  "tour_started",
   "transcription_failed",
   "trial_offer_viewed",
   "voice_mode_error",
@@ -62,17 +70,7 @@ const LIVE_EVENT_NAMES = [
   "welcome_dialog_closed",
 ];
 
-const PLANNED_EVENT_NAMES = [
-  "billing_portal_opened",
-  "checkout_abandoned",
-  "onboarding_step_viewed",
-  "paywall_viewed",
-  "plan_selected",
-  "tour_cta_clicked",
-  "tour_scenario_completed",
-  "tour_scenario_started",
-  "tour_started",
-];
+const PLANNED_EVENT_NAMES: string[] = [];
 
 // No longer sent, or renamed (SECRT-2722). The names stay reserved: reusing one would
 // splice a different action onto the history PostHog already holds for it.
@@ -86,6 +84,8 @@ const RETIRED_EVENT_NAMES = [
   "intro_start_with_autopilot",
   "onboarding_expert_hired",
   "raise_door_clicked",
+  // Folded into the backend's checkout_started{checkout_kind: trial}.
+  "subscription_trial_checkout_started",
   // Renamed to the analytics plan's trial_offer_viewed.
   "subscription_trial_offer_viewed",
   "voice_first_sound_latency_ms",

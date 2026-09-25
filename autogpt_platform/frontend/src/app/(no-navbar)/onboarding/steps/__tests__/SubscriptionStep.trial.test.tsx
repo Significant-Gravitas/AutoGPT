@@ -109,13 +109,37 @@ test.each([
       offer_token: trialOffer.token,
       return_to: "onboarding",
     });
-    expect(posthog.capture).toHaveBeenCalledWith(
+    // The backend sends checkout_started (checkout_kind: trial) once the
+    // Checkout session exists, so the browser sends no checkout event.
+    expect(posthog.capture).not.toHaveBeenCalledWith(
       "subscription_trial_checkout_started",
-      { trial_offer_version: trialOffer.version, surface: "onboarding" },
+      expect.anything(),
     );
     expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
   },
 );
+
+test("re-arms trial abandonment tracking when a new trial checkout starts", async () => {
+  // Left by an earlier abandonment in this tab: without clearing it, backing
+  // out of this checkout too would go unreported.
+  sessionStorage.setItem("posthog_trial_checkout_abandoned_onboarding", "1");
+  mockStatus();
+  server.use(
+    getPostTrialsStartTrialCheckoutMockHandler200({
+      url: "https://checkout.stripe.com/trial",
+    }),
+  );
+  render(<SubscriptionStep />);
+  const card = within(await screen.findByRole("region", { name: "Pro plan" }));
+  fireEvent.click(
+    await card.findByRole("button", { name: "Start 7-day trial" }),
+  );
+
+  await waitFor(() => expect(checkoutLocation.assign).toHaveBeenCalled());
+  expect(
+    sessionStorage.getItem("posthog_trial_checkout_abandoned_onboarding"),
+  ).toBeNull();
+});
 
 test("uses the server's duration, currency, renewal cycle, and terms", async () => {
   mockStatus(

@@ -15194,6 +15194,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -28395,7 +28396,15 @@
       },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -30613,6 +30622,17 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",

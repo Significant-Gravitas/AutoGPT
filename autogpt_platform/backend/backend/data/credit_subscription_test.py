@@ -12,6 +12,7 @@ from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
+    PAYMENT_FAILURE_CANCELLATION_COMMENT,
     UserCredit,
     _get_active_subscription_cached,
     _is_stripe_reconcilable,
@@ -30,6 +31,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
+from backend.util.exceptions import InsufficientBalanceError
 
 
 class _CacheClearable(Protocol):
@@ -1860,6 +1862,61 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
         assert kwargs.get("transaction_key") == "in_idempotency_test"
 
 
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_failure_marks_its_cancel_as_payment_failed():
+    """Stripe stamps our API cancel ``cancellation_requested``; the comment is
+    what lets the deletion webhook report it as involuntary churn."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_uncovered",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_due": 2000,
+    }
+    active_subs = MagicMock()
+    active_subs.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_abc123", "schedule": None}, "sk_test"
+        )
+    ]
+    active_subs.has_more = False
+    no_subs = MagicMock()
+    no_subs.data = []
+    no_subs.has_more = False
+
+    def list_side_effect(*args, **kwargs):
+        return no_subs if kwargs.get("status") == "trialing" else active_subs
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new_callable=AsyncMock,
+            side_effect=InsufficientBalanceError(
+                message="no balance", user_id="user-1", balance=0, amount=2000
+            ),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            side_effect=list_side_effect,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
+    ):
+        await handle_subscription_payment_failure(invoice)
+
+    mock_cancel.assert_called_once_with(
+        "sub_abc123",
+        cancellation_details={"comment": PAYMENT_FAILURE_CANCELLATION_COMMENT},
+    )
+
+
 def _patch_credit_grant_config(enabled: bool):
     """Patch ``settings.config.enable_subscription_credit_grant`` for the
     success handler's gate check.
@@ -1958,6 +2015,7 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
         "customer": "cus_123",
         "subscription": "sub_abc123",
         "amount_paid": 5000,
+        "currency": "usd",
         "subscription_details": {
             "metadata": {
                 "tier": "PRO",
@@ -1992,6 +2050,52 @@ async def test_handle_subscription_payment_success_tracks_paid_plan_when_grants_
     assert kwargs["distinct_id"] == "user-1"
     assert kwargs["properties"]["subscription_tier"] == "PRO"
     assert kwargs["properties"]["billing_cycle"] == "yearly"
+    # Revenue is what the invoice actually charged, in the minor unit.
+    assert kwargs["properties"]["amount_cents"] == 5000
+    assert kwargs["properties"]["currency"] == "usd"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_is_deduplicated_per_invoice():
+    """invoice.payment_succeeded and invoice_payment.paid both deliver the
+    same invoice, and Stripe redelivers on a failed handler: every send for
+    one invoice must carry the same event uuid so revenue is counted once."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+
+    def invoice(invoice_id: str) -> dict:
+        return {
+            "id": invoice_id,
+            "customer": "cus_123",
+            "subscription": "sub_abc123",
+            "amount_paid": 5000,
+            "currency": "usd",
+            "subscription_details": {
+                "metadata": {"tier": "PRO", "billing_cycle": "monthly"}
+            },
+        }
+
+    track_mock = MagicMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.util.posthog_client.get_posthog_client",
+            return_value=MagicMock(capture=track_mock),
+        ),
+        patch("backend.util.posthog_client._environment", return_value="test"),
+        _patch_credit_grant_config(False),
+    ):
+        await handle_subscription_payment_success(invoice("in_1"))
+        await handle_subscription_payment_success(invoice("in_1"))
+        await handle_subscription_payment_success(invoice("in_2"))
+
+    first, redelivery, next_invoice = track_mock.call_args_list
+    assert first.kwargs["uuid"] is not None
+    assert first.kwargs["uuid"] == redelivery.kwargs["uuid"]
+    assert first.kwargs["properties"]["$insert_id"] == "in_1"
+    assert next_invoice.kwargs["uuid"] != first.kwargs["uuid"]
 
 
 @pytest.mark.asyncio
@@ -2461,6 +2565,8 @@ async def test_top_up_credits_tracks_success():
     payment_intent = MagicMock()
     payment_intent.status = "succeeded"
     payment_intent.id = "pi_123"
+    payment_intent.amount = 500
+    payment_intent.currency = "usd"
     track_mock = MagicMock()
 
     with (
@@ -2504,6 +2610,8 @@ async def test_top_up_credits_tracks_success():
     assert kwargs["properties"] == {
         "amount_credits": 500,
         "top_up_type": "UNCATEGORIZED",
+        "amount_cents": 500,
+        "currency": "usd",
         **BASE_PROPERTIES,
     }
 
@@ -2519,6 +2627,8 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
         {
             "id": "cs_test_topup",
             "payment_status": "paid",
+            "amount_total": 2750,
+            "currency": "usd",
             "payment_intent": stripe.PaymentIntent.construct_from(
                 {"id": "pi_test_topup"}, "k"
             ),
@@ -2554,9 +2664,13 @@ async def test_fulfill_checkout_tracks_credit_topup_success():
     _, kwargs = track_mock.call_args
     assert kwargs["event"] == "topup_completed"
     assert kwargs["distinct_id"] == "user-1"
+    # amount_cents is the session total actually charged (tax included), not
+    # the credit amount.
     assert kwargs["properties"] == {
         "amount_credits": 2500,
         "top_up_type": "CHECKOUT",
+        "amount_cents": 2750,
+        "currency": "usd",
         **BASE_PROPERTIES,
     }
 

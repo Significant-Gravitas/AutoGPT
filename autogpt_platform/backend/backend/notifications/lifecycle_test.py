@@ -11,10 +11,11 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.enums import NotificationType
+from prisma.enums import NotificationType, SubscriptionTier
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import NotificationResult, SubscriptionPlan
-from backend.notifications import lifecycle
+from backend.notifications import lifecycle, lifecycle_plan
 from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
@@ -108,6 +109,11 @@ def _context(user, claim=True, audience_ok=True):
                 return_value=NotificationResult(success=audience_ok, message="test")
             ),
         ),
+        patch(
+            "backend.notifications.lifecycle.tier_and_cycle_from_subscription",
+            AsyncMock(return_value=("PRO", "monthly")),
+        ),
+        patch("backend.notifications.lifecycle.track_subscription_ended"),
     ]
 
 
@@ -116,7 +122,12 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
     started = [p.start() for p in patches]
     try:
         await coro_factory()
-        return {"notify": started[4], "audience": started[5], "claim": started[3]}
+        return {
+            "notify": started[4],
+            "audience": started[5],
+            "claim": started[3],
+            "ended": started[7],
+        }
     finally:
         for p in patches:
             p.stop()
@@ -299,6 +310,93 @@ async def test_the_ended_email_branches_on_which_road_they_took():
         _User(),
     )
     assert calls["notify"].await_args.args[0].data.due_to_payment is False
+
+
+@pytest.mark.asyncio
+async def test_a_subscription_end_is_sent_to_analytics_once():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(cancellation_details={"reason": "payment_failed"})
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+
+    # A Stripe replay finds the claim spent: no second churn.
+    replay = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(),
+        claim=False,
+    )
+    replay["ended"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_our_own_cancel_after_a_failed_renewal_is_involuntary_churn():
+    # Stripe stamps any API cancel "cancellation_requested"; the comment
+    # handle_subscription_payment_failure leaves is what tells them apart.
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": PAYMENT_FAILURE_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["ended"].assert_called_once_with(
+        user_id="user-1",
+        subscription_tier="PRO",
+        billing_cycle="monthly",
+        reason="payment_failed",
+    )
+    assert calls["notify"].await_args.args[0].data.due_to_payment is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_ended_email_sends_no_analytics_event():
+    patches = _context(_User())
+    started = [p.start() for p in patches]
+    started[4].return_value = NotificationResult(success=False, message="down")
+    with patch("backend.notifications.lifecycle.release_claim", AsyncMock()):
+        try:
+            with pytest.raises(RuntimeError):
+                await lifecycle.on_subscription_deleted(_subscription())
+            started[7].assert_not_called()
+        finally:
+            for p in patches:
+                p.stop()
+
+
+@pytest.mark.asyncio
+async def test_tier_and_cycle_come_from_the_subscription_price():
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(return_value={"price_1": SubscriptionTier.MAX}),
+    ):
+        yearly = _subscription()
+        yearly["items"]["data"][0]["price"]["recurring"] = {"interval": "year"}
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(yearly) == (
+            "MAX",
+            "yearly",
+        )
+
+    with patch.object(
+        lifecycle_plan,
+        "build_price_to_tier_map",
+        AsyncMock(side_effect=RuntimeError("LD down")),
+    ):
+        assert await lifecycle_plan.tier_and_cycle_from_subscription(
+            _subscription()
+        ) == (None, "monthly")
 
 
 def test_the_platform_does_not_listen_for_trials():

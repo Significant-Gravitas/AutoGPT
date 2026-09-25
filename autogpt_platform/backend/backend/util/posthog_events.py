@@ -60,16 +60,17 @@ class PostHogEvent(StrEnum):
     TRIAL_CONVERTED = "trial_converted"
     PAYMENT_FAILED = "payment_failed"
 
-
-class PlannedPostHogEvent(StrEnum):
-    """Planned in the tracking plan and NOT emitted yet (SECRT-2723).
-
-    Move a member into ``PostHogEvent`` in the change that starts sending it.
-    """
-
+    # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
     CHECKOUT_STARTED = "checkout_started"
     SUBSCRIPTION_ENDED = "subscription_ended"
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
+
+
+class PlannedPostHogEvent(StrEnum):
+    """Planned in the tracking plan and NOT emitted yet.
+
+    Move a member into ``PostHogEvent`` in the change that starts sending it.
+    """

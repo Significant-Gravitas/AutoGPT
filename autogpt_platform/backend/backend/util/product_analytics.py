@@ -46,6 +46,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from backend.data.experiments import list_assignments
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
@@ -304,4 +305,105 @@ def track_integration_connected(
             "credential_type": _enum_value(credential_type),
             "method": method,
         },
+    )
+
+
+CheckoutKind = Literal["subscription", "top_up", "trial"]
+
+
+def track_signup_completed(*, user_id: str, signup_method: str | None) -> None:
+    """The user row was just created. ``signup_method`` is the auth provider."""
+    track(user_id, PostHogEvent.SIGNUP_COMPLETED, {"signup_method": signup_method})
+
+
+def track_onboarding_completed(*, user_id: str) -> None:
+    track(user_id, PostHogEvent.ONBOARDING_COMPLETED)
+
+
+async def track_checkout_started(
+    *,
+    user_id: str,
+    checkout_kind: CheckoutKind,
+    surface: str | None = None,
+    subscription_tier: str | None = None,
+    billing_cycle: str | None = None,
+) -> None:
+    """A Stripe Checkout session was created and the user is sent to it.
+
+    Carries the user's recorded experiment arms as ``$feature/<key>``, the
+    property PostHog experiments read, so the pricing test can use this
+    server-side event as a goal just like the browser's own events.
+    """
+    try:
+        arms = await _experiment_arm_properties(user_id)
+    except Exception:
+        logger.warning("Failed to read experiment arms for user %s", user_id)
+        arms = {}
+    track(
+        user_id,
+        PostHogEvent.CHECKOUT_STARTED,
+        {
+            **arms,
+            "checkout_kind": checkout_kind,
+            "surface": surface,
+            "subscription_tier": _enum_value(subscription_tier),
+            "billing_cycle": billing_cycle,
+        },
+    )
+
+
+async def _experiment_arm_properties(user_id: str) -> dict[str, str]:
+    return {
+        f"$feature/{assignment.experiment_key}": assignment.variant
+        for assignment in await list_assignments(user_id)
+    }
+
+
+def track_subscription_ended(
+    *,
+    user_id: str,
+    subscription_tier: str | None,
+    billing_cycle: str | None,
+    reason: str | None,
+) -> None:
+    track(
+        user_id,
+        PostHogEvent.SUBSCRIPTION_ENDED,
+        {
+            "subscription_tier": subscription_tier,
+            "billing_cycle": billing_cycle,
+            "reason": reason,
+        },
+    )
+
+
+def track_listing_added_to_library(
+    *,
+    user_id: str,
+    store_listing_version_id: str,
+    graph_id: str,
+    library_agent_id: str,
+) -> None:
+    track(
+        user_id,
+        PostHogEvent.LISTING_ADDED_TO_LIBRARY,
+        {
+            "store_listing_version_id": store_listing_version_id,
+            "graph_id": graph_id,
+            "library_agent_id": library_agent_id,
+        },
+    )
+
+
+def track_listing_downloaded(
+    *,
+    user_id: str | None,
+    store_listing_version_id: str,
+    graph_id: str,
+) -> None:
+    """A signed-out download has no user, so ``track`` drops it."""
+    track(
+        user_id,
+        PostHogEvent.LISTING_DOWNLOADED,
+        {"store_listing_version_id": store_listing_version_id, "graph_id": graph_id},
     )

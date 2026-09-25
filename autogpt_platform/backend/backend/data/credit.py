@@ -1108,6 +1108,7 @@ class UserCredit(UserCreditBase):
 
         successful_transaction = None
         new_transaction_key = None
+        charged: stripe.PaymentIntent | None = None
         for payment_method in payment_methods:
             if transaction_type == CreditTransactionType.CARD_CHECK:
                 setup_intent = await stripe_call(
@@ -1145,6 +1146,7 @@ class UserCredit(UserCreditBase):
                         {"payment_intent": payment_intent}
                     )
                     new_transaction_key = payment_intent.id
+                    charged = payment_intent
                     break
 
         if not successful_transaction:
@@ -1168,6 +1170,8 @@ class UserCredit(UserCreditBase):
                 {
                     "amount_credits": amount,
                     "top_up_type": top_up_type.value,
+                    "amount_cents": charged.amount if charged else None,
+                    "currency": charged.currency if charged else None,
                 },
             )
 
@@ -1311,6 +1315,8 @@ class UserCredit(UserCreditBase):
                     {
                         "amount_credits": credit_transaction.amount,
                         "top_up_type": "CHECKOUT",
+                        "amount_cents": checkout_session.amount_total,
+                        "currency": checkout_session.currency,
                     },
                 )
 
@@ -1571,10 +1577,18 @@ def invalidate_subscription_caches(user_id: str) -> None:
     get_pending_subscription_change.cache_delete(user_id)
 
 
+# Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
+# any cancel made through the API, including ours after a failed renewal the
+# balance could not cover. This comment on that cancel is what lets the
+# ``customer.subscription.deleted`` handler report it as involuntary churn.
+PAYMENT_FAILURE_CANCELLATION_COMMENT = "autogpt:payment_failed"
+
+
 async def _cancel_customer_subscriptions(
     customer_id: str,
     exclude_sub_id: str | None = None,
     at_period_end: bool = False,
+    cancellation_comment: str | None = None,
 ) -> int:
     """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
 
@@ -1587,6 +1601,9 @@ async def _cancel_customer_subscriptions(
 
     Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
+
+    ``cancellation_comment`` is set as ``cancellation_details.comment`` on an
+    immediate cancel, where the subscription's deletion webhook can read it.
 
     Returns the number of subscriptions cancelled/scheduled for cancellation.
     """
@@ -1631,14 +1648,31 @@ async def _cancel_customer_subscriptions(
                 canceled = await stripe_call(
                     stripe.Subscription.cancel_async,
                     sub_id,
-                    invoice_now=False,
-                    prorate=False,
+                    **_cancel_params(cancellation_comment, trial=True),
                 )
                 if (sub.get("metadata") or {}).get("trial_enrollment_id"):
                     await sync_subscription_from_stripe(dict(canceled))
             else:
-                await stripe_call(stripe.Subscription.cancel_async, sub_id)
+                await stripe_call(
+                    stripe.Subscription.cancel_async,
+                    sub_id,
+                    **_cancel_params(cancellation_comment, trial=False),
+                )
     return len(seen_ids)
+
+
+def _cancel_params(
+    cancellation_comment: str | None, *, trial: bool
+) -> stripe.Subscription.CancelParams:
+    """A trial ends without an invoice or proration; a comment, when given,
+    becomes ``cancellation_details.comment``."""
+    params: stripe.Subscription.CancelParams = {}
+    if trial:
+        params["invoice_now"] = False
+        params["prorate"] = False
+    if cancellation_comment:
+        params["cancellation_details"] = {"comment": cancellation_comment}
+    return params
 
 
 async def cancel_stripe_subscription(user_id: str) -> bool:
@@ -3008,11 +3042,15 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 
 
 def _track_billing_event(
-    event: PostHogEvent, distinct_id: str, properties: dict[str, Any]
+    event: PostHogEvent,
+    distinct_id: str,
+    properties: dict[str, Any],
+    *,
+    dedup_key: str | None = None,
 ) -> None:
     # The shared client, never the posthog module's globals: another library
     # (graphiti-core) configures those for its own telemetry (SECRT-2710).
-    posthog_client.capture(distinct_id, event, properties)
+    posthog_client.capture(distinct_id, event, properties, dedup_key=dedup_key)
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
@@ -3032,7 +3070,17 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
         _track_billing_event(
             PostHogEvent.PAYMENT_SUCCEEDED,
             user.id,
-            {"subscription_tier": tier, "billing_cycle": billing_cycle},
+            {
+                "subscription_tier": tier,
+                "billing_cycle": billing_cycle,
+                "amount_cents": invoice.get("amount_paid"),
+                "currency": invoice.get("currency"),
+            },
+            # One invoice is one payment: Stripe delivers both
+            # invoice.payment_succeeded and invoice_payment.paid for it, and
+            # redelivers either on a failed handler, so the revenue sum would
+            # count it twice without this.
+            dedup_key=invoice.get("id") or None,
         )
     except Exception:
         logger.warning(
@@ -3164,7 +3212,9 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             sub_id,
         )
         try:
-            await _cancel_customer_subscriptions(customer_id)
+            await _cancel_customer_subscriptions(
+                customer_id, cancellation_comment=PAYMENT_FAILURE_CANCELLATION_COMMENT
+            )
         except stripe.StripeError:
             logger.warning(
                 "handle_subscription_payment_failure: failed to cancel Stripe sub %s"

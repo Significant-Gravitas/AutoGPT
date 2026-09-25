@@ -399,6 +399,78 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     )
 
 
+@pytest.fixture
+def add_to_library_steps(mocker) -> dict[str, MagicMock]:
+    """Stub the resolve/restore/create helpers the add path is built from."""
+    store_version = MagicMock(id="version123")
+    graph = MagicMock(id="agent1", version=1)
+    return {
+        "resolve": mocker.patch.object(
+            db,
+            "resolve_store_version_for_library",
+            AsyncMock(return_value=store_version),
+        ),
+        "restore": mocker.patch.object(
+            db, "restore_existing_library_agent", AsyncMock(return_value=None)
+        ),
+        "graph": mocker.patch.object(
+            db, "resolve_graph_model_for_library", AsyncMock(return_value=graph)
+        ),
+        "add": mocker.patch.object(
+            db,
+            "add_graph_to_library",
+            AsyncMock(return_value=MagicMock(id="library-agent")),
+        ),
+        "track": mocker.patch.object(db, "track_listing_added_to_library"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_first_marketplace_add_sends_listing_added_to_library(
+    add_to_library_steps,
+):
+    await db.add_store_agent_to_library("version123", "test-user")
+
+    add_to_library_steps["track"].assert_called_once_with(
+        user_id="test-user",
+        store_listing_version_id="version123",
+        graph_id="agent1",
+        library_agent_id="library-agent",
+    )
+
+
+@pytest.mark.asyncio
+async def test_re_adding_a_marketplace_agent_sends_nothing(add_to_library_steps):
+    add_to_library_steps["restore"].return_value = MagicMock(id="library-agent")
+
+    await db.add_store_agent_to_library("version123", "test-user")
+
+    add_to_library_steps["track"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_system_install_of_a_listing_sends_nothing(add_to_library_steps):
+    # An expert's preloads and workflows are installed for the user, not
+    # picked by them; `workflow_installed_on_expert` covers those.
+    library_agent = await db.add_store_agent_to_library(
+        "version123", "test-user", track_listing_added=False
+    )
+
+    assert library_agent.id == "library-agent"
+    add_to_library_steps["add"].assert_awaited_once()
+    add_to_library_steps["track"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_transactional_marketplace_add_sends_nothing(add_to_library_steps):
+    # The caller's transaction may still roll back; its own event covers it.
+    await db.add_store_agent_to_library_in_transaction(
+        "version123", "test-user", tx=MagicMock()
+    )
+
+    add_to_library_steps["track"].assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_restore_existing_library_agent_handles_deleted_update(mocker):
     from backend.api.features.library._add_to_library import (
