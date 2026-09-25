@@ -19,7 +19,11 @@ from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.io import (
+    AgentGoogleDriveFileInputBlock,
+    AgentInputBlock,
+    AgentOutputBlock,
+)
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
@@ -32,7 +36,9 @@ from backend.data.graph import (
     delete_graph,
     fork_graph,
     get_graph,
+    get_graph_all_versions,
     get_graph_settings,
+    get_store_listed_graphs,
     graph_in_library_filter,
     make_graph_model,
     migrate_llm_models,
@@ -774,6 +780,73 @@ def _sheets_graph_row(owner_id: str) -> AgentGraph:
             )
         ],
     )
+
+
+def test_an_agent_file_input_default_counts_as_a_picked_file():
+    """
+    The default file of an agent's Google Drive file input embeds the
+    credentials it was picked with, like a picker field. Its block declares
+    the picker only per node, so the input is recognised by its type: exports
+    strip it and a save keeps it only for its owner.
+    """
+    graph = _graph_of()
+    # Added after make_graph_model, which computes the input schema; that
+    # can't yet handle a Drive input with a default file.
+    graph.nodes.append(
+        NodeModel(
+            id="file-input",
+            graph_id=graph.id,
+            graph_version=graph.version,
+            block_id=AgentGoogleDriveFileInputBlock().id,
+            input_default={"name": "file", "value": _picked_file("owner-cred")},
+        )
+    )
+    [node] = graph.nodes
+
+    assert node.stripped_for_export().input_default["value"] is None
+    graph.clear_auto_credentials(keep_ids={"owner-cred"})
+    assert node.input_default["value"] == _picked_file("owner-cred")
+    graph.clear_auto_credentials()
+    assert node.input_default["value"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_graph_all_versions_clears_picked_files_for_anyone_but_the_owner(
+    mocker,
+):
+    """[SECRT-1772] A teammate reading a graph's version history through org
+    visibility gets the owner's picked files cleared, as `get_graph` does."""
+    graph_client = AsyncMock()
+    graph_client.find_many.side_effect = lambda **_: [_sheets_graph_row("owner")]
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=graph_client)
+    mocker.patch(
+        "backend.data.graph.get_user_team_ids", AsyncMock(return_value=["team-a"])
+    )
+
+    [teammate_view] = await get_graph_all_versions(
+        "g-1", "teammate", organization_id="org-1"
+    )
+    [owner_view] = await get_graph_all_versions("g-1", "owner", organization_id="org-1")
+
+    assert teammate_view.nodes[0].input_default["spreadsheet"] is None
+    assert owner_view.nodes[0].input_default["spreadsheet"] == _picked_file(
+        "owner-cred"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_store_listed_graphs_never_carries_picked_files(mocker):
+    """A public read: the publisher's picked files aren't part of it."""
+    listing = MagicMock(agentGraphId="g-1", AgentGraph=_sheets_graph_row("owner"))
+    listing_client = AsyncMock()
+    listing_client.find_many.return_value = [listing]
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=listing_client
+    )
+
+    graphs = await get_store_listed_graphs(["g-1"])
+
+    assert graphs["g-1"].nodes[0].input_default["spreadsheet"] is None
 
 
 @pytest.mark.asyncio

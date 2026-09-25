@@ -4,7 +4,17 @@ import uuid
 from collections import defaultdict
 from collections.abc import Container
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    Optional,
+    Self,
+    cast,
+    get_args,
+)
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -199,8 +209,10 @@ class NodeModel(Node):
 
 
 def _auto_credentials_field_names(node: Node) -> list[str]:
-    """Inputs of the node's block that take a file from an auto-credentials
-    picker (e.g. a GoogleDriveFile carrying `_credentials_id`)."""
+    """Inputs of the node's block that hold a picked file: the auto-credentials
+    picker fields its schema declares, plus any input typed as a file carrying
+    `_credentials_id`. The second covers the default of an agent's Google Drive
+    file input, whose picker is only declared per node."""
     if get_block(node.block_id) is None:
         # The block was removed, so no schema says which inputs are pickers.
         # Treat any value that embeds a `_credentials_id` as one, so a picked
@@ -210,10 +222,31 @@ def _auto_credentials_field_names(node: Node) -> list[str]:
             for field_name, value in node.input_default.items()
             if isinstance(value, dict) and "_credentials_id" in value
         ]
-    return [
+    input_schema = node.block.input_schema
+    declared = [
         info["field_name"]
-        for info in node.block.input_schema.get_auto_credentials_fields().values()
+        for info in input_schema.get_auto_credentials_fields().values()
     ]
+    typed = [
+        field_name
+        for field_name, field in input_schema.model_fields.items()
+        if field_name not in declared and _holds_picked_file(field.annotation)
+    ]
+    return declared + typed
+
+
+def _holds_picked_file(annotation: Any) -> bool:
+    """Whether a field of this type holds a picked file: a model with a
+    `_credentials_id` field, like GoogleDriveFile, or an Optional of one."""
+    return any(
+        isinstance(candidate, type)
+        and issubclass(candidate, BaseModel)
+        and any(
+            field.alias == "_credentials_id"
+            for field in candidate.model_fields.values()
+        )
+        for candidate in (annotation, *get_args(annotation))
+    )
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -1569,11 +1602,15 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
         order={"agentGraphVersion": "desc"},
     )
 
-    return {
+    graphs = {
         listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
         for listing in store_listings
         if listing.AgentGraph
     }
+    for graph in graphs.values():
+        # Public reads never carry the publisher's picked files.
+        graph.clear_auto_credentials()
+    return graphs
 
 
 async def get_graph_as_admin(
@@ -1739,7 +1776,13 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    return [GraphModel.from_db(graph) for graph in graph_versions]
+    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
 
 
 async def delete_graph(
