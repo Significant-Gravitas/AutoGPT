@@ -135,10 +135,16 @@ class CDP:
         for target in targets:
             if target.type != "iframe":
                 continue
-            child_session = await self.attach_target(target.targetId)
-            child_tree = (
-                await self.call("Page.getFrameTree", {}, child_session)
-            ).frameTree
+            try:
+                child_session = await self.attach_target(target.targetId)
+                child_tree = (
+                    await self.call("Page.getFrameTree", {}, child_session)
+                ).frameTree
+            except RuntimeError:
+                # Any tab's iframes are listed here, and one can close or fail
+                # to attach. If the payment fields were in it, they are simply
+                # not found and the checkout is refused as usual.
+                continue
             if child_tree:
                 pending.extend(
                     FrameContext(

@@ -4,6 +4,10 @@ import os
 import socket
 from pathlib import Path
 
+HANDSHAKE_SECONDS = 10
+# Every tunnel is cut after this long; the browser reconnects if it must.
+TUNNEL_SECONDS = 300
+
 
 def destination(authority: str, allowed_hosts: set[str]) -> str:
     host, separator, port = authority.rpartition(":")
@@ -51,9 +55,10 @@ async def tunnel(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, allowed_hosts: set[str]
 ) -> None:
     upstream_writer: asyncio.StreamWriter | None = None
+    established = False
     try:
-        async with asyncio.timeout(300):
-            async with asyncio.timeout(10):
+        async with asyncio.timeout(TUNNEL_SECONDS):
+            async with asyncio.timeout(HANDSHAKE_SECONDS):
                 header = await reader.readuntil(b"\r\n\r\n")
                 if len(header) > 8192:
                     raise ValueError("Request too large")
@@ -72,6 +77,7 @@ async def tunnel(
                 )
                 writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 await writer.drain()
+                established = True
             tasks = [
                 asyncio.create_task(relay(reader, upstream_writer)),
                 asyncio.create_task(relay(upstream_reader, writer)),
@@ -83,9 +89,12 @@ async def tunnel(
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
     except Exception:
-        writer.write(
-            b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        )
+        # Once the tunnel is open the stream is the client's TLS, and closing
+        # it is the only safe ending; a refusal goes only where none opened.
+        if not established:
+            writer.write(
+                b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
     finally:
         writer.close()
         if upstream_writer:

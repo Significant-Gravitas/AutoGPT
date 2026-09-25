@@ -49,6 +49,9 @@ class ScriptedBrowser:
         self.buttons = {"#pay"}
         # Fields with a maxlength; the rest take any length.
         self.max_length: dict[str, int] = {}
+        # Other targets the browser lists, and which of them fail to attach.
+        self.other_targets: list[dict] = []
+        self.broken_targets: set[str] = set()
         self.filled: dict[str, str] = {}
         self.clicks = 0
         self.closed = False
@@ -56,8 +59,18 @@ class ScriptedBrowser:
 
     async def send(self, raw: str) -> None:
         message = json.loads(raw)
-        result = self._answer(message["method"], message.get("params", {}))
-        await self._replies.put(json.dumps({"id": message["id"], "result": result}))
+        params = message.get("params", {})
+        if (
+            message["method"] == "Target.attachToTarget"
+            and params.get("targetId") in self.broken_targets
+        ):
+            reply = {"id": message["id"], "error": {"message": "No target"}}
+        else:
+            reply = {
+                "id": message["id"],
+                "result": self._answer(message["method"], params),
+            }
+        await self._replies.put(json.dumps(reply))
 
     async def recv(self) -> str:
         return await self._replies.get()
@@ -66,7 +79,8 @@ class ScriptedBrowser:
         if method == "Target.getTargets":
             return {
                 "targetInfos": [
-                    {"targetId": "tab", "type": "page", "url": CHECKOUT_URL}
+                    {"targetId": "tab", "type": "page", "url": CHECKOUT_URL},
+                    *self.other_targets,
                 ]
             }
         if method == "Target.attachToTarget":
@@ -288,3 +302,20 @@ async def test_a_field_that_changes_after_the_card_is_fetched_leaves_it_unused(
     assert receipt.status == "not_submitted"
     assert browser.filled == {}
     assert browser.clicks == 0
+
+
+@pytest.mark.asyncio
+async def test_an_iframe_elsewhere_that_cannot_be_attached_is_skipped(
+    browser, intent, monkeypatch
+):
+    browser.other_targets.append(
+        {"targetId": "ad", "type": "iframe", "url": "https://ads.example/frame"}
+    )
+    browser.broken_targets.add("ad")
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "submitted"
+    assert browser.clicks == 1
