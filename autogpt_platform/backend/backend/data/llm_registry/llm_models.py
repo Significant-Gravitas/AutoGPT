@@ -238,6 +238,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
     GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_7 = "x-ai/grok-4.7"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
