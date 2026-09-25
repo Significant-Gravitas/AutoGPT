@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.avatar_catalog import PRESETS
 from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
@@ -27,7 +28,6 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import AVATAR_BEARD, AVATAR_GLASSES, AVATAR_HAT, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -124,22 +124,10 @@ class RaiseExpertTool(BaseTool):
                     "enum": COLOR_TOKENS,
                     "description": "Avatar/chat accent token.",
                 },
-                "avatar_glasses": {
+                "avatar_category": {
                     "type": "string",
-                    "enum": list(AVATAR_GLASSES),
-                    "description": (
-                        "Role-appropriate eyewear; omit for name-seeded choice."
-                    ),
-                },
-                "avatar_beard": {
-                    "type": "string",
-                    "enum": list(AVATAR_BEARD),
-                    "description": ("Facial hair; omit for a name-seeded choice."),
-                },
-                "avatar_hat": {
-                    "type": "string",
-                    "enum": list(AVATAR_HAT),
-                    "description": ("Headwear; omit for a name-seeded choice."),
+                    "enum": list(PRESETS),
+                    "description": "Starting clay avatar palette. Saved independently of name and role; omit for warm stone.",
                 },
                 "about": {
                     "type": "string",
@@ -176,9 +164,7 @@ class RaiseExpertTool(BaseTool):
         job_title: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_glasses: str = "",
-        avatar_beard: str = "",
-        avatar_hat: str = "",
+        avatar_category: str = "content",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -199,22 +185,10 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        avatar_glasses = avatar_glasses.strip()
-        avatar_beard = avatar_beard.strip()
-        avatar_hat = avatar_hat.strip()
-        for field, value, options in (
-            ("avatar_glasses", avatar_glasses, AVATAR_GLASSES),
-            ("avatar_beard", avatar_beard, AVATAR_BEARD),
-            ("avatar_hat", avatar_hat, AVATAR_HAT),
-        ):
-            if value and value not in options:
-                return ErrorResponse(
-                    message=(
-                        f"Invalid expert charter — {field} must be one of: "
-                        + ", ".join(options)
-                    ),
-                    session_id=session_id,
-                )
+        if avatar_category not in PRESETS:
+            return ErrorResponse(
+                message="Invalid avatar_category", session_id=session_id
+            )
         try:
             params = _RaiseParams(
                 # Collapsed, not just stripped: the roster block in
@@ -278,13 +252,7 @@ class RaiseExpertTool(BaseTool):
             job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
-            avatar_url=build_avatar_url(
-                params.name,
-                glasses=avatar_glasses or None,
-                beard=avatar_beard or None,
-                hat=avatar_hat or None,
-                color_token=params.color or None,
-            ),
+            avatar_url=PRESETS[avatar_category].url,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
