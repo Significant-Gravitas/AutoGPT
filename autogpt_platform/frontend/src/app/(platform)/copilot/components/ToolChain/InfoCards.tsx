@@ -5,13 +5,11 @@ import {
   BookBookmarkIcon,
   CheckmarkCircle02Icon,
   CircleIcon,
-  ConnectIcon,
   MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useContext } from "react";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 
@@ -29,10 +27,6 @@ interface ErrorListProps {
 
 interface QuestionsCardProps {
   questions: Record<string, unknown>[];
-}
-
-interface SetupCardProps extends OutputProps {
-  provider: string | null;
 }
 
 export function PlanSteps({ steps }: ItemsProps) {
@@ -160,28 +154,6 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function SetupCard({ output, provider }: SetupCardProps) {
-  const setupInfo = asObject(output.setup_info);
-  const name = setupInfo ? str(setupInfo, "agent_name") : null;
-  if (!name) return null;
-  return (
-    <div className={`${CARD} ${HALF} flex items-center gap-2.5 p-2.5`}>
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-        <CardProviderIcon
-          provider={provider}
-          fallback={
-            <Icon icon={ConnectIcon} size={15} className="text-zinc-600" />
-          }
-        />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-zinc-800">{name}</p>
-        <p className="truncate text-xs text-zinc-500">Connection required</p>
-      </div>
     </div>
   );
 }

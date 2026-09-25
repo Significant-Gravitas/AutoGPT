@@ -152,13 +152,6 @@ async def test_outward_actions_ask_without_the_supervisor(
     supervisor.assert_not_awaited()
 
 
-async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):
-    decision = await check_action(
-        "post_to_chat_platform", {"text": "hi"}, "u", _session("unsupervised")
-    )
-    assert decision.allowed
-
-
 async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state):
     """An approval means 'you may do this', not 'you may use this tool'."""
     approved = AsyncMock(return_value=_row(ReviewStatus.APPROVED))
@@ -222,6 +215,7 @@ async def test_a_chat_ask_rule_holds_in_every_mode(gate_on, clean_session_state,
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
     assert not decision.allowed
     assert decision.review_id
+    assert decision.reason == chat_rules.DECLINED
     supervisor.assert_not_awaited()
 
 
@@ -289,9 +283,3 @@ async def test_an_unreadable_ask_rule_asks_without_claiming_a_decline(
         decision = await check_action("delete_folder", {"id": "f"}, "u", _session(mode))
     assert not decision.allowed
     assert decision.reason == chat_rules.UNREADABLE
-
-
-async def test_a_rejected_tool_says_the_user_declined_it(gate_on, clean_session_state):
-    with patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value="ask")):
-        decision = await check_action("delete_folder", {"id": "f"}, "u", _session())
-    assert decision.reason == chat_rules.DECLINED

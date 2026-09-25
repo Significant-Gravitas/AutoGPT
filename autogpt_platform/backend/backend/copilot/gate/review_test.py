@@ -19,12 +19,6 @@ from backend.copilot.gate.review import (
 from backend.copilot.gate.subject import block_subject, mcp_subject
 
 
-def test_the_same_call_is_the_same_approval():
-    a = review_id_for("s1", "u1", "bash_exec", {"command": "ls"})
-    b = review_id_for("s1", "u1", "bash_exec", {"command": "ls"})
-    assert a == b
-
-
 def test_argument_order_does_not_change_identity():
     a = review_id_for("s1", "u1", "run_agent", {"x": 1, "y": 2})
     b = review_id_for("s1", "u1", "run_agent", {"y": 2, "x": 1})
@@ -72,13 +66,6 @@ def test_secrets_are_redacted_before_a_human_reads_them():
     )
     assert "sk-live-abc" not in str(payload)
     assert payload["arguments"]["url"] == "https://x"
-
-
-def test_oversized_arguments_are_truncated():
-    """File references expand before the handler runs, so an argument can
-    arrive holding an entire file."""
-    payload = review_payload("write_workspace_file", {"content": "x" * 50_000})
-    assert len(str(payload)) < 10_000
 
 
 def test_a_padded_argument_cannot_push_another_off_the_card():
@@ -130,10 +117,13 @@ def test_fields_follow_the_schema_required_first_with_labels():
     assert {"key": "extra", "label": "Extra"} in payload["fields"]
 
 
-def test_a_clipped_argument_is_named_so_the_card_can_say_so():
+def test_an_oversized_argument_is_clipped_and_named_so_the_card_can_say_so():
+    """File references expand before the handler runs, so an argument can
+    arrive holding an entire file."""
     payload = review_payload(
         "write_workspace_file", {"content": "x" * 50_000, "filename": "a.md"}
     )
+    assert len(str(payload)) < 10_000
     assert payload["clipped"] == ["content"]
 
 

@@ -178,14 +178,6 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
         assert rows.rows == {}
 
 
-async def test_a_judge_that_could_not_decide_holds(rows):
-    unchecked = ContentVerdict(held=True, passage="unchecked", judged=False)
-    with patch(f"{_READS}.judge_content", _judge(unchecked)):
-        result = await _call(_Fetch(_MARKER), _session())
-    assert _MARKER not in result.output
-    assert len(rows.rows) == 1
-
-
 async def test_a_judge_that_raises_withholds_the_read(rows):
     with patch(f"{_READS}.judge_content", AsyncMock(side_effect=RuntimeError("x"))):
         result = await _call(_Fetch(_MARKER), _session())
@@ -544,7 +536,8 @@ async def test_a_judge_that_failed_holds_without_a_quote_or_an_accusation(rows):
         held=True, passage="this content could not be checked", judged=False
     )
     with patch(f"{_READS}.judge_content", _judge(unchecked)):
-        await _call(_Fetch(_MARKER), _session())
+        result = await _call(_Fetch(_MARKER), _session())
+    assert _MARKER not in result.output
     (row,) = rows.rows.values()
     assert row.payload["judged"] is False
     assert row.payload["passage"] == ""

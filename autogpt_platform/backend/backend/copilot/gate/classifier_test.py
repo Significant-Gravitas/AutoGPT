@@ -65,13 +65,9 @@ async def test_garbage_asks(body):
     assert reason
 
 
-async def test_a_provider_error_asks():
-    (allowed, _), _ = await _classify(RuntimeError("provider down"))
-    assert not allowed
-
-
-async def test_a_timeout_asks():
-    (allowed, _), _ = await _classify(TimeoutError())
+@pytest.mark.parametrize("error", [RuntimeError("provider down"), TimeoutError()])
+async def test_a_provider_error_or_timeout_asks(error):
+    (allowed, _), _ = await _classify(error)
     assert not allowed
 
 

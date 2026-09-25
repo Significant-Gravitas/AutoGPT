@@ -11,7 +11,6 @@ import {
   FixResultCard,
   PlanSteps,
   QuestionsCard,
-  SetupCard,
   SkillCard,
   SuggestedGoalCard,
   TriggerSetupCard,
@@ -126,30 +125,6 @@ describe("QuestionsCard", () => {
     render(<QuestionsCard questions={[{ keyword: "region" }]} />);
 
     expect(screen.getByText('{"keyword":"region"}')).toBeDefined();
-  });
-});
-
-describe("SetupCard", () => {
-  afterEach(cleanup);
-
-  it("shows the integration name and connection prompt", () => {
-    render(
-      <SetupCard
-        output={{ setup_info: { agent_name: "Notion" } }}
-        provider={null}
-      />,
-    );
-
-    expect(screen.getByText("Notion")).toBeDefined();
-    expect(screen.getByText("Connection required")).toBeDefined();
-  });
-
-  it("renders nothing without an agent name", () => {
-    const { container } = render(
-      <SetupCard output={{ setup_info: {} }} provider={null} />,
-    );
-
-    expect(container.firstChild).toBeNull();
   });
 });
 

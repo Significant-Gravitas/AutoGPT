@@ -211,6 +211,8 @@ test("a call told apart only by its id shows the id and is not approved as a set
   expect(await screen.findByText("f-111")).toBeDefined();
   expect(screen.getByText("f-222")).toBeDefined();
   expect(screen.queryByRole("button", { name: "Approve both" })).toBeNull();
+  // A folder delete moves its agents to the root, so it is not irreversible.
+  expect(screen.queryByText("Can't be undone")).toBeNull();
 });
 
 test("a failed answer from a compact line opens its card with the error", async () => {
@@ -268,11 +270,3 @@ test.each([
     expect(screen.queryByRole("button", { name: "Approve both" })).toBeNull();
   },
 );
-
-test("a folder delete, which moves its agents to the root, stays unmarked", async () => {
-  serve([deleteFolder("a", "f-111")]);
-  renderQueue();
-
-  expect(await screen.findByText("f-111")).toBeDefined();
-  expect(screen.queryByText("Can't be undone")).toBeNull();
-});

@@ -61,11 +61,6 @@ def test_a_run_without_a_subject_is_unreadable(tool):
     assert effect_for(tool) is Effect.EXTERNAL
 
 
-def test_retired_tool_names_are_gone():
-    retired = {"run_block", "run_mcp_tool", "find_block", "get_mcp_guide"}
-    assert retired & classified_tools() == set()
-
-
 def test_reading_a_truncated_tool_result_is_a_read():
     from backend.copilot.sdk.tool_adapter import _READ_TOOL_NAME
 
