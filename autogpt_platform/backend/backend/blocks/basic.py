@@ -129,7 +129,6 @@ class PrintToConsoleBlock(Block):
             input_schema=PrintToConsoleBlock.Input,
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
-            is_sensitive_action=True,
             disabled=True,
             test_output=[
                 ("output", "Hello, World!"),

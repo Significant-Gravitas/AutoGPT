@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _DIGEST_PREVIEW_CHARS,
     _DIGEST_THRESHOLD,
@@ -575,3 +576,136 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestGateEnforcement:
+    """`BaseTool.execute` must consult the auto-mode gate, and must consult it
+    AFTER the envelope check.
+
+    Both are early-return refusals added at the same line by different PRs, so
+    a merge can drop either without a single test going red.
+    """
+
+    @staticmethod
+    def _spy_tool():
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "bash_exec"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a gated tool")
+
+        return _Spy()
+
+    @pytest.mark.asyncio
+    async def test_a_gated_call_is_refused_and_never_executed(self):
+        from backend.copilot.gate import Decision
+
+        tool = self._spy_tool()
+        with (
+            patch(
+                "backend.copilot.gate.check_action",
+                new=AsyncMock(
+                    return_value=Decision(
+                        allowed=False, reason="needs your approval", review_id="r1"
+                    )
+                ),
+            ),
+        ):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        assert tool.ran is False, "the gated tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_the_envelope_refusal_precedes_the_gate(self):
+        """A call the envelope refuses can never run, so spending a user's
+        approval on it is wrong."""
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        tool = self._spy_tool()
+        check = AsyncMock()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            with patch("backend.copilot.gate.check_action", new=check):
+                result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False
+        check.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_crashing_gate_refuses_rather_than_runs(self):
+        """A gate that crashes must not become a gate that passes."""
+        tool = self._spy_tool()
+        crash = AsyncMock(side_effect=RuntimeError("gate down"))
+        with patch("backend.copilot.gate.check_action", new=crash):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-3")
+
+        assert result.success is False
+        assert tool.ran is False
+
+    @pytest.mark.asyncio
+    async def test_flag_off_writes_nothing(self):
+        """Flag-off must be today's behaviour: no rule read, no review row,
+        for a call every mode would otherwise stop."""
+        calls: list[str] = []
+        tool = self._recording_tool("post_to_chat_platform", calls)
+        redis = AsyncMock()
+        reviews = MagicMock()
+        with (
+            patch(
+                "backend.copilot.gate.is_feature_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+            patch("backend.copilot.gate.chat_rules.get_redis_async", new=redis),
+            patch("backend.copilot.gate.review.review_db", new=reviews),
+        ):
+            await tool.execute("u1", ChatSession.new(user_id="u1", dry_run=False), "c")
+
+        assert calls == ["run"]
+        redis.assert_not_awaited()
+        reviews.assert_not_called()
+
+    @staticmethod
+    def _recording_tool(tool_name: str, calls: list[str]):
+        class _Recorder(BaseTool):
+            @property
+            def name(self) -> str:
+                return tool_name
+
+            @property
+            def description(self) -> str:
+                return "recorder"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                calls.append("run")
+                return ErrorResponse(message="ran", session_id=session.session_id)
+
+        return _Recorder()

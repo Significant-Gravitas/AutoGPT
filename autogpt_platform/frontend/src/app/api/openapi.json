@@ -18969,6 +18969,16 @@
             ],
             "title": "Origin"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23748,6 +23758,12 @@
             "title": "Priority"
           },
           "title": { "type": "string", "title": "Title" },
+          "headline": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeHeadline" },
+              { "type": "null" }
+            ]
+          },
           "description": { "type": "string", "title": "Description" },
           "why_it_matters": { "type": "string", "title": "Why It Matters" },
           "expert": {
@@ -23972,6 +23988,18 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeHeadline": {
+        "properties": {
+          "ask": { "type": "string", "title": "Ask" },
+          "object": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Object"
+          }
+        },
+        "type": "object",
+        "required": ["ask"],
+        "title": "HomeHeadline"
       },
       "HomeRecentWork": {
         "properties": {
@@ -26678,6 +26706,16 @@
             "title": "Agent Name",
             "description": "Display name of the agent that requested the review"
           },
+          "block_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Id",
+            "description": "The block awaiting approval, when a block asked"
+          },
+          "action": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Action",
+            "description": "What that block does, e.g. 'Send Discord Message'"
+          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id",
@@ -28172,6 +28210,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "capability_list",
           "capability_details",
           "schedule_list",
@@ -30139,6 +30178,17 @@
             "title": "Expert Kickoff",
             "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode",
+            "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
           }
         },
         "type": "object",

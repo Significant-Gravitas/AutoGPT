@@ -974,6 +974,9 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 trigger=ExecutionTrigger.COPILOT,
                 trigger_ref=session_id,
+                pause_irreversible_actions=(
+                    not dry_run and session.metadata.pauses_irreversible_actions
+                ),
             )
         except GraphValidationError as e:
             return await self._handle_graph_validation_race(

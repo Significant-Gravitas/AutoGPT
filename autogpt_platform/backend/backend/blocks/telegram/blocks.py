@@ -100,6 +100,7 @@ class SendTelegramMessageBlock(Block):
                     message_id=123,
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -194,6 +195,7 @@ class SendTelegramPhotoBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -352,6 +354,7 @@ class SendTelegramVoiceBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -496,6 +499,7 @@ class ReplyToTelegramMessageBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -640,6 +644,7 @@ class DeleteTelegramMessageBlock(Block):
                 ("status", "Message deleted"),
             ],
             test_mock={"_delete_message": lambda *args, **kwargs: True},
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -813,6 +818,7 @@ class SendTelegramAudioBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -987,6 +993,7 @@ class SendTelegramDocumentBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(
@@ -1146,6 +1153,7 @@ class SendTelegramVideoBlock(Block):
                     message_id=123
                 )
             },
+            is_irreversible_action=True,
         )
 
     async def run(

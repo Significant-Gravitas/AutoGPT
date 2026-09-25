@@ -4,6 +4,7 @@ import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
 
+import { getAutopilotModeChoice } from "./autopilotModeStore";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
@@ -116,6 +117,7 @@ export function createCopilotTransport({
           // send false and pay nothing for it.
           voice: isVoiceTurn(),
           expert_kickoff: kickoffExpertId !== null,
+          ...optionalAutopilotMode(sessionId),
         },
         headers: await getCopilotAuthHeaders(),
       };
@@ -136,6 +138,12 @@ export function createCopilotTransport({
       };
     },
   });
+}
+
+// Absent unless the user picked a mode, so a chat nobody touched keeps its own.
+function optionalAutopilotMode(sessionId: string) {
+  const mode = getAutopilotModeChoice(sessionId);
+  return mode ? { autopilot_mode: mode } : {};
 }
 
 function isWorkspaceFolderPart(

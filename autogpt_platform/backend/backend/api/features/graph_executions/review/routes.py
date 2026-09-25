@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
+from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -220,7 +221,7 @@ async def process_review_action(
             detail="All reviews in a single request must belong to the same execution.",
         )
 
-    graph_exec_id, _ = next(iter(scopes))
+    graph_exec_id, chat_session_id = next(iter(scopes))
 
     # Validate execution status for graph executions; a chat has none
     if graph_exec_id is not None:
@@ -343,6 +344,10 @@ async def process_review_action(
         for review in updated_reviews.values()
         if review.status == ReviewStatus.REJECTED
     )
+
+    # A held call finishes on its own: the answer starts the chat's next turn.
+    if chat_session_id is not None and updated_reviews:
+        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
 
     # Resume graph execution only for real graph executions; a chat is resumed
     # by the LLM calling resume_capability with the review_id
