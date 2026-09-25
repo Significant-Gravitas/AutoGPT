@@ -63,6 +63,7 @@ class OnboardingStep(StrEnum):
     AGENTS_TAB_INTRO = "AGENTS_TAB_INTRO"
     MARKETPLACE_TAB_INTRO = "MARKETPLACE_TAB_INTRO"
     BUILD_TAB_INTRO = "BUILD_TAB_INTRO"
+    WORKFLOWS_MOVED = "WORKFLOWS_MOVED"
 
 
 FrontendOnboardingStep = Literal[
@@ -79,4 +80,5 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENTS_TAB_INTRO,
     OnboardingStep.MARKETPLACE_TAB_INTRO,
     OnboardingStep.BUILD_TAB_INTRO,
+    OnboardingStep.WORKFLOWS_MOVED,
 ]
