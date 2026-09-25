@@ -1915,6 +1915,26 @@ async def test_validate_node_input_credentials_linked_picker_is_not_checked(
     assert mock_node.id not in nodes_to_skip
 
 
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_link_into_one_attribute_needs_a_file(
+    mocker: MockerFixture,
+):
+    """A link into one attribute of the picked file (`spreadsheet_@_id`) sets
+    only that attribute at run time. It can't bring the `_credentials_id` the
+    file needs, so an empty picker is still refused."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    link = mocker.MagicMock(sink_id=mock_node.id, sink_name="spreadsheet_@_id")
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[link])
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert "select a file" in errors[mock_node.id]["spreadsheet"]
+
+
 def test_is_optional_picker_follows_the_annotation(mocker: MockerFixture):
     """The Sheets blocks' pickers are plain `GoogleDriveFile` inputs, so they
     are required; only a picker annotated to allow None may stay empty."""

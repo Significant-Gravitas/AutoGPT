@@ -30,7 +30,7 @@ from backend.data.db import prisma
 from backend.data.db_accessors import chat_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
-from backend.data.dynamic_fields import merge_execution_input, sanitize_pin_name
+from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -723,10 +723,10 @@ def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> boo
 
 
 def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
+    """Whether a link supplies the whole input. A link into one attribute of
+    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
     return any(
-        link.sink_id == node.id
-        and sanitize_pin_name(link.sink_name) == sanitize_pin_name(field_name)
-        for link in graph.links
+        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
     )
 
 
