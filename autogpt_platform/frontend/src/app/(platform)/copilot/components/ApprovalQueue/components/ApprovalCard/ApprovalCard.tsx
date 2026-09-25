@@ -1,15 +1,18 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFields";
 import {
   type ApprovalItem,
   type ChatRule,
   isBare,
+  isHeldRead,
   reasonLine,
 } from "../../helpers";
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
+import { HeldPassage } from "./HeldPassage";
 import { useApprovalFields } from "./useApprovalFields";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
@@ -31,14 +34,15 @@ export function ApprovalCard({
 }: Props) {
   const fields = useApprovalFields(item);
   const reason = reasonLine(item);
+  const read = isHeldRead(item);
   const busy = status !== "idle";
 
   const actions = (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:flex-wrap">
       <ApproveSplitButton
-        label="Approve"
+        label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
         subjectName={item.subject.name}
-        rules={item.chatRulesAllowed}
+        rules={read ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
         disabled={busy}
         onApprove={onApprove}
@@ -51,7 +55,11 @@ export function ApprovalCard({
         disabled={busy}
         onClick={onReject}
       >
-        {status === "rejecting" ? "Rejecting…" : "Reject"}
+        {status === "rejecting"
+          ? "Rejecting…"
+          : read
+            ? "Keep it out"
+            : "Reject"}
       </Button>
     </div>
   );
@@ -81,15 +89,19 @@ export function ApprovalCard({
           </p>
         )}
         {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
-        <ApprovalFields
-          fields={fields.labels}
-          values={fields.values}
-          clipped={item.clipped}
-          hiddenKeys={item.headlineKeys}
-          idsWhenAlone={!item.headline.object}
-          references={item.blockId ? [] : item.references}
-          referenceTotals={item.referenceTotals}
-        />
+        {read ? (
+          item.passage && <HeldPassage passage={item.passage} />
+        ) : (
+          <ApprovalFields
+            fields={fields.labels}
+            values={fields.values}
+            clipped={item.clipped}
+            hiddenKeys={item.headlineKeys}
+            idsWhenAlone={!item.headline.object}
+            references={item.blockId ? [] : item.references}
+            referenceTotals={item.referenceTotals}
+          />
+        )}
         {actions}
       </div>
     </article>

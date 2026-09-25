@@ -96,14 +96,22 @@ def headline_for(
     references: list[Reference] | None = None,
 ) -> Headline:
     ask, keys = _ASK.get(tool_name, (f"Run {tool_name.replace('_', ' ')}", ()))
-    for key in keys:
-        value = args.get(key)
-        if isinstance(value, str) and value.strip():
-            return _named(ask, key, value)
+    headline = named(ask, keys, args)
+    if headline.object:
+        return headline
     id_key = _OBJECT_ID.get(tool_name)
     for ref in references or []:
         if ref.key == id_key and ref.name:
             return _named(ask, ref.key, ref.name)
+    return headline
+
+
+def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
+    """``ask`` plus the first of ``keys`` that holds a name, shortened."""
+    for key in keys:
+        value = args.get(key)
+        if isinstance(value, str) and value.strip():
+            return _named(ask, key, value)
     return Headline(ask=ask)
 
 

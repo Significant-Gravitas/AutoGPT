@@ -4874,7 +4874,7 @@ async def test_seed_roster_keeps_an_owner_set_avatar(
     (template_id,) = await seed.seed_roster()
     _seeded_template_ids.append(template_id)
     hired = await experts_db.hire_expert(test_user.id, template_id, None)
-    assert hired.expert.avatar_url == entry["avatar_url"]
+    assert hired.expert.avatar_url == "/experts/clay/v5/maria-marketing.png"
     await experts_db.update_avatar(test_user.id, hired.expert.id, "/avatars/mine.svg")
 
     monkeypatch.setattr(

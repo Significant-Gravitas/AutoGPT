@@ -3,6 +3,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
+import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
@@ -17,6 +18,7 @@ interface Props {
 
 export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
   const cover = getExpertCover(expert);
+  const topic = expert.categories?.[0];
 
   return (
     <header>
@@ -32,6 +34,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             role={expert.role}
             jobTitle={expert.job_title}
             size="page"
+            nameAlign="baseline"
             nameAccessory={
               <IntegrationIcons
                 expertName={expert.name}
@@ -39,6 +42,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
               />
             }
           />
+          {topic ? <CategoryTag category={topic} className="mt-2" /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button

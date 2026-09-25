@@ -271,6 +271,20 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     expect(screen.getByText("Queued")).toBeDefined();
   });
 
+  it("renders queued account references as badges without exposing IDs", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Check [Work Gmail](credential://google/work-credential-id)",
+        ]}
+      />,
+    );
+    expect(screen.getByText("Work Gmail")).toBeDefined();
+    expect(container.textContent).not.toContain("work-credential-id");
+    expect(container.textContent).not.toContain("credential://");
+  });
+
   it("renders multiple queued messages as separate bubbles", () => {
     render(
       <ChatMessagesContainer
