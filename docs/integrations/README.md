@@ -177,6 +177,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Update Cell](block-integrations/google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](block-integrations/google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
 | [Google Sheets Write](block-integrations/google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
+| [Google Slides Get Slide](block-integrations/google/slides_read.md#google-slides-get-slide) | Get one slide of a Google Slides presentation by slide ID: every element on it (text boxes, shapes, tables, images) with its element ID, type and text, plus the slide's speaker notes |
+| [Google Slides Read Presentation](block-integrations/google/slides_read.md#google-slides-read-presentation) | Read a Google Slides presentation: its title and, for each slide, the slide ID, position, title, text from shapes and tables, and speaker notes |
 | [JSON Decoder](block-integrations/data.md#json-decoder) | Decodes a JSON string into the value or data structure, it represents, e |
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
@@ -606,6 +608,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Add Audio To Video](block-integrations/video/add_audio.md#add-audio-to-video) | Block to attach an audio file to a video file using moviepy |
+| [Google Slides Get Slide Thumbnail](block-integrations/google/slides_read.md#google-slides-get-slide-thumbnail) | Render one slide of a Google Slides presentation as a PNG image, for example to check how a slide looks after editing it |
 | [Loop Video](block-integrations/video/loop.md#loop-video) | Block to loop a video to a given duration or number of repeats |
 | [Media Duration](block-integrations/video/duration.md#media-duration) | Block to get the duration of a media file |
 | [Video Clip](block-integrations/video/clip.md#video-clip) | Extract a time segment from a video |
@@ -618,6 +621,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](block-integrations/google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
+| [Google Slides Add Slide](block-integrations/google/slides_create.md#google-slides-add-slide) | Add a slide to a Google Slides presentation using one of Google's built-in layouts, such as title and body, and fill in its title and body text |
+| [Google Slides Batch Update](block-integrations/google/slides_edit.md#google-slides-batch-update) | Change a Google Slides presentation with Slides API batchUpdate requests: add shapes, tables, images and slides, insert or delete text, restyle, reorder or delete objects |
+| [Google Slides Create Presentation](block-integrations/google/slides_create.md#google-slides-create-presentation) | Create a new Google Slides presentation with the given title, in the root of My Drive |
+| [Google Slides Replace All Text](block-integrations/google/slides_edit.md#google-slides-replace-all-text) | Replace text everywhere in a Google Slides presentation, with several find-and-replace pairs at once |
+| [Google Slides Set Speaker Notes](block-integrations/google/slides_edit.md#google-slides-set-speaker-notes) | Set the speaker notes of one slide in a Google Slides presentation, replacing any notes it already has |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
