@@ -141,6 +141,16 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Docs Replace Range With Markdown](block-integrations/google/docs.md#google-docs-replace-range-with-markdown) | Replace a specific index range in a Google Doc with formatted Markdown - ideal for LLM/AI output |
 | [Google Docs Set Public Access](block-integrations/google/docs.md#google-docs-set-public-access) | Make a Google Doc public or private |
 | [Google Docs Share](block-integrations/google/docs.md#google-docs-share) | Share a Google Doc with specific users |
+| [Google Drive Copy File](block-integrations/google/drive_manage.md#google-drive-copy-file) | Copy a Google Drive file, optionally with a new name or into another folder |
+| [Google Drive Create File](block-integrations/google/drive_manage.md#google-drive-create-file) | Create a file in Google Drive from text or an uploaded file, optionally converting it to a Google Doc, Sheet or Slides file |
+| [Google Drive Create Folder](block-integrations/google/drive_manage.md#google-drive-create-folder) | Create a folder in Google Drive, optionally inside another folder |
+| [Google Drive Download File](block-integrations/google/drive_files.md#google-drive-download-file) | Download a file from Google Drive (up to 50 MB) |
+| [Google Drive Get File Info](block-integrations/google/drive_files.md#google-drive-get-file-info) | Get a Google Drive file's details: name, type, size, owners, created and modified dates, and the folders it is in |
+| [Google Drive Get File Permissions](block-integrations/google/drive_files.md#google-drive-get-file-permissions) | List who can access a Google Drive file: users, groups, domains or anyone with the link, and their roles |
+| [Google Drive List Recent Files](block-integrations/google/drive_search.md#google-drive-list-recent-files) | List the most recently used, modified or viewed files in Google Drive |
+| [Google Drive Move File](block-integrations/google/drive_manage.md#google-drive-move-file) | Move a Google Drive file into another folder |
+| [Google Drive Read File](block-integrations/google/drive_files.md#google-drive-read-file) | Read a Google Drive file as text |
+| [Google Drive Search Files](block-integrations/google/drive_search.md#google-drive-search-files) | Search Google Drive for files by name, content, type, folder or modified date |
 | [Google Sheets Add Column](block-integrations/google/sheets.md#google-sheets-add-column) | Add a new column with a header |
 | [Google Sheets Add Dropdown](block-integrations/google/sheets.md#google-sheets-add-dropdown) | Add a dropdown list (data validation) to cells |
 | [Google Sheets Add Note](block-integrations/google/sheets.md#google-sheets-add-note) | Add a note to a cell in a Google Sheet |
