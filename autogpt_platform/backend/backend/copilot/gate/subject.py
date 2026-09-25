@@ -60,7 +60,7 @@ def workflow_subject(
 ) -> Subject:
     """``schedules`` and ``saves_preset``: the call also creates a platform
     object, so a read workflow is at least a platform edit."""
-    effect, decided_by = graph_effect(graph)
+    effect, decided_by, unreadable = graph_effect(graph)
     name = graph.name or "Untitled workflow"
     subject = Subject(
         key=f"workflow:{graph.id}",
@@ -70,7 +70,17 @@ def workflow_subject(
         irreversible=_irreversible(effect, decided_by),
     )
     steps = _irreversible_steps(graph)
-    if subject.effect is Effect.EXTERNAL and len(steps) > 1:
+    if unreadable is not None and steps:
+        # The unknown step leads: nothing else on the card can warn of it.
+        subject = subject.model_copy(
+            update={
+                "irreversible": True,
+                "reason": f"{_reason(None, name, unreadable).removesuffix('.')}; "
+                f"it also has {_steps(steps)} that can't be undone: "
+                f"{_listed(steps)}.",
+            }
+        )
+    elif subject.effect is Effect.EXTERNAL and len(steps) > 1:
         # The approval covers the whole run, so the card names every step it covers.
         subject = subject.model_copy(
             update={
@@ -140,7 +150,13 @@ def _irreversible_steps(graph: "GraphModel") -> list[str]:
 
 
 def _listed(names: list[str]) -> str:
+    if len(names) == 1:
+        return names[0]
     return ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+def _steps(names: list[str]) -> str:
+    return "1 step" if len(names) == 1 else f"{len(names)} steps"
 
 
 def _irreversible(effect: BlockEffect | None, block: Block | None) -> bool:

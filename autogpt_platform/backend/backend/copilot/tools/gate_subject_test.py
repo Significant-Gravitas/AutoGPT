@@ -416,9 +416,28 @@ def test_an_unreadable_node_never_hides_an_irreversible_one(unreadable_first, ki
         _graph([_node("in", AgentInputBlock(), {"name": "m"}), *nodes], links=links)
     )
     assert subject.effect is Effect.EXTERNAL
-    assert (
-        subject.reason
-        == "Runs Morning digest; its step Gmail Send reaches outside the platform."
+    assert subject.irreversible
+    step = "Github Add Label" if kind == "undeclared block" else "Send Web Request"
+    assert subject.reason == (
+        f"Otto does not know what {step} does, so he asks; it also has 1 step "
+        "that can't be undone: Gmail Send."
+    )
+
+
+def test_an_unknown_step_leads_a_workflow_with_irreversible_steps():
+    """Kills: the steps list replacing the only warning about the unknown block."""
+    subject = workflow_subject(
+        _graph(
+            [
+                _node("send", GmailSendBlock(), {}),
+                _node("label", GithubAddLabelBlock(), {}),
+                _node("post", SendDiscordMessageBlock(), {}),
+            ]
+        )
+    )
+    assert subject.reason == (
+        "Otto does not know what Github Add Label does, so he asks; it also has "
+        "2 steps that can't be undone: Gmail Send and Send Discord Message."
     )
 
 
