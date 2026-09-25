@@ -1,8 +1,11 @@
 import datetime
+import json
 
 import prisma.enums
 import prisma.models
 import pytest
+
+from backend.blocks.io import AgentGoogleDriveFileInputBlock
 
 from . import model as library_model
 
@@ -13,6 +16,8 @@ def _make_library_agent(
     executions: list | None = None,
     name: str | None = None,
     description: str | None = None,
+    graph_owner_id: str = "u1",
+    nodes: list | None = None,
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
@@ -36,11 +41,12 @@ def _make_library_agent(
             version=1,
             name="Agent",
             description="Desc",
-            userId="u1",
+            userId=graph_owner_id,
             isActive=True,
             createdAt=datetime.datetime.now(),
             visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
+            Nodes=nodes,
         ),
     )
 
@@ -79,6 +85,34 @@ def test_from_db_preserves_empty_marketplace_description():
 
     assert result.name == "Published Title"
     assert result.description == ""
+
+
+def _file_input_node(graph_id: str) -> prisma.models.AgentNode:
+    """An agent-level Google Drive file input whose default file was picked
+    with the owner's credentials."""
+    picked = {"_credentials_id": "owner-cred", "id": "sheet-1", "name": "Budget"}
+    return prisma.models.AgentNode(
+        id="file-input",
+        agentBlockId=AgentGoogleDriveFileInputBlock().id,
+        agentGraphId=graph_id,
+        agentGraphVersion=1,
+        constantInput=json.dumps({"name": "file", "value": picked}),
+        metadata="{}",
+    )
+
+
+def test_from_db_hides_the_publishers_picked_file_from_other_libraries():
+    """[SECRT-1772] A marketplace agent in another user's library: its input
+    schema mustn't offer the publisher's picked file, and the credentials
+    embedded in it, as a default. The runner picks their own file."""
+    agent = _make_library_agent(
+        graph_owner_id="publisher", nodes=[_file_input_node("g1")]
+    )
+
+    result = library_model.LibraryAgent.from_db(agent)
+
+    assert "default" not in result.input_schema["properties"]["file"]
+    assert "file" in result.input_schema["required"]
 
 
 def test_from_db_execution_count_override_covers_success_rate():
