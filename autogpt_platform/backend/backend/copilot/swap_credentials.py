@@ -12,8 +12,11 @@ Lookup, OAuth refresh and cache invalidation are ``get_provider_token``'s, the
 same path that fills ``GH_TOKEN`` today: there is no second store.
 
 A credential's name is its provider slug, and its hosts come from
-``SUPPORTED_PROVIDERS``: that table is the binding registry until per-user
-bindings exist (SECRT-2616, SECRT-2618).
+``SUPPORTED_PROVIDERS``: ``swap_hosts``, where the value may be sent, and
+``content_hosts``, where what was stored with it is served back.  The proxy
+opens both and scrubs responses from both; a credential it gets for either
+names only the ``swap_hosts`` as the hosts it may be sent to, so the proxy's
+own host check refuses to swap it into a request to a content host.
 """
 
 from typing import Optional
@@ -21,7 +24,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from backend.copilot.integration_creds import get_provider_token, granted_to_box
-from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.copilot.providers import SUPPORTED_PROVIDERS, ProviderEntry
 from backend.util.e2b_network import credential_record
 from backend.util.exceptions import NotFoundError
 
@@ -50,13 +53,21 @@ def _host_is_bound(host: str, allowed_hosts: list[str]) -> bool:
     )
 
 
+def _bound_hosts(entry: ProviderEntry) -> list[str]:
+    """Every host the proxy opens for a provider: where its value may go and
+    where it may come back from."""
+    if not entry["swap_hosts"]:
+        return []
+    return [*entry["swap_hosts"], *entry["content_hosts"]]
+
+
 async def get_swap_bindings() -> dict[str, list[str]]:
     """Credential name to bound hosts, with no values: what lets the proxy
     leave every other host's traffic alone without asking."""
     return {
-        slug: list(entry["swap_hosts"])
+        slug: hosts
         for slug, entry in SUPPORTED_PROVIDERS.items()
-        if entry["swap_hosts"]
+        if (hosts := _bound_hosts(entry))
     }
 
 
@@ -109,7 +120,7 @@ async def resolve_swap_credential(
     not as "nothing to scrub".
     """
     entry = SUPPORTED_PROVIDERS.get(name)
-    if entry is None or not _host_is_bound(host, entry["swap_hosts"]):
+    if entry is None or not _host_is_bound(host, _bound_hosts(entry)):
         return None
     record = await _box_record(box, user_id)
     sandbox_id = record.get("sandbox_id")
