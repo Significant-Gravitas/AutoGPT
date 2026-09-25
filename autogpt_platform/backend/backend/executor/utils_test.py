@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
-from typing import cast
+from typing import Optional, cast
 
 import pytest
 from prisma.enums import ReviewStatus
 from pytest_mock import MockerFixture
 
+from backend.blocks.google._drive import GoogleDriveFile
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -19,6 +21,7 @@ from backend.executor.utils import (
     CRED_ERR_NOT_AVAILABLE_PREFIX,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
+    _is_optional_picker,
     add_graph_execution,
     is_credential_validation_error_message,
 )
@@ -1418,12 +1421,11 @@ async def test_validate_node_input_credentials_auto_creds_missing(
     )
 
     assert mock_node.id in errors
-    assert "spreadsheet" in errors[mock_node.id]
-    # Error message uses the CRED_ERR_UNKNOWN_PREFIX marker so the copilot
-    # credential-race fallback recognises it as a credentials gate failure.
-    assert (
-        errors[mock_node.id]["spreadsheet"].lower().startswith("unknown credentials #")
-    )
+    message = errors[mock_node.id]["spreadsheet"]
+    # A CRED_ERR_* marker lets the copilot credential-race fallback recognise
+    # it as a credentials gate failure, and the text says how to fix it.
+    assert is_credential_validation_error_message(message)
+    assert "select the file again with your own account" in message
 
 
 @pytest.mark.asyncio
@@ -1754,12 +1756,9 @@ async def test_validate_node_input_credentials_field_level_optional_none_value_s
     mocker: MockerFixture,
 ):
     """Cursor Medium (thread PRRT_kwDOJKSTjM58r_37): a node with
-    ``credentials_optional=False`` (the default) but whose auto-credential
-    field is NOT in ``required_fields`` (typical — the ``spreadsheet``
-    field on Google Sheets blocks defaults to None, so pydantic marks it
-    non-required at the schema level). The per-field check correctly
-    flags ``field_is_optional=True`` via ``field_name not in
-    required_fields``, but the POST-LOOP guard used ``is_creds_optional``
+    ``credentials_optional=False`` (the default) whose auto-credential field
+    is optional on its own: annotated ``Optional[GoogleDriveFile]``, see
+    ``_is_optional_picker``. The POST-LOOP guard used ``is_creds_optional``
     (the node-level flag) only — so the node silently passed validation
     and crashed at runtime inside ``_acquire_auto_credentials`` with
     ``ValueError('No file selected')``.
@@ -1784,9 +1783,11 @@ async def test_validate_node_input_credentials_field_level_optional_none_value_s
             "config": {"provider": "google", "type": "oauth2"},
         }
     }
-    # Field-level optional: `spreadsheet` is NOT in required_fields because
-    # its pydantic default is None.
+    # Field-level optional: the annotation allows None.
     mock_block.input_schema.get_required_fields.return_value = []
+    mock_block.input_schema.model_fields = {
+        "spreadsheet": mocker.MagicMock(annotation=Optional[GoogleDriveFile])
+    }
     mock_node.block = mock_block
 
     mock_graph = mocker.MagicMock()
@@ -1845,6 +1846,84 @@ async def test_validate_node_input_credentials_auto_creds_required_none_value_er
     assert mock_node.id in errors
     assert "spreadsheet" in errors[mock_node.id]
     assert is_credential_validation_error_message(errors[mock_node.id]["spreadsheet"])
+
+
+def _picker_node(mocker: MockerFixture, spreadsheet_value, *, annotation):
+    """A node whose block has one picker input, `spreadsheet`, declared with
+    `annotation` and, like every GoogleDriveFileField, a None default."""
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-picker"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": spreadsheet_value}
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = []
+    mock_block.input_schema.model_fields = {
+        "spreadsheet": mocker.MagicMock(annotation=annotation)
+    }
+    mock_node.block = mock_block
+    return mock_node
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_empty_required_picker_errors(
+    mocker: MockerFixture,
+):
+    """[SECRT-1772] A picker the block needs (a plain `GoogleDriveFile`) still
+    defaults to None, so it is never in the schema's required fields. Left
+    empty, as after a fork or copy, its node used to be skipped silently and
+    the run finished without doing that work. Now the run is refused with a
+    message asking for a file."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    message = errors[mock_node.id]["spreadsheet"]
+    assert is_credential_validation_error_message(message)
+    assert "select a file" in message
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_linked_picker_is_not_checked(
+    mocker: MockerFixture,
+):
+    """A picker fed by a link gets its file from the upstream block at run
+    time, so a leftover None in its stored value must not fail the run."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = _picker_node(mocker, None, annotation=GoogleDriveFile)
+    link = mocker.MagicMock(sink_id=mock_node.id, sink_name="spreadsheet")
+    mock_graph = mocker.MagicMock(nodes=[mock_node], links=[link])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph, user_id="some-user", nodes_input_masks=None
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id not in nodes_to_skip
+
+
+def test_is_optional_picker_follows_the_annotation(mocker: MockerFixture):
+    """The Sheets blocks' pickers are plain `GoogleDriveFile` inputs, so they
+    are required; only a picker annotated to allow None may stay empty."""
+    optional_schema = mocker.MagicMock(
+        model_fields={"file": mocker.MagicMock(annotation=Optional[GoogleDriveFile])}
+    )
+
+    assert not _is_optional_picker(GoogleSheetsReadBlock().input_schema, "spreadsheet")
+    assert _is_optional_picker(optional_schema, "file")
 
 
 # ============================================================================
