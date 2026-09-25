@@ -13,19 +13,18 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
 from backend.data.onboarding import OnboardingStep
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import GraphValidationError
 
 app = fastapi.FastAPI()
 app.include_router(router)
-# Mirror rest_api.py's GraphActivationError -> 400 mapping so the atomicity
-# tests verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same handler set as the real app (GraphActivationError -> 400 included), so
+# the atomicity tests verify the behaviour it actually exposes.
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -224,7 +223,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")
@@ -410,7 +409,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
         "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
     )
     update_lib_agent_mock = mocker.patch(
-        "backend.api.features.graphs.routes.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.graphs.routes.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
 

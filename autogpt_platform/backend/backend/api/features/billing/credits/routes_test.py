@@ -15,7 +15,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.billing.credits.routes import get_credit_history, router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.credit import AutoTopUpConfig, UserCreditBase
 from backend.data.model import TransactionHistory
 
@@ -508,7 +508,7 @@ HISTORY_CONTEXT = RequestContext(
 def history_client():
     history_app = fastapi.FastAPI()
     history_app.include_router(router)
-    history_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    add_exception_handlers(history_app)
     history_app.dependency_overrides[requires_user] = lambda: None
     history_app.dependency_overrides[get_user_id] = lambda: "user"
     history_app.dependency_overrides[get_request_context] = lambda: HISTORY_CONTEXT

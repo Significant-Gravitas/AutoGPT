@@ -12,7 +12,7 @@ from backend.api.features.skill_zip import package_from_zip, zip_from_package
 from backend.api.features.skills.routes import router
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_FILES,
     BuiltInSkillError,
@@ -38,7 +38,7 @@ app = fastapi.FastAPI()
 app.include_router(router, prefix="/skills")
 # ConflictError is mapped app-wide, never on the route, so without this a
 # conflict reads here as an unhandled error rather than the 409 a client gets.
-app.add_exception_handler(ConflictError, handle_internal_http_error(409))
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 

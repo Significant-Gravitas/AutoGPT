@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "not_found",
+    "details": null,
+    "message": "Agent #nonexistent not found"
+  }
+}

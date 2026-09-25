@@ -132,7 +132,7 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
-class GraphNotFoundError(ValueError):
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -354,4 +354,5 @@ class ExpertRunPausedError(ValueError):
 
 
 class ConflictError(Exception):
-    """The request lost to a concurrent change of the same resource; retrying may succeed."""
+    """The request conflicts with the resource's current state (HTTP 409): a name
+    already taken, or a lost race with a concurrent change, which a retry may win."""

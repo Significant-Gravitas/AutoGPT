@@ -1,13 +1,13 @@
 from pydantic import BaseModel
 
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransactionAdminView
 from backend.util.models import Pagination
 
 
 class UserHistoryResponse(BaseModel):
     """Response model for listings with version history"""
 
-    history: list[UserTransaction]
+    history: list[UserCreditTransactionAdminView]
     pagination: Pagination
 
 

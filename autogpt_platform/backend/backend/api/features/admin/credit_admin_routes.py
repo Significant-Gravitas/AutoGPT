@@ -13,7 +13,7 @@ from backend.data.credit import (
     admin_get_user_history,
     get_user_credit_model,
 )
-from backend.data.model import UserTransaction
+from backend.data.model import UserCreditTransactionAdminView
 from backend.data.platform_cost import (
     COPILOT_USAGE_EXPORT_MAX_DAYS,
     CopilotWeeklyUsageRow,
@@ -90,7 +90,7 @@ async def admin_get_all_user_history(
 
 
 class CreditTransactionsExportResponse(BaseModel):
-    transactions: list[UserTransaction]
+    transactions: list[UserCreditTransactionAdminView]
     total_rows: int
     window_days: int
     max_window_days: int

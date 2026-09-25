@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import get_user_tier
 
@@ -28,6 +30,10 @@ class PlatformInfoTool(BaseTool):
     @property
     def name(self) -> str:
         return "get_platform_info"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_CREDITS]
 
     @property
     def description(self) -> str:

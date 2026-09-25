@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma.enums import CreditTransactionType
+from prisma.types import OrgCreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -239,10 +240,21 @@ async def get_org_transaction_history(
     org_id: str,
     limit: int = 50,
     offset: int = 0,
+    time_ceiling: datetime | None = None,
+    transaction_type: str | None = None,
 ) -> list[dict]:
     """Get credit transaction history for an organization."""
+    where: OrgCreditTransactionWhereInput = {
+        "orgId": org_id,
+        "isActive": True,
+    }
+    if time_ceiling:
+        where["createdAt"] = {"lt": time_ceiling}
+    if transaction_type:
+        where["type"] = CreditTransactionType(transaction_type)
+
     transactions = await prisma.orgcredittransaction.find_many(
-        where={"orgId": org_id, "isActive": True},
+        where=where,
         order={"createdAt": "desc"},
         take=limit,
         skip=offset,
