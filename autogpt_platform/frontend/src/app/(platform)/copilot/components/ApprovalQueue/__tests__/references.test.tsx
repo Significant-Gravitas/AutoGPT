@@ -120,3 +120,33 @@ test("a list the server clipped still counts every ID it held", async () => {
   expect(view.getByRole("link", { name: "Morning digest" })).toBeDefined();
   expect(view.getByText(/\+115 more/)).toBeDefined();
 });
+
+test("unresolved agent IDs stay listed beside a resolved folder headline", async () => {
+  const review = referenceCard("Move agents");
+  const payload = review.payload as {
+    arguments: Record<string, unknown>;
+    references: { key: string; name: string | null; href: string | null }[];
+    reference_totals: Record<string, number>;
+  };
+  payload.arguments.agent_ids = ["lib-lost-1", "lib-lost-2"];
+  payload.references = [
+    payload.references.find((ref) => ref.key === "folder_id")!,
+    ...["lib-lost-1", "lib-lost-2"].map((id) => ({
+      key: "agent_ids",
+      entity: "library_agent",
+      id,
+      name: null,
+      href: null,
+      summary: null,
+    })),
+  ];
+  payload.reference_totals = { folder_id: 1, agent_ids: 2 };
+  renderCard(review);
+
+  const view = await card();
+  expect(
+    view.getByRole("heading", { name: /Move agents into a folder Archive/ }),
+  ).toBeDefined();
+  expect(view.getByText(/lib-lost-1/)).toBeDefined();
+  expect(view.getByText(/lib-lost-2/)).toBeDefined();
+});

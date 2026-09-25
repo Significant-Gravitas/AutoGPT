@@ -70,11 +70,10 @@ export function visibleKeys({
   const present = [...new Set(keys)].filter(
     (key) => !hiddenKeys.includes(key) && hasValue(values[key]),
   );
-  // An id the server named reads as its name, so it is shown like one.
-  const resolved = new Set(
-    references.filter((ref) => ref.name).map((ref) => ref.key),
-  );
-  const named = present.filter((key) => !isIdKey(key) || resolved.has(key));
+  // An id argument the server looked up is shown whatever it found: its names,
+  // or the raw ids when none resolved, even beside a named headline.
+  const referenced = new Set(references.map((ref) => ref.key));
+  const named = present.filter((key) => !isIdKey(key) || referenced.has(key));
   return named.length > 0 || !idsWhenAlone ? named : present;
 }
 
