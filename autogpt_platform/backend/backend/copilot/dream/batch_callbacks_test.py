@@ -51,7 +51,7 @@ def fake_redis():
     async def fake_expire(key, ttl):
         return 1
 
-    async def fake_eval(script, numkeys, key, token):
+    async def fake_delete_if_owner(client, *, key, token):
         # The only Lua the dream path runs is the lock's single-key
         # compare-and-delete; mirror its semantics on the string store.
         if string_store.get(key) == token:
@@ -66,14 +66,19 @@ def fake_redis():
     stub.set.side_effect = fake_set
     stub.expire.side_effect = fake_expire
     stub.delete.side_effect = fake_delete
-    stub.eval.side_effect = fake_eval
 
     async def fake_get_redis_async():
         return stub
 
-    with patch(
-        "backend.data.redis_client.get_redis_async",
-        side_effect=fake_get_redis_async,
+    with (
+        patch(
+            "backend.data.redis_client.get_redis_async",
+            side_effect=fake_get_redis_async,
+        ),
+        patch(
+            "backend.copilot.dream.locks.delete_if_owner",
+            side_effect=fake_delete_if_owner,
+        ),
     ):
         yield stub, store, string_store
 

@@ -29,9 +29,9 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, cast
 
 from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.data.redis_scripts import delete_if_owner, expire_if_owner
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +48,6 @@ LOCAL_LOCK_TTL_SECONDS = 7200
 # terminal/failure; this TTL is only the crash backstop, kept > 24h so the
 # lock can't expire before the executor times the batch out.
 BATCH_LOCK_TTL_SECONDS = 24 * 60 * 60 + 600
-
-# Compare-and-delete: only the holder whose token still matches the stored
-# value may delete the key. Single-key Lua routes on Redis Cluster.
-_UNLOCK_SCRIPT = (
-    'if redis.call("get", KEYS[1]) == ARGV[1] then '
-    'return redis.call("del", KEYS[1]) else return 0 end'
-)
-
-# Compare-and-extend: only the holder whose token still matches the stored
-# value may stretch the TTL. Same single-key Lua pattern as
-# ``_UNLOCK_SCRIPT`` — a blind ``SET XX`` would overwrite a *newer* pass's
-# token (and TTL) when our lock expired and was re-acquired mid-pass.
-_EXTEND_SCRIPT = (
-    'if redis.call("get", KEYS[1]) == ARGV[1] then '
-    'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
-)
 
 
 def _lock_key(user_id: str, expert_id: str | None = None) -> str:
@@ -117,7 +101,7 @@ class DreamLockHandle:
     async def extend(self, ttl_seconds: int) -> bool:
         """Stretch the lock TTL only while the key still holds our token.
 
-        Single-key Lua compare-and-extend (mirrors ``_UNLOCK_SCRIPT``): a
+        Single-key compare-and-extend (``expire_if_owner``): a
         blind ``SET XX`` succeeds against ANY existing value, so if our
         lock expired and a newer pass re-acquired the key, it would
         hijack that pass's token and stretch its TTL. The compare also
@@ -129,13 +113,8 @@ class DreamLockHandle:
         Callers about to perform writes that assume exclusive graph
         ownership must abort on ``False`` (see ``DreamLockLostError``).
         """
-        # ``cast`` because redis-py's stubs type ``eval`` as a bare
-        # ``str`` — same workaround as the release paths below.
-        extended = await cast(
-            "Any",
-            self._redis.eval(
-                _EXTEND_SCRIPT, 1, self._key, self.token, str(ttl_seconds)
-            ),
+        extended = await expire_if_owner(
+            self._redis, key=self._key, token=self.token, seconds=ttl_seconds
         )
         if not extended:
             logger.warning(
@@ -183,9 +162,7 @@ async def dream_lock(
             logger.info("Dream lock for user %s handed to batch callback", user_id[:12])
         else:
             try:
-                # ``cast`` because redis-py's stubs type ``eval`` as a bare
-                # ``str`` — same workaround as ``data/redis_helpers.py``.
-                deleted = await cast("Any", redis.eval(_UNLOCK_SCRIPT, 1, key, token))
+                deleted = await delete_if_owner(redis, key=key, token=token)
                 if deleted:
                     logger.debug("Released dream lock for user %s", user_id[:12])
                 else:
@@ -251,14 +228,8 @@ async def release_dream_lock(
 
     try:
         redis = await get_redis_async()
-        deleted = await cast(
-            "Any",
-            redis.eval(
-                _UNLOCK_SCRIPT,
-                1,
-                _lock_key(user_id, expert_id),
-                token,
-            ),
+        deleted = await delete_if_owner(
+            redis, key=_lock_key(user_id, expert_id), token=token
         )
         if deleted:
             logger.debug("Released disowned dream lock for user %s", user_id[:12])

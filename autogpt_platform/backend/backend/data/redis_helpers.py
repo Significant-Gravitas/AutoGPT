@@ -17,56 +17,53 @@ patterns we actually use into a single place:
 Everything sharable lives here.  If a new Lua script is tempting in
 application code, add a helper here first — callers should not touch
 ``redis.eval`` / ``pipeline(transaction=True)`` directly for anything
-this module can cover.
+this module can cover.  Owner-checked token-lock operations live in
+:mod:`backend.data.redis_scripts`.
 """
 
 from enum import IntEnum
 from typing import Any, cast
 
+from redis_lua_py import Key, redis, script
+
 from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
-# Lua scripts — registered centrally so there is exactly ONE authoritative
-# copy per pattern and ``SCRIPT LOAD`` can be amortised in future if needed.
+# Lua scripts — written as Python and compiled to Lua by redis-lua-py, which
+# sends them with EVALSHA.  Exactly ONE authoritative copy per pattern.
 # ---------------------------------------------------------------------------
+
 
 # Compare-and-set on a hash field.  Returns 1 if swapped, 0 if the current
 # value didn't match.  Needs Lua because the SET is conditional on a GET
 # result (MULTI/EXEC cannot branch on intermediate replies).
-#
-#   KEYS[1]  hash key
-#   ARGV[1]  hash field
-#   ARGV[2]  expected current value
-#   ARGV[3]  new value
-_HASH_CAS_LUA = """
-local current = redis.call('HGET', KEYS[1], ARGV[1])
-if current == ARGV[2] then
-    redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
-    return 1
-end
-return 0
-"""
+@script
+def _hash_cas(key: Key, field: str, expected: str, new: str) -> int:
+    if redis.hget(key, field) == expected:
+        redis.hset(key, field, new)
+        return 1
+    return 0
+
 
 # Push to a capped list only when a hash field currently matches the expected
 # value. Returns the new list length, or -1 when the guard fails.
-#
-#   KEYS[1]  hash key
-#   KEYS[2]  list key
-#   ARGV[1]  hash field
-#   ARGV[2]  expected current value
-#   ARGV[3]  list value
-#   ARGV[4]  max list length
-#   ARGV[5]  list TTL seconds
-_GATED_CAPPED_RPUSH_LUA = """
-local current = redis.call('HGET', KEYS[1], ARGV[1])
-if current ~= ARGV[2] then
-    return -1
-end
-redis.call('RPUSH', KEYS[2], ARGV[3])
-redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
-return redis.call('LLEN', KEYS[2])
-"""
+@script
+def _gated_capped_rpush(
+    hash_key: Key,
+    list_key: Key,
+    hash_field: str,
+    expected: str,
+    value: str,
+    max_len: int,
+    ttl_seconds: int,
+) -> int:
+    if redis.hget(hash_key, hash_field) != expected:
+        return -1
+    redis.rpush(list_key, value)
+    redis.ltrim(list_key, -max_len, -1)
+    redis.expire(list_key, ttl_seconds)
+    return redis.llen(list_key)
+
 
 # Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
 # to transition a finished provider batch from ``pending → dispatched``
@@ -96,18 +93,14 @@ return redis.call('LLEN', KEYS[2])
 #
 # Returns 1 when this caller won the claim (proceed with dispatch),
 # 0 when another walker already dispatched (skip silently).
-#
-#   KEYS[1]  pending hash key
-#   KEYS[2]  per-batch tombstone key
-#   ARGV[1]  batch_id (field on the pending hash)
-#   ARGV[2]  TTL seconds applied to the tombstone key
-_CLAIM_BATCH_DISPATCH_LUA = """
-if redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
-    redis.call('HDEL', KEYS[1], ARGV[1])
-    return 1
-end
-return 0
-"""
+@script
+def _claim_batch_dispatch(
+    pending_key: Key, tombstone_key: Key, batch_id: str, ttl_seconds: int
+) -> int:
+    if redis.set(tombstone_key, "1", "NX", "EX", ttl_seconds):
+        redis.hdel(pending_key, batch_id)
+        return 1
+    return 0
 
 
 # Atomically: sweep stale slots, refresh an existing slot's claim or add
@@ -129,28 +122,27 @@ return 0
 # release) are reclaimed by the sweep so a one-time leak cannot
 # permanently consume capacity.
 #
-#   KEYS[1]  pool key (sorted set)
-#   ARGV[1]  slot id (member)
-#   ARGV[2]  reservation score (typically now)
-#   ARGV[3]  stale-cutoff score (slots with score <= this are dropped)
-#   ARGV[4]  capacity (max concurrent slots before reservation is refused)
-#   ARGV[5]  TTL seconds applied to the pool key on every successful reserve
-_TRY_ACQUIRE_CONCURRENCY_SLOT_LUA = """
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[3])
-local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
-if existing then
-    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
-    redis.call('EXPIRE', KEYS[1], ARGV[5])
-    return 2
-end
-local count = redis.call('ZCARD', KEYS[1])
-if count >= tonumber(ARGV[4]) then
-    return 0
-end
-redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
-redis.call('EXPIRE', KEYS[1], ARGV[5])
-return 1
-"""
+# Scores are passed as ``str`` so a timestamp is written exactly as given,
+# not rounded through a Lua number.
+@script
+def _try_acquire_concurrency_slot(
+    pool_key: Key,
+    slot_id: str,
+    score: str,
+    stale_before_score: str,
+    capacity: int,
+    ttl_seconds: int,
+) -> int:
+    redis.zremrangebyscore(pool_key, "-inf", stale_before_score)
+    if redis.zscore(pool_key, slot_id) is not None:
+        redis.zadd(pool_key, score, slot_id)
+        redis.expire(pool_key, ttl_seconds)
+        return 2
+    if redis.zcard(pool_key) >= capacity:
+        return 0
+    redis.zadd(pool_key, score, slot_id)
+    redis.expire(pool_key, ttl_seconds)
+    return 1
 
 
 def as_str(value: bytes | str | None) -> str | None:
@@ -262,21 +254,16 @@ async def capped_rpush_if_hash_field(
     Returns the new list length when the push happens, or ``None`` when the
     hash field does not currently match ``expected``.
     """
-    result = await cast(
-        "Any",
-        redis.eval(
-            _GATED_CAPPED_RPUSH_LUA,
-            2,
-            hash_key,
-            list_key,
-            hash_field,
-            expected,
-            value,
-            str(max_len),
-            str(ttl_seconds),
-        ),
+    length = await _gated_capped_rpush(
+        redis,
+        hash_key=hash_key,
+        list_key=list_key,
+        hash_field=hash_field,
+        expected=expected,
+        value=value,
+        max_len=max_len,
+        ttl_seconds=ttl_seconds,
     )
-    length = int(result)
     return None if length < 0 else length
 
 
@@ -319,18 +306,14 @@ async def claim_batch_dispatch_atomic(
     batch SLA is 24h, max batch lifetime cap is 24h); raise it if the
     provider window widens.
     """
-    result = await cast(
-        "Any",
-        redis.eval(
-            _CLAIM_BATCH_DISPATCH_LUA,
-            2,
-            pending_key,
-            f"{dispatched_key_prefix}:{batch_id}",
-            batch_id,
-            str(ttl_seconds),
-        ),
+    result = await _claim_batch_dispatch(
+        redis,
+        pending_key=pending_key,
+        tombstone_key=f"{dispatched_key_prefix}:{batch_id}",
+        batch_id=batch_id,
+        ttl_seconds=ttl_seconds,
     )
-    return bool(int(result))
+    return bool(result)
 
 
 class SlotAdmission(IntEnum):
@@ -386,20 +369,16 @@ async def try_acquire_concurrency_slot(
     hash-tag *pool_key* (e.g. ``foo:{user_id}``) to colocate the pool
     on one shard without CROSSSLOT issues.
     """
-    result = await cast(
-        "Any",
-        redis.eval(
-            _TRY_ACQUIRE_CONCURRENCY_SLOT_LUA,
-            1,
-            pool_key,
-            slot_id,
-            str(score),
-            str(stale_before_score),
-            str(capacity),
-            str(ttl_seconds),
-        ),
+    result = await _try_acquire_concurrency_slot(
+        redis,
+        pool_key=pool_key,
+        slot_id=slot_id,
+        score=str(score),
+        stale_before_score=str(stale_before_score),
+        capacity=capacity,
+        ttl_seconds=ttl_seconds,
     )
-    return SlotAdmission(int(result))
+    return SlotAdmission(result)
 
 
 async def hash_compare_and_set(
@@ -420,8 +399,5 @@ async def hash_compare_and_set(
     because the write is conditional on the read result — MULTI/EXEC
     cannot branch on intermediate replies.
     """
-    result = await cast(
-        "Any",
-        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new),
-    )
-    return int(result) == 1
+    result = await _hash_cas(redis, key=key, field=field, expected=expected, new=new)
+    return result == 1

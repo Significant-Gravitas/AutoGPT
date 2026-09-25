@@ -10,6 +10,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.codex import login as codex_login
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.login import (
     CodexDeviceLoginState,
@@ -119,24 +120,33 @@ class FakeRedis:
         self.expirations[key] = seconds
         return True
 
-    async def eval(
-        self,
-        script: str,
-        _numkeys: int,
-        key: str,
-        expected: str,
-        *arguments: object,
-    ) -> int:
-        if self.values.get(key) != expected:
+    async def delete_if_owner(self, *, key: str, token: str) -> int:
+        if self.values.get(key) != token:
             return 0
-        if "redis.call('del'" in script:
-            self.values.pop(key, None)
-            self.expirations.pop(key, None)
-            return 1
-        if "redis.call('expire'" in script:
-            self.expirations[key] = int(arguments[0])
-            return 1
-        raise AssertionError("Unexpected Redis script")
+        self.values.pop(key, None)
+        self.expirations.pop(key, None)
+        return 1
+
+    async def expire_if_owner(self, *, key: str, token: str, seconds: int) -> int:
+        if self.values.get(key) != token:
+            return 0
+        self.expirations[key] = seconds
+        return 1
+
+
+@pytest.fixture(autouse=True)
+def _lock_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FakeRedis models the owner-checked scripts; only Redis runs the Lua."""
+    monkeypatch.setattr(
+        codex_login,
+        "delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    )
+    monkeypatch.setattr(
+        codex_login,
+        "expire_if_owner",
+        lambda client, **kwargs: client.expire_if_owner(**kwargs),
+    )
 
 
 @pytest.mark.asyncio

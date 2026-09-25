@@ -2,9 +2,9 @@ import asyncio
 import hashlib
 import logging
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
-from typing import Literal, Protocol, TypeGuard, TypeVar
+from typing import Literal, Protocol, TypeGuard
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import BaseModel, ConfigDict
@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import OAuth2Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str
+from backend.data.redis_scripts import delete_if_owner, expire_if_owner
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.codex.credential_codec import credentials_from_bundle
 from backend.integrations.codex.models import (
@@ -24,27 +25,6 @@ logger = logging.getLogger(__name__)
 
 CodexDeviceLogin = CodexDeviceCodeDetails
 CodexLoginStatus = Literal["pending", "completed", "failed", "canceled"]
-
-_COMPARE_DELETE_SCRIPT = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-  return redis.call('del', KEYS[1])
-end
-return 0
-"""
-_COMPARE_EXPIRE_SCRIPT = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-  return redis.call('expire', KEYS[1], ARGV[2])
-end
-return 0
-"""
-
-_T = TypeVar("_T")
-
-
-async def _await_redis_result(result: Awaitable[_T] | _T) -> _T:
-    if isinstance(result, Awaitable):
-        return await result
-    return result
 
 
 class CodexDeviceLoginSession(Protocol):
@@ -125,14 +105,7 @@ class RedisCodexLoginStateStore:
         try:
             await self.write(state, login_id)
         except Exception:
-            await _await_redis_result(
-                redis.eval(
-                    _COMPARE_DELETE_SCRIPT,
-                    1,
-                    _active_key(state.user_id),
-                    login_id,
-                )
-            )
+            await delete_if_owner(redis, key=_active_key(state.user_id), token=login_id)
             raise
         return True
 
@@ -158,26 +131,16 @@ class RedisCodexLoginStateStore:
 
     async def release_active(self, user_id: str, login_id: str) -> None:
         redis = await get_redis_async()
-        await _await_redis_result(
-            redis.eval(
-                _COMPARE_DELETE_SCRIPT,
-                1,
-                _active_key(user_id),
-                login_id,
-            )
-        )
+        await delete_if_owner(redis, key=_active_key(user_id), token=login_id)
 
     async def refresh_active(self, user_id: str, login_id: str) -> bool:
         redis = await get_redis_async()
         return bool(
-            await _await_redis_result(
-                redis.eval(
-                    _COMPARE_EXPIRE_SCRIPT,
-                    1,
-                    _active_key(user_id),
-                    login_id,
-                    str(self._owner_lease_seconds),
-                )
+            await expire_if_owner(
+                redis,
+                key=_active_key(user_id),
+                token=login_id,
+                seconds=self._owner_lease_seconds,
             )
         )
 

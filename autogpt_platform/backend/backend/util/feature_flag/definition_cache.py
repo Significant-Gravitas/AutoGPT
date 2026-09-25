@@ -26,6 +26,7 @@ from posthog.flag_definition_cache import (
 from prometheus_client import Counter
 
 from backend.data.redis_client import connect_once
+from backend.data.redis_scripts import delete_if_owner, pexpire_if_owner
 from backend.util.settings import FlagDefinitionCacheBackend, Settings
 
 logger = logging.getLogger(__name__)
@@ -54,22 +55,6 @@ _STALE_AFTER_POLLS = 5
 _DEGRADED_LOG_INTERVAL = 300.0
 # The SDK's poller thread waits on these; past them it falls back to fetching.
 _REDIS_TIMEOUT_SECONDS = 2.0
-
-# Renew and release only our own lock: a bare PEXPIRE or DEL would extend or
-# free whichever process actually holds it.
-_RENEW_LOCK = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-    return redis.call('pexpire', KEYS[1], ARGV[2])
-end
-return 0
-"""
-
-_RELEASE_LOCK = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-    return redis.call('del', KEYS[1])
-end
-return 0
-"""
 
 
 def get_flag_definition_cache() -> FlagDefinitionCacheProvider | None:
@@ -125,7 +110,12 @@ class RedisFlagDefinitionCache:
             acquired = bool(
                 redis.set(_LOCK_KEY, self._instance, nx=True, px=self._lock_ttl_ms)
             ) or bool(
-                redis.eval(_RENEW_LOCK, 1, _LOCK_KEY, self._instance, self._lock_ttl_ms)
+                pexpire_if_owner(
+                    redis,
+                    key=_LOCK_KEY,
+                    token=self._instance,
+                    milliseconds=self._lock_ttl_ms,
+                )
             )
             # The SDK stores only on a 200; a 304 poll would otherwise let the
             # shared copy lapse while the definitions are unchanged.
@@ -196,7 +186,7 @@ class RedisFlagDefinitionCache:
         if not self._is_refresher or self._client is None:
             return
         try:
-            self._client.eval(_RELEASE_LOCK, 1, _LOCK_KEY, self._instance)
+            delete_if_owner(self._client, key=_LOCK_KEY, token=self._instance)
         except Exception as e:
             logger.warning(f"Could not release the flag-refresher lock: {e}")
         finally:

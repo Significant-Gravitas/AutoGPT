@@ -6,6 +6,7 @@ from typing import Literal
 
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from redis_lua_py import Key, redis, script
 from starlette.datastructures import Headers
 
 from backend.api.features.experts.avatar_generation import (
@@ -18,16 +19,20 @@ from backend.data.redis_client import get_redis_async
 logger = logging.getLogger(__name__)
 JOB_TTL = 3600
 GENERATION_TIMEOUT = 240
-_RESERVE = """
-local count = tonumber(redis.call('HGET', KEYS[1], 'count') or '0')
-if count >= 5 then return math.max(1, redis.call('TTL', KEYS[1])) end
-local next = tonumber(redis.call('HGET', KEYS[1], 'next') or '0')
-local now = tonumber(ARGV[1])
-if next > now then return next - now end
-redis.call('HSET', KEYS[1], 'count', count + 1, 'next', now + 240)
-if count == 0 then redis.call('EXPIRE', KEYS[1], 86400) end
-return 0
-"""
+
+
+@script
+def _reserve(key: Key, now: int) -> int:
+    count = int(redis.hget(key, "count") or "0")
+    if count >= 5:
+        return max(1, redis.ttl(key))
+    next_at = int(redis.hget(key, "next") or "0")
+    if next_at > now:
+        return next_at - now
+    redis.hset(key, "count", count + 1, "next", now + 240)
+    if count == 0:
+        redis.expire(key, 86400)
+    return 0
 
 
 class ExpertAvatarJob(BaseModel):
@@ -42,10 +47,8 @@ async def reserve_generation(user_id: str) -> None:
     try:
         async with asyncio.timeout(3):
             redis = await get_redis_async()
-            retry_after = int(
-                await redis.eval(
-                    _RESERVE, 1, f"expert-avatar-limit:{user_id}", int(time.time())
-                )
+            retry_after = await _reserve(
+                redis, key=f"expert-avatar-limit:{user_id}", now=int(time.time())
             )
     except Exception as exc:
         raise HTTPException(
