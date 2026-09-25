@@ -170,6 +170,18 @@ def workspace_folder_db():
     return workspace_folder_db
 
 
+def skill_db():
+    """Marketplace skill listings: active versions and packages, read by the
+    copy reconcile in copilot.tools.skills."""
+    if db.is_connected():
+        from backend.api.features.store import skill_db as _skill_db
+
+        return _skill_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def workspace_skill_db():
     if db.is_connected():
         from backend.data import workspace_skill

@@ -1,4 +1,21 @@
+import httpx
+import pytest
+
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.api.features.experts.roster import RosterError, load_roster
+from backend.api.features.experts.roster_types import RosterEntry
+from backend.api.features.store.skill_catalog_checkout import catalog_checkout
+from backend.api.features.store.skill_catalog_release import CatalogError
+
+
+@pytest.fixture(scope="module")
+def real_roster() -> list[RosterEntry]:
+    """The roster the skills catalog ships (``experts/*.yml``). The catalog is
+    a separate repository, so a run that cannot read it skips these tests."""
+    try:
+        return load_roster(catalog_checkout().root)
+    except (RosterError, CatalogError, OSError, httpx.HTTPError) as exc:
+        pytest.skip(f"skills catalog roster unavailable: {exc}")
 
 
 def test_existing_roster_avatar_maps_without_using_the_name():
@@ -47,10 +64,8 @@ def test_frontend_catalog_and_png_assets_match_backend():
             assert image.getchannel("A").getextrema() == (0, 255)
 
 
-def test_each_builtin_has_its_own_avatar():
-    from backend.api.features.experts.seed import ROSTER
-
-    urls = [resolve_avatar_url(entry["avatar_url"]) for entry in ROSTER]
+def test_each_builtin_has_its_own_avatar(real_roster: list[RosterEntry]):
+    urls = [resolve_avatar_url(entry["avatar_url"]) for entry in real_roster]
     assert len(urls) == len(set(urls))
 
 
@@ -96,17 +111,18 @@ def test_accent_refresh_handles_each_known_default_and_preserves_other_choices()
                 assert resolve_builtin_avatar_url(avatar.name, custom) == custom
 
 
-def test_every_builtin_category_has_distinct_transparent_artwork():
+def test_every_builtin_category_has_distinct_transparent_artwork(
+    real_roster: list[RosterEntry],
+):
     from pathlib import Path
 
     from PIL import Image
 
     from backend.api.features.experts.avatar_catalog import CATALOG, PRESETS
-    from backend.api.features.experts.seed import ROSTER
 
     public = Path(__file__).parent.parents[4] / "frontend/public"
     by_name = {avatar.name: avatar for avatar in CATALOG.identities}
-    for entry in ROSTER:
+    for entry in real_roster:
         avatar = by_name[entry["name"]]
         assert avatar.primary_category == entry["categories"][0]
         assert set(avatar.variants) == set(entry["categories"])

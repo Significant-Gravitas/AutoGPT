@@ -154,6 +154,7 @@ gen-prisma-stub = "scripts.gen_prisma_types_stub:main"
 brain-dump-eval = "backend.api.features.onboarding_dump.brain_dump_eval:main"
 expert-style-eval = "backend.copilot.eval.style.runner:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
+publish-skills-catalog = "backend.cli.publish_skills_catalog:main"
 
 [tool.isort]
 profile = "black"
@@ -196,7 +197,6 @@ addopts = "-p no:syrupy"
 # DatabaseManager RPC whose socket read never returned.
 faulthandler_timeout = 300
 markers = [
-    "catalogue_isolated: catalogue database lifecycle tests run in the dedicated Catalogue safety CI job",
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
     "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",

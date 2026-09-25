@@ -1,6 +1,7 @@
 """Shapes of a roster seed entry, shared by the seed and the roster modules."""
 
-from typing import TypedDict
+# typing_extensions, not typing: pydantic models carry these on Python 3.11.
+from typing_extensions import TypedDict
 
 from backend.api.features.experts.models import ExpertDayOneItem, VoiceSample
 
@@ -33,12 +34,17 @@ class RoutineSeed(TypedDict):
 
 
 class RosterEntry(TypedDict):
+    # Stable catalog key (`maria`); the template row is resolved by this.
+    key: str
     name: str
     role: str
     job_title: str
     tagline: str
     avatar_url: str | None
     bio: str
+    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
+    # environment, so the seed resolves these to ids and the relation stores those.
+    bundled_skills: list[str]
     # Canonical marketplace categories, so the category chip narrows the roster.
     # Declared here rather than derived from `role`: "Ops" folds onto no
     # canonical value, and a raised expert's role is free text.

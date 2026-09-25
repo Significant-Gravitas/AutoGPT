@@ -44,12 +44,6 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
-from backend.api.features.experts.hire_skill_snapshot import (
-    LegacySkillSnapshotError,
-    SkillInstallSnapshot,
-    capture_skill_snapshot,
-    read_skill_snapshot,
-)
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -1063,9 +1057,6 @@ async def _run_hire_setup(
             failed_preloads, failed_rest = await _install_hire_contents(
                 user_id, expert_id, template_id
             )
-        except LegacySkillSnapshotError as exc:
-            failures = [str(exc)]
-            break
         except Exception:
             # Keeps the last named failures: a raise tells us nothing new.
             logger.exception(f"Setup attempt {attempt + 1} failed for #{expert_id}")
@@ -1129,9 +1120,6 @@ async def _install_hire_contents(
     )
     if template is None or expert is None:
         raise ExpertNotFoundError(expert_id)
-    if expert.ownerUserId != user_id or expert.sourceTemplateId != template_id:
-        raise ExpertNotFoundError(expert_id)
-    snapshot = read_skill_snapshot(expert.skillInstallSnapshot)
     installed_listings = {w.storeListingVersionId for w in expert.Workflows or []}
     installed_routines = {r.key for r in expert.Routines or []}
     failed_preloads = await _install_preloads(
@@ -1144,7 +1132,7 @@ async def _install_hire_contents(
         ],
     )
     failed = await _install_bundled_skills(
-        user_id, expert_id, snapshot, installed=set(expert.skills or [])
+        user_id, expert_id, template_id, installed=set(expert.skills or [])
     )
     failed += await install_routines(
         expert_id,
@@ -1193,12 +1181,6 @@ async def _reserve_hired_expert(
             return revived, "revived"
 
         await _ensure_active_expert_capacity(tx, user_id)
-        snapshot = await capture_skill_snapshot(
-            tx,
-            template_id,
-            enabled=await is_feature_enabled(Flag.SKILLS_HUB, user_id),
-        )
-        create_data["skillInstallSnapshot"] = prisma.Json(snapshot.model_dump())
         created = await tx.expert.create(
             data=create_data,
             include=_WORKFLOW_INCLUDE,
@@ -1982,11 +1964,7 @@ async def _template_routines(
 
 
 async def _install_bundled_skills(
-    user_id: str,
-    expert_id: str,
-    snapshot: SkillInstallSnapshot,
-    *,
-    installed: set[str],
+    user_id: str, expert_id: str, template_id: str, *, installed: set[str]
 ) -> list[str]:
     """Install the Hub skills the template bundles into the new expert's
     folder, skipping names already *installed*; return the titles that failed.
@@ -1994,13 +1972,14 @@ async def _install_bundled_skills(
     Each install records its name on the row; a failed one is logged and
     leaves no name, so the hire never lists a skill it does not have.
     """
-    missing = [s for s in snapshot.packages if s.slug not in installed]
+    bundled = await _live_bundled_skills(user_id, [template_id])
+    missing = [s for s in bundled.get(template_id, []) if s.slug not in installed]
     if not missing:
         return []
     try:
         outcomes: list[object] = list(
-            await skill_db.install_pinned_marketplace_skills(
-                user_id, expert_id, [s.slug for s in missing]
+            await skill_db.install_marketplace_skills(
+                user_id, [s.slug for s in missing], expert_id=expert_id
             )
         )
     except Exception as e:

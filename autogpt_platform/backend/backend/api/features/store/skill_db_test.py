@@ -14,7 +14,10 @@ from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skil
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
-from . import skill_db
+from . import skill_db, skill_model
+from .skill_catalog import publish_catalog
+from .skill_catalog_fixture import write_catalog
+from .skill_catalog_release import CatalogError, load_release
 
 
 async def _make_listing(
@@ -473,6 +476,150 @@ async def test_install_of_an_off_shelf_listing_never_reaches_the_library(
         await skill_db.install_marketplace_skill("user-1", "off-shelf-one")
 
     stored.assert_not_awaited()
+
+
+COLD_EMAIL_MD = (
+    "---\n"
+    "name: cold-email\n"
+    "description: Write cold emails.\n"
+    "license: MIT\n"
+    "metadata:\n"
+    "  source: acme/marketing-skills\n"
+    "  source_url: https://github.com/acme/marketing-skills/tree/abc/skills/cold-email\n"
+    "---\n\n# Cold email\n\nSee references/frameworks.md.\n"
+)
+
+
+def _write_catalog(root, frameworks: str = "# Frameworks\n"):
+    return write_catalog(
+        root,
+        {
+            "brand-voice-guide": {},
+            "cold-email": {
+                "SKILL.md": COLD_EMAIL_MD,
+                "references/frameworks.md": frameworks,
+            },
+        },
+        categories={"brand-voice-guide": ["content"], "cold-email": ["sales"]},
+    )
+
+
+async def _publish(root) -> None:
+    await publish_catalog(
+        load_release(root), repository="test", revision="a" * 40, seed_experts=False
+    )
+
+
+async def test_published_skills_carry_their_attribution(tmp_path):
+    await _publish(_write_catalog(tmp_path))
+
+    vendored = await skill_db.get_marketplace_skill("cold-email")
+    own = await skill_db.get_marketplace_skill("brand-voice-guide")
+
+    assert (vendored.source_repo, vendored.license) == ("acme/marketing-skills", "MIT")
+    assert vendored.source_url is not None and vendored.source_url.endswith(
+        "/skills/cold-email"
+    )
+    assert (own.source_repo, own.source_url, own.license) == (None, None, None)
+
+
+async def test_published_skills_install_verbatim_with_their_package_and_baseline(
+    mocker, tmp_path
+):
+    """The install writes the published SKILL.md byte for byte and records
+    which version it came from, which is what lets a later publish tell an
+    unedited copy from an edited one."""
+    await _publish(_write_catalog(tmp_path))
+    stored = _patch_store(mocker)
+
+    result = await skill_db.install_marketplace_skill("user-1", "cold-email")
+
+    assert result.name == "cold-email"
+    write = _written(stored)
+    assert write.name == "cold-email"
+    assert write.skill_markdown == COLD_EMAIL_MD
+    assert [(f.relative_path, f.content) for f in write.files] == [
+        ("references/frameworks.md", b"# Frameworks\n")
+    ]
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}, include={"ActiveVersion": True}
+    )
+    assert listing is not None and listing.ActiveVersion is not None
+    assert write.baseline is not None
+    assert write.baseline.listing_id == listing.id
+    assert write.baseline.version_id == listing.ActiveVersion.id
+    assert write.baseline.package_sha256 == listing.ActiveVersion.packageSha256
+
+
+async def test_a_legacy_version_installs_the_same_bytes_its_hash_covers(
+    mocker, tmp_path
+):
+    """A version from before the publisher has no stored SKILL.md; the install
+    renders one exactly as the hash backfill does, so the copy still matches."""
+    legacy = await _make_listing("old-hand", body="# Old hand\n\nStill useful.\n")
+    assert legacy.ActiveVersion is not None
+    stored = _patch_store(mocker)
+
+    await skill_db.install_marketplace_skill("user-1", "old-hand")
+
+    write = _written(stored)
+    assert write.skill_markdown == skill_model.legacy_skill_markdown(
+        legacy.ActiveVersion, "old-hand"
+    )
+
+
+async def test_a_bad_catalog_package_publishes_nothing(tmp_path):
+    root = write_catalog(tmp_path, {"cold-email": {".env": "x=1"}})
+
+    with pytest.raises(CatalogError):
+        await _publish(root)
+
+    assert await prisma.models.SkillListing.prisma().count() == 0
+
+
+async def test_active_versions_cover_live_and_retired_listings(tmp_path):
+    await _publish(_write_catalog(tmp_path))
+    retired = write_catalog(
+        tmp_path / "later", {"brand-voice-guide": {}}, retirements=["cold-email"]
+    )
+    await publish_catalog(
+        load_release(retired), repository="test", revision="b" * 40, seed_experts=False
+    )
+    await skill_db.invalidate_active_versions_cache()
+
+    active = await skill_db.get_active_versions(
+        ["cold-email", "brand-voice-guide", "never-existed"]
+    )
+
+    assert set(active) == {"cold-email", "brand-voice-guide"}
+    assert active["cold-email"].retired and not active["brand-voice-guide"].retired
+    live = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "brand-voice-guide"}
+    )
+    assert live is not None
+    assert active["brand-voice-guide"].version_id == live.activeVersionId
+    assert active["brand-voice-guide"].package_sha256 is not None
+
+
+async def test_version_packages_serve_any_version_verbatim(tmp_path):
+    await _publish(_write_catalog(tmp_path))
+    await publish_catalog(
+        load_release(_write_catalog(tmp_path / "v2", frameworks="# Frameworks v2\n")),
+        repository="test",
+        revision="b" * 40,
+        seed_experts=False,
+    )
+    versions = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"SkillListing": {"is": {"slug": "cold-email"}}}, order={"version": "asc"}
+    )
+    assert [v.version for v in versions] == [1, 2]
+
+    packages = await skill_db.get_version_packages([v.id for v in versions])
+
+    assert packages[versions[0].id].skill_markdown == COLD_EMAIL_MD
+    assert [f.content for f in packages[versions[0].id].files] == [b"# Frameworks\n"]
+    assert [f.content for f in packages[versions[1].id].files] == [b"# Frameworks v2\n"]
+    assert packages[versions[1].id].package_sha256 == versions[1].packageSha256
 
 
 def _patch_store(mocker, *, is_new: bool = True) -> AsyncMock:

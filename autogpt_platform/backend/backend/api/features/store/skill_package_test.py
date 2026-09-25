@@ -31,12 +31,16 @@ from backend.copilot.tools.workspace_files import (
 )
 from backend.util.test import SpinTestServer
 
-from . import skill_db, skill_model, skill_submission_db
+from . import skill_catalog, skill_db, skill_model, skill_submission_db
+from .skill_catalog import publish_catalog
+from .skill_catalog_fixture import write_catalog
+from .skill_catalog_release import load_release
 
 FIXTURE_DIR = (
     Path(__file__).parents[4] / "test" / "fixtures" / "skills" / "webapp-testing"
 )
 SLUG = "webapp-testing"
+CATALOG_SLUG = "catalog-skill-with-a-package"
 
 
 def _fixture_files() -> list[SkillFile]:
@@ -119,10 +123,10 @@ async def _drop_our_listings() -> None:
     """By slug, not wholesale: this table is shared with every other checkout
     here, where the starter listings are real rows."""
     await prisma.models.SkillListingVersion.prisma().delete_many(
-        where={"SkillListing": {"is": {"slug": {"in": [SLUG]}}}}
+        where={"SkillListing": {"is": {"slug": {"in": [SLUG, CATALOG_SLUG]}}}}
     )
     await prisma.models.SkillListing.prisma().delete_many(
-        where={"slug": {"in": [SLUG]}}
+        where={"slug": {"in": [SLUG, CATALOG_SLUG]}}
     )
 
 
@@ -257,3 +261,109 @@ async def test_installing_a_single_file_listing_clears_a_package_left_behind(
     await skill_db.install_marketplace_skill(creator, SLUG, expert_id=expert)
 
     assert await list_user_skill_files(creator, SLUG, expert_id=expert) == []
+
+
+async def test_a_published_catalog_package_installs_its_siblings(
+    creator: str, expert: str, tmp_path
+):
+    """The publisher is the other writer of a listing version, and a skill
+    whose package never reached the shelf would install as a bare SKILL.md."""
+    await _publish_catalog(
+        tmp_path,
+        {"scripts/run.sh": "#!/bin/sh\necho hi\n"},
+        executable={f"{CATALOG_SLUG}/scripts/run.sh"},
+    )
+    await skill_db.install_marketplace_skill(creator, CATALOG_SLUG, expert_id=expert)
+
+    rows = await _catalog_file_rows()
+    assert [(r.relativePath, r.isExecutable) for r in rows] == [
+        ("scripts/run.sh", True)
+    ]
+    installed = {
+        f.path
+        for f in await list_user_skill_files(creator, CATALOG_SLUG, expert_id=expert)
+    }
+    assert f"/experts/{expert}/skills/{CATALOG_SLUG}/scripts/run.sh" in installed
+
+
+async def test_republishing_a_catalog_skill_that_lost_a_file_serves_a_version_without_it(
+    creator: str, tmp_path
+):
+    """Versions are immutable, so a package that drops a file becomes a new
+    version without it; the old version keeps its rows."""
+    await _publish_catalog(tmp_path / "v1", {"notes.md": "# Notes\n"})
+    # Asserted before the removal: a publish that stores nothing at all would
+    # satisfy the empty assertion below without ever replacing anything.
+    assert [r.relativePath for r in await _catalog_file_rows()] == ["notes.md"]
+
+    await _publish_catalog(tmp_path / "v2", {})
+
+    assert await _catalog_file_rows() == []
+    versions = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"SkillListing": {"is": {"slug": CATALOG_SLUG}}},
+        order={"version": "asc"},
+        include={"Files": True},
+    )
+    assert [v.version for v in versions] == [1, 2]
+    assert [f.relativePath for f in versions[0].Files or []] == ["notes.md"]
+
+
+async def test_a_catalog_publish_that_cannot_write_the_package_leaves_the_version_alone(
+    creator: str, monkeypatch, tmp_path
+):
+    """The version and its files are written together, so a failed package
+    write cannot leave new instructions on the shelf beside the old package."""
+    await _publish_catalog(tmp_path / "v1", {"notes.md": "# Notes\n"}, body="# First\n")
+
+    async def fails(*_args, **_kwargs):
+        raise RuntimeError("the package write failed")
+
+    monkeypatch.setattr(skill_catalog, "snapshot_version_files", fails)
+    with pytest.raises(RuntimeError):
+        await _publish_catalog(
+            tmp_path / "v2", {"notes.md": "# Notes\n"}, body="# Second\n"
+        )
+
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": CATALOG_SLUG}, include={"ActiveVersion": True}
+    )
+    assert listing is not None and listing.ActiveVersion is not None
+    assert listing.ActiveVersion.body.strip() == "# First"
+    assert [r.relativePath for r in await _catalog_file_rows()] == ["notes.md"]
+
+
+async def _publish_catalog(
+    root: Path,
+    files: dict[str, str],
+    *,
+    body: str = "# Body\n",
+    executable: set[str] | None = None,
+) -> None:
+    write_catalog(
+        root,
+        {
+            CATALOG_SLUG: {
+                "SKILL.md": (
+                    f"---\nname: {CATALOG_SLUG}\ndescription: Ships a note.\n---\n\n{body}"
+                ),
+                **files,
+            }
+        },
+        categories={CATALOG_SLUG: ["content"]},
+        executable=executable,
+    )
+    await publish_catalog(
+        load_release(root), repository="test", revision="a" * 40, seed_experts=False
+    )
+
+
+async def _catalog_file_rows() -> list[prisma.models.SkillListingFile]:
+    """The seeded catalog skill's own rows, never the shared whole table."""
+    listing = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": CATALOG_SLUG}
+    )
+    assert listing is not None and listing.activeVersionId is not None
+    return await prisma.models.SkillListingFile.prisma().find_many(
+        where={"skillListingVersionId": listing.activeVersionId},
+        order={"relativePath": "asc"},
+    )

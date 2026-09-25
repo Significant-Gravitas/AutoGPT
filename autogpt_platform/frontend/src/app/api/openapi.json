@@ -19701,6 +19701,14 @@
             "type": "array",
             "title": "Triggers",
             "default": []
+          },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "update": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Update"
           }
         },
         "type": "object",

@@ -44,6 +44,11 @@ migrate:
 	cd backend && poetry run prisma generate
 	cd backend && poetry run gen-prisma-stub
 
+# Publish the skills catalog (marketplace skills + expert roster) into the
+# local database. Needs the store assets loaded first: `make load-store-agents`.
+publish-skills:
+	cd backend && poetry run publish-skills-catalog
+
 run-backend:
 	cd backend && poetry run app
 

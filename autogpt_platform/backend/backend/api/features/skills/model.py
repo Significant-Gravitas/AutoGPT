@@ -12,6 +12,12 @@ class CopilotSkillInfo(BaseModel):
     name: str
     description: str
     triggers: list[str] = []
+    # "user" for a skill the owner saved, "marketplace" for an installed copy.
+    origin: str | None = None
+    # For a marketplace copy: "available" when a newer version exists but the
+    # copy was edited, "merged" when a newer version was merged into the
+    # owner's edits, "retired" when the listing is gone. Null when current.
+    update: str | None = None
 
 
 class CopilotSkillFile(BaseModel):
