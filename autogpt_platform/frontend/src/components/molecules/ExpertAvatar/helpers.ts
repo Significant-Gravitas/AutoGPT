@@ -27,6 +27,15 @@ export function resolveExpertAvatarUrl(url: string | null | undefined): string {
   return url;
 }
 
+/** The catalog artwork that stands for a category: the placeholder an expert
+ *  wears while its own avatar renders, and its fallback if that fails. */
+export function getCategoryAvatarUrl(category: string): string {
+  return (
+    EXPERT_AVATARS.find((avatar) => avatar.id === category)?.url ??
+    DEFAULT_EXPERT_AVATAR_URL
+  );
+}
+
 export function resolveCategoryAvatarUrl(
   url: string | null | undefined,
   category?: string | null,

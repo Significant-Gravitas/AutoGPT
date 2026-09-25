@@ -1,3 +1,4 @@
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +24,8 @@ import {
   type RaiseDraft,
   type RaiseKit,
 } from "./helpers";
+import { colorForCategory } from "./components/CategoryStep/helpers";
+import { suggestedCategoryFor } from "./components/RoleStep/helpers";
 import { useFlowProgress } from "./useFlowProgress";
 import { useRaiseSubmission } from "./useRaiseSubmission";
 import { useSkillsAvailability } from "./useSkillsAvailability";
@@ -76,11 +79,15 @@ export function useRaisePage() {
   function submitName(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    update({ name: trimmed, step: "avatar" });
+    update({ name: trimmed, step: "category" });
   }
 
-  function pickAvatar(avatarUrl: string, colorId: string) {
-    update({ avatarUrl, color: colorId, step: "about" });
+  function pickCategory(category: ExpertAvatarRequestCategory) {
+    update({ category, color: colorForCategory(category), step: "avatar" });
+  }
+
+  function pickAvatar(avatarUrl: string) {
+    update({ avatarUrl, step: "about" });
   }
 
   function submitAbout(value: string) {
@@ -169,6 +176,8 @@ export function useRaisePage() {
     hasStarted: draft.hasStarted,
     role: draft.role,
     jobTitle: draft.jobTitle,
+    category: draft.category,
+    suggestedCategory: suggestedCategoryFor(draft.role),
     color: draft.color,
     avatarUrl: draft.avatarUrl,
     about: draft.about,
@@ -189,6 +198,7 @@ export function useRaisePage() {
     submitJobTitle,
     skipJobTitle,
     submitName,
+    pickCategory,
     pickAvatar,
     submitAbout,
     skipAbout,

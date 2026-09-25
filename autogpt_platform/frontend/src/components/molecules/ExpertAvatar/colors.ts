@@ -1,3 +1,4 @@
+import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import catalog from "./catalog.json";
 
 const TOPIC_PATTERNS: Array<[RegExp, string]> = [
@@ -30,15 +31,39 @@ export function getExpertTopicHex(
   role: string | null | undefined,
   categories?: string[],
 ): string {
-  const stored = categories?.find((category) =>
-    catalog.avatars.some((avatar) => avatar.id === category.toLowerCase()),
-  );
-  const category =
-    stored?.toLowerCase() ??
-    TOPIC_PATTERNS.find(([pattern]) => pattern.test(role ?? ""))?.[1];
+  const category = getExpertTopic(role, categories);
   if (category === "otto") return "#B6A4C8";
   return (
     catalog.avatars.find((avatar) => avatar.id === category)?.hex ?? "#B5ADA0"
+  );
+}
+
+/** A stored category when the expert has one, else the topic its role reads
+ *  like. "otto" is a reserved identity rather than a category. */
+function getExpertTopic(
+  role: string | null | undefined,
+  categories?: string[],
+): string | undefined {
+  const stored = categories?.find((category) =>
+    catalog.avatars.some((avatar) => avatar.id === category.toLowerCase()),
+  );
+  return (
+    stored?.toLowerCase() ??
+    TOPIC_PATTERNS.find(([pattern]) => pattern.test(role ?? ""))?.[1]
+  );
+}
+
+/** The category an avatar should be generated in. Every expert has one, so an
+ *  unrecognised role falls back to the neutral warm stone of content. */
+export function getExpertCategory(
+  role: string | null | undefined,
+  categories?: string[],
+): ExpertAvatarRequestCategory {
+  const topic = getExpertTopic(role, categories);
+  return (
+    Object.values(ExpertAvatarRequestCategory).find(
+      (category) => category === topic,
+    ) ?? "content"
   );
 }
 

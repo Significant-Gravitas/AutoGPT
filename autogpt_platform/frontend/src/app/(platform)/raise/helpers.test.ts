@@ -139,6 +139,36 @@ describe("restoring a persisted draft", () => {
     expect(loadDraft().voiceLabel).toBe("Direct");
   });
 
+  test("gives a draft that already has a face the category its role implies", () => {
+    saveDraft({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      avatarUrl: "",
+      step: "about",
+    });
+
+    expect(loadDraft()).toMatchObject({
+      category: "marketing",
+      step: "about",
+    });
+  });
+
+  test("reopens the category beat for a draft that was never asked", () => {
+    saveDraft({
+      ...EMPTY_DRAFT,
+      hasStarted: true,
+      role: "marketer",
+      jobTitle: "Marketing Manager",
+      name: "Nova",
+      step: "avatar",
+    });
+
+    expect(loadDraft()).toMatchObject({ category: null, step: "category" });
+  });
+
   test("moves a draft parked on the retired kit step onto budget", () => {
     saveStepFromEarlierBuild("kit");
 

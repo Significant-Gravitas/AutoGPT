@@ -1,3 +1,4 @@
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { creditsToUsdLabel } from "@/lib/credits";
 import {
@@ -8,12 +9,14 @@ import {
   findRoleOption,
   isValidCustomRole,
   normalizeCustomRole,
+  suggestedCategoryFor,
 } from "./components/RoleStep/helpers";
 
 export type RaiseStep =
   | "role"
   | "jobTitle"
   | "name"
+  | "category"
   | "avatar"
   | "about"
   | "voice"
@@ -26,6 +29,7 @@ export const STEP_ORDER: RaiseStep[] = [
   "role",
   "jobTitle",
   "name",
+  "category",
   "avatar",
   "about",
   "voice",
@@ -64,8 +68,10 @@ export const RAISE_PROMPTS = {
   roleQuestion: "First — what should your expert do for you?",
   jobTitleQuestion: "And what's their job title?",
   nameQuestion: "Good pick. What do you want to call them?",
+  categoryQuestion: (name: string) =>
+    `Which area does ${name || "your expert"} work in? It sets their color.`,
   avatarQuestion: (name: string) =>
-    `Now give ${name || "them"} a face and a color. Shuffle until one feels right, or upload a picture.`,
+    `I'm sculpting a face for ${name || "them"}. Regenerate until one feels right, or upload a picture.`,
   aboutQuestion: (name: string) =>
     `Anything else I should know about ${name || "your expert"}? How they should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
@@ -90,6 +96,8 @@ export interface RaiseDraft {
   role: string | null;
   jobTitle: string | null;
   name: string;
+  // Answers the color too: every category owns one.
+  category: ExpertAvatarRequestCategory | null;
   color: string | null;
   // "" once the user skips, so the question is not asked again on restore.
   avatarUrl: string | null;
@@ -108,6 +116,7 @@ export const EMPTY_DRAFT: RaiseDraft = {
   role: null,
   jobTitle: null,
   name: "",
+  category: null,
   color: null,
   avatarUrl: null,
   about: null,
@@ -132,11 +141,13 @@ export function loadDraft(): RaiseDraft {
       return reopenedAtJobTitle(parsed.role);
     }
     const step = migrateStep(parsed.step);
-    return backfillSkippedVoice({
-      ...EMPTY_DRAFT,
-      ...parsed,
-      step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
-    });
+    return backfillCategory(
+      backfillSkippedVoice({
+        ...EMPTY_DRAFT,
+        ...parsed,
+        step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
+      }),
+    );
   } catch {
     return EMPTY_DRAFT;
   }
@@ -158,6 +169,18 @@ function migrateStep(step: string | undefined): string | undefined {
   if (step === "kit") return "budget";
   if (step === "color") return "avatar";
   return step;
+}
+
+// A draft written before the category beat existed has none. One that already
+// has a face keeps it and takes the category its role implies; one still
+// choosing resumes at the new question rather than waiting on an answer it was
+// never asked for.
+function backfillCategory(draft: RaiseDraft): RaiseDraft {
+  if (draft.category !== null || draft.name === "") return draft;
+  if (draft.avatarUrl !== null) {
+    return { ...draft, category: suggestedCategoryFor(draft.role) };
+  }
+  return { ...draft, step: "category" };
 }
 
 function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
