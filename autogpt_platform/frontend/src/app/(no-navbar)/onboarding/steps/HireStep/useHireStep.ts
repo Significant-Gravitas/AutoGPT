@@ -68,7 +68,7 @@ export function useHireStep() {
       trackBrainDump("expert_recommended", {
         template_id: expert.template_id,
         position,
-        source: team?.source ?? null,
+        team_source: team?.source ?? null,
       });
     });
   }, [team, isPending]);
@@ -81,24 +81,19 @@ export function useHireStep() {
       template_id: expert.template_id,
       position,
     });
-    trackBrainDump("hire_started", {
+    trackFunnel("hire_started", {
       template_id: expert.template_id,
-      source: "onboarding_hire_step",
+      surface: "onboarding",
     });
-    // The backend counts this hire's completion, so the funnel sink needs its
-    // start too — otherwise onboarding hires make completion rate unreadable.
-    trackFunnel("hire_started", { template_id: expert.template_id });
     setHiringTemplateId(expert.template_id);
     try {
-      await hireExpert({ data: { template_id: expert.template_id } });
+      await hireExpert({
+        data: { template_id: expert.template_id, surface: "onboarding" },
+      });
       analytics.sendDatafastEvent("hire_completed", {
         template_id: expert.template_id,
       });
       markHired(expert.template_id);
-      trackBrainDump("onboarding_expert_hired", {
-        template_id: expert.template_id,
-        position,
-      });
       // Best effort: the roster is not on screen here, and a failed
       // invalidation must not read as a failed hire.
       await invalidateExpertRosterQueries(queryClient).catch(() => undefined);

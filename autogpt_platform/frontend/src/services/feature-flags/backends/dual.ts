@@ -55,6 +55,6 @@ function useReportMismatch(
     if (!comparable || agree) return;
     const mismatch = JSON.parse(record);
     console.warn("feature-flag mismatch", mismatch);
-    posthog?.capture(FeatureFlagEvent.FEATURE_FLAG_MISMATCH, mismatch);
+    posthog?.capture(FeatureFlagEvent.FEATURE_FLAG_MISMATCHED, mismatch);
   }, [comparable, agree, record, posthog]);
 }

@@ -2785,74 +2785,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postAnalyticsLogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postAnalyticsLogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -18350,25 +18282,6 @@
         "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
       },
-      "Body_postAnalyticsLogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postAnalyticsLogRawAnalytics"
-      },
       "Body_postOauthIntrospect": {
         "properties": {
           "token": {
@@ -23932,6 +23845,16 @@
               { "type": "null" }
             ],
             "title": "Name"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "expert_page", "copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
@@ -25415,24 +25338,6 @@
         "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
-      },
-      "LogRawMetricRequest": {
-        "properties": {
-          "metric_name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Metric Name"
-          },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Data String"
-          }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "LogRawMetricRequest"
       },
       "LoginResponse": {
         "properties": {

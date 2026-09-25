@@ -38,7 +38,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
-from backend.copilot.tracking import track_followup_scheduled
+from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -279,10 +279,13 @@ class ScheduleFollowupTool(BaseTool):
             )
 
         is_recurring = cron is not None
-        track_followup_scheduled(
-            user_id=user_id,
-            session_id=target_session_id,
+        track_chat_outcome(
+            user_id,
+            current_session_id,
+            "schedule_created",
+            target="followup",
             schedule_id=info.id,
+            target_session_id=target_session_id,
             is_recurring=is_recurring,
         )
         if target_session_id is None:

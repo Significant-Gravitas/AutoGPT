@@ -8,7 +8,7 @@ from backend.copilot.briefing.generate import AgentInfo, compose_briefing
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
-from backend.util import funnel_analytics
+from backend.util import posthog_client
 from backend.util.feature_flag import Flag
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
@@ -1252,7 +1252,7 @@ async def test_generate_still_delivers_when_posthog_is_down(monkeypatch):
     """Isolation lives inside emit_funnel_event, so the real emitter is left in
     place and PostHog is what fails."""
     monkeypatch.setattr(
-        funnel_analytics,
+        posthog_client,
         "get_posthog_client",
         MagicMock(side_effect=RuntimeError("analytics down")),
     )

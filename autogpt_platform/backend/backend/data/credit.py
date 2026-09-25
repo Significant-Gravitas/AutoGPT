@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-import posthog
 import stripe
 from prisma.enums import (
     CreditRefundRequestStatus,
@@ -45,6 +44,7 @@ from backend.data.subscription_checkout import (
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
+from backend.util import posthog_client
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, get_feature_flag_value
@@ -61,9 +61,6 @@ if TYPE_CHECKING:
 
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
-if settings.secrets.posthog_api_key:
-    posthog.api_key = settings.secrets.posthog_api_key
-    posthog.host = settings.secrets.posthog_host
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
@@ -1166,7 +1163,7 @@ class UserCredit(UserCreditBase):
         # webhook/retry replays don't double-emit.
         if activation is not None and amount > 0:
             _track_billing_event(
-                PostHogEvent.CREDIT_TOPUP_SUCCESS,
+                PostHogEvent.TOPUP_COMPLETED,
                 user_id,
                 {
                     "amount_credits": amount,
@@ -1309,7 +1306,7 @@ class UserCredit(UserCreditBase):
             )
             if activation is not None:
                 _track_billing_event(
-                    PostHogEvent.CREDIT_TOPUP_SUCCESS,
+                    PostHogEvent.TOPUP_COMPLETED,
                     credit_transaction.userId,
                     {
                         "amount_credits": credit_transaction.amount,
@@ -2181,9 +2178,10 @@ async def modify_stripe_subscription_for_tier(
         # the DB flip fails, so gating here avoids double-firing on success.
         if db_flip_succeeded and is_tier_upgrade(current_tier, tier):
             _track_billing_event(
-                PostHogEvent.SUBSCRIPTION_UPGRADED,
+                PostHogEvent.SUBSCRIPTION_CHANGED,
                 user_id,
                 {
+                    "change_type": "upgrade",
                     "previous_subscription_tier": current_tier.value,
                     "subscription_tier": tier.value,
                     "billing_cycle": billing_cycle,
@@ -2874,9 +2872,10 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
         )
         _track_billing_event(
-            PostHogEvent.SUBSCRIPTION_UPGRADED,
+            PostHogEvent.SUBSCRIPTION_CHANGED,
             user.id,
             {
+                "change_type": "upgrade",
                 "previous_subscription_tier": current_tier.value,
                 "subscription_tier": tier.value,
                 "billing_cycle": billing_cycle,
@@ -2948,9 +2947,7 @@ def _invoice_subscription_id(invoice: dict) -> str:
     return legacy if isinstance(legacy, str) and legacy else ""
 
 
-TIER_RECONCILIATION_DISCREPANCY_EVENT = (
-    PostHogEvent.SUBSCRIPTION_TIER_RECONCILIATION_DISCREPANCY
-)
+TIER_RECONCILIATION_DISCREPANCY_EVENT = PostHogEvent.SUBSCRIPTION_TIER_RECONCILED
 
 
 def log_tier_reconciliation_discrepancy(
@@ -3013,26 +3010,13 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
 def _track_billing_event(
     event: PostHogEvent, distinct_id: str, properties: dict[str, Any]
 ) -> None:
-    if not settings.secrets.posthog_api_key:
-        return
-
-    try:
-        posthog.capture(
-            event=event.value,
-            distinct_id=distinct_id,
-            properties=properties,
-        )
-    except Exception:
-        logger.warning(
-            "failed to track billing event %s for user %s",
-            event,
-            distinct_id,
-            exc_info=True,
-        )
+    # The shared client, never the posthog module's globals: another library
+    # (graphiti-core) configures those for its own telemetry (SECRT-2710).
+    posthog_client.capture(distinct_id, event, properties)
 
 
 async def _track_subscription_payment_success(user: User, invoice: dict) -> None:
-    if not settings.secrets.posthog_api_key:
+    if posthog_client.get_posthog_client() is None:
         return
 
     try:
@@ -3045,13 +3029,10 @@ async def _track_subscription_payment_success(user: User, invoice: dict) -> None
             await get_user_billing_cycle(user.id) or "monthly"
         )
 
-        posthog.capture(
-            event=PostHogEvent.SUBSCRIPTION_PAYMENT_SUCCESS.value,
-            distinct_id=user.id,
-            properties={
-                "subscription_tier": tier,
-                "billing_cycle": billing_cycle,
-            },
+        _track_billing_event(
+            PostHogEvent.PAYMENT_SUCCEEDED,
+            user.id,
+            {"subscription_tier": tier, "billing_cycle": billing_cycle},
         )
     except Exception:
         logger.warning(

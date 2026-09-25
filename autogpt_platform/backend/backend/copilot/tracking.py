@@ -1,23 +1,20 @@
-"""PostHog analytics tracking for the chat system."""
+"""PostHog analytics tracking for the chat system.
 
-import logging
-from typing import Any
+Event names are the product analytics plan's ``chat_*`` family. The events
+captured here carry ``source: chat_copilot``; ``chat_message_sent`` goes
+through ``product_analytics`` and carries ``source: platform``. Events are only
+sent for a known user: a synthetic distinct id would create a PostHog person
+nobody can merge.
+"""
 
-from backend.util import product_analytics
-from backend.util.posthog_client import get_posthog_client as _get_posthog_client
+from typing import Any, Literal
+
+from backend.util import posthog_client, product_analytics
 from backend.util.posthog_events import PostHogEvent
-from backend.util.settings import Settings
 
-logger = logging.getLogger(__name__)
-settings = Settings()
+SOURCE = "chat_copilot"
 
-
-def _get_base_properties() -> dict[str, Any]:
-    """Get base properties included in all events."""
-    return {
-        "environment": settings.config.app_env.value,
-        "source": "chat_copilot",
-    }
+ChatOutcomeType = Literal["agent_run_success", "schedule_created"]
 
 
 def track_user_message(
@@ -31,42 +28,25 @@ def track_user_message(
 ) -> None:
     """Track when a user sends a message in chat.
 
+    One ``chat_message_sent`` per turn (``expert_id`` set in an expert chat),
+    carrying the message length.
+
     Args:
-        user_id: The user's ID (or None for anonymous)
+        user_id: The user's ID; no event without one
         session_id: The chat session ID
         message_length: Length of the user's message
         expert_id: Expert the session is scoped to, if any
         origin: Session origin ("interactive" | "automation"), when known
         surface: Where the message came from (web chat, slack, telegram, ...)
     """
-    # The activation event (run_autopilot / run_expert) is the one GTM
-    # dashboards and experiments build on; copilot_message_sent stays for
-    # the existing copilot dashboards.
     product_analytics.track_chat_turn(
         user_id=user_id,
         session_id=session_id,
         expert_id=expert_id,
         origin=origin,
         surface=surface,
+        message_length=message_length,
     )
-
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
-            "session_id": session_id,
-            "message_length": message_length,
-        }
-        client.capture(
-            distinct_id=user_id or f"anonymous_{session_id}",
-            event=PostHogEvent.COPILOT_MESSAGE_SENT.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track user message: {e}")
 
 
 def track_tool_called(
@@ -78,197 +58,44 @@ def track_tool_called(
     """Track when a tool is called in chat.
 
     Args:
-        user_id: The user's ID (or None for anonymous)
+        user_id: The user's ID; no event without one
         session_id: The chat session ID
         tool_name: Name of the tool being called
         tool_call_id: Unique ID of the tool call
     """
-    client = _get_posthog_client()
-    if not client:
-        logger.info("PostHog client not available for tool tracking")
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.CHAT_TOOL_CALLED,
+        {
             "session_id": session_id,
             "tool_name": tool_name,
             "tool_call_id": tool_call_id,
-        }
-        distinct_id = user_id or f"anonymous_{session_id}"
-        logger.info(
-            f"Sending copilot_tool_called event to PostHog: distinct_id={distinct_id}, "
-            f"tool_name={tool_name}"
-        )
-        client.capture(
-            distinct_id=distinct_id,
-            event=PostHogEvent.COPILOT_TOOL_CALLED.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track tool call: {e}")
+        },
+        source=SOURCE,
+    )
 
 
-def track_agent_run_success(
+def track_chat_outcome(
     user_id: str,
     session_id: str,
-    graph_id: str,
-    graph_name: str,
-    execution_id: str,
-    library_agent_id: str,
+    outcome_type: ChatOutcomeType,
+    **properties: Any,
 ) -> None:
-    """Track when an agent is successfully run.
+    """Track a moment of value in a chat: the copilot ran or scheduled
+    something for the user. ``outcome_type`` uses the analytics plan's values.
 
     Args:
         user_id: The user's ID
-        session_id: The chat session ID
-        graph_id: ID of the agent graph
-        graph_name: Name of the agent
-        execution_id: ID of the execution
-        library_agent_id: ID of the library agent
+        session_id: The chat session the outcome happened in
+        outcome_type: Which kind of result the chat produced
+        properties: Ids describing the result (``graph_id``, ...)
     """
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
-            "session_id": session_id,
-            "graph_id": graph_id,
-            "graph_name": graph_name,
-            "execution_id": execution_id,
-            "library_agent_id": library_agent_id,
-        }
-        client.capture(
-            distinct_id=user_id,
-            event=PostHogEvent.COPILOT_AGENT_RUN_SUCCESS.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track agent run: {e}")
-
-
-def track_agent_scheduled(
-    user_id: str,
-    session_id: str,
-    graph_id: str,
-    graph_name: str,
-    schedule_id: str,
-    schedule_name: str,
-    cron: str,
-    library_agent_id: str,
-) -> None:
-    """Track when an agent is successfully scheduled.
-
-    Args:
-        user_id: The user's ID
-        session_id: The chat session ID
-        graph_id: ID of the agent graph
-        graph_name: Name of the agent
-        schedule_id: ID of the schedule
-        schedule_name: Name of the schedule
-        cron: Cron expression for the schedule
-        library_agent_id: ID of the library agent
-    """
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
-            "session_id": session_id,
-            "graph_id": graph_id,
-            "graph_name": graph_name,
-            "schedule_id": schedule_id,
-            "schedule_name": schedule_name,
-            "cron": cron,
-            "library_agent_id": library_agent_id,
-        }
-        client.capture(
-            distinct_id=user_id,
-            event=PostHogEvent.COPILOT_AGENT_SCHEDULED.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track agent schedule: {e}")
-
-
-def track_followup_scheduled(
-    user_id: str,
-    session_id: str | None,
-    schedule_id: str,
-    is_recurring: bool,
-) -> None:
-    """Track when the copilot schedules a follow-up turn on itself.
-
-    Args:
-        user_id: The user's ID
-        session_id: The chat session ID being followed up. ``None`` for
-            the fresh-chat sentinel (the destination session doesn't
-            exist yet — it will be created when the schedule fires).
-        schedule_id: ID of the created schedule
-        is_recurring: True if cron, False if one-shot
-    """
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
-            "session_id": session_id,
-            "schedule_id": schedule_id,
-            "is_recurring": is_recurring,
-        }
-        client.capture(
-            distinct_id=user_id,
-            event=PostHogEvent.COPILOT_FOLLOWUP_SCHEDULED.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track followup schedule: {e}")
-
-
-def track_trigger_setup(
-    user_id: str,
-    session_id: str,
-    graph_id: str,
-    graph_name: str,
-    trigger_type: str,
-    library_agent_id: str,
-) -> None:
-    """Track when a trigger is set up for an agent.
-
-    Args:
-        user_id: The user's ID
-        session_id: The chat session ID
-        graph_id: ID of the agent graph
-        graph_name: Name of the agent
-        trigger_type: Type of trigger (e.g., 'webhook')
-        library_agent_id: ID of the library agent
-    """
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
-            "session_id": session_id,
-            "graph_id": graph_id,
-            "graph_name": graph_name,
-            "trigger_type": trigger_type,
-            "library_agent_id": library_agent_id,
-        }
-        client.capture(
-            distinct_id=user_id,
-            event=PostHogEvent.COPILOT_TRIGGER_SETUP.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track trigger setup: {e}")
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.CHAT_OUTCOME,
+        {**properties, "session_id": session_id, "outcome_type": outcome_type},
+        source=SOURCE,
+    )
 
 
 def track_library_check_outcome(
@@ -290,22 +117,14 @@ def track_library_check_outcome(
             threshold) — included so sub-threshold near-misses can
             inform retuning ``LIBRARY_SIMILARITY_THRESHOLD``.
     """
-    client = _get_posthog_client()
-    if not client:
-        return
-
-    try:
-        properties = {
-            **_get_base_properties(),
+    posthog_client.capture(
+        user_id,
+        PostHogEvent.CHAT_LIBRARY_CHECK_OUTCOME,
+        {
             "session_id": session_id,
             "outcome": outcome,
             "matches_count": matches_count,
             "top_score": top_score,
-        }
-        client.capture(
-            distinct_id=user_id,
-            event=PostHogEvent.COPILOT_LIBRARY_CHECK_OUTCOME.value,
-            properties=properties,
-        )
-    except Exception as e:
-        logger.warning(f"Failed to track library check outcome: {e}")
+        },
+        source=SOURCE,
+    )

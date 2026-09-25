@@ -543,12 +543,85 @@ describe("useVoiceMode", () => {
 
     const events = tracked.map(([e]) => e);
     expect(events).toContain("voice_mode_started");
-    expect(events).toContain("voice_transcribe_latency_ms");
     expect(events).toContain("voice_turn_sent");
     expect(events).toContain("voice_turn_completed");
     // Without this the funnel cannot tell one turn from ten.
     const sent = tracked.find(([e]) => e === "voice_turn_sent");
     expect(sent?.[1]?.turn_index).toBe(1);
+  });
+
+  it("carries the latencies on the turn events instead of sending their own", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    await reply(view, "On it. Building that now.");
+    await waitFor(() => expect(view.result.current.state).toBe("listening"));
+
+    const events = tracked.map(([e]) => e);
+    expect(events).not.toContain("voice_transcribe_latency_ms");
+    expect(events).not.toContain("voice_first_sound_latency_ms");
+    const sent = tracked.find(([e]) => e === "voice_turn_sent");
+    expect(sent?.[1]?.transcribe_latency_ms).toEqual(expect.any(Number));
+    const completed = tracked.find(([e]) => e === "voice_turn_completed");
+    expect(completed?.[1]).toHaveProperty("first_sound_latency_ms");
+  });
+
+  it("keeps the first-sound latency of a reply the user cut off", async () => {
+    const play = vi
+      .spyOn(window.HTMLMediaElement.prototype, "play")
+      .mockImplementation(() => Promise.resolve());
+    const view = render({});
+    await enable(view);
+    await speak();
+    await act(async () => {
+      view.rerender({
+        messages: assistant("First sentence. Second half"),
+        isStreaming: true,
+      });
+    });
+    await waitFor(() => expect(play).toHaveBeenCalled());
+
+    await act(async () => view.result.current.toggle());
+
+    const events = tracked.map(([e]) => e);
+    expect(events).not.toContain("voice_turn_completed");
+    const dropped = tracked.filter(([e]) => e === "voice_turn_dropped");
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0][1]).toMatchObject({
+      reason: "interrupted",
+      turn_index: 1,
+      first_sound_latency_ms: expect.any(Number),
+    });
+    expect(events).toContain("voice_mode_stopped");
+  });
+
+  it("reports a turn left mid-thought as interrupted, once", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    expect(view.result.current.state).toBe("thinking");
+
+    view.unmount();
+
+    const dropped = tracked.filter(([e]) => e === "voice_turn_dropped");
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0][1]).toMatchObject({
+      reason: "interrupted",
+      first_sound_latency_ms: null,
+    });
+  });
+
+  it("drops nothing when voice mode is switched off between turns", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    await reply(view, "On it. Building that now.");
+    await waitFor(() => expect(view.result.current.state).toBe("listening"));
+
+    await act(async () => view.result.current.toggle());
+    view.unmount();
+
+    expect(tracked.map(([e]) => e)).not.toContain("voice_turn_dropped");
   });
 
   it("distinguishes a silence timeout from the user leaving", async () => {
@@ -572,6 +645,7 @@ describe("useVoiceMode", () => {
 
     const dropped = tracked.find(([e]) => e === "voice_turn_dropped");
     expect(dropped?.[1]?.reason).toBe("filler_or_empty");
+    expect(dropped?.[1]?.transcribe_latency_ms).toEqual(expect.any(Number));
   });
 
   it("marks turns as voice turns only while voice mode is on", async () => {

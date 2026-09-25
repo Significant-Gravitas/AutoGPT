@@ -6,6 +6,7 @@ import {
   followAnalyticsConsentForIdentity,
   getAnonymousID,
 } from "@/services/analytics/anonymous-id";
+import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
@@ -47,6 +48,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         }),
         ...getConsentGatedConfig(),
       });
+      posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {

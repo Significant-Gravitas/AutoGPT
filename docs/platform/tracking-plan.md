@@ -13,7 +13,7 @@ lists what is not aligned yet.
 In code the names live in two modules. Browser call sites may still pass a
 literal (`trackBrainDump("brain_dump_started")`), which is type-checked
 against these modules, and backend funnel `data_index` keys embed the name
-too (`briefing_generated:<id>`, `expert_run_completed:<graph_exec_id>`). A
+too (`briefing_generated:<id>`, `briefing_delivered:<id>`). A
 rename therefore has to search for the old string, not just edit the modules:
 
 | Sender | Module | Pin test |
@@ -33,10 +33,9 @@ rename therefore has to search for the old string, not just edit the modules:
   lifecycle is `trial_*`.
 - **Rename once, then never again.** PostHog stores the raw string, so a
   rename empties every insight, funnel and cohort built on the old name, and
-  past events cannot be backfilled. The live names that differ from the plan
-  (status `rename → X`) are renamed together in SECRT-2722, which lists
-  every old → new pair for the insights to update. After that, the pin tests
-  fail on any change to a live name.
+  past events cannot be backfilled. The live names that differed from the
+  plan were renamed together in SECRT-2722 (see [Renamed](#renamed)); the
+  pin tests reserve the old names and fail on any change to a live one.
 - Put a new name in `PlannedPostHogEvent` when it is agreed, and move it into
   the live list in the change that starts sending it.
 
@@ -49,8 +48,8 @@ rename therefore has to search for the old string, not just edit the modules:
 - **Interactions are sent by the browser**: views, clicks, dismissals and
   client-side timings that the backend never sees.
 - One action has **one** event. Where two emitters describe the same action,
-  the backend event survives and the other is merged into it (status
-  `merge`).
+  the backend event survives and the other stops being sent (see
+  [Removed](#removed)).
 
 ### Base properties
 
@@ -59,18 +58,17 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it. Existing values stay: `platform` (`product_analytics.py`), `chat_copilot` (`copilot/tracking.py`). Newly covered backend emitters use `platform`; the browser uses `web`, registered once as a PostHog super property. |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
 
-Today only `product_analytics.py` and `copilot/tracking.py` send them. The
-funnel (`funnel_analytics.py`), billing (`data/credit.py`) and trial
-(`notifications/trial.py`) events and every browser event carry neither;
-SECRT-2722 adds them.
+Every backend event goes through `capture()` in
+`backend/util/posthog_client.py`, which applies both last, so a caller cannot
+overwrite them. The browser registers them once as PostHog super properties
+(`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
+at logout; a Vercel preview reports `environment: preview`.
 
-Three events already use `source` for something else and must move that
-value to its own property before the base property is applied, or the two
-will overwrite each other: `hire_started` (`source: onboarding_hire_step`),
-`expert_recommended` (the team's `source`) and `workflow_installed_on_expert`
-(`source: library | marketplace`).
+`source` is reserved for the emitter. The three events that used it for
+something else now use `hire_started.surface`,
+`expert_recommended.team_source` and `workflow_installed_on_expert.workflow_source`.
 
 ### Identity
 
@@ -81,11 +79,9 @@ will overwrite each other: `hire_started` (`source: onboarding_hire_step`),
   (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
   bootstrap `distinctID`. `identify` merges it into the user at login, and
   `resetAnalyticsIdentity` mints a fresh one at logout.
-- **No synthetic ids.** A backend event with no user is dropped, as
-  `product_analytics.track` already does. `copilot/tracking.py` still falls
-  back to `anonymous_{session_id}` for `copilot_message_sent` and
-  `copilot_tool_called`; each of those creates a person nobody can merge, and
-  SECRT-2722 removes the fallback.
+- **No synthetic ids.** A backend event with no user is dropped
+  (`posthog_client.capture` does it for every emitter), since a made-up id
+  creates a person nobody can merge.
 - **No email or name in event properties.** Identify ids only. The email and
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
@@ -103,20 +99,19 @@ work a person asked for now:
   `automation` and whose kind is not `dream`.
 
 A run the copilot started (`triggerSource = copilot`) is **not** a second
-task: the chat turn that asked for it already counts. `run_agent` does fire
+task: the chat turn that asked for it already counts. `agent_run_started` does fire
 for copilot-started runs (with `trigger: copilot`), because it measures
 human-initiated runs, not tasks. `user_lifecycle.agent_runs_human_total` is
 its SQL twin and includes copilot runs too.
 
-The same definition as a PostHog filter (with today's names; after
-SECRT-2722 it reads `agent_run_started` and `chat_message_sent`):
+The same definition as a PostHog filter:
 
 ```sql
-event IN ('run_agent', 'run_expert', 'run_autopilot')
+event IN ('agent_run_started', 'chat_message_sent')
 AND coalesce(properties.trigger, '') != 'copilot'
 ```
 
-In the insight UI: events `run_agent`, `run_expert` and `run_autopilot`,
+In the insight UI: events `agent_run_started` and `chat_message_sent`,
 filtered by `trigger` "is not" `copilot`. Chat turns carry no `trigger`, so
 the filter must keep events where it is unset. The emitters already leave
 out dry runs, sub-graph runs, schedule and webhook runs, and automation-origin
@@ -129,10 +124,10 @@ Automated work is measured separately: `schedule_fired` and `trigger_fired`.
 | Status | Meaning |
 | --- | --- |
 | `live` | Sent today under this name. Keep it. |
-| `rename → X` | Sent today under an old name. SECRT-2722 renames it to `X`, the analytics plan's name. |
-| `merge → X` | Sent today, duplicates `X`. SECRT-2722 stops sending it once dashboards read `X`; the name stays reserved. |
 | `add` | Not sent yet. SECRT-2723 adds it; the name is already in `PlannedPostHogEvent`. |
-| `remove` | Declared in code but never sent. SECRT-2722 deletes it. |
+
+Events that are no longer sent are listed under [Removed](#removed), with
+what replaced them.
 
 ## Acquisition
 
@@ -155,7 +150,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `onboarding_step_viewed` | browser | add | `step` (`team`, `autopilot`, `role`, `pain_points`, `connect`, `hire`, `preparing`) | A wizard step is shown (once per tab, same keys as the DataFast `onboarding_<step>` goals). |
 | `onboarding_completed` | backend | add | — | The onboarding is marked complete. |
 | `brain_dump_started` | browser | live | — | Recording starts. |
-| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. |
+| `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
 | `brain_dump_canceled` | browser | live | — | Recording is cancelled. |
 | `brain_dump_skipped` | browser | live | — | The step is skipped. |
 | `brain_dump_recovery_shown` | browser | live | `parts` | A saved partial recording is offered back. |
@@ -165,8 +160,7 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `brain_dump_download` | browser | live | — | The recording is downloaded after a failure. |
 | `brain_dump_permission_denied` | browser | live | — | Microphone permission is refused. |
 | `brain_dump_typed_fallback` | browser | live | `reason` | The user types instead of speaking. |
-| `transcription_failed` | browser | live | `error_code` | Finalize returns a failure. |
-| `finalize_latency_ms` | browser | merge → `brain_dump_completed` | `ms`, `input_mode` | Finalize returns. Becomes a `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
+| `transcription_failed` | browser | live | `error_code`, `finalize_latency_ms` | Finalize returns a failure. |
 | `welcome_dialog_closed` | browser | live | — | The first-landing welcome dialog closes. |
 | `capability_card_viewed` | browser | live | `card_index`, `deck` | A capability card is shown. |
 | `capability_cards_completed` | browser | live | `card_index`, `deck` | The deck is finished. |
@@ -174,13 +168,9 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `intro_path` | browser | live | `path` | The intro path (A/B) is chosen. |
 | `intro_followup_sent` | browser | live | `chars` | First message after the intro card. |
 | `later_dump_completed` | browser | live | — | A brain dump sent later from the composer. |
-| `expert_recommended` | browser | live | `template_id`, `position`, `source` (see base properties) | A recommended expert card is shown. |
+| `expert_recommended` | browser | live | `template_id`, `position`, `team_source` | A recommended expert card is shown. |
 | `expert_recommendation_clicked` | browser | live | `template_id`, `position` | A recommended expert card is clicked. |
 | `hire_step_continued` | browser | live | `hired`, `recommended` | The hire step is left. |
-| `onboarding_expert_hired` | browser | merge → `expert_hired` | `template_id`, `position` | A hire lands from the onboarding hire step. |
-| `intro_card_dismissed` | browser | remove | — | Never sent. |
-| `raise_door_clicked` | browser | remove | — | Never sent. |
-| `intro_start_with_autopilot` | browser | remove | — | Never sent. |
 | `tab_intro_shown` | browser | live | `tab` | A tab intro card is shown. |
 | `tab_intro_cta_clicked` | browser | live | `tab`, `cta` | Its primary CTA is used. |
 | `tab_intro_dismissed` | browser | live | `tab` | It is dismissed any other way. |
@@ -195,43 +185,32 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `run_agent` | backend | rename → `agent_run_started` | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id` | A person starts a non-expert agent run. |
-| `run_autopilot` | backend | rename → `chat_message_sent` | `session_id`, `origin`, `surface`, `kind: chat_turn` | A person sends a message in an Autopilot chat. |
-| `run_expert` | backend | rename → `chat_message_sent` (chat turn) / `agent_run_started` (workflow run) | `expert_id`, `kind` (`chat_turn` or `workflow_run`); chat: `session_id`, `origin`, `surface`; run: `graph_id`, `graph_exec_id`, `trigger` | A person messages an expert or starts an expert workflow. |
-| `copilot_message_sent` | backend | merge → `chat_message_sent` | `session_id`, `message_length` | Same chat turn. `message_length` moves onto `chat_message_sent`. |
-| `agent_run_completed` | backend | rename → `agent_run_finished` (`status: completed`) | `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds` | A run reaches COMPLETED (sub-graph and automated runs included). |
-| `agent_run_failed` | backend | rename → `agent_run_finished` (`status: failed`) | as above plus `failure_reason` | A run reaches FAILED. |
-| `expert_run_completed` | backend | merge → `agent_run_finished` | `expert_id`, `status`, `graph_exec_id` | A top-level expert run reaches COMPLETED or FAILED. Same as `agent_run_*` with `expert_id` set on a top-level run. |
-| `copilot_agent_run_success` | backend | rename → `chat_outcome` (`outcome_type: agent_run_success`) | `session_id`, `graph_id`, `graph_name`, `execution_id`, `library_agent_id` | The copilot started a run for the user: a moment of value in the chat. |
+| `agent_run_started` | backend | live | `graph_id`, `graph_exec_id`, `trigger` (`manual`, `api`, `copilot`), `trigger_ref`, `preset_id`; an expert's workflow run adds `expert_id` and `kind: workflow_run` | A person starts an agent run. |
+| `chat_message_sent` | backend | live | `session_id`, `origin`, `surface`, `kind: chat_turn`, `message_length`; `expert_id` in an expert chat | A person sends a message in an Autopilot or expert chat. |
+| `agent_run_finished` | backend | live | `status` (`completed`, `failed`), `graph_id`, `graph_exec_id`, `trigger`, `expert_id`, `cost_cents`, `duration_seconds`, `is_subgraph_run`; `failure_reason` when failed | A run reaches COMPLETED or FAILED (sub-graph and automated runs included). A top-level expert run is `expert_id` set and `is_subgraph_run` false. Deduplicated on `graph_exec_id`, so a requeue or resume that finishes the same run again sends no second event. |
 | `schedule_created` | backend | live | `schedule_id`, `target` (`agent`, `autopilot`, `expert`), `expert_id`, `cron`, `is_recurring`, `run_at`, `graph_id`, `session_id` | Any schedule is registered, from any surface. |
-| `copilot_agent_scheduled` | backend | rename → `chat_outcome` (`outcome_type: schedule_created`) | `session_id`, `graph_id`, `schedule_id`, `cron`, ... | The copilot scheduled an agent. `schedule_created` (`target: agent`) still counts the schedule itself. |
-| `copilot_followup_scheduled` | backend | rename → `chat_outcome` (`outcome_type: schedule_created`) | `session_id`, `schedule_id`, `is_recurring` | The copilot scheduled its own follow-up. `schedule_created` (`target: autopilot` or `expert`) still counts the schedule itself. |
-| `copilot_tool_called` | backend | rename → `chat_tool_called` | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
-| `copilot_library_check_outcome` | backend | rename → `chat_library_check_outcome` | `session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
-| `copilot_trigger_setup` | backend | remove | — | `track_trigger_setup` has no caller. |
+| `chat_tool_called` | backend | live | `session_id`, `tool_name`, `tool_call_id` | The copilot calls a tool. |
+| `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
+| `chat_library_check_outcome` | backend | live | `session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
-| `voice_turn_sent` | browser | live | `turn_index`, `transcript_chars` | A spoken turn is sent. |
-| `voice_turn_dropped` | browser | live | `reason` | A spoken turn is discarded. |
-| `voice_turn_completed` | browser | live | `turn_index` | The mic reopens after the reply. |
+| `voice_turn_sent` | browser | live | `turn_index`, `transcript_chars`, `transcribe_latency_ms` | A spoken turn is sent. |
+| `voice_turn_dropped` | browser | live | `reason` (`vad_misfire`, `transcribe_failed`, `filler_or_empty`, `interrupted`); `transcribe_latency_ms` with `filler_or_empty`; `turn_index` and `first_sound_latency_ms` (null when nothing played yet) with `interrupted` | A spoken turn is discarded, or with `interrupted` a sent turn's reply is cut off by switching voice mode off or leaving the page. A sent turn ends in exactly one of `voice_turn_completed` or this. |
+| `voice_turn_completed` | browser | live | `turn_index`, `first_sound_latency_ms` (null when nothing played) | The mic reopens after the reply. |
 | `voice_transcribe_retried` | browser | live | `turn_index` | A failed transcription is retried. |
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
 | `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
-| `voice_transcribe_latency_ms` | browser | merge → `voice_turn_sent` | `ms` | Becomes a `transcribe_latency_ms` property on `voice_turn_sent` (and on `voice_turn_dropped` with `reason: filler_or_empty`). |
-| `voice_first_sound_latency_ms` | browser | merge → `voice_turn_completed` | `ms` | Becomes a `first_sound_latency_ms` property on `voice_turn_completed`. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id` | A hire button is clicked. Sent twice per click from the onboarding hire step (`useHireStep.ts`); SECRT-2722 keeps one. |
+| `hire_started` | browser | live | `template_id`, `surface` (`onboarding`, `expert_page`) | A hire button is clicked. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
-| `expert_hired` | backend | live | `expert_id`, `template_id`, `name` | An expert is hired. SECRT-2722 moves it into `hire_expert` so an idempotent re-hire of an active expert no longer fires, and adds `failed_preloads_count` and the hiring `surface`. |
-| `hire_completed` | backend | merge → `expert_hired` | `template_id`, `failed_preloads_count` | Same hire, already skipping re-hires. |
-| `hire_flow_completed` | browser | merge → `expert_hired` | `template_id`, `expert_id`, `elapsed_ms`, `voice_picked` | Same hire, from the marketplace hire dialog. |
+| `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
 | `expert_thread_created` | browser | live | `expert_id` | A new expert chat is created. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
-| `workflow_installed_on_expert` | backend | live | `expert_id`, `source` (see base properties), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
+| `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
 | `home_viewed` | browser | live | — | The home dashboard renders with data. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
@@ -247,21 +226,21 @@ The tour funnel is sent to DataFast today (`tour_start`, `tour_scenario_start`,
 | `billing_portal_opened` | browser | add | `surface` | The Stripe billing portal is opened. |
 | `checkout_started` | backend | add | `checkout_kind` (`subscription`, `top_up`), `subscription_tier`, `billing_cycle`, `surface` | A Stripe Checkout session is created. |
 | `checkout_abandoned` | browser | add | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL). Browser-sent: Stripe only reports the expiry a day later. |
-| `subscription_trial_offer_viewed` | browser | rename → `trial_offer_viewed` | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
+| `trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
 | `subscription_trial_checkout_started` | browser | live | `trial_offer_version`, `surface` | Trial checkout is opened. Once `checkout_started` ships, fold this in as `checkout_kind: trial`. |
-| `subscription_trial_started` | backend | rename → `trial_started` | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
-| `subscription_trial_ending` | backend | rename → `trial_ending` | as above | The reminder window opens. |
-| `subscription_trial_canceled` | backend | rename → `trial_canceled` | as above | The trial is set to cancel. |
-| `subscription_trial_resumed` | backend | rename → `trial_resumed` | as above | A cancelled trial is resumed. |
-| `subscription_trial_payment_failed` | backend | rename → `payment_failed` | as above | The conversion charge fails. |
-| `subscription_trial_converted` | backend | rename → `trial_converted` | as above | The trial converts to paid. |
-| `subscription_trial_ended` | backend | rename → `trial_ended` | as above | The trial ends without converting. |
-| `subscription_upgraded` | backend | rename → `subscription_changed` (`change_type: upgrade`) | `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier change takes effect. |
-| `subscription_payment_success` | backend | rename → `payment_succeeded` | `subscription_tier`, `billing_cycle`; SECRT-2723 adds `amount_cents`, `currency` | A subscription invoice is paid. |
-| `credit_topup_success` | backend | rename → `topup_completed` | `amount_credits`, `top_up_type`; SECRT-2723 adds `amount_cents`, `currency` | Credits are bought. |
+| `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
+| `trial_ending` | backend | live | as above | The reminder window opens. |
+| `trial_canceled` | backend | live | as above | The trial is set to cancel. |
+| `trial_resumed` | backend | live | as above | A cancelled trial is resumed. |
+| `payment_failed` | backend | live | as above | The conversion charge fails. |
+| `trial_converted` | backend | live | as above | The trial converts to paid. |
+| `trial_ended` | backend | live | as above | The trial ends without converting. |
+| `subscription_changed` | backend | live | `change_type: upgrade`, `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier upgrade takes effect. Downgrades and cancellations are not sent here yet. |
+| `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`; SECRT-2723 adds `amount_cents`, `currency` | A subscription invoice is paid. |
+| `topup_completed` | backend | live | `amount_credits`, `top_up_type`; SECRT-2723 adds `amount_cents`, `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
 | `subscription_ended` | backend | add | `subscription_tier`, `billing_cycle`, `reason` | A paid subscription ends (Stripe `customer.subscription.deleted`). |
-| `subscription_tier_reconciliation_discrepancy` | backend | rename → `subscription_tier_reconciled` | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
+| `subscription_tier_reconciled` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
 
 The onboarding paywall's `paywall_view`, `paywall_checkout_cancelled` and
 `hire_completed` goals go to DataFast only, which is why the paywall has no
@@ -286,12 +265,64 @@ Return visits are `$pageview`; account-level retention is computed in
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `experiment_exposed` | browser | live | `experiment_key`, `variant`, `provider: launchdarkly`, `$feature/<flag>` | A LaunchDarkly-bucketed arm is shown to a signed-in user (`useLaunchDarklyExperiment`). |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
-| `feature_flag_mismatch` | browser | rename → `feature_flag_mismatched` | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. The analytics plan has no name for it; SECRT-2722 gives it the `object_action` past-tense form before it reaches production. |
+| `feature_flag_mismatched` | browser | live | `flag`, `launchdarkly` (`value`, `resolved`), `posthog` (`value`, `resolved`) | Ops signal: with both flag vendors configured, LaunchDarkly and PostHog resolved a flag to different values (`useDualFlag`). Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.
+
+## Removed
+
+No longer sent (SECRT-2722). The names stay reserved: the pin tests fail if
+one comes back, because reusing it would splice a different action onto the
+history PostHog already holds.
+
+| Event | Was sent by | Read instead |
+| --- | --- | --- |
+| `hire_completed` | backend | `expert_hired` (same hire; it now also skips idempotent re-hires). The DataFast `hire_completed` goal is unchanged. |
+| `hire_flow_completed` | browser | `expert_hired` with `surface: expert_page`. `elapsed_ms` is PostHog's time to convert from `hire_started`; `voice_picked` is dropped. |
+| `onboarding_expert_hired` | browser | `expert_hired` with `surface: onboarding`. The card `position` is on `expert_recommendation_clicked`. |
+| `copilot_message_sent` | backend | `chat_message_sent`, which carries `message_length`. |
+| `expert_run_completed` | backend | `agent_run_finished` with `expert_id` set and `is_subgraph_run: false`. |
+| `finalize_latency_ms` | browser | The `finalize_latency_ms` property on `brain_dump_completed` and `transcription_failed`. |
+| `voice_transcribe_latency_ms` | browser | The `transcribe_latency_ms` property on `voice_turn_sent` (and `voice_turn_dropped` with `reason: filler_or_empty`). |
+| `voice_first_sound_latency_ms` | browser | The `first_sound_latency_ms` property on `voice_turn_completed`, or on `voice_turn_dropped` with `reason: interrupted` for a reply that was cut off. |
+| `experiment_exposed` | browser | Nothing: `useLaunchDarklyExperiment` had no caller and was deleted. PostHog-bucketed experiments use `$feature_flag_called`. |
+| `copilot_trigger_setup` | backend | Nothing: never sent (no caller). |
+| `intro_card_dismissed`, `raise_door_clicked`, `intro_start_with_autopilot` | browser | Nothing: declared, never sent. |
+
+## Renamed
+
+Renamed once to the analytics plan's names (SECRT-2722). The old names are
+reserved like removed ones; an insight on the old name must be pointed at the
+new one.
+
+| Old name | New name | Filter to keep the old meaning |
+| --- | --- | --- |
+| `run_agent` | `agent_run_started` | `expert_id` is not set |
+| `run_expert` (`kind: workflow_run`) | `agent_run_started` | `expert_id` is set |
+| `run_autopilot` | `chat_message_sent` | `expert_id` is not set |
+| `run_expert` (`kind: chat_turn`) | `chat_message_sent` | `expert_id` is set |
+| `agent_run_completed` | `agent_run_finished` | `status = completed` |
+| `agent_run_failed` | `agent_run_finished` | `status = failed` |
+| `copilot_tool_called` | `chat_tool_called` | — |
+| `copilot_library_check_outcome` | `chat_library_check_outcome` | — |
+| `copilot_agent_run_success` | `chat_outcome` | `outcome_type = agent_run_success`. Dry runs no longer count; `graph_name` is dropped. |
+| `copilot_agent_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = agent`. `graph_name` and `schedule_name` are dropped. |
+| `copilot_followup_scheduled` | `chat_outcome` | `outcome_type = schedule_created` and `target = followup`. `session_id` is now the chat that scheduled it; the destination is `target_session_id`. |
+| `subscription_trial_offer_viewed` | `trial_offer_viewed` | — |
+| `subscription_trial_started` | `trial_started` | — |
+| `subscription_trial_ending` | `trial_ending` | — |
+| `subscription_trial_canceled` | `trial_canceled` | — |
+| `subscription_trial_resumed` | `trial_resumed` | — |
+| `subscription_trial_converted` | `trial_converted` | — |
+| `subscription_trial_ended` | `trial_ended` | — |
+| `subscription_trial_payment_failed` | `payment_failed` | — (only trial conversion charges send it today) |
+| `subscription_upgraded` | `subscription_changed` | `change_type = upgrade` |
+| `subscription_payment_success` | `payment_succeeded` | — |
+| `credit_topup_success` | `topup_completed` | — |
+| `subscription_tier_reconciliation_discrepancy` | `subscription_tier_reconciled` | — |
+| `feature_flag_mismatch` | `feature_flag_mismatched` | — (not in the analytics plan; renamed to the `object_action` past-tense form before it reached production) |
 
 ## Differences from the analytics plan
 

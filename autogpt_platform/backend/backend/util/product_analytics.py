@@ -5,33 +5,37 @@ points (execution creation, executor completion, chat-turn persistence, the
 scheduler, webhook delivery), so PostHog funnels and experiments count the
 same things the ``analytics.*`` SQL views count from the primary tables.
 
-Event vocabulary (PostHog event name -> SQL equivalent):
+Event vocabulary (PostHog event name -> SQL equivalent), named after the
+product analytics plan:
 
-- ``run_agent``           human-initiated agent run (manual UI, API key, copilot
+- ``agent_run_started``   human-initiated agent run (manual UI, API key, copilot
                           tool).  AgentGraphExecution.triggerSource IN
-                          ('manual', 'api', 'copilot') AND expertId IS NULL.
-- ``run_autopilot``       user turn in an Autopilot chat.  ChatMessage role='user'
-                          on a session with expertId IS NULL and interactive origin.
-- ``run_expert``          user turn in an expert chat, or a human-initiated run of
-                          an expert's workflow (property ``kind`` tells which).
-- ``agent_run_completed`` / ``agent_run_failed``  terminal run outcome, with
-                          ``trigger`` so failures can be split by how they started.
-                          Includes subgraph and automated runs; filter to human
-                          triggers when comparing outcomes with run-start events.
+                          ('manual', 'api', 'copilot'); an expert's workflow run
+                          has ``expert_id`` set and ``kind: workflow_run``.
+- ``chat_message_sent``   user turn in an Autopilot or expert chat
+                          (``expert_id`` set).  ChatMessage role='user' on a
+                          session with interactive origin.
+- ``agent_run_finished``  terminal run outcome (``status``: completed | failed),
+                          with ``trigger`` so failures can be split by how they
+                          started. Includes subgraph and automated runs; filter
+                          to human triggers when comparing outcomes with
+                          run-start events. A top-level expert run is
+                          ``expert_id`` set and ``is_subgraph_run`` false.
 - ``schedule_created``    a schedule was registered (``target``: agent | autopilot |
                           expert).  ActivityEvent category SCHEDULE / schedule.created.
 - ``schedule_fired``      a schedule produced work.  For agent/expert targets the run
                           row carries triggerSource='schedule' and triggerRef=schedule
                           id; for autopilot targets the session has origin='automation'.
 - ``trigger_fired``       a webhook produced a run (triggerSource='webhook').
-- ``expert_hired``        a user hired an expert from a template.
+- ``expert_hired``        a user hired an expert from a template (sent from
+                          ``experts_db.hire_expert``, so every surface counts).
 - ``integration_connected`` a user connected a credential (OAuth or manual).
                           IntegrationCredential rows by createdByUserId.
 
-``run_agent`` is not the same as a "task": the ``analytics.*`` views count a
-copilot-started run through the chat turn that asked for it, so a task is
-``run_agent`` / ``run_expert`` with ``trigger`` other than ``copilot``, plus
-every ``run_autopilot`` and chat-turn ``run_expert``. Event names live in
+``agent_run_started`` is not the same as a "task": the ``analytics.*`` views
+count a copilot-started run through the chat turn that asked for it, so a
+task is ``agent_run_started`` with ``trigger`` other than ``copilot``, plus
+every ``chat_message_sent``. Event names live in
 ``backend.util.posthog_events``; the full list and the task filter are in
 ``docs/platform/tracking-plan.md``.
 
@@ -42,16 +46,14 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from backend.util.posthog_client import get_posthog_client
+from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
-from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.data.execution import GraphExecutionEntry, GraphExecutionMeta
     from backend.data.model import GraphExecutionStats
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 
 ScheduleTarget = Literal["agent", "autopilot", "expert"]
@@ -70,25 +72,17 @@ def track(
     user_id: str | None,
     event: PostHogEvent,
     properties: dict[str, Any] | None = None,
+    *,
+    dedup_key: str | None = None,
 ) -> None:
-    """Send one event for *user_id*. Silently no-ops when analytics is off."""
-    if not user_id:
-        return
-    try:
-        client = get_posthog_client()
-        if client is None:
-            return
-        client.capture(
-            distinct_id=user_id,
-            event=event.value,
-            properties={
-                "environment": settings.config.app_env.value,
-                "source": "platform",
-                **{k: v for k, v in (properties or {}).items() if v is not None},
-            },
-        )
-    except Exception:
-        logger.warning("Failed to track %s for user %s", event.value, user_id)
+    """Send one event for *user_id*, dropping unset properties. Silently
+    no-ops when analytics is off or there is no user."""
+    posthog_client.capture(
+        user_id,
+        event,
+        {k: v for k, v in (properties or {}).items() if v is not None},
+        dedup_key=dedup_key,
+    )
 
 
 def track_agent_run_started(
@@ -114,13 +108,8 @@ def track_agent_run_started(
         "preset_id": preset_id,
     }
     if expert_id:
-        track(
-            user_id,
-            PostHogEvent.RUN_EXPERT,
-            {**properties, "kind": "workflow_run"},
-        )
-    else:
-        track(user_id, PostHogEvent.RUN_AGENT, properties)
+        properties["kind"] = "workflow_run"
+    track(user_id, PostHogEvent.AGENT_RUN_STARTED, properties)
 
 
 def track_agent_run_finished(
@@ -135,20 +124,22 @@ def track_agent_run_finished(
     cost_cents: int | None = None,
     duration_seconds: float | None = None,
     is_dry_run: bool = False,
+    is_subgraph_run: bool = False,
 ) -> None:
     if is_dry_run:
         return
     status_value = _enum_value(status)
-    if status_value == "COMPLETED":
-        event = PostHogEvent.AGENT_RUN_COMPLETED
-    elif status_value == "FAILED":
-        event = PostHogEvent.AGENT_RUN_FAILED
-    else:
+    if status_value not in ("COMPLETED", "FAILED"):
         return
+    # Keyed on the run alone: the event fires before the terminal status is
+    # persisted, so a failed persist requeues and finishes the run again,
+    # possibly with another status. COMPLETED/FAILED are absorbing, so one
+    # run never legitimately finishes twice.
     track(
         user_id,
-        event,
+        PostHogEvent.AGENT_RUN_FINISHED,
         {
+            "status": status_value.lower(),
             "graph_id": graph_id,
             "graph_exec_id": graph_exec_id,
             "trigger": _enum_value(trigger),
@@ -156,7 +147,9 @@ def track_agent_run_finished(
             "failure_reason": _enum_value(failure_reason),
             "cost_cents": cost_cents,
             "duration_seconds": duration_seconds,
+            "is_subgraph_run": is_subgraph_run,
         },
+        dedup_key=graph_exec_id,
     )
 
 
@@ -178,6 +171,9 @@ def handle_run_finished(
             cost_cents=exec_stats.cost,
             duration_seconds=exec_stats.walltime,
             is_dry_run=exec_stats.is_dry_run,
+            is_subgraph_run=(
+                graph_exec.execution_context.parent_execution_id is not None
+            ),
         )
     except Exception:
         logger.warning(
@@ -194,19 +190,21 @@ def track_chat_turn(
     expert_id: str | None = None,
     origin: str | None = None,
     surface: str | None = None,
+    message_length: int | None = None,
 ) -> None:
     """A person sent a chat message. Model-authored turns are not activation."""
     if origin == "automation":
         return
     track(
         user_id,
-        PostHogEvent.RUN_EXPERT if expert_id else PostHogEvent.RUN_AUTOPILOT,
+        PostHogEvent.CHAT_MESSAGE_SENT,
         {
             "session_id": session_id,
             "expert_id": expert_id,
             "origin": origin,
             "surface": surface or "chat",
             "kind": "chat_turn",
+            "message_length": message_length,
         },
     )
 
@@ -288,20 +286,6 @@ def track_trigger_fired(
             "preset_id": preset_id,
             "target": "expert" if expert_id else "agent",
         },
-    )
-
-
-def track_expert_hired(
-    *,
-    user_id: str,
-    expert_id: str,
-    template_id: str | None = None,
-    name: str | None = None,
-) -> None:
-    track(
-        user_id,
-        PostHogEvent.EXPERT_HIRED,
-        {"expert_id": expert_id, "template_id": template_id, "name": name},
     )
 
 

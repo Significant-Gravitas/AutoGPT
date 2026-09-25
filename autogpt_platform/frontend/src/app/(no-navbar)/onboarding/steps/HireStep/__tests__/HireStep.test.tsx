@@ -122,7 +122,7 @@ describe("HireStep — the team", () => {
     expect(capture).toHaveBeenCalledWith("expert_recommended", {
       template_id: "tpl-maria",
       position: 0,
-      source: "llm",
+      team_source: "llm",
     });
     expect(
       capture.mock.calls.filter(([event]) => event === "expert_recommended"),
@@ -175,25 +175,30 @@ describe("HireStep — hiring", () => {
     await waitFor(() => {
       expect(screen.getByText("Hired")).toBeDefined();
     });
-    expect(hires).toEqual([{ template_id: "tpl-maria" }]);
+    expect(hires).toEqual([
+      { template_id: "tpl-maria", surface: "onboarding" },
+    ]);
     expect(useOnboardingWizardStore.getState().hiredTemplateIds).toEqual([
       "tpl-maria",
     ]);
     // One hire down, one still open.
     expect(screen.getAllByRole("button", { name: "Hire" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
-    expect(capture).toHaveBeenCalledWith("hire_started", {
-      template_id: "tpl-maria",
-      source: "onboarding_hire_step",
-    });
-    expect(capture).toHaveBeenCalledWith("onboarding_expert_hired", {
-      template_id: "tpl-maria",
-      position: 0,
-    });
+    // One hire_started per click; the hire itself is the backend's
+    // expert_hired, so the browser sends no completion event.
+    expect(
+      capture.mock.calls.filter(([event]) => event === "hire_started"),
+    ).toEqual([
+      ["hire_started", { template_id: "tpl-maria", surface: "onboarding" }],
+    ]);
+    expect(capture).not.toHaveBeenCalledWith(
+      "onboarding_expert_hired",
+      expect.anything(),
+    );
   });
 
   it("sends the funnel start and the DataFast hire goal", async () => {
-    // The backend emits this hire's hire_completed, so without the start the
+    // The backend emits this hire's expert_hired, so without the start the
     // funnel's completion rate is unreadable for onboarding hires.
     configureCookiebot();
     installCookiebot({ statistics: true });
@@ -209,6 +214,7 @@ describe("HireStep — hiring", () => {
     await waitFor(() =>
       expect(capture).toHaveBeenCalledWith("hire_started", {
         template_id: "tpl-maria",
+        surface: "onboarding",
       }),
     );
     await waitFor(() =>

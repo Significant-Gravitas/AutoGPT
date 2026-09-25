@@ -1194,7 +1194,6 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1306,7 +1305,6 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
@@ -1504,7 +1502,6 @@ async def test_run_preset_executes_with_merged_inputs():
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             new=AsyncMock(),
         ),
-        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
     ):
         result = await tool._handle_preset_run(
             "preset-user", session, RunAgentInput(preset_id="p1", inputs={"b": 99})
@@ -1674,7 +1671,6 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
     )
-    mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
     mocker.patch(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )

@@ -267,7 +267,7 @@ test("does not surface an eligible offer after its trial has converted", async (
   render(<SubscriptionStep />);
   await waitFor(() =>
     expect(posthog.capture).toHaveBeenCalledWith(
-      "subscription_trial_offer_viewed",
+      "trial_offer_viewed",
       expect.any(Object),
     ),
   );

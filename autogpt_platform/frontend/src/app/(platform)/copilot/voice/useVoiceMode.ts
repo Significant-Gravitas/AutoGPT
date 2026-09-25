@@ -95,6 +95,8 @@ export function useVoiceMode({
   const turnIndex = useRef(0);
   /** Speech end, for the two latencies the funnel measures. */
   const utteranceEndedAt = useRef(0);
+  /** Speech end to the reply's first sound, sent on `voice_turn_completed`. */
+  const firstSoundLatencyMs = useRef<number | null>(null);
   const wasInFlight = useRef(false);
   // Bumped by every activate and deactivate. Work started under an older
   // token belongs to a session the user has already left.
@@ -209,6 +211,7 @@ export function useVoiceMode({
   }
 
   function deactivate(reason: "user" | "silence_timeout" = "user") {
+    trackInterruptedTurn();
     if (stateRef.current !== "off") {
       trackVoiceMode(
         reason === "silence_timeout"
@@ -227,6 +230,21 @@ export function useVoiceMode({
     void vadRef.current?.destroy();
     vadRef.current = null;
     dispatch({ type: "DISABLE" });
+  }
+
+  // A turn cut off before its reply finished never reaches
+  // `voice_turn_completed`, and the slow replies are the ones most likely to
+  // be cut off, so their first-sound latency goes out on the drop instead.
+  function trackInterruptedTurn() {
+    if (stateRef.current !== "thinking" && stateRef.current !== "speaking") {
+      return;
+    }
+    trackVoiceMode("voice_turn_dropped", {
+      reason: "interrupted",
+      turn_index: turnIndex.current,
+      first_sound_latency_ms: firstSoundLatencyMs.current,
+    });
+    firstSoundLatencyMs.current = null;
   }
 
   function setStarting(value: boolean) {
@@ -310,9 +328,7 @@ export function useVoiceMode({
       dispatch({ type: "TRANSCRIPT_DROPPED" });
       return;
     }
-    trackVoiceMode("voice_transcribe_latency_ms", {
-      ms: Date.now() - utteranceEndedAt.current,
-    });
+    const transcribeLatencyMs = Date.now() - utteranceEndedAt.current;
 
     // Transcription takes a second or two. Sending a turn the user opted out
     // of during it is worse than losing the utterance.
@@ -323,16 +339,21 @@ export function useVoiceMode({
 
     if (isRejectableTranscript(transcript)) {
       playerRef.current?.stop();
-      trackVoiceMode("voice_turn_dropped", { reason: "filler_or_empty" });
+      trackVoiceMode("voice_turn_dropped", {
+        reason: "filler_or_empty",
+        transcribe_latency_ms: transcribeLatencyMs,
+      });
       dispatch({ type: "TRANSCRIPT_DROPPED" });
       return;
     }
 
     startTurn();
     turnIndex.current += 1;
+    firstSoundLatencyMs.current = null;
     trackVoiceMode("voice_turn_sent", {
       turn_index: turnIndex.current,
       transcript_chars: transcript.trim().length,
+      transcribe_latency_ms: transcribeLatencyMs,
     });
     try {
       await inputs.current.onSend(transcript.trim());
@@ -438,7 +459,11 @@ export function useVoiceMode({
     const next = voiceReduce(stateRef.current, event);
     if (next === stateRef.current) return;
     if (event.type === "REPLY_DONE") {
-      trackVoiceMode("voice_turn_completed", { turn_index: turnIndex.current });
+      trackVoiceMode("voice_turn_completed", {
+        turn_index: turnIndex.current,
+        first_sound_latency_ms: firstSoundLatencyMs.current,
+      });
+      firstSoundLatencyMs.current = null;
     }
     stateRef.current = next;
     setState(next);
@@ -471,9 +496,7 @@ export function useVoiceMode({
         },
         onPlaybackStart: () => {
           if (!utteranceEndedAt.current) return;
-          trackVoiceMode("voice_first_sound_latency_ms", {
-            ms: Date.now() - utteranceEndedAt.current,
-          });
+          firstSoundLatencyMs.current = Date.now() - utteranceEndedAt.current;
           utteranceEndedAt.current = 0;
         },
         onError: (error) => {
@@ -494,6 +517,7 @@ export function useVoiceMode({
     // Unmount without deactivate — navigating away mid-session. A mic session
     // still starting would otherwise finish after this, open the mic, and
     // flag later text turns as voice turns.
+    trackInterruptedTurn();
     activation.current += 1;
     setVoiceTurnActive(false);
     clearTimers();
