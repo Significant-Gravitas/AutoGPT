@@ -529,12 +529,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-24: $0.14/$0.42 per 1M,
+                # Live OpenRouter rate as of 2026-09-25: $0.15/$0.60 per 1M,
                 # cache read $0.01/1M (drifted again since the prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=21.0,
-                    output_credits_per_1m=63.0,
+                    input_credits_per_1m=22.5,
+                    output_credits_per_1m=90.0,
                     cache_read_credits_per_1m=1.5,
                 ),
             ),
@@ -795,10 +795,12 @@ def _build_catalog() -> CatalogPayload:
                 creator="mistral-ai",
                 context_window=262144,
                 price_tier=2,
+                # Live OpenRouter rate as of 2026-09-25: $0.50/$1.50 per 1M
+                # (dropped from $2.00/$6.00; verified via check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=300.0,
-                    output_credits_per_1m=900.0,
+                    input_credits_per_1m=75.0,
+                    output_credits_per_1m=225.0,
                 ),
             ),
             CatalogModel(
@@ -884,13 +886,17 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — $3.00/$15.00 per Mtok on
-                # OpenRouter (repriced from $1.70/$8.50; verified live
-                # 2026-09-22), credit rates at the standard 1.5x margin.
+                # Moonshot's premium tier — live OpenRouter rate as of
+                # 2026-09-25: $0.8845/$10.5346 per Mtok (dropped from
+                # $3.00/$15.00; verified via check_openrouter_prices.py).
+                # provider_input/output_usd_per_1m intentionally left at the
+                # prior $3.00/$15.00 for in-turn cost estimation — that
+                # field is authored separately and out of scope for this
+                # display-price-only drift fix.
                 cost=CatalogModelCost(
                     run_credits=9,
-                    input_credits_per_1m=450.0,
-                    output_credits_per_1m=2250.0,
+                    input_credits_per_1m=132.675,
+                    output_credits_per_1m=1580.19,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
                 ),
