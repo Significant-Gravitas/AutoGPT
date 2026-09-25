@@ -83,7 +83,9 @@ export function ApprovalQueue({ items, onAnswered }: Props) {
                 item={item}
                 status={queue.statusOf(item.reviewId)}
                 failed={queue.hasFailed(item.reviewId)}
-                onApprove={(rule) => queue.answer([item], true, rule)}
+                onApprove={(rule, team) =>
+                  queue.answer([item], true, rule, team)
+                }
                 onReject={() => queue.answer([item], false)}
               />
             )}

@@ -25,9 +25,14 @@ _GITHUB = "mcp:api.githubcopilot.com"
 _OPEN_WORLD = "https://mcp.example.com/mcp"
 
 
-def _session(mode: AutopilotMode = "auto") -> ChatSession:
+def _session(
+    mode: AutopilotMode = "auto",
+    session_id: str = "session-1",
+    expert_id: str | None = None,
+) -> ChatSession:
     return ChatSession(
-        session_id="session-1",
+        session_id=session_id,
+        expert_id=expert_id,
         user_id="user-1",
         usage=[],
         started_at=datetime.now(UTC),
@@ -161,6 +166,51 @@ async def test_a_chat_allow_covers_that_tool_and_no_other_on_the_host(gate, ran)
     ran.assert_awaited_once()
 
 
+@pytest.mark.parametrize("team", [False, True])
+async def test_a_team_allow_reaches_the_users_other_chats_only_when_asked(
+    gate, ran, team
+):
+    chat_a = _session(session_id="chat-a", expert_id="maria")
+    chat_b = _session(session_id="chat-b", expert_id="max")
+    assert _is_held(await _call(chat_a, _OPEN_WORLD, "do_thing", {"n": 1}))
+    await _answer_with_rule(gate, "allow", "chat-a", team=team)
+
+    assert _is_held(await _call(chat_b, _OPEN_WORLD, "do_thing", {"n": 2})) != team
+
+
+async def test_a_chat_ask_beats_a_team_allow(gate, ran):
+    chat_a = _session(session_id="chat-a", expert_id="maria")
+    chat_b = _session(session_id="chat-b", expert_id="max")
+    assert _is_held(await _call(chat_a, _OPEN_WORLD, "do_thing", {"n": 1}))
+    subject = gate.open_review.await_args.args[6]
+    await _answer_with_rule(gate, "allow", "chat-a", team=True)
+    await chat_rules.set_rule("chat-b", subject.key, "ask")
+
+    assert _is_held(await _call(chat_b, _OPEN_WORLD, "do_thing", {"n": 2}))
+    assert not _is_held(await _call(chat_a, _OPEN_WORLD, "do_thing", {"n": 3}))
+
+
+async def test_a_rejection_in_any_chat_revokes_a_team_allow(gate, ran):
+    chat_a = _session(session_id="chat-a", expert_id="maria")
+    chat_b = _session(session_id="chat-b", expert_id="max")
+    assert _is_held(await _call(chat_a, _OPEN_WORLD, "do_thing", {"n": 1}))
+    subject = gate.open_review.await_args.args[6]
+    await _answer_with_rule(gate, "allow", "chat-a", team=True)
+
+    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.REJECTED)
+    with patch(f"{_GATE}.held.rule_key", AsyncMock(return_value=subject.key)):
+        assert _is_held(await _call(chat_b, _OPEN_WORLD, "do_thing", {"n": 2}))
+    gate.find_review.return_value = None
+
+    # Chat A keeps the rule it set for itself; every other chat asks again.
+    chat_c = _session(session_id="chat-c", expert_id="frankie")
+    assert _is_held(await _call(chat_c, _OPEN_WORLD, "do_thing", {"n": 3}))
+    reason = gate.open_review.await_args.args[5]
+    assert reason.startswith("You declined this for all your experts on ")
+    assert not _is_held(await _call(chat_a, _OPEN_WORLD, "do_thing", {"n": 4}))
+    ran.assert_awaited_once()
+
+
 async def test_a_chat_judge_sends_the_next_call_to_the_supervisor(gate, ran):
     session = _session("ask_first")
     assert _is_held(await _call(session, _OPEN_WORLD, "do_thing", {"n": 1}))
@@ -234,12 +284,19 @@ async def test_listing_a_servers_tools_never_asks(gate, ran):
     gate.open_review.assert_not_awaited()
 
 
-async def _answer_with_rule(gate, rule: chat_rules.ChatRule) -> None:
+async def _answer_with_rule(
+    gate, rule: chat_rules.ChatRule, session_id: str = "session-1", team: bool = False
+) -> None:
     """What the approve endpoint does for the card the gate just opened."""
     subject = gate.open_review.await_args.args[6]
     row = SimpleNamespace(status=ReviewStatus.APPROVED)
     await chat_rules.set_answer_rules(
-        "session-1", {"r": row}, {"r": rule}, {"r": subject.key}
+        session_id,
+        "user-1",
+        {"r": row},
+        {"r": rule},
+        {"r": subject.key},
+        frozenset({"r"}) if team else frozenset(),
     )
 
 

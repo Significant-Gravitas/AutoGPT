@@ -1423,10 +1423,13 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("apply_to_team", [False, True])
 async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+    apply_to_team: bool,
 ) -> None:
     """The rule lands on the subject the gate stored with the held call."""
     review = sample_pending_review.model_copy(
@@ -1460,6 +1463,7 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
     )
     mocker.patch(f"{routes}.wake_for_held_calls")
     set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
+    set_team_rule = mocker.patch("backend.copilot.gate.chat_rules.set_team_rule")
 
     response = await client.post(
         "/api/review/action",
@@ -1469,6 +1473,7 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
                     "node_exec_id": "test_node_123",
                     "approved": True,
                     "chat_rule": "allow",
+                    "apply_to_team": apply_to_team,
                 }
             ]
         },
@@ -1476,3 +1481,7 @@ async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
 
     assert response.status_code == 200
     set_rule.assert_awaited_once_with("s1", "mcp:h/t", "allow")
+    if apply_to_team:
+        set_team_rule.assert_awaited_once_with(test_user_id, "mcp:h/t", "allow")
+    else:
+        set_team_rule.assert_not_called()

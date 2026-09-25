@@ -45,6 +45,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     batch: ApprovalItem[],
     approved: boolean,
     rule?: ChatRule,
+    team = false,
   ) {
     const ids = batch.map((item) => item.reviewId);
     setFailed((prev) => prev.filter((id) => !ids.includes(id)));
@@ -62,6 +63,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
           node_exec_id: item.reviewId,
           approved,
           chat_rule: approved ? (rule ?? null) : null,
+          ...(approved && rule && team ? { apply_to_team: true } : {}),
         })),
         batch.map((item) => item.scope),
       );

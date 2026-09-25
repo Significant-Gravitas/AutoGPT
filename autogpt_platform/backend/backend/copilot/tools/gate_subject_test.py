@@ -237,7 +237,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
         patch(f"{_GATE}.review_store.review_id_for", return_value="x"),
     ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
-    set_ask.assert_awaited_once_with("session-1", "block:abc")
+    set_ask.assert_awaited_once_with("session-1", "block:abc", "user-1")
 
 
 async def test_the_gate_off_resolves_no_subject():

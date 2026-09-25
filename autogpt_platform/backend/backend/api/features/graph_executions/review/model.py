@@ -166,6 +166,13 @@ class ReviewItem(BaseModel):
             "the chat instead of asking."
         ),
     )
+    apply_to_team: bool = Field(
+        default=False,
+        description=(
+            "With chat_rule: the rule also holds in every other chat of the "
+            "user's, below any rule that chat sets itself."
+        ),
+    )
 
     @field_validator("reviewed_data")
     @classmethod

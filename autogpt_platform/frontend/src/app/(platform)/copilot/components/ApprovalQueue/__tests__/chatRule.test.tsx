@@ -71,3 +71,55 @@ test("a plain approve sets no rule", async () => {
     expect.objectContaining({ approved: true, chat_rule: null }),
   ]);
 });
+
+const TEAM = "Apply to all Experts in my Team";
+
+test("the team toggle starts off and a rule then holds for this chat only", async () => {
+  const sent = serve();
+  renderQueue();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "More ways to approve" }),
+  );
+  const toggle = await screen.findByRole("menuitemcheckbox", { name: TEAM });
+  expect(toggle.getAttribute("aria-checked")).toBe("false");
+  await userEvent.click(screen.getByText("Approve for this chat"));
+
+  await waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0].reviews[0]).not.toHaveProperty("apply_to_team");
+});
+
+test.each([
+  [
+    "Approve for all my chats",
+    "allow",
+    "runs without asking in all your chats",
+  ],
+  ["Let Otto judge from now on", "judge", "in all your chats and asks you"],
+])(
+  "with the team toggle on, %s sends the %s rule for every chat",
+  async (item, rule, detail) => {
+    const sent = serve();
+    renderQueue();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "More ways to approve" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemcheckbox", { name: TEAM }),
+    );
+    const toggle = await screen.findByRole("menuitemcheckbox", { name: TEAM });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText(new RegExp(detail))).toBeDefined();
+    await userEvent.click(screen.getByText(item));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].reviews).toEqual([
+      expect.objectContaining({
+        approved: true,
+        chat_rule: rule,
+        apply_to_team: true,
+      }),
+    ]);
+  },
+);

@@ -21,7 +21,7 @@ interface Props {
   item: ApprovalItem;
   status: CardStatus;
   failed: boolean;
-  onApprove: (rule?: ChatRule) => void;
+  onApprove: (rule?: ChatRule, team?: boolean) => void;
   onReject: () => void;
 }
 

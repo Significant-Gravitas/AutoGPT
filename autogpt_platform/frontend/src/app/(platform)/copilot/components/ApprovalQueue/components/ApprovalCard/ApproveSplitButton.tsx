@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
@@ -18,17 +21,30 @@ interface Props {
   rules: ChatRule[];
   loading: boolean;
   disabled: boolean;
-  onApprove: (rule?: ChatRule) => void;
+  onApprove: (rule?: ChatRule, team?: boolean) => void;
 }
 
-const RULE_COPY: Record<ChatRule, (subject: string) => [string, string]> = {
-  allow: (subject) => [
-    "Approve for this chat",
-    `${subject} runs without asking until this chat ends`,
-  ],
-  judge: () => [
+const TEAM_LABEL = "Apply to all Experts in my Team";
+
+const RULE_COPY: Record<
+  ChatRule,
+  (subject: string, team: boolean) => [string, string]
+> = {
+  allow: (subject, team) =>
+    team
+      ? [
+          "Approve for all my chats",
+          `${subject} runs without asking in all your chats until you revoke it`,
+        ]
+      : [
+          "Approve for this chat",
+          `${subject} runs without asking until this chat ends`,
+        ],
+  judge: (_, team) => [
     `Let ${AUTOPILOT_NAME} judge from now on`,
-    "A check decides each time and asks you only when it isn't sure",
+    team
+      ? "A check decides each time in all your chats and asks you only when it isn't sure"
+      : "A check decides each time and asks you only when it isn't sure",
   ],
 };
 
@@ -40,6 +56,7 @@ export function ApproveSplitButton({
   disabled,
   onApprove,
 }: Props) {
+  const [team, setTeam] = useState(false);
   const main = (
     <Button
       size="small"
@@ -74,11 +91,11 @@ export function ApproveSplitButton({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
           {rules.map((rule) => {
-            const [title, detail] = RULE_COPY[rule](subjectName);
+            const [title, detail] = RULE_COPY[rule](subjectName, team);
             return (
               <DropdownMenuItem
                 key={rule}
-                onSelect={() => onApprove(rule)}
+                onSelect={() => onApprove(rule, team)}
                 className="flex flex-col items-start gap-0.5 py-2"
               >
                 <span className="text-sm text-zinc-900">{title}</span>
@@ -86,6 +103,25 @@ export function ApproveSplitButton({
               </DropdownMenuItem>
             );
           })}
+          <DropdownMenuSeparator />
+          {/* Toggling keeps the menu open so the choice can follow. */}
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={team}
+            onSelect={(event) => {
+              event.preventDefault();
+              setTeam(!team);
+            }}
+            className="flex items-center justify-between gap-3 py-2"
+          >
+            <span className="text-sm text-zinc-900">{TEAM_LABEL}</span>
+            <Switch
+              checked={team}
+              tabIndex={-1}
+              aria-hidden
+              className="pointer-events-none"
+            />
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
