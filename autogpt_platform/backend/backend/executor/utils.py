@@ -13,6 +13,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
+from backend.blocks.autopilot import _spawner_envelope_from
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.copilot.tree import TurnEnvelope
 from backend.data import execution as execution_db
@@ -1532,7 +1533,7 @@ async def _add_graph_execution(
         )
         # A sub-graph inherits the tree through its parent's context.
         if copilot_tree is None and execution_context is not None:
-            copilot_tree = _copilot_tree_from_context(execution_context)
+            copilot_tree = _spawner_envelope_from(execution_context)
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
         # inherit dry_run so child-graph validation skips credential checks.
@@ -1817,23 +1818,6 @@ async def _persisted_copilot_tree(
 ) -> Optional[TurnEnvelope]:
     raw = await edb.get_graph_execution_copilot_tree(user_id, graph_exec_id)
     return TurnEnvelope.model_validate(raw) if raw is not None else None
-
-
-def _copilot_tree_from_context(
-    execution_context: ExecutionContext,
-) -> Optional[TurnEnvelope]:
-    if not execution_context.copilot_tree_id:
-        return None
-    return TurnEnvelope(
-        tree_id=execution_context.copilot_tree_id,
-        depth=execution_context.copilot_tree_depth,
-        tainted=execution_context.copilot_tree_tainted,
-        tools=(
-            frozenset(execution_context.copilot_tree_tools)
-            if execution_context.copilot_tree_tools is not None
-            else None
-        ),
-    )
 
 
 def _serialise_copilot_tree(
