@@ -192,13 +192,15 @@ async def test_refresh_reads_a_comma_delimited_granted_scope(handler, link):
             "access_token": "liwltoken_new",
             "refresh_token": "liwlrefresh_new",
             "expires_in": 3600,
-            "scope": "payment_methods.agentic,userinfo:read",
+            # Reversed from the stored scopes, so a refresh that ignored the
+            # response could not pass.
+            "scope": "userinfo:read,payment_methods.agentic",
         },
     )
 
     refreshed = await handler.refresh_tokens(hosted_credentials())
 
-    assert refreshed.scopes == ["payment_methods.agentic", "userinfo:read"]
+    assert refreshed.scopes == ["userinfo:read", "payment_methods.agentic"]
 
 
 @pytest.mark.asyncio

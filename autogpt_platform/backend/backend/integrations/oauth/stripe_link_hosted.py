@@ -199,3 +199,13 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
                 f"Stripe Link authorization failed (HTTP {response.status_code})"
             )
         return {} if endpoint == "revoke" else response.json()
+
+
+def revocation_handler() -> StripeLinkHostedOAuthHandler:
+    """The configured client, built to end a grant. Revoking sends no redirect
+    URI, so a deployment without a frontend URL can still revoke."""
+    return StripeLinkHostedOAuthHandler(
+        _secrets.stripe_link_client_id,
+        _secrets.stripe_link_client_secret,
+        redirect_uri="",
+    )
