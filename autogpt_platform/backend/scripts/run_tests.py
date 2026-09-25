@@ -45,6 +45,7 @@ def wait_for_postgres(max_retries=36, delay=5):
                     "--env-file",
                     "../.env",
                     "exec",
+                    "-T",
                     "db",
                     "psql",
                     "-U",
@@ -69,8 +70,10 @@ def wait_for_postgres(max_retries=36, delay=5):
     print(
         "Failed to connect to PostgreSQL. If `docker compose -f "
         "docker-compose.test.yaml logs db` says the `postgres` role does not "
-        "exist, the database's first start was interrupted: delete "
-        "../db/docker/volumes/db/data and run the tests again."
+        "exist, the database's first start was interrupted. Its data "
+        "directory, ../db/docker/volumes/db/data, is also your local dev "
+        "Supabase database: back up anything you need from it, then delete it "
+        "and run the tests again."
     )
     return False
 
@@ -165,7 +168,8 @@ def other_stack_owners():
                 "--filter",
                 f"label=com.docker.compose.project={COMPOSE_PROJECT}",
                 "--format",
-                '{{.Label "com.docker.compose.project.working_dir"}}',
+                '{{.Label "com.docker.compose.project.working_dir"}}\t'
+                '{{.Label "com.docker.compose.project.config_files"}}',
             ],
             check=False,
             capture_output=True,
@@ -176,8 +180,23 @@ def other_stack_owners():
         # Docker isn't answering; the compose command that follows will say so.
         print(f"`docker ps` timed out after {PROBE_TIMEOUT_SECONDS}s.")
         return set()
-    owners = {_normalize_path(line) for line in result.stdout.splitlines() if line}
+    owners = {
+        _normalize_path(working_dir)
+        for working_dir, _, config_files in (
+            line.partition("\t") for line in result.stdout.splitlines()
+        )
+        if working_dir and _is_test_stack(config_files)
+    }
     return owners - {_normalize_path(BACKEND_DIR)}
+
+
+def _is_test_stack(config_files):
+    """Any project started from a directory named `backend` is a `backend`
+    project; only one started from docker-compose.test.yaml is a test run."""
+    return any(
+        os.path.basename(path.strip()) == "docker-compose.test.yaml"
+        for path in config_files.split(",")
+    )
 
 
 def _normalize_path(path):
