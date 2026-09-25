@@ -5,6 +5,7 @@ from praw.models import Comment, Submission
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -256,6 +257,7 @@ class RemoveRedditPostBlock(Block):
             ],
             test_mock={"remove_post": lambda creds, post_id, spam, mod_note: True},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -317,6 +319,7 @@ class ApproveRedditPostBlock(Block):
             ],
             test_mock={"approve_post": lambda creds, post_id: True},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -370,6 +373,7 @@ class LockRedditPostBlock(Block):
             ],
             test_mock={"set_lock": lambda creds, post_id, lock: lock},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -462,6 +466,7 @@ class BanSubredditUserBlock(Block):
                 "ban_user": lambda creds, subreddit, username, duration, reason, mod_note, ban_message: True
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -542,6 +547,7 @@ class UnbanSubredditUserBlock(Block):
             ],
             test_mock={"unban_user": lambda creds, subreddit, username: True},
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -614,6 +620,7 @@ class SendModMailBlock(Block):
                 "send_modmail": lambda creds, subreddit, to_username, subject, body: "mock_conv_id"
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

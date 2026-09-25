@@ -3,6 +3,7 @@
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -149,6 +150,7 @@ class RMFGGetReviewLinkBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=LINK_TEST_OUTPUT,
             test_mock={"get_link": lambda *args, **kwargs: TEST_REVIEW_LINK},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

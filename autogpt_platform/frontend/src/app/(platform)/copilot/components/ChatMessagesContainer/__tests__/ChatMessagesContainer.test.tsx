@@ -1530,6 +1530,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
     chatSessionId: "sess-123",
     pollWhileEmpty,
     refetchKey,
+    expertName: null,
   });
 
   afterEach(() => {

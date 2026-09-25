@@ -1,4 +1,5 @@
 import datetime
+from types import SimpleNamespace
 from typing import AsyncGenerator
 
 import httpx
@@ -9,6 +10,7 @@ from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app
+from backend.copilot.gate.held import HeldCall
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -1419,3 +1421,75 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
         assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
     else:
         wake.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+async def test_an_approved_chat_card_sets_the_rule_it_asked_for(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
+    scope: str,
+) -> None:
+    """The rule lands on the subject the gate stored with the held call."""
+    review = sample_pending_review.model_copy(
+        update={"graph_exec_id": None, "session_id": "s1"}
+    )
+    held_call = HeldCall(
+        review_id="test_node_123",
+        tool_name="run_capability",
+        tool_call_id="c",
+        args={},
+        rule_key="mcp:h/t",
+    )
+    # The turn the answer wakes claims the held call, so it is gone afterwards.
+    held_calls = {"test_node_123": held_call}
+    mocker.patch(
+        "backend.copilot.gate.held._held", side_effect=lambda _: dict(held_calls)
+    )
+    routes = "backend.api.features.graph_executions.review.routes"
+    mocker.patch(
+        f"{routes}.get_reviews_by_node_exec_ids",
+        return_value={"test_node_123": review},
+    )
+    approved = review.model_copy(update={"status": ReviewStatus.APPROVED})
+
+    async def process_and_claim(**_):
+        held_calls.clear()
+        return {"test_node_123": approved}
+
+    mocker.patch(
+        f"{routes}.process_all_reviews_for_execution", side_effect=process_and_claim
+    )
+    mocker.patch(f"{routes}.wake_for_held_calls")
+    set_rule = mocker.patch("backend.copilot.gate.chat_rules.set_rule")
+    set_scoped_rule = mocker.patch("backend.copilot.gate.chat_rules.set_scoped_rule")
+    mocker.patch(
+        "backend.copilot.gate.chat_rules.get_chat_session_metadata",
+        return_value=SimpleNamespace(expert_id="frankie"),
+    )
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": "test_node_123",
+                    "approved": True,
+                    "chat_rule": "allow",
+                    "chat_rule_scope": scope,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    set_rule.assert_awaited_once_with("s1", "mcp:h/t", "allow")
+    if scope == "chat":
+        set_scoped_rule.assert_not_called()
+    else:
+        expert = "frankie" if scope == "expert" else None
+        set_scoped_rule.assert_awaited_once_with(
+            scope, test_user_id, expert, "mcp:h/t", "allow"
+        )

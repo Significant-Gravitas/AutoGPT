@@ -5,14 +5,14 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast
+from typing import Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
-from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -482,8 +482,7 @@ async def _validate_node_input_credentials(
         # `nodes_to_skip` here rather than relying on the post-loop
         # guard — that guard only fires when the NODE-level
         # ``is_creds_optional`` is True. For auto-credential fields the
-        # optionality is usually field-level (``field_name not in
-        # required_fields`` because the schema default is None), so
+        # optionality can be field-level (``_is_optional_picker``), so
         # deferring would let the node silently pass validation and then
         # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
         # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
@@ -583,8 +582,12 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                field_is_optional = (
-                    is_creds_optional or field_name not in required_fields
+                if _is_linked(graph, node, field_name):
+                    # An upstream block supplies the file at run time, so the
+                    # stored value (possibly a leftover None) isn't what runs.
+                    continue
+                field_is_optional = is_creds_optional or _is_optional_picker(
+                    block.input_schema, field_name
                 )
                 # Check input_default and nodes_input_masks for the field value
                 field_value = node.input_default.get(field_name)
@@ -595,7 +598,7 @@ async def _validate_node_input_credentials(
 
                 if field_value is None:
                     # Sentry HIGH: an explicitly-None value (e.g. cleared by
-                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # `stripped_for_export` on fork, or nulled by a mask) means
                     # credentials were there and are now gone. Treat as
                     # missing so optional fields hit `nodes_to_skip` and
                     # required fields surface a clean re-auth message —
@@ -681,9 +684,12 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} the selected file "
+                            "was picked with an account you don't have connected "
+                            "(it was removed, or it belongs to someone else). "
+                            "Please select the file again with your own account."
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -701,6 +707,27 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:
+    """Whether a block can run with nothing picked in this picker input.
+
+    Picker fields (e.g. `GoogleDriveFileField`) always default to None, so the
+    schema's required fields can't answer this; the annotation does. An
+    `Optional[GoogleDriveFile]` input may stay empty and its node is skipped.
+    A plain `GoogleDriveFile` input needs a file, so leaving it empty (as a
+    fork or copy does) is an error the user can act on, not a silent skip.
+    """
+    field = input_schema.model_fields.get(field_name)
+    return field is not None and type(None) in get_args(field.annotation)
+
+
+def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
+    """Whether a link supplies the whole input. A link into one attribute of
+    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
+    return any(
+        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
+    )
 
 
 def make_node_credentials_input_map(

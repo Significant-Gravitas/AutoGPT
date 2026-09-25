@@ -4,15 +4,17 @@ Ordering is the design, cheapest and most certain first:
 
 1. gate inactive                          -> ALLOW (today's behaviour)
 2. an approval for exactly these args     -> ALLOW, consumed single-use
-3. the user rejected this tool in chat    -> ASK, in every mode
-4. the mode's verdict for the tool's effect: run, ask, or the supervisor
+3. what the call acts on: a block, workflow or MCP tool's own effect, or
+   the tool's; a call that runs nothing never asks
+4. the user's rule on that subject in this chat -> allow, judge or ask
+5. otherwise the mode's verdict for that effect: run, ask, or the supervisor
 
 The supervisor is last because it is the least trusted step: it can only turn
 a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -22,15 +24,17 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
-from .classifier import classify
+from .classifier import DecidedBy, supervise
+from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
     AutopilotMode,
     Effect,
     Verdict,
     effect_for,
-    verdict_for,
+    verdict_for_effect,
 )
+from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,13 @@ _UNRECORDABLE = (
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+# The user's own word on the subject in this chat outranks the mode's rule.
+_RULE_VERDICTS = {
+    "allow": Verdict.RUN,
+    "judge": Verdict.JUDGE,
+    "ask": Verdict.ASK,
+    "unreadable": Verdict.ASK,
+}
 
 
 class Decision(BaseModel):
@@ -61,6 +72,10 @@ class Decision(BaseModel):
     allowed: bool
     reason: str = ""
     review_id: str | None = None
+    # The held card's headline, ids resolved, for the chat's own row.
+    headline: Headline | None = None
+    # The user approved this exact call on a card, so nothing downstream asks again.
+    approved: bool = False
 
 
 ALLOW = Decision(allowed=True)
@@ -91,7 +106,10 @@ async def check_action(
     user_id: str | None,
     session: ChatSession,
     tool_call_id: str = "",
+    subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
 ) -> Decision:
+    """``subject_of`` resolves what the call acts on; it runs only once no
+    approval answers the call, so an approved call is never re-derived."""
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -104,43 +122,70 @@ async def check_action(
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 
-    status = await review_store.find_decision(review_id, user_id, session_id)
-    if status == ReviewStatus.APPROVED:
+    review = await review_store.find_review(review_id, user_id, session_id)
+    if review is not None and review.status == ReviewStatus.APPROVED:
         if await review_store.consume(review_id, user_id):
-            return ALLOW
+            return Decision(allowed=True, approved=True)
         return Decision(allowed=False, reason=_CONSUMED)
-    if status == ReviewStatus.REJECTED:
+    if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
-        await chat_rules.set_ask(session_id, tool_name)
+        await chat_rules.set_ask(
+            session_id,
+            await held.rule_key(session_id, review_id, tool_name),
+            user_id,
+            session.expert_id,
+        )
         return Decision(allowed=False, reason=_REJECTED)
-    if status == ReviewStatus.WAITING:
+    if review is not None and review.status == ReviewStatus.WAITING:
         # The first call's card and stored call stand; re-storing would
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
+    subject = await subject_of() if subject_of is not None else None
+    effect = subject.effect if subject is not None else effect_for(tool_name)
+    if effect is Effect.UNGATED:
+        return ALLOW
+    rule_key = subject.key if subject is not None else tool_name
     mode = resolve_mode(session)
-    verdict = verdict_for(mode, tool_name)
+    # Only a subject that can be parked can carry a rule, so reads and
+    # workspace work skip the Redis round trip.
+    hit = (
+        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
+        if effect in _PARKABLE
+        else None
+    )
+    rule = hit.rule if hit else None
+    # A judge rule covers irreversible subjects too: the user chose the supervisor.
+    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     reason_kind: review_store.ReasonKind
-    if rule_reason := await chat_rules.ask_reason(session_id, tool_name):
-        reason, reason_kind = rule_reason, "rule"
+    decided_by: DecidedBy | None = None
+    if hit and rule in ("ask", "unreadable"):
+        reason, reason_kind = hit.reason, "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
+    elif verdict is Verdict.ASK and subject is not None and subject.reason:
+        reason, reason_kind = subject.reason, "subject"
     elif verdict is Verdict.ASK:
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        allowed, reason = await classify(
+        judgement = await supervise(
             tool_name=tool_name,
             args=args,
             user_message=_last_user_message(session),
         )
-        if allowed:
+        if judgement.allowed:
             return ALLOW
+        reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
-        review_id=review_id, tool_name=tool_name, tool_call_id=tool_call_id, args=args
+        review_id=review_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        args=args,
+        rule_key=rule_key,
     )
-    return await _park(call, user_id, session, reason, reason_kind)
+    return await _park(call, user_id, session, reason, reason_kind, subject, decided_by)
 
 
 async def _park(
@@ -149,23 +194,30 @@ async def _park(
     session: ChatSession,
     reason: str,
     reason_kind: review_store.ReasonKind,
+    subject: Subject | None,
+    decided_by: DecidedBy | None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    if not await review_store.open_review(
+    headline = await review_store.open_review(
         call.review_id,
         user_id,
         session,
         call.tool_name,
         call.args,
         reason,
+        subject,
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
-    ):
+        decided_by=decided_by,
+    )
+    if headline is None:
         await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    return Decision(allowed=False, reason=reason, review_id=call.review_id)
+    return Decision(
+        allowed=False, reason=reason, review_id=call.review_id, headline=headline
+    )
 
 
 def refusal_message(reason: str, review_id: str | None) -> str:

@@ -1,5 +1,6 @@
 "use client";
 
+import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { CategoryChip } from "../CategoryChip/CategoryChip";
 import { getCategoryAccent } from "../ExpertsSection/helpers";
@@ -43,6 +44,7 @@ export function CategoryFilter({ selected, onSelect }: Props) {
             <CategoryChip
               key={category.value}
               label={category.label}
+              color={getCategoryHex(category.value)}
               title={category.description}
               icon={icon}
               accent={accent}

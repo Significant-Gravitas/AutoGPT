@@ -1,7 +1,13 @@
 from gravitasml.parser import Parser
 from gravitasml.token import Token, tokenize
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -23,6 +29,7 @@ class XMLParserBlock(Block):
             test_output=[
                 ("parsed_xml", {"tag1": {"tag2": "content"}}),
             ],
+            effect=BlockEffect.NONE,
         )
 
     @staticmethod

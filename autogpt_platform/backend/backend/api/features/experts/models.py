@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
 
@@ -123,6 +124,13 @@ class ExpertWorkflowRef(BaseModel):
     integration_providers: list[str] = Field(default_factory=list)
 
 
+class ExpertWorkflowLabel(BaseModel):
+    """What names an installed workflow on an approval card."""
+
+    expert_id: str
+    name: str | None
+
+
 class ExpertIdentity(BaseModel):
     id: str
     name: str
@@ -131,6 +139,11 @@ class ExpertIdentity(BaseModel):
     role: str
     job_title: str | None = None
     is_archived: bool
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertSetupItem(BaseModel):
@@ -156,6 +169,11 @@ class ExpertSetupItem(BaseModel):
     # Titles of the graph inputs a scheduled run cannot supply; only set on
     # an ``inputs`` item.
     missing_inputs: list[str] = Field(default_factory=list)
+
+    @field_validator("expert_avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertCredentialRef(BaseModel):
@@ -289,6 +307,11 @@ class Expert(BaseModel):
     setup_status: ExpertSetupStatus = "ready"
     # What setup could not install; re-hiring the template retries it.
     setup_failures: list[str] = []
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertBundledSkill(BaseModel):
