@@ -20,6 +20,13 @@ function makeSubmission(status: SubmissionStatus) {
   };
 }
 
+function makeSubmissionWithImage(imageUrl: string) {
+  return {
+    ...makeSubmission(SubmissionStatus.APPROVED),
+    image_urls: [imageUrl],
+  };
+}
+
 describe("AgentTableRow", () => {
   const onViewSubmission = vi.fn();
   const onDeleteSubmission = vi.fn();
@@ -72,5 +79,22 @@ describe("AgentTableRow", () => {
     expect(onViewSubmission).toHaveBeenCalledWith(approvedSubmission);
     expect(screen.queryByText("Edit")).toBeNull();
     expect(screen.queryByText("Delete")).toBeNull();
+  });
+
+  test("falls back to the not-found icon when the image URL is dead", () => {
+    const submission = makeSubmissionWithImage("https://cdn.test/dead.png");
+    const { container } = render(
+      <AgentTableRow
+        storeAgentSubmission={submission}
+        onViewSubmission={onViewSubmission}
+        onDeleteSubmission={onDeleteSubmission}
+        onEditSubmission={onEditSubmission}
+      />,
+    );
+
+    fireEvent.error(screen.getByAltText(submission.name));
+
+    expect(screen.queryByAltText(submission.name)).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });

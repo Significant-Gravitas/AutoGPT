@@ -983,18 +983,18 @@ files = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.2.152"
+version = "0.2.159"
 description = "Python SDK for Claude Code"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "claude_agent_sdk-0.2.152-py3-none-macosx_11_0_arm64.whl", hash = "sha256:6cc1e949743c7634274ae526bfd1c0a216ff9d71c6b36d94cab80f32b0d32b4c"},
-    {file = "claude_agent_sdk-0.2.152-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:9c79c4ef91b15e5fae6aba62a82afb983dc360bc159902c541046227e2852c86"},
-    {file = "claude_agent_sdk-0.2.152-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:1e5b619e6fa3c98f06ddc107652f7820c4573fb73a9a24263568d9974078bbc2"},
-    {file = "claude_agent_sdk-0.2.152-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:f885bd935054082a599dcf92bbdaf3c0b853117a79375cb3aae74674a8124326"},
-    {file = "claude_agent_sdk-0.2.152-py3-none-win_amd64.whl", hash = "sha256:f422c256358997ffa3a740f9fdc8127aa8404a9d57493502dc7d2ac05ecb5486"},
-    {file = "claude_agent_sdk-0.2.152.tar.gz", hash = "sha256:0822bbdf700ccdd1acecf8365345a56bde07833afe7f8bd1bee68cba0e2fcf9a"},
+    {file = "claude_agent_sdk-0.2.159-py3-none-macosx_11_0_arm64.whl", hash = "sha256:ba7f152560dca5001a0bc46ed13b7da14eb14b419faed25bb1af821bfa95d3de"},
+    {file = "claude_agent_sdk-0.2.159-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:87f553fda74e2f57e00f2bcb1705ab9311a937f97571f4f9eceea2bd411b6e32"},
+    {file = "claude_agent_sdk-0.2.159-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:b03683d12d217b0b6c189c88a3d260a045171e7fdc9f23e2d0dfb05ff3276834"},
+    {file = "claude_agent_sdk-0.2.159-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:d3ba57c187b07c87702b94e2b62dd7c61ed874899defcbb35bb5cef4cb94ace1"},
+    {file = "claude_agent_sdk-0.2.159-py3-none-win_amd64.whl", hash = "sha256:cc1b92ae56f42ade2d083ef2d2e5edb4aa8c7a6d856818a9b8f60cf6ae746f3a"},
+    {file = "claude_agent_sdk-0.2.159.tar.gz", hash = "sha256:e1905e2637b27971bb561bb6ad317aeb3d50619be5261bfa7ff2e9c2be0f0fd1"},
 ]
 
 [package.dependencies]
@@ -1551,14 +1551,14 @@ files = [
 
 [[package]]
 name = "exa-py"
-version = "1.16.1"
+version = "2.21.0"
 description = "Python SDK for Exa API."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "exa_py-1.16.1-py3-none-any.whl", hash = "sha256:3b323ed32725b72110720306ea12da09161cfa9c8ac64797a9c0b66869741f27"},
-    {file = "exa_py-1.16.1.tar.gz", hash = "sha256:3cb371b8efd321881a8217070f16afdac5afbaa9229177f80d5c427e1a6dbd59"},
+    {file = "exa_py-2.21.0-py3-none-any.whl", hash = "sha256:bb4fb97c812251ef2f359323d25bdd01e0ec57d7c71f0c7f7041e64db6ba7123"},
+    {file = "exa_py-2.21.0.tar.gz", hash = "sha256:cabefd938a0586767afcbc27298b5a8e73895823caccb664c45900e430bb4fa8"},
 ]
 
 [package.dependencies]
@@ -8936,4 +8936,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "1a1dc6acb4de31cd15a67c84df2208a74de570b4273f2de9178e55bf125184ba"
+content-hash = "3fafab08269ed623ad4df93407e39d5e5aaefd6f6c97a7cfe29a41ea58d77809"

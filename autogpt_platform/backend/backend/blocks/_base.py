@@ -589,7 +589,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
-        is_sensitive_action: bool = False,
+        is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
     ):
         """
@@ -608,6 +608,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            is_irreversible_action: The effect has reached someone outside the platform
+                by the time the block returns (a send, public post, payment or order,
+                external permanent delete, access grant, on-call page); an external
+                write the user can edit back is not one.
             capability_kind: How the copilot ranks this block as a capability.
                 Defaults to ``service`` when the block's credentials name exactly
                 one provider and ``primitive`` otherwise; set it explicitly on
@@ -627,7 +631,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.is_sensitive_action = is_sensitive_action
+        self.is_irreversible_action = is_irreversible_action
         self._capability_kind: CapabilityKind | None = capability_kind
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
@@ -817,9 +821,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: str,
-        graph_id: str,
-        graph_version: int,
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         execution_context: "ExecutionContext",
         is_graph_execution: bool = True,
         **kwargs,
@@ -833,7 +837,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
         if not (
-            self.is_sensitive_action and execution_context.sensitive_action_safe_mode
+            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
         ):
             return False, input_data
 
@@ -853,6 +857,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             is_graph_execution=is_graph_execution,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            chat_session_id=(
+                None if is_graph_execution else execution_context.session_id
+            ),
         )
 
         if decision is None:

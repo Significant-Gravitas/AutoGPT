@@ -143,6 +143,7 @@ class PostToYouTubeBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToYouTubeBlock.Input,
             output_schema=PostToYouTubeBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

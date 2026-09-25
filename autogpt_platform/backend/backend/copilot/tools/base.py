@@ -16,7 +16,12 @@ from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
 from .capability_gates import gate_denied, gate_denied_error
-from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
+from .models import (
+    ApprovalRequiredResponse,
+    ErrorResponse,
+    NeedLoginResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -433,6 +438,21 @@ class BaseTool:
                 success=False,
             )
 
+        # A released read is answered from its row, never re-run, so the bytes
+        # the user approved are the bytes the model gets.
+        released = await self._released_read(user_id, session, tool_call_id, kwargs)
+        if released is not None:
+            return released
+
+        # Auto-mode gate. Sits here because both engines funnel every registry
+        # tool through this method — baseline via ``execute_tool``, SDK via
+        # ``_execute_tool_sync`` — so there is one place to add, not two.
+        # Must stay AFTER the envelope and name gates: a call the envelope refuses can
+        # never run, so approving it would spend a user's decision on nothing.
+        gated = await self._gate(user_id, session, tool_call_id, kwargs)
+        if gated is not None:
+            return gated
+
         # After the gates, so a refused call never looks to a turn-scoped gate
         # like the tool having run, and before the await, because the gates ask
         # whether it was dispatched rather than whether it succeeded.
@@ -455,7 +475,7 @@ class BaseTool:
                     raw_output, user_id, session.session_id, tool_call_id, digest
                 )
 
-            return StreamToolOutputAvailable(
+            output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
@@ -472,6 +492,137 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
+        return await self._screen_read(user_id, session, tool_call_id, kwargs, output)
+
+    async def _gate(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> StreamToolOutputAvailable | None:
+        """Refusal to return instead of running, or None to proceed.
+
+        A gate that crashes must not become a gate that passes, so an
+        unexpected failure here refuses the call rather than falling through.
+        """
+        from backend.copilot.gate import check_action
+
+        try:
+            decision = await check_action(
+                self.name, kwargs, user_id, session, tool_call_id
+            )
+        except Exception:
+            logger.warning(f"Action gate failed for {self.name}", exc_info=True)
+            return self._refusal(
+                tool_call_id,
+                session,
+                "This action could not be checked against your approval "
+                "settings, so nothing ran. Tell the user and stop.",
+                args=kwargs,
+            )
+
+        if decision.allowed:
+            return None
+        return self._refusal(
+            tool_call_id,
+            session,
+            decision.reason,
+            review_id=decision.review_id,
+            args=kwargs,
+        )
+
+    async def _released_read(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> StreamToolOutputAvailable | None:
+        from backend.copilot.gate.reads import release_held_read
+
+        try:
+            release = await release_held_read(self.name, kwargs, user_id, session)
+        except Exception:
+            logger.warning(f"Held-read lookup failed for {self.name}", exc_info=True)
+            return self._refusal(
+                tool_call_id,
+                session,
+                "This read could not be checked against your approvals, so "
+                "nothing ran. Tell the user and stop.",
+            )
+        if release is None:
+            return None
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=release.output,
+            success=release.success,
+        )
+
+    async def _screen_read(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+        result: StreamToolOutputAvailable,
+    ) -> StreamToolOutputAvailable:
+        """Judge the output as the model will receive it, after every cap."""
+        from backend.copilot.gate.reads import model_view, readable_parts, screen_read
+
+        seen = (
+            result.output
+            if isinstance(result.output, str)
+            else json.dumps(result.output)
+        )
+        view = model_view.get()
+        if view is not None:
+            seen = view(seen, result.success)
+        text, images = readable_parts(seen)
+        stub = await screen_read(
+            self.name,
+            kwargs,
+            user_id,
+            session,
+            output=seen,
+            success=result.success,
+            text=text,
+            images=images,
+            tool_call_id=tool_call_id,
+        )
+        if stub is None:
+            return result
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id, toolName=self.name, output=stub, success=False
+        )
+
+    def _refusal(
+        self,
+        tool_call_id: str,
+        session: ChatSession,
+        reason: str,
+        review_id: str | None = None,
+        args: dict[str, Any] | None = None,
+    ) -> StreamToolOutputAvailable:
+        from backend.copilot.gate import refusal_message
+        from backend.copilot.gate.headline import headline_for
+
+        headline = headline_for(self.name, args or {})
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=ApprovalRequiredResponse(
+                message=refusal_message(reason, review_id),
+                session_id=session.session_id,
+                tool_name=self.name,
+                reason=reason,
+                review_id=review_id,
+                ask=headline.ask,
+                object=headline.object,
+            ).model_dump_json(),
+            success=False,
+        )
 
     async def _execute(
         self,

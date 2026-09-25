@@ -114,6 +114,7 @@ class PostToTikTokBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToTikTokBlock.Input,
             output_schema=PostToTikTokBlock.Output,
+            is_irreversible_action=True,
         )
 
     async def run(

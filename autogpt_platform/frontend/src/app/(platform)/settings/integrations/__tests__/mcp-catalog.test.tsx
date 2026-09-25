@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
+import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import {
   fireEvent,
   render,
@@ -46,6 +49,38 @@ async function openPicker() {
 }
 
 describe("SettingsIntegrationsPage — MCP catalogue", () => {
+  test("shows PostHog branding and connection options from the shipped catalog", async () => {
+    const catalog: ProviderMetadata[] = JSON.parse(
+      readFileSync(
+        resolve("../backend/backend/integrations/mcp_catalog.json"),
+        "utf8",
+      ),
+    );
+    const posthog = catalog.find((entry) => entry.name === "mcp_posthog");
+    expect(posthog).toBeDefined();
+    server.use(getGetV1ListProvidersMockHandler([posthog!]));
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /posthog.*mcp/i });
+    expect(row.querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/posthog.png",
+    );
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      (await within(dialog).findByAltText("PostHog logo")).getAttribute("src"),
+    ).toBe("/integrations/posthog.png");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://mcp.posthog.com/mcp");
+    expect(input.readOnly).toBe(true);
+    expect(within(dialog).getByRole("tab", { name: /sign in/i })).toBeDefined();
+    expect(
+      within(dialog).getByRole("tab", { name: /api token/i }),
+    ).toBeDefined();
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(

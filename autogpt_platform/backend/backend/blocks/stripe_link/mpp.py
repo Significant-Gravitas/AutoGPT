@@ -380,6 +380,7 @@ class StripeLinkMPPPayBlock(Block):
                 },
                 "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}, True),
             },
+            is_irreversible_action=True,
         )
 
     async def run(

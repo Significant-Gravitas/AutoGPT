@@ -278,6 +278,8 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           to 2.1.248 on both the bare and the build_sdk_env-pinned
         #           path: same anthropic-beta list, same message roles, same
         #           body keys.  Verified via cli_openrouter_compat_test.py.
+        "2.1.281",  # claude-agent-sdk 0.2.159 -- 2.1.280+ is required for
+        #           claude-opus-5-5.  Verified via cli_openrouter_compat_test.py.
     }
 )
 

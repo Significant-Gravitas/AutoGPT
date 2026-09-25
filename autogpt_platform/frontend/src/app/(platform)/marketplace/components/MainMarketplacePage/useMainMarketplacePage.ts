@@ -1,9 +1,5 @@
-import {
-  useGetV2ListStoreAgents,
-  useGetV2ListStoreCreators,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { useGetV2ListStoreAgents } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
 import { useState } from "react";
 
 const queryConfig = {
@@ -56,31 +52,12 @@ export const useMainMarketplacePage = () => {
     },
   );
 
-  const {
-    data: featuredCreators,
-    isLoading: isFeaturedCreatorsLoading,
-    isError: isFeaturedCreatorsError,
-  } = useGetV2ListStoreCreators(
-    { featured: true, sorted_by: "num_agents" },
-    {
-      query: {
-        ...queryConfig,
-        select: (x) => {
-          return x.data as CreatorsResponse;
-        },
-      },
-    },
-  );
-
-  const isLoading =
-    isFeaturedAgentsLoading || isTopAgentsLoading || isFeaturedCreatorsLoading;
-  const hasError =
-    isFeaturedAgentsError || isTopAgentsError || isFeaturedCreatorsError;
+  const isLoading = isFeaturedAgentsLoading || isTopAgentsLoading;
+  const hasError = isFeaturedAgentsError || isTopAgentsError;
 
   return {
     featuredAgents,
     topAgents,
-    featuredCreators,
     category,
     setCategory,
     isLoading,
