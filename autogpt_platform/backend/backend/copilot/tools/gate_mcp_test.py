@@ -27,9 +27,14 @@ _GITHUB = "mcp:api.githubcopilot.com"
 _OPEN_WORLD = "https://mcp.example.com/mcp"
 
 
-def _session(mode: AutopilotMode = "auto") -> ChatSession:
+def _session(
+    mode: AutopilotMode = "auto",
+    session_id: str = "session-1",
+    expert_id: str | None = None,
+) -> ChatSession:
     return ChatSession(
-        session_id="session-1",
+        session_id=session_id,
+        expert_id=expert_id,
         user_id="user-1",
         usage=[],
         started_at=datetime.now(UTC),
@@ -163,6 +168,80 @@ async def test_a_chat_allow_covers_that_tool_and_no_other_on_the_host(gate, ran)
     ran.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "scope, same_expert_runs, other_expert_runs",
+    [("chat", False, False), ("expert", True, False), ("team", True, True)],
+)
+async def test_a_rule_reaches_the_chats_its_scope_names(
+    gate, ran, scope, same_expert_runs, other_expert_runs
+):
+    maria = _session(session_id="chat-a", expert_id="maria")
+    assert _is_held(await _call(maria, _OPEN_WORLD, "do_thing", {"n": 1}))
+    await _answer_with_rule(gate, "allow", maria, scope)
+
+    maria_again = _session(session_id="chat-a2", expert_id="maria")
+    max_ = _session(session_id="chat-b", expert_id="max")
+    held = _is_held(await _call(maria_again, _OPEN_WORLD, "do_thing", {"n": 2}))
+    assert held != same_expert_runs
+    held = _is_held(await _call(max_, _OPEN_WORLD, "do_thing", {"n": 3}))
+    assert held != other_expert_runs
+
+
+async def test_an_expert_rule_covers_otto_only_from_an_otto_chat(gate, ran):
+    otto = _session(session_id="chat-o")
+    assert _is_held(await _call(otto, _OPEN_WORLD, "do_thing", {"n": 1}))
+    await _answer_with_rule(gate, "allow", otto, "expert")
+
+    assert not _is_held(
+        await _call(_session(session_id="chat-o2"), _OPEN_WORLD, "do_thing", {"n": 2})
+    )
+    maria = _session(session_id="chat-a", expert_id="maria")
+    assert _is_held(await _call(maria, _OPEN_WORLD, "do_thing", {"n": 3}))
+
+
+@pytest.mark.parametrize("wide", ["expert", "team"])
+async def test_a_chat_ask_beats_a_wider_allow(gate, ran, wide):
+    maria = _session(session_id="chat-a", expert_id="maria")
+    assert _is_held(await _call(maria, _OPEN_WORLD, "do_thing", {"n": 1}))
+    subject = gate.open_review.await_args.args[6]
+    await _answer_with_rule(gate, "allow", maria, wide)
+    maria_again = _session(session_id="chat-a2", expert_id="maria")
+    await chat_rules.set_rule("chat-a2", subject.key, "ask")
+
+    assert _is_held(await _call(maria_again, _OPEN_WORLD, "do_thing", {"n": 2}))
+    assert not _is_held(await _call(maria, _OPEN_WORLD, "do_thing", {"n": 3}))
+
+
+async def test_a_rejection_revokes_the_expert_and_team_rules_that_ran_it(gate, ran):
+    max_ = _session(session_id="chat-b", expert_id="max")
+    assert _is_held(await _call(max_, _OPEN_WORLD, "do_thing", {"n": 1}))
+    subject = gate.open_review.await_args.args[6]
+    await _answer_with_rule(gate, "allow", max_, "expert")
+    await chat_rules.set_scoped_rule("team", "user-1", None, subject.key, "allow")
+
+    max_again = _session(session_id="chat-b2", expert_id="max")
+    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.REJECTED)
+    with patch(f"{_GATE}.held.rule_key", AsyncMock(return_value=subject.key)):
+        assert _is_held(await _call(max_again, _OPEN_WORLD, "do_thing", {"n": 2}))
+    gate.find_review.return_value = None
+
+    for chat, reason in [
+        (
+            _session(session_id="chat-b3", expert_id="max"),
+            "in every chat with this Expert",
+        ),
+        (
+            _session(session_id="chat-c", expert_id="frankie"),
+            "for every Expert on your team",
+        ),
+    ]:
+        assert _is_held(await _call(chat, _OPEN_WORLD, "do_thing", {"n": 3}))
+        assert reason in gate.open_review.await_args.args[5]
+    # The chat the rule was given in keeps its own word.
+    assert not _is_held(await _call(max_, _OPEN_WORLD, "do_thing", {"n": 4}))
+    ran.assert_awaited_once()
+
+
 async def test_a_chat_judge_sends_the_next_call_to_the_supervisor(gate, ran):
     session = _session("ask_first")
     assert _is_held(await _call(session, _OPEN_WORLD, "do_thing", {"n": 1}))
@@ -236,13 +315,28 @@ async def test_listing_a_servers_tools_never_asks(gate, ran):
     gate.open_review.assert_not_awaited()
 
 
-async def _answer_with_rule(gate, rule: chat_rules.ChatRule) -> None:
+async def _answer_with_rule(
+    gate,
+    rule: chat_rules.ChatRule,
+    session: ChatSession | None = None,
+    scope: chat_rules.Scope = "chat",
+) -> None:
     """What the approve endpoint does for the card the gate just opened."""
+    session = session or _session()
     subject = gate.open_review.await_args.args[6]
     row = SimpleNamespace(status=ReviewStatus.APPROVED)
-    await chat_rules.set_answer_rules(
-        "session-1", {"r": row}, {"r": rule}, {"r": subject.key}
-    )
+    chat = SimpleNamespace(expert_id=session.expert_id)
+    with patch(
+        f"{_GATE}.chat_rules.get_chat_session_metadata", AsyncMock(return_value=chat)
+    ):
+        await chat_rules.set_answer_rules(
+            session.session_id,
+            "user-1",
+            {"r": row},
+            {"r": rule},
+            {"r": subject.key},
+            {"r": scope},
+        )
 
 
 @pytest.mark.parametrize(

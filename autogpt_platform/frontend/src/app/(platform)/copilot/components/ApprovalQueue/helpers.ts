@@ -13,6 +13,7 @@ import { asObject, str } from "../ToolChain/resultHelpers";
 export type ReasonKind = "mode" | "subject" | "supervisor" | "rule" | "content";
 
 export type ChatRule = "allow" | "judge";
+export type RuleScope = "chat" | "expert" | "team";
 
 export interface ApprovalItem {
   reviewId: string;

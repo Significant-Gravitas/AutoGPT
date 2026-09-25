@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -7,6 +8,7 @@ import prisma.models
 import pytest
 from prisma import Prisma
 
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.util.exceptions import NotFoundError
 
 from . import categories as store_categories
@@ -1243,3 +1245,39 @@ async def test_uncategorised_listings_are_hidden_when_the_setting_is_on(
 
     matches = store_agent_query.call_args.kwargs["where"]["categories"]["has_some"]
     assert set(store_categories.all_category_match_values()) == set(matches)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_available_graph_never_carries_picked_files(mocker):
+    """[SECRT-1772] A marketplace listing's graph is public, so the files the
+    publisher picked, and the credentials embedded in them, are cleared."""
+    picked = {"_credentials_id": "publisher-cred", "id": "sheet-1", "name": "Budget"}
+    graph_row = prisma.models.AgentGraph(
+        id="g-1",
+        version=1,
+        name="Sheets",
+        description="",
+        userId="publisher",
+        isActive=True,
+        createdAt=datetime.now(),
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        Nodes=[
+            prisma.models.AgentNode(
+                id="node-1",
+                agentBlockId=GoogleSheetsReadBlock().id,
+                agentGraphId="g-1",
+                agentGraphVersion=1,
+                constantInput=json.dumps({"spreadsheet": picked, "range": "A1"}),
+                metadata="{}",
+            )
+        ],
+    )
+    listing_client = AsyncMock()
+    listing_client.find_first.return_value = mocker.MagicMock(AgentGraph=graph_row)
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=listing_client
+    )
+
+    graph = await db.get_available_graph("slv-1", hide_nodes=False)
+
+    assert graph.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}

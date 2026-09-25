@@ -130,7 +130,10 @@ async def check_action(
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(
-            session_id, await held.rule_key(session_id, review_id, tool_name)
+            session_id,
+            await held.rule_key(session_id, review_id, tool_name),
+            user_id,
+            session.expert_id,
         )
         return Decision(allowed=False, reason=_REJECTED)
     if review is not None and review.status == ReviewStatus.WAITING:
@@ -146,16 +149,18 @@ async def check_action(
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
-    rule = (
-        await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    hit = (
+        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
+        if effect in _PARKABLE
+        else None
     )
+    rule = hit.rule if hit else None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     reason_kind: review_store.ReasonKind
     decided_by: DecidedBy | None = None
-    if rule in ("ask", "unreadable"):
-        reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
-        reason_kind = "rule"
+    if hit and rule in ("ask", "unreadable"):
+        reason, reason_kind = hit.reason, "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
