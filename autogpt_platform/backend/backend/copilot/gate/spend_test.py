@@ -285,6 +285,27 @@ async def test_a_block_run_charges_what_it_cost(gate, ledger, chat):
     assert (await chat.snapshot(_ledger_id()))["spent"] == 70_000
 
 
+async def test_a_block_run_charges_the_chat_even_when_expert_metering_fails(gate, chat):
+    """Kills: skipping the chat charge after a debit that landed."""
+    await _open(chat, ceiling=10_000_000)
+    with patch(
+        "backend.copilot.tools.helpers.add_weekly_spend",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        await _charge_block_credits(
+            SimpleNamespace(spend_credits=AsyncMock()),
+            user_id="user-1",
+            block_name="Pinecone Query",
+            block_id="b",
+            node_exec_id="n",
+            cost=7,
+            cost_filter={},
+            session_id="s1",
+            expert_id="expert-1",
+        )
+    assert (await chat.snapshot(_ledger_id()))["spent"] == 70_000
+
+
 @pytest.mark.parametrize("charge_fails", [False, True])
 async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_fails):
     """Kills: a failed flag lookup after a paid charge logged as BILLING_LEAK."""

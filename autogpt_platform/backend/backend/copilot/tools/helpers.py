@@ -185,9 +185,10 @@ async def _charge_block_credits(
                 reason="copilot_block_execution",
             ),
         )
+        # Before the expert metering, which can fail after the debit landed.
+        await charge_credits(user_id, lambda: cost)
         if expert_id:
             await add_weekly_spend(expert_id, cost)
-        await charge_credits(user_id, lambda: cost)
     except Exception as e:
         # Block already executed (with possible side effects). Never
         # return ErrorResponse here — the user received output and
