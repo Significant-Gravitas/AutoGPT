@@ -81,7 +81,9 @@ def roster_expert(entry: RosterEntry) -> Expert:
         role=entry["role"],
         tagline=entry["tagline"],
         bio=entry["bio"],
-        skills=list(entry["bundled_skills"]),
+        # The style/context renderers do not consume installed skill inventory.
+        # Marketplace assignments now belong to the catalogue release.
+        skills=[],
         identity=entry["identity"],
         voice_preferences=entry["voice_preferences"],
         voice_samples=list(entry["voice_samples"]),

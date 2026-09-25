@@ -1195,6 +1195,8 @@ model Expert {
   setupStartedAt DateTime?
   // What the last setup run could not install, by display name.
   setupFailures  String[]          @default([])
+  // Exact package versions chosen when this hire was created; null is legacy.
+  skillInstallSnapshot Json?
 
   Workflows       ExpertWorkflow[]
   Credentials     ExpertCredential[]
@@ -2340,6 +2342,9 @@ model SkillListingVersion {
   name        String
   description String
   body        String
+  skillMarkdown String?
+  cataloguePackageSha256 String?
+  catalogueMetadata Json?
   triggers    String[] @default([])
   categories  String[]
 
@@ -2384,12 +2389,54 @@ model SkillListingVersion {
   organizationId String?
 
   Files SkillListingFile[]
+  CatalogueReleases CatalogueReleaseVersion[]
 
   @@unique([skillListingId, version])
+  @@unique([skillListingId, cataloguePackageSha256])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+model CatalogueRelease {
+  id String @id
+  revision String
+  manifestSha256 String
+  manifest Json
+  snapshot Json
+  createdAt DateTime @default(now())
+  Versions CatalogueReleaseVersion[]
+  Activations CatalogueActivation[]
+  States CatalogueState[]
+}
+
+model CatalogueReleaseVersion {
+  releaseId String
+  versionId String
+  Release CatalogueRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  Version SkillListingVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  @@id([releaseId, versionId])
+  @@index([versionId])
+}
+
+model CatalogueState {
+  id String @id
+  activeReleaseId String?
+  ActiveRelease CatalogueRelease? @relation(fields: [activeReleaseId], references: [id], onDelete: Restrict)
+  generation Int @default(0)
+  snapshot Json?
+}
+
+model CatalogueActivation {
+  id String @id
+  releaseId String
+  Release CatalogueRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  previousReleaseId String?
+  generation Int @unique
+  rollback Boolean @default(false)
+  snapshot Json
+  createdAt DateTime @default(now())
 }
 
 /// One file beside a published version's SKILL.md, snapshotted at submit time

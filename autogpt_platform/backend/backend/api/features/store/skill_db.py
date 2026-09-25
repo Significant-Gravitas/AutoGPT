@@ -15,6 +15,10 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
+from backend.api.features.experts.hire_skill_snapshot import (
+    lock_catalogue_read,
+    read_skill_snapshot,
+)
 from backend.copilot.tools.skills import (
     SKILL_ORIGIN_MARKETPLACE,
     SkillFile,
@@ -22,7 +26,7 @@ from backend.copilot.tools.skills import (
     StoredSkill,
     store_user_skills,
 )
-from backend.data.db import query_raw_with_schema
+from backend.data.db import query_raw_with_schema, transaction
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -197,13 +201,58 @@ async def install_marketplace_skills(
     """:func:`install_marketplace_skill` for several listings: one listing
     query, one file query and one locked write, with each slug's outcome
     returned in order (``NotFoundError`` for one that is not live)."""
-    listings = {
-        listing.slug: listing
-        for listing in await prisma.models.SkillListing.prisma().find_many(
+    async with transaction() as tx:
+        await lock_catalogue_read(tx)
+        live = await tx.skilllisting.find_many(
             where=_live_listing_where({"slug": {"in": slugs}}),
             include=_LISTING_INCLUDE,
         )
+    return await _install_selected_versions(
+        user_id, slugs, {listing.slug: listing for listing in live}, expert_id
+    )
+
+
+async def install_pinned_marketplace_skills(
+    user_id: str, expert_id: str, slugs: list[str]
+) -> list[skill_model.InstalledSkill | Exception]:
+    """Retry only versions recorded on this owner's original hire, even if retired."""
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+        }
+    )
+    if expert is None:
+        raise NotFoundError(f"Expert '{expert_id}' not found")
+    snapshot = read_skill_snapshot(expert.skillInstallSnapshot)
+    pins = {p.slug: p.version_id for p in snapshot.packages}
+    if any(slug not in pins for slug in slugs):
+        raise ValueError("Requested skill is not part of the original hire")
+    versions = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"id": {"in": [pins[slug] for slug in slugs]}},
+        include={"SkillListing": True},
+    )
+    listings = {
+        listing.slug: listing.model_copy(update={"ActiveVersion": version})
+        for version in versions
+        if (listing := version.SkillListing) is not None
+        and pins.get(listing.slug) == version.id
+        and version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        and not version.isDeleted
+        and version.isAvailable
     }
+    return await _install_selected_versions(user_id, slugs, listings, expert_id)
+
+
+async def _install_selected_versions(
+    user_id: str,
+    slugs: list[str],
+    listings: dict[str, prisma.models.SkillListing],
+    expert_id: str | None,
+) -> list[skill_model.InstalledSkill | Exception]:
     live = [listings[slug] for slug in slugs if slug in listings]
     files = await _read_versions_files(
         [skill_model.active_version(listing).id for listing in live]
@@ -231,6 +280,7 @@ async def install_marketplace_skills(
                 # and would keep a sibling only the previous version had.
                 files=files.get(active.id, []),
                 scanned_checksums=frozenset(active.scannedSha256),
+                skill_markdown=active.skillMarkdown,
             )
         )
     stored = (

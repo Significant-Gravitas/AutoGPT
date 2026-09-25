@@ -44,6 +44,18 @@ def test_rubric_has_three_anchors_per_dimension():
         assert dim.question.endswith("?")
 
 
+def test_style_roster_does_not_require_backend_skill_assignments():
+    # Skill inventory is rendered from the catalogue at runtime, not the
+    # persona/style prompt that this offline evaluation measures.
+    roster = roster_experts()
+    with_inventory = [
+        expert.model_copy(update={"skills": ["catalogue-fixture-skill"]})
+        for expert in roster
+    ]
+    for original, installed in zip(roster, with_inventory):
+        assert user_prefix(original, roster) == user_prefix(installed, with_inventory)
+
+
 def test_the_baseline_says_what_produced_it():
     """Checks the stored file is internally coherent. It deliberately does NOT
     assert the baseline covers the current roster: every expert's context

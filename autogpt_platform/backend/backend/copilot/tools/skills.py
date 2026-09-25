@@ -29,7 +29,7 @@ import posixpath
 import re
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NamedTuple, cast
 
@@ -256,7 +256,7 @@ def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | No
     callers treat that as "this isn't a real skill, skip it" so a stray
     file in ``skills/`` cannot break the index.
     """
-    match = _FRONTMATTER_RE.match(text)
+    match = _FRONTMATTER_RE.match(text.replace("\r\n", "\n").replace("\r", "\n"))
     if not match:
         return None
     raw_meta, body = match.group(1), match.group(2)
@@ -747,6 +747,8 @@ class SkillWrite(NamedTuple):
     # Server-recorded SHA-256s of bytes already scanned clean (never a
     # client's); a file hashing to one skips the virus scan.
     scanned_checksums: frozenset[str] = frozenset()
+    # Exact published package text, including frontmatter unknown to the runtime.
+    skill_markdown: str | None = None
 
 
 class StoredSkill(NamedTuple):
@@ -890,6 +892,8 @@ class _PreparedSkill(NamedTuple):
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
     """Normalise and validate one write before anything is locked or stored."""
+    if write.skill_markdown is not None:
+        return _prepare_exact_package(write, origin)
     name = write.name.strip().lower()
     # Strip any server-injected XML tags (``<available_skills>``,
     # ``<env_context>``, etc.) from the persisted fields *before* storage —
@@ -926,6 +930,26 @@ def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
         # breaks a cap leaves the stored skill exactly as it was.
         validate_package(SkillPackage(skill_md=rendered, files=write.files))
     return _PreparedSkill(parsed, rendered, write.files, write.scanned_checksums)
+
+
+def _prepare_exact_package(write: SkillWrite, origin: str) -> _PreparedSkill:
+    if origin != SKILL_ORIGIN_MARKETPLACE:
+        raise ValueError("Exact package writes are restricted to marketplace installs")
+    text = write.skill_markdown
+    assert text is not None
+    parsed = parse_skill_markdown(text)
+    if parsed is None or parsed.name != write.name:
+        raise ValueError("Published package name does not match its listing")
+    name_error = _validate_name(parsed.name)
+    if name_error:
+        raise ValueError(name_error)
+    if strip_server_injected_tags(text) != text:
+        raise ValueError("Published package contains reserved server tags")
+    validate_skill_content(parsed.description, parsed.body, list(parsed.triggers))
+    validate_package(SkillPackage(skill_md=text, files=write.files or []))
+    return _PreparedSkill(
+        replace(parsed, origin=origin), text, write.files or [], write.scanned_checksums
+    )
 
 
 async def _write_skill(

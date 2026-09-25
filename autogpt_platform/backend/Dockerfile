@@ -113,6 +113,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.13 \
     python3-pip \
     ffmpeg \
+    git \
+    tar \
     imagemagick \
     jq \
     ripgrep \

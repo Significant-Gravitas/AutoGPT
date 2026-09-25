@@ -113,6 +113,9 @@ jobs:
       - name: Run Linters
         run: poetry run lint --skip-pyright
 
+      - name: Keep marketplace skill content and assignments in the catalogue
+        run: poetry run python scripts/check_catalogue_boundary.py
+
     env:
       CI: true
       PLAIN_OUTPUT: True
@@ -573,6 +576,7 @@ jobs:
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"
           pytest_args=(
+            -m "not catalogue_isolated"
             -p no:cacheprovider
             --cov=backend
             --cov-branch

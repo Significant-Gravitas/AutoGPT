@@ -6,15 +6,11 @@ import tarfile
 
 import pytest
 
-from backend.api.features.store.skill_model import skill_title
 from backend.api.features.store.skill_seed import (
-    RETIRED_STARTER_SLUGS,
-    STARTER_SKILLS,
     CatalogEntry,
     _attribution_value,
     _extract_catalog_archive,
     _load,
-    _load_starter,
     load_catalog,
 )
 from backend.copilot.tools.skills import (
@@ -113,6 +109,7 @@ def test_a_listed_skill_without_a_skill_md_is_refused(tmp_path):
             "exceeds",
         ),
     ],
+    ids=["long-description", "long-body", "too-many-triggers", "long-trigger"],
 )
 def test_a_skill_that_cannot_be_installed_is_refused(
     tmp_path, frontmatter: str, body: str, message: str
@@ -136,32 +133,6 @@ def test_attribution_accepts_top_level_fields_but_prefers_metadata():
         "nested/repo"
     )
     assert _attribution_value(parsed, {}, "source_url") == "https://example.com/top"
-
-
-def test_retired_starters_are_not_also_seeded():
-    """A slug in both lists would be delisted right after being upserted."""
-    seeded = {entry["slug"] for entry in STARTER_SKILLS}
-    assert not seeded & set(RETIRED_STARTER_SLUGS), seeded & set(RETIRED_STARTER_SLUGS)
-
-
-@pytest.mark.parametrize("entry", STARTER_SKILLS, ids=lambda entry: entry["slug"])
-def test_every_checked_in_starter_skill_loads(entry):
-    parsed, files = _load_starter(entry)
-
-    assert parsed.name == entry["slug"]
-    assert files == []
-
-
-def test_a_starter_that_cannot_be_installed_is_refused(monkeypatch, tmp_path):
-    monkeypatch.setattr("backend.api.features.store.skill_seed._CONTENT_DIR", tmp_path)
-    _write(
-        tmp_path,
-        "demo.md",
-        SKILL_MD.replace("A demo skill.", "x" * (MAX_DESCRIPTION_CHARS + 1)),
-    )
-
-    with pytest.raises(ValueError, match="description is"):
-        _load_starter(ENTRY)
 
 
 def test_the_catalog_folds_categories_onto_the_canonical_set(tmp_path):
@@ -262,17 +233,18 @@ def test_archive_fallback_rejects_paths_outside_the_target(
 
 
 @pytest.mark.parametrize(
-    ("slug", "title"),
-    [
-        ("seo-content-brief", "SEO content brief"),
-        ("on-page-seo-audit", "On-page SEO audit"),
-        ("icp-and-positioning", "ICP and positioning"),
-        ("brand-voice-guide", "Brand voice guide"),
-    ],
+    "entrypoint", ["seed_catalog_skills", "seed_starter_skills", "main"]
 )
-def test_a_shipped_starter_keeps_the_casing_its_author_wrote(slug, title):
-    """A starter's frontmatter name is its slug, so a title derived from it
-    reads back as "Seo content brief"."""
-    entry = next(entry for entry in STARTER_SKILLS if entry["slug"] == slug)
-    parsed, _ = _load_starter(entry)
-    assert skill_title(parsed.name, parsed.body) == title
+async def test_legacy_skill_seed_refuses_before_loading_or_writing(
+    entrypoint, monkeypatch
+):
+    from backend.api.features.store import skill_seed
+
+    def unexpected_read(*args, **kwargs):
+        pytest.fail(
+            "An obsolete entrypoint must not read a catalogue or write a database"
+        )
+
+    monkeypatch.setattr(skill_seed, "load_catalog", unexpected_read)
+    with pytest.raises(RuntimeError, match="release preview/apply"):
+        await getattr(skill_seed, entrypoint)()

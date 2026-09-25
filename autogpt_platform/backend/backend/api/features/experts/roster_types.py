@@ -39,9 +39,6 @@ class RosterEntry(TypedDict):
     tagline: str
     avatar_url: str | None
     bio: str
-    # Skills Hub listing slugs a hire gets installed. Listing ids differ per
-    # environment, so the seed resolves these to ids and the relation stores those.
-    bundled_skills: list[str]
     # Canonical marketplace categories, so the category chip narrows the roster.
     # Declared here rather than derived from `role`: "Ops" folds onto no
     # canonical value, and a raised expert's role is free text.
