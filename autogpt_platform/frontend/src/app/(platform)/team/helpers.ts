@@ -1,5 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { COLOR_OPTIONS } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -23,43 +23,12 @@ interface PodGroup {
 
 export const AUTOPILOT_ROLE = "Head of AI";
 
-/** Cover art and palette colour shipped with the seeded experts, keyed by
- *  the avatar the seed gives them. Seeded experts carry no colour of their
- *  own, so the picture's pastel fills in; an expert's own colour still wins. */
-const SEEDED_COVERS: Record<string, { art: string; color: string }> = {
-  "/experts/max.svg": {
-    art: "/experts/covers/max-1.jpg",
-    color: "fuchsia-300",
-  },
-  "/experts/maria.svg": {
-    art: "/experts/covers/maria-1.jpg",
-    color: "orange-300",
-  },
-  "/experts/frankie.svg": {
-    art: "/experts/covers/frankie-1.jpg",
-    color: "yellow-300",
-  },
-};
-
-/** A raised expert with no colour of its own still gets a pastel, picked
- *  from the palette by its id so it is the same on every render and page. */
-function getFallbackCoverColor(expertId: string) {
-  let hash = 0;
-  for (const char of expertId) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return COLOR_OPTIONS[hash % COLOR_OPTIONS.length].id;
-}
-
 export function getExpertCover(
-  expert: Pick<Expert, "id" | "avatar_url" | "color">,
+  expert: Pick<Expert, "id" | "avatar_url" | "color" | "role" | "categories">,
 ) {
-  const seeded = expert.avatar_url
-    ? SEEDED_COVERS[expert.avatar_url]
-    : undefined;
   return {
-    art: seeded?.art ?? null,
-    color: expert.color || seeded?.color || getFallbackCoverColor(expert.id),
+    art: null,
+    color: getExpertTopicHex(expert.role, expert.categories),
   };
 }
 
@@ -413,4 +382,10 @@ export function filterExpertSchedules(
     if (filter === "week") return untilNext <= 7 * DAY_MS;
     return untilNext > 7 * DAY_MS;
   });
+}
+
+export const SETUP_POLL_MS = 2_000;
+
+export function isSettingUp(experts: Expert[]) {
+  return experts.some((expert) => expert.setup_status === "installing");
 }

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -46,6 +47,8 @@ class HubSpotEngagementBlock(Block):
             categories={BlockCategory.CRM, BlockCategory.COMMUNICATION},
             input_schema=HubSpotEngagementBlock.Input,
             output_schema=HubSpotEngagementBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

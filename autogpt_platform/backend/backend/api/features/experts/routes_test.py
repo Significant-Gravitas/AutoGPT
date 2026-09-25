@@ -176,6 +176,12 @@ def test_list_expert_templates_forwards_search_and_category(
         return_value=[],
     )
 
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=AsyncMock(return_value=[])),
+    )
+
     response = client.get(
         "/experts/templates", params={"search_query": "Maria", "category": "marketing"}
     )
@@ -268,7 +274,7 @@ def _mock_templates_with_hub_skill(
 # ─── Hire ──────────────────────────────────────────────────────────────
 
 
-def test_hire_expert_returns_expert_and_empty_failed_preloads(
+def test_hire_expert_returns_expert(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
@@ -276,7 +282,7 @@ def test_hire_expert_returns_expert_and_empty_failed_preloads(
     mock_hire = mocker.patch(
         "backend.api.features.experts.routes.experts_db.hire_expert",
         new_callable=AsyncMock,
-        return_value=HireResult(expert=hired, failed_preloads=[]),
+        return_value=HireResult(expert=hired),
     )
 
     response = client.post("/experts", json={"template_id": "template-1"})
@@ -284,7 +290,6 @@ def test_hire_expert_returns_expert_and_empty_failed_preloads(
     assert response.status_code == 200
     data = response.json()
     assert data["expert"]["id"] == "expert-1"
-    assert data["failed_preloads"] == []
     mock_hire.assert_awaited_once_with(test_user_id, "template-1", None)
 
 
@@ -295,7 +300,7 @@ def test_hire_expert_twice_returns_same_expert_id(
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.hire_expert",
         new_callable=AsyncMock,
-        return_value=HireResult(expert=hired, failed_preloads=[]),
+        return_value=HireResult(expert=hired),
     )
 
     first = client.post("/experts", json={"template_id": "template-1"})

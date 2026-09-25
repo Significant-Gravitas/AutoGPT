@@ -427,3 +427,69 @@ export function resolveWorkspaceUrls(
 
   return resolved;
 }
+
+export type ReviewTarget =
+  | { kind: "chat" }
+  /** graphId is set for a run_agent run, so its status can say when to stop polling. */
+  | { kind: "graph"; graphExecId: string; graphId?: string };
+
+/**
+ * The newest tool output that can have pending reviews for the chat to show:
+ * a run_block ReviewRequiredResponse, or a run_agent ExecutionStartedResponse
+ * that paused or had not finished when the tool returned (a run AutoPilot
+ * starts can pause at an irreversible block after it started).
+ */
+export function extractReviewTarget(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): ReviewTarget | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const parts = messages[i].parts;
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const part = parts[j];
+      if (!("output" in part) || !part.output) continue;
+      const out =
+        typeof part.output === "string"
+          ? (() => {
+              try {
+                return JSON.parse(part.output);
+              } catch {
+                return null;
+              }
+            })()
+          : part.output;
+      if (!out || typeof out !== "object") continue;
+      if (isChatReview(out)) return { kind: "chat" };
+      if ("execution_id" in out && "status" in out) {
+        const { execution_id, status, graph_id } = out as {
+          execution_id: string;
+          status: string;
+          graph_id?: string;
+        };
+        if (REVIEWABLE_STATUSES.has(status)) {
+          return {
+            kind: "graph",
+            graphExecId: execution_id,
+            graphId: graph_id,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// A block review, or an action the auto-mode gate parked for approval.
+function isChatReview(out: object) {
+  const { type, review_id } = out as { type?: unknown; review_id?: unknown };
+  return (
+    type === "review_required" ||
+    (type === "approval_required" && typeof review_id === "string")
+  );
+}
+
+const REVIEWABLE_STATUSES = new Set([
+  "REVIEW",
+  "QUEUED",
+  "RUNNING",
+  "INCOMPLETE",
+]);

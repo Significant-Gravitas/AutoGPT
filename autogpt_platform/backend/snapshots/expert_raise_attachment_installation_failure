@@ -23,6 +23,8 @@
     ],
     "role": "",
     "schedules_paused_at": null,
+    "setup_failures": [],
+    "setup_status": "ready",
     "skills": [],
     "source_template_id": null,
     "tagline": null,

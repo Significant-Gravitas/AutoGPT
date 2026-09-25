@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 import type { FeatureFlagsIntegration } from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
 
 export enum Flag {
@@ -57,6 +58,9 @@ export enum Flag {
   // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
   // so both sides must agree. Fail-closed.
   COPILOT_VOICE_MODE = "copilot-voice-mode",
+  // The chat's approval mode selector. Mirror of the backend ``Flag`` enum,
+  // which ignores a sent mode when off. Fail-closed.
+  COPILOT_AUTO_MODE = "copilot-auto-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -90,6 +94,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
+  [Flag.COPILOT_AUTO_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -155,6 +160,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
+    case Flag.COPILOT_AUTO_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }
@@ -221,7 +228,10 @@ const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
  * ``notFound()`` before the vendor responds 404s users that actually have
  * the flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS``
  * so an unregistered flag key doesn't spin forever; ``answered`` stays
- * false then, for callers that must not act on a timeout.
+ * false then, for callers that must not act on a timeout. The timeout only
+ * counts from the moment the vendor can actually start answering: while the
+ * provider is still waiting on the session it would otherwise expire first
+ * and serve the default to a user whose flag is on.
  */
 export function useFlagStatus<T extends Flag>(
   flag: T,
@@ -230,14 +240,16 @@ export function useFlagStatus<T extends Flag>(
   const areFlagsEnabled = areFeatureFlagsEnabled();
   const override = envFlagOverride(flag);
 
+  const resolutionStarted = useFlagResolutionStarted();
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
+    if (!resolutionStarted) return;
     const timer = setTimeout(
       () => setTimedOut(true),
       FLAG_RESOLUTION_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
-  }, []);
+  }, [resolutionStarted]);
 
   const served = override ?? servedFlagValue(flag, value);
   recordFlagForSentry(flag, override === undefined ? served : undefined);

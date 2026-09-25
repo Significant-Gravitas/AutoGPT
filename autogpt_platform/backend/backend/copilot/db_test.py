@@ -1105,6 +1105,7 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
                     "content": "hi",
                     "model": "claude-sonnet-4-6",
                     "routing_source": "catalog",
+                    "langfuse_trace_id": "1edf31f11b1693cc6103f358c1481694",
                 }
             ],
         )
@@ -1113,6 +1114,8 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
     assert row["model"] == "claude-sonnet-4-6"
     assert row["routingSource"] == "catalog"
     assert "routing_source" not in row
+    assert row["langfuseTraceId"] == "1edf31f11b1693cc6103f358c1481694"
+    assert "langfuse_trace_id" not in row
 
 
 def test_from_db_restores_stamp_columns():
@@ -1127,11 +1130,15 @@ def test_from_db_restores_stamp_columns():
         content="hi",
         model="claude-sonnet-4-6",
         routingSource="catalog",
+        langfuseTraceId="1edf31f11b1693cc6103f358c1481694",
         createdAt=datetime.now(UTC),
     )
     restored = ChatMessage.from_db(prisma_msg)
     assert restored.model == "claude-sonnet-4-6"
     assert restored.routing_source == "catalog"
+    assert restored.langfuse_trace_id == "1edf31f11b1693cc6103f358c1481694"
+    # Internal: the trace id never reaches the session payload clients get.
+    assert "langfuse_trace_id" not in restored.model_dump()
 
 
 def test_from_db_null_stamps_stay_null():
@@ -1176,6 +1183,36 @@ async def test_update_chat_message_stamps_maps_prisma_columns():
         "routingSource": "fallback",
     }
     assert kwargs["where"]["sessionId_sequence"]["sequence"] == 7
+
+
+@pytest.mark.asyncio
+async def test_update_chat_message_stamps_writes_the_trace_only_when_known():
+    """The turn's trace back-fills with the other stamps; a row flagged for
+    another stamp with no trace known never has its trace blanked."""
+    from backend.copilot.db import update_chat_message_stamps
+
+    with patch.object(PrismaChatMessage, "prisma") as mock_msg:
+        update = AsyncMock(return_value=object())
+        mock_msg.return_value.update = update
+
+        await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=7,
+            model="claude-sonnet-4-6",
+            routing_source="env",
+            langfuse_trace_id="1edf31f11b1693cc6103f358c1481694",
+        )
+        with_trace = update.call_args.kwargs["data"]
+        await update_chat_message_stamps(
+            session_id=SESSION_ID,
+            sequence=7,
+            model="claude-sonnet-4-6",
+            routing_source="env",
+        )
+        without_trace = update.call_args.kwargs["data"]
+
+    assert with_trace["langfuseTraceId"] == "1edf31f11b1693cc6103f358c1481694"
+    assert "langfuseTraceId" not in without_trace
 
 
 @pytest.mark.asyncio

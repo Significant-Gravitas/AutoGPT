@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -84,6 +85,8 @@ class GithubCommentBlock(Block):
                     "https://github.com/owner/repo/issues/1#issuecomment-1337",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -304,6 +307,7 @@ class GithubListCommentsBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -404,6 +408,8 @@ class GithubMakeIssueBlock(Block):
                     "https://github.com/owner/repo/issues/1",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -474,6 +480,7 @@ class GithubReadIssueBlock(Block):
                     "username",
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -624,6 +631,7 @@ class GithubListIssuesBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

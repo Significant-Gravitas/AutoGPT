@@ -10,6 +10,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -83,7 +84,7 @@ class AgentMailSendMessageBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -111,6 +112,7 @@ class AgentMailSendMessageBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -223,6 +225,7 @@ class AgentMailListMessagesBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -326,6 +329,7 @@ class AgentMailGetMessageBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -401,7 +405,7 @@ class AgentMailReplyToMessageBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -425,6 +429,7 @@ class AgentMailReplyToMessageBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -522,7 +527,7 @@ class AgentMailForwardMessageBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -546,6 +551,7 @@ class AgentMailForwardMessageBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

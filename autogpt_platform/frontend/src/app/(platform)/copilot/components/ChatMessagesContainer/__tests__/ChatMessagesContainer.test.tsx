@@ -131,10 +131,14 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: () => null,
+  CopilotPendingReviews: (props: object) => (
+    <span data-testid="pending-reviews" data-props={JSON.stringify(props)} />
+  ),
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
-vi.mock("../helpers", () => ({
+vi.mock("../helpers", async (importOriginal) => ({
+  extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
+    .extractReviewTarget,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -265,6 +269,20 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     );
     expect(screen.getByText("What about section 3?")).toBeDefined();
     expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("renders queued account references as badges without exposing IDs", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Check [Work Gmail](credential://google/work-credential-id)",
+        ]}
+      />,
+    );
+    expect(screen.getByText("Work Gmail")).toBeDefined();
+    expect(container.textContent).not.toContain("work-credential-id");
+    expect(container.textContent).not.toContain("credential://");
   });
 
   it("renders multiple queued messages as separate bubbles", () => {
@@ -1445,5 +1463,167 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     );
 
     expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
+  });
+});
+
+describe("ChatMessagesContainer — held call rows", () => {
+  it("never shows the server's wake row or a late result as the user's words", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-5",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      {
+        id: "sess-123-seq-6",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: '<held_call_result tool="create_folder">folder_created Q3</held_call_result>',
+          },
+        ],
+        metadata: { held_call: { review_id: "r1" } },
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByText(/I answered an action/)).toBeNull();
+    expect(screen.queryByText(/folder_created/)).toBeNull();
+    expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+});
+
+describe("ChatMessagesContainer — pending reviews", () => {
+  function withToolOutput(output: object): Message[] {
+    return [
+      {
+        id: "assistant-review",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_capability",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: {},
+            output: JSON.stringify(output),
+          },
+        ],
+      } as Message,
+    ];
+  }
+
+  function mounted() {
+    return screen
+      .queryAllByTestId("pending-reviews")
+      .map((el) => JSON.parse(el.getAttribute("data-props") ?? "{}"));
+  }
+
+  const chatList = (pollWhileEmpty: boolean, refetchKey: number) => ({
+    chatSessionId: "sess-123",
+    pollWhileEmpty,
+    refetchKey,
+    expertName: null,
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("finds a chat review by the chat's session, with no graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          block_id: "blk",
+          block_name: "Create Folder",
+          input_data: {},
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds a chat review stored before it had a session id of its own", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          graph_exec_id: "copilot-session-sess-123",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds an agent run's reviews by its graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({ execution_id: "exec-9", status: "REVIEW" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+  });
+
+  it("keeps the chat's held cards loaded while a newer run is the review target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          ...withToolOutput({ type: "approval_required", review_id: "r1" }),
+          ...withToolOutput({ execution_id: "exec-9", status: "RUNNING" }),
+        ]}
+      />,
+    );
+
+    // One held call on screen: fetched, but polled only if a card comes back.
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
+  });
+
+  it("refetches the chat's list at once for a new held call while it is the target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "approval_required",
+          review_id: "r1",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 1)]);
+  });
+
+  it("still finds held cards whose call has paged out of the loaded history", () => {
+    render(<ChatMessagesContainer {...baseProps} messages={[]} />);
+
+    expect(mounted()).toEqual([chatList(false, 0)]);
+  });
+
+  it("mounts nothing in a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={withToolOutput({ type: "review_required", review_id: "r" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([]);
   });
 });

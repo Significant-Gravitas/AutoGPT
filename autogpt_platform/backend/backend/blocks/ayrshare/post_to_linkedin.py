@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -110,6 +111,8 @@ class PostToLinkedInBlock(Block):
             block_type=BlockType.AYRSHARE,
             input_schema=PostToLinkedInBlock.Input,
             output_schema=PostToLinkedInBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

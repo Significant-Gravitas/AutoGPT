@@ -1,6 +1,6 @@
 import datetime
 import enum
-from typing import TYPE_CHECKING, List, Self
+from typing import TYPE_CHECKING, Annotated, List, Self
 
 import prisma.enums
 import pydantic
@@ -11,6 +11,25 @@ from .categories import validate_canonical_categories
 
 if TYPE_CHECKING:
     import prisma.models
+
+
+SUB_HEADING_MAX_LENGTH = 100
+
+# Surfaced as a one-line card subtitle, so it must be a short CTA rather than a
+# description; whitespace-only is stripped to "" and rejected as empty.
+SubHeading = Annotated[
+    str,
+    pydantic.StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=SUB_HEADING_MAX_LENGTH
+    ),
+    pydantic.Field(
+        description=(
+            "Short call-to-action line describing what the agent does for the "
+            "user, e.g. 'Find decision-makers at any company in seconds'. "
+            f"Required; max {SUB_HEADING_MAX_LENGTH} characters."
+        ),
+    ),
+]
 
 
 class ChangelogEntry(pydantic.BaseModel):
@@ -318,7 +337,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     )
     slug: str
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []
@@ -335,7 +354,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
-    sub_heading: str
+    sub_heading: SubHeading
     video_url: str | None = None
     agent_output_demo_url: str | None = None
     image_urls: list[str] = []

@@ -279,7 +279,7 @@ export function useVoiceRecording({
   }, [isTranscribing, inputId]);
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLElement>) => {
       // Allow space to toggle recording (start when empty, stop when recording)
       if (isKey(event, " ") && !isTranscribing) {
         if (isRecordingRef.current) {
