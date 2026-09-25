@@ -55,6 +55,9 @@ class _Redis:
     async def get(self, key: str) -> str | None:
         return self.data.get(key)
 
+    async def mget_nonatomic(self, keys: list[str]) -> list[str | None]:
+        return [self.data.get(key) for key in keys]
+
 
 @pytest.fixture
 def gate():
