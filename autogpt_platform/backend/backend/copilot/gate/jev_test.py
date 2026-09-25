@@ -41,8 +41,8 @@ async def test_a_jev_ask_takes_the_llm_reason_and_names_the_flagged_question():
     assert judgement.decided_by == "jev+llm"
     prompt = llm.await_args.kwargs["messages"][1]["content"]
     assert prompt.endswith(
-        "A check flagged this call on rubric question 1 "
-        "(going beyond the request). Say where."
+        "A check flagged this call; rubric question 1 (going beyond the request) "
+        "is the likeliest (p 0.97). Say where."
     )
 
 
@@ -102,6 +102,19 @@ async def test_an_unreadable_jev_answer_falls_through_to_the_llm():
     assert not judgement.allowed
     assert judgement.decided_by == "llm"
     llm.assert_awaited_once()
+
+
+@pytest.mark.parametrize("threshold, allowed", [(None, True), (0.4, False)])
+async def test_a_configured_threshold_adds_an_ask_to_an_allow_choice(
+    threshold, allowed
+):
+    answers = {**_ANSWERS["allow"], "must_ask": {"type": "noul", "noul": 0.45}}
+    with patch.object(jev.config, "gate_jev_ask_threshold", threshold):
+        judgement, _, _ = await _supervise(
+            AsyncMock(return_value=_result(answers)), "ask\nreason: posts out"
+        )
+
+    assert judgement.allowed is allowed
 
 
 async def test_without_a_key_jev_is_never_called():

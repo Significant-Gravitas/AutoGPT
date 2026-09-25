@@ -2,7 +2,7 @@
 that answers allow or ask on the same fenced prompt in a third of a second.
 
 Jev decides; the LLM runs only on an ask, to say where. The rubric with its
-worked examples (``jev_rubric.txt``) and the questions are the measured r3e
+worked examples (``jev_rubric.txt``) and the questions are the measured r8e
 arm of ``scripts/supervisor_eval``. Every failure returns None, and the caller
 falls through to the LLM judge as if this stage were off.
 """
@@ -87,8 +87,8 @@ if config.gate_first_stage == "jev" and not _api_key:
 
 class JevVerdict(BaseModel):
     ask: bool
-    # The rubric question with the highest probability over the threshold.
-    flagged: int | None = None
+    # The rubric question Jev rates likeliest: the reason-writer's hint.
+    flagged: int
     probabilities: dict[str, float]
 
 
@@ -97,8 +97,8 @@ def enabled() -> bool:
 
 
 async def judge(prompt: str) -> JevVerdict | None:
-    """Ask if ``must_ask`` clears the threshold OR the choice is ask: the
-    union is the safer of the two measured readings."""
+    """Ask when the choice is ask, or when a configured threshold is reached
+    by ``must_ask``."""
     try:
         result = await asyncio.wait_for(
             call_jev(
@@ -132,20 +132,17 @@ async def judge(prompt: str) -> JevVerdict | None:
     return verdict
 
 
-def flag_line(flagged: int | None) -> str:
-    if flagged is None:
-        return "A check flagged this call. Say where."
+def flag_line(verdict: JevVerdict) -> str:
+    n = verdict.flagged
     return (
-        f"A check flagged this call on rubric question {flagged} "
-        f"({RUBRIC_QUESTIONS[flagged]}). Say where."
+        f"A check flagged this call; rubric question {n} ({RUBRIC_QUESTIONS[n]}) "
+        f"is the likeliest (p {verdict.probabilities[f'q{n}']:.2f}). Say where."
     )
 
 
-def unpinned_reason(flagged: int | None) -> str:
-    if flagged is None:
-        return "A check flagged this call; could not pinpoint where."
+def unpinned_reason(verdict: JevVerdict) -> str:
     return (
-        f"A check flagged this as possibly {RUBRIC_QUESTIONS[flagged]}; "
+        f"A check flagged this as possibly {RUBRIC_QUESTIONS[verdict.flagged]}; "
         "could not pinpoint where."
     )
 
@@ -162,12 +159,14 @@ def _read(answers: dict[str, dict[str, Any]]) -> JevVerdict | None:
             return None
         probabilities[name] = float(value)
     threshold = config.gate_jev_ask_threshold
-    ask = choice == "ask" or probabilities["must_ask"] >= threshold
+    ask = choice == "ask" or (
+        threshold is not None and probabilities["must_ask"] >= threshold
+    )
     top = max(range(1, 5), key=lambda n: probabilities[f"q{n}"])
     choice_ask = (verdict.get("probabilities") or {}).get("ask")
     return JevVerdict(
         ask=ask,
-        flagged=top if probabilities[f"q{top}"] >= threshold else None,
+        flagged=top,
         probabilities={
             "verdict_ask": (
                 float(choice_ask)

@@ -292,10 +292,10 @@ class ChatConfig(BaseSettings):
         "the reason. Off without ``TYPESAFE_API_KEY``.",
     )
     gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
-    gate_jev_ask_threshold: float = Field(
-        default=0.5,
-        description="Jev's must-ask probability at or above which the call asks "
-        "(it also asks whenever its choice is ask).",
+    gate_jev_ask_threshold: float | None = Field(
+        default=None,
+        description="Unset: Jev's allow/ask choice decides. Set: the call also "
+        "asks when Jev's must-ask probability reaches it (0.4 was measured).",
     )
     gate_jev_timeout_s: float = Field(
         default=2.0,
