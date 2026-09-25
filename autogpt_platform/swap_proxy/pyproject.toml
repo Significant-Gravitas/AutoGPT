@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "autogpt-swap-proxy"
+version = "0.1.0"
+description = "The proxy every AutoPilot sandbox egresses through: swaps credential placeholders for real values on the way out"
+authors = ["AutoGPT <info@agpt.co>"]
+readme = "README.md"
+packages = [{ include = "swap_proxy" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+# These three come with mitmproxy; named because decode.py and addon.py use
+# them directly, and brotli's bounded decode (output_buffer_limit) needs 1.2.
+brotli = ">=1.2.0"
+httpx = "^0.28.1"
+mitmproxy = "^12.2.3"
+pyopenssl = ">=24"
+redis = "^8.1.0"
+zstandard = ">=0.23.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+isort = "^5.13.2"
+pyright = "^1.1.407"
+pytest = "^8.4.1"
+pytest-asyncio = "^1.1.0"
+ruff = "^0.15.0"
+
+[tool.poetry.scripts]
+swap-proxy = "swap_proxy.__main__:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.pyright]
+pythonVersion = "3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

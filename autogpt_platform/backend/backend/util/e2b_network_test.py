@@ -142,11 +142,37 @@ class TestPinned:
         assert record == {
             "owner": "expert:exp-1",
             "user_id": "user-1",
+            "swaps": True,
             "sandbox_id": "sb-1",
             "secret_sha256": secret_digest("s3cr3t-256-bits"),
         }
         assert "s3cr3t-256-bits" not in json.dumps(redis.store)
         assert redis.store["e2b:egress:box:sb-1"] == "box-a1"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "owner, swaps",
+        [
+            (EgressOwner(kind="session", id="s-1", user_id="user-1"), True),
+            (EgressOwner(kind="expert", id="e-1", user_id="user-1"), True),
+            (EgressOwner(kind="session", id="s-1"), False),
+            # A graph someone else wrote must not act as whoever runs it.
+            (EgressOwner(kind="block", id="user-1", user_id="user-1"), False),
+        ],
+    )
+    async def test_only_a_copilot_box_with_a_user_gets_credentials_swapped_in(
+        self, owner, swaps
+    ):
+        redis = _redis()
+        minted = ProxyCredential(username="box-a1", secret="s")
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}._mint", return_value=minted),
+        ):
+            await create_sandbox(_sdk(_box()), owner, template="t")
+            record = await credential_record("box-a1")
+        assert record and record["swaps"] is swaps
 
     @pytest.mark.asyncio
     async def test_the_record_exists_before_the_box_does(self):

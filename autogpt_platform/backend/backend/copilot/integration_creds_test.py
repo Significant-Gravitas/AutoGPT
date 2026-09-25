@@ -11,6 +11,7 @@ from backend.copilot.integration_creds import (
     _NULL_CACHE_TTL,
     _TOKEN_CACHE_TTL,
     PROVIDER_ENV_VARS,
+    ProviderTokenUnavailable,
     _consume_creds_changed_events,
     _gh_identity_cache,
     _gh_identity_null_cache,
@@ -260,6 +261,48 @@ class TestGetProviderToken:
         # DB errors are not cached — next call will retry
         assert (_USER, _PROVIDER) not in _token_cache
         assert (_USER, _PROVIDER) not in _null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_raises_on_a_db_failure_instead_of_not_connected(self):
+        """The swap proxy scrubs against this answer: a failure must not read
+        as "not connected", which would mean nothing to scrub."""
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            side_effect=RuntimeError("db down")
+        )
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            with pytest.raises(ProviderTokenUnavailable):
+                await get_provider_token(_USER, _PROVIDER, strict=True)
+        assert (_USER, _PROVIDER) not in _null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_raises_when_the_only_refresh_fails(self):
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_oauth2_creds("stale-oauth-tok")]
+        )
+        mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            with pytest.raises(ProviderTokenUnavailable):
+                await get_provider_token(_USER, _PROVIDER, strict=True)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_still_falls_back_when_a_refresh_fails(self):
+        """A failed refresh with an API key to fall back to is an answer."""
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[_make_oauth2_creds("stale"), _make_api_key_creds("api-tok")]
+        )
+        mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER, strict=True) == "api-tok"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_strict_not_connected_is_still_none(self):
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER, strict=True) is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_token_cache_ttl_is_the_stale_token_ceiling(self):
