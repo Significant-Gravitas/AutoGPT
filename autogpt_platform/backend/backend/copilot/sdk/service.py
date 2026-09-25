@@ -52,6 +52,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
@@ -6685,17 +6686,19 @@ def _stamp_turn_trace_id(
     start_index: int,
     trace_id: str | None,
 ) -> None:
-    """Record the turn's Langfuse trace on the assistant rows it wrote.
+    """Record the turn's Langfuse trace on the reply rows it wrote.
 
     A thumbs up/down on the reply is scored against this trace (see
-    ``backend.copilot.feedback``). Bounded to the turn and never
+    ``backend.copilot.feedback``). Every rateable role is stamped: the UI
+    names a reply bubble after its last assistant *or* reasoning row, and a
+    rating of either must find the trace. Bounded to the turn and never
     overwriting, exactly like ``_stamp_turn_messages``; rows flushed mid-turn
     ride the same stamps back-fill.
     """
     if not trace_id:
         return
     for msg in messages[start_index:]:
-        if msg.role == "assistant" and msg.langfuse_trace_id is None:
+        if msg.role in RATEABLE_ROLES and msg.langfuse_trace_id is None:
             msg.langfuse_trace_id = trace_id
             if msg.sequence is not None:
                 msg.stamps_pending_save = True

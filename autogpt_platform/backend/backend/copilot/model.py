@@ -221,9 +221,9 @@ class ChatMessage(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
 
-    # Langfuse trace of the SDK turn that wrote this assistant row; a rating
-    # of the reply is scored against it. Internal, so excluded from payloads
-    # like routing_source, and persisted the same way.
+    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
+    # row; a rating of the reply is scored against it. Internal, so excluded
+    # from payloads like routing_source, and persisted the same way.
     langfuse_trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)

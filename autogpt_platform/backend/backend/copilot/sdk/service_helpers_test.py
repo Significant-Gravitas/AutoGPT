@@ -1705,6 +1705,8 @@ class TestStampTurnTraceId:
             ChatMessage(role="assistant", content="working", sequence=2),
             ChatMessage(role="tool", content="{}", tool_call_id="t1"),
             ChatMessage(role="assistant", content="done"),
+            # The UI can name the reply bubble after a trailing reasoning row.
+            ChatMessage(role="reasoning", content="checking the totals"),
         ]
 
     def test_stamps_this_turns_replies_only(self):
@@ -1718,6 +1720,7 @@ class TestStampTurnTraceId:
         assert msgs[2].langfuse_trace_id == self.TRACE_ID
         assert msgs[3].langfuse_trace_id is None  # tool row
         assert msgs[4].langfuse_trace_id == self.TRACE_ID
+        assert msgs[5].langfuse_trace_id == self.TRACE_ID  # reasoning row
 
     def test_flushed_rows_flagged_for_backfill(self):
         from backend.copilot.sdk.service import _stamp_turn_trace_id

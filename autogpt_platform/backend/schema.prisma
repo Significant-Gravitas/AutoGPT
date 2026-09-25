@@ -754,8 +754,8 @@ model ChatMessage {
   llmAuthProvider String?
   llmCredentialId String?
 
-  // Langfuse trace of the SDK turn that wrote this assistant row, so a
-  // rating of the reply can be scored against that trace. Null on
+  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
+  // row, so a rating of the reply can be scored against that trace. Null on
   // user/tool rows, on baseline turns (no turn-level trace) and on rows
   // predating this column.
   langfuseTraceId String?
