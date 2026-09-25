@@ -6,6 +6,7 @@ import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFi
 import {
   type ApprovalItem,
   type ChatRule,
+  type RuleScope,
   isBare,
   isHeldRead,
   reasonLine,
@@ -21,7 +22,8 @@ interface Props {
   item: ApprovalItem;
   status: CardStatus;
   failed: boolean;
-  onApprove: (rule?: ChatRule) => void;
+  expertName: string | null;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
 }
 
@@ -29,6 +31,7 @@ export function ApprovalCard({
   item,
   status,
   failed,
+  expertName,
   onApprove,
   onReject,
 }: Props) {
@@ -42,6 +45,7 @@ export function ApprovalCard({
       <ApproveSplitButton
         label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
         subjectName={item.subject.name}
+        expertName={expertName}
         rules={read ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
         disabled={busy}
