@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -58,6 +59,15 @@ describe("ArtifactPanel (desktop) width clamping", () => {
   let offsetWidthSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    Object.defineProperties(document, {
+      fullscreenEnabled: { configurable: true, get: () => true },
+      fullscreenElement: { configurable: true, get: () => null },
+      exitFullscreen: { configurable: true, value: vi.fn() },
+    });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(),
+    });
     ResizeObserverMock.instances = [];
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     // The text artifact fetches its content from the download proxy URL,
@@ -91,8 +101,12 @@ describe("ArtifactPanel (desktop) width clamping", () => {
   afterEach(() => {
     cleanup();
     offsetWidthSpy?.mockRestore();
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    Reflect.deleteProperty(document, "fullscreenElement");
+    Reflect.deleteProperty(document, "exitFullscreen");
+    Reflect.deleteProperty(HTMLElement.prototype, "requestFullscreen");
   });
 
   it("shrinks below the stored width when the row leaves less space", async () => {
@@ -143,14 +157,58 @@ describe("ArtifactPanel (desktop) width clamping", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
   });
 
-  it("drops the header Close button when the host closes it externally", async () => {
-    offsetWidthSpy = vi
-      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
-      .mockReturnValue(2000);
+  it("closes the preview from its header", async () => {
+    render(<ArtifactPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+    expect(
+      useCopilotUIStore.getState().artifactPanel.activeArtifact,
+    ).toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector("[data-artifact-panel]")).toBeNull();
+    });
+  });
 
-    render(<ArtifactPanel hasExternalClose />);
+  it("enters and exits fullscreen without changing the saved panel width", async () => {
+    vi.spyOn(document, "fullscreenEnabled", "get").mockReturnValue(true);
+    const fullscreenElement = vi
+      .spyOn(document, "fullscreenElement", "get")
+      .mockReturnValue(null);
+    const requestFullscreen = vi
+      .spyOn(HTMLElement.prototype, "requestFullscreen")
+      .mockImplementation(async function (this: HTMLElement) {
+        fullscreenElement.mockReturnValue(this);
+        document.dispatchEvent(new Event("fullscreenchange"));
+      });
+    const exitFullscreen = vi
+      .spyOn(document, "exitFullscreen")
+      .mockImplementation(async () => {
+        fullscreenElement.mockReturnValue(null);
+        document.dispatchEvent(new Event("fullscreenchange"));
+      });
 
+    render(<ArtifactPanel />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Enter fullscreen" }),
+    );
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Exit fullscreen" }),
+    );
+    expect(exitFullscreen).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByRole("button", { name: "Enter fullscreen" }),
+    ).toBeDefined();
+    expect(useCopilotUIStore.getState().artifactPanelWidth).toBe(
+      DEFAULT_ARTIFACT_PANEL_WIDTH,
+    );
+  });
+
+  it("hides fullscreen when the browser does not support it", async () => {
+    vi.spyOn(document, "fullscreenEnabled", "get").mockReturnValue(false);
+    render(<ArtifactPanel />);
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Enter fullscreen" }),
+    ).toBeNull();
   });
 });
