@@ -45,9 +45,9 @@ async def classify(
     if len(call) > _MAX_ARG_CHARS:
         return False, _TOO_LONG_REASON
     prompt = (
-        _fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
+        fence("USER REQUEST", user_message[:_MAX_REQUEST_CHARS])
         + "\n\n"
-        + _fence("PROPOSED CALL", call)
+        + fence("PROPOSED CALL", call)
     )
     try:
         response = await asyncio.wait_for(
@@ -68,34 +68,39 @@ async def classify(
         logger.warning(f"Gate supervisor failed for {tool_name}", exc_info=True)
         return False, _FALLBACK_REASON
 
-    verdict = _parse(raw)
+    verdict = parse_answer(raw, ("allow", "ask"), "reason")
     if verdict is None:
         logger.warning(f"Gate supervisor returned an unusable body for {tool_name}")
         return False, _FALLBACK_REASON
-    allow, reason = verdict
-    return allow, reason or ("Allowed." if allow else "Needs your approval.")
+    allow = verdict[0] == "allow"
+    return allow, verdict[1] or ("Allowed." if allow else "Needs your approval.")
 
 
-def _fence(label: str, body: str) -> str:
+def fence(label: str, body: str) -> str:
     # A per-call nonce, so fenced text cannot forge the closing marker.
     nonce = secrets.token_hex(6)
     return f"<<<BEGIN {label} {nonce}>>>\n{body}\n<<<END {label} {nonce}>>>"
 
 
-def _parse(raw: str) -> tuple[bool, str] | None:
-    """The first line must be exactly ``allow`` or ``ask``; anything else fails."""
+def parse_answer(
+    raw: str, words: tuple[str, str], field: str
+) -> tuple[str, str] | None:
+    """``(word, detail)``: the first line must be exactly one of ``words``, and
+    ``detail`` is the ``<field>:`` line after it, or the bare second line models
+    often send instead. Anything else fails."""
     lines = [line.strip() for line in raw.strip().splitlines() if line.strip()]
     if not lines:
         return None
     word = lines[0].strip("*`\"'. ").lower()
-    if word not in ("allow", "ask"):
+    if word not in words:
         return None
-    reason = next(
+    prefix = f"{field}:"
+    detail = next(
         (
             line.split(":", 1)[1].strip()
             for line in lines[1:]
-            if line.lower().startswith("reason:")
+            if line.lower().startswith(prefix)
         ),
-        "",
+        lines[1] if len(lines) > 1 else "",
     )
-    return word == "allow", reason
+    return word, detail

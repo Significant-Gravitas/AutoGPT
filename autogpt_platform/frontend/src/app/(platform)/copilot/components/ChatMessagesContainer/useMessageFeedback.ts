@@ -1,47 +1,62 @@
+import { usePostV2SubmitMessageFeedback } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { MessageFeedbackRequest } from "@/app/api/__generated__/models/messageFeedbackRequest";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { environment } from "@/services/environment";
-import { getCopilotAuthHeaders } from "@/app/(platform)/copilot/helpers";
+import * as Sentry from "@sentry/nextjs";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
+import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+
+type Rating = "upvote" | "downvote";
 
 interface Args {
   sessionID: string | null;
-  messageID: string;
+  message: UIMessage<unknown, UIDataTypes, UITools>;
 }
 
-async function submitFeedbackToBackend(args: {
-  sessionID: string;
-  messageID: string;
-  scoreName: string;
-  scoreValue: number;
-  comment?: string;
-}) {
-  try {
-    const authHeaders = await getCopilotAuthHeaders();
-    await fetch(
-      `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${args.sessionID}/feedback`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-        },
-        body: JSON.stringify({
-          message_id: args.messageID,
-          score_name: args.scoreName,
-          score_value: args.scoreValue,
-          comment: args.comment,
-        }),
-      },
-    );
-  } catch (err) {
-    // Feedback submission is best-effort; silently ignore failures
-    console.debug("[Copilot] Feedback submission failed:", err);
-  }
-}
-
-export function useMessageFeedback({ sessionID, messageID }: Args) {
-  const [feedback, setFeedback] = useState<"upvote" | "downvote" | null>(null);
+export function useMessageFeedback({ sessionID, message }: Args) {
+  const [feedback, setFeedback] = useState<Rating | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const { mutateAsync: submitFeedback } = usePostV2SubmitMessageFeedback();
+
+  // A reply that just streamed still carries the stream's id until the chat
+  // reloads it with its saved one, and only the saved one can be rated.
+  const canRate = sessionID !== null && extractDbSequence(message) !== null;
+
+  async function sendScore(score: Omit<MessageFeedbackRequest, "message_id">) {
+    if (!sessionID) return false;
+    try {
+      await submitFeedback({
+        sessionId: sessionID,
+        data: { message_id: message.id, ...score },
+      });
+      return true;
+    } catch (error) {
+      Sentry.captureException(error);
+      return false;
+    }
+  }
+
+  async function saveRating(rating: Rating, comment?: string) {
+    const saved = await sendScore({
+      score_name: "user-feedback",
+      score_value: rating === "upvote" ? 1 : 0,
+      comment,
+    });
+    if (!saved) {
+      setFeedback(null);
+      toast({
+        title: "Couldn't save your feedback",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Thank you for your feedback!",
+      variant: "success",
+      duration: 3000,
+    });
+  }
 
   async function handleCopy(text: string) {
     try {
@@ -55,51 +70,26 @@ export function useMessageFeedback({ sessionID, messageID }: Args) {
       });
       return;
     }
-    if (sessionID) {
-      submitFeedbackToBackend({
-        sessionID,
-        messageID,
-        scoreName: "copy",
-        scoreValue: 1,
-      });
-    }
+    // A signal for us, not an action the user asked for: the copy itself
+    // succeeded, so a failure to record it is reported but not shown.
+    if (canRate) void sendScore({ score_name: "copy", score_value: 1 });
   }
 
   function handleUpvote() {
-    if (feedback) return;
+    if (feedback || !canRate) return;
     setFeedback("upvote");
-    toast({
-      title: "Thank you for your feedback!",
-      variant: "success",
-      duration: 3000,
-    });
-    if (sessionID) {
-      submitFeedbackToBackend({
-        sessionID,
-        messageID,
-        scoreName: "user-feedback",
-        scoreValue: 1,
-      });
-    }
+    void saveRating("upvote");
   }
 
   function handleDownvoteClick() {
-    if (feedback) return;
+    if (feedback || !canRate) return;
     setFeedback("downvote");
     setShowFeedbackModal(true);
   }
 
   function handleDownvoteSubmit(comment: string) {
     setShowFeedbackModal(false);
-    if (sessionID) {
-      submitFeedbackToBackend({
-        sessionID,
-        messageID,
-        scoreName: "user-feedback",
-        scoreValue: 0,
-        comment: comment || undefined,
-      });
-    }
+    void saveRating("downvote", comment || undefined);
   }
 
   function handleDownvoteCancel() {
@@ -109,6 +99,7 @@ export function useMessageFeedback({ sessionID, messageID }: Args) {
 
   return {
     feedback,
+    canRate,
     showFeedbackModal,
     handleCopy,
     handleUpvote,

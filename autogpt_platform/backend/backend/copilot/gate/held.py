@@ -301,6 +301,11 @@ async def _outcome(
     row = rows.get(call.review_id)
     if row is None or row.status == ReviewStatus.WAITING:
         return "closed", "Nothing ran: this card is no longer open."
+    # Deferred: reads imports this package's __init__, which imports this module.
+    from .reads import answered_read, is_held_read
+
+    if is_held_read(call.review_id):
+        return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
         await review_store.consume(call.review_id, user_id)
         await chat_rules.set_ask(session.session_id, call.tool_name)

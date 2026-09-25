@@ -1,7 +1,6 @@
 import {
   prefetchGetV2ListMarketplaceSkillsQuery,
   prefetchGetV2ListStoreAgentsQuery,
-  prefetchGetV2ListStoreCreatorsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { SHELF_PREVIEW_SIZE } from "../components/Shelf/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
@@ -58,16 +57,6 @@ export default async function MarketplacePage(): Promise<React.ReactElement> {
     prefetchGetV2ListStoreAgentsQuery(
       queryClient,
       { sorted_by: "runs", page_size: 1000 },
-      {
-        query: {
-          staleTime: 60 * 1000, // 60 seconds
-          gcTime: 5 * 60 * 1000, // 5 minutes
-        },
-      },
-    ),
-    prefetchGetV2ListStoreCreatorsQuery(
-      queryClient,
-      { featured: true, sorted_by: "num_agents" },
       {
         query: {
           staleTime: 60 * 1000, // 60 seconds
