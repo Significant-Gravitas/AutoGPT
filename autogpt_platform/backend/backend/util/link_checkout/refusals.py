@@ -28,6 +28,15 @@ ATTEMPT_UNRECONCILED = (
     "This chat's last payment attempt has no final status yet. Check it with "
     "tool:browser_link_payment_status before starting another purchase."
 )
+LINK_NOT_CONNECTED = (
+    "Stripe Link is not connected. Run the Stripe Link List Payment Methods "
+    "block with its credentials left empty: it shows the user the connect "
+    "card, then lists the payment methods to choose payment_method_id from."
+)
+LINK_ACCOUNT_NOT_CHOSEN = (
+    "Several Stripe Link accounts are connected and none was chosen in this "
+    "chat. Run the Stripe Link List Payment Methods block so the user picks one."
+)
 
 MESSAGES = frozenset(
     {
@@ -36,6 +45,8 @@ MESSAGES = frozenset(
         LIVE_PAYMENTS_DISABLED,
         DUPLICATE_REQUEST,
         ATTEMPT_UNRECONCILED,
+        LINK_NOT_CONNECTED,
+        LINK_ACCOUNT_NOT_CHOSEN,
     }
 )
 

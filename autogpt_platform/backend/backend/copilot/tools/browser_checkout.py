@@ -16,8 +16,10 @@ from backend.copilot.tools.browser_checkout_support import (
     REQUEST_PARAMETERS,
     approval_for,
     available,
+    chat_link_credential,
     checkout_response,
     failure,
+    invalid_plan,
     link_credentials,
     principal_for,
 )
@@ -52,11 +54,12 @@ class BrowserRequestLinkPaymentTool(BaseTool):
     def description(self) -> str:
         return (
             "Ask the user to approve paying for the open checkout with their "
-            "Link wallet. First finish login, cart, delivery and billing. Pass "
-            "selectors of the empty card inputs (autocomplete cc-number, cc-csc, "
-            "cc-exp) and the pay button; no scripts or card values. Once the user "
-            "approves, call tool:browser_complete_link_payment with the returned "
-            "checkout_id."
+            "Link wallet. First finish login, cart, delivery and billing, and "
+            "pick payment_method_id with the Stripe Link List Payment Methods "
+            "block. Pass selectors of the empty card inputs (autocomplete "
+            "cc-number, cc-csc, cc-exp) and the pay button; no scripts or card "
+            "values. Once the user approves, call "
+            "tool:browser_complete_link_payment with the returned checkout_id."
         )
 
     @property
@@ -76,12 +79,22 @@ class BrowserRequestLinkPaymentTool(BaseTool):
     ) -> ToolResponseBase:
         try:
             principal = principal_for(user_id, session)
+        except ValueError:
+            return failure(session, "Private checkout is not available in this chat.")
+        try:
+            if not kwargs.get("credentials_id"):
+                kwargs["credentials_id"] = await chat_link_credential(
+                    principal.user_id, principal.session_id
+                )
             plan = CheckoutPlan.model_validate(kwargs)
-        except (ValidationError, ValueError):
+        except CheckoutRefused as refused:
+            return failure(session, str(refused))
+        except ValidationError as invalid:
+            return failure(session, invalid_plan(invalid))
+        except Exception:
             return failure(
                 session,
-                "Invalid checkout plan. Use an HTTPS checkout URL and unique "
-                "selectors for empty payment fields and the pay button.",
+                "Could not read the Stripe Link connection. Try again shortly.",
             )
         if not plan.test_mode and not live_payments_enabled():
             return failure(session, LIVE_PAYMENTS_DISABLED)

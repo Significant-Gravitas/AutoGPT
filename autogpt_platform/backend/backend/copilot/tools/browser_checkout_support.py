@@ -5,6 +5,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from pydantic import ValidationError
+
+from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
 from backend.data.model import OAuth2Credentials
@@ -18,6 +21,11 @@ from backend.util.link_checkout.approval import ApprovalState, ApprovalView
 from backend.util.link_checkout.broker_protocol import CheckoutView, Principal
 from backend.util.link_checkout.config import hosted_checkout_requested
 from backend.util.link_checkout.models import WorkerReceipt
+from backend.util.link_checkout.refusals import (
+    LINK_ACCOUNT_NOT_CHOSEN,
+    LINK_NOT_CONNECTED,
+    CheckoutRefused,
+)
 from backend.util.settings import BehaveAs, Settings
 
 LINK_PAYMENT_SCOPE = "payment_methods.agentic"
@@ -29,7 +37,8 @@ REQUEST_PARAMETERS: dict[str, Any] = {
     "properties": {
         "credentials_id": {
             "type": "string",
-            "description": "ID of the user's connected Stripe Link credential.",
+            "description": "Stripe Link credential to pay with. Leave it out to "
+            "use the account connected in this chat.",
         },
         "payment_method_id": {
             "type": "string",
@@ -72,7 +81,6 @@ REQUEST_PARAMETERS: dict[str, Any] = {
         },
     },
     "required": [
-        "credentials_id",
         "payment_method_id",
         "merchant_name",
         "checkout_url",
@@ -177,6 +185,25 @@ async def link_credentials(
         await lease.release()
 
 
+async def chat_link_credential(user_id: str, session_id: str) -> str:
+    """The Link account a chat pays with when the agent names none: the one
+    the user picked in this chat (a connect card records the pick), else their
+    only Link connection that can pay. Never a guess between several."""
+    connected = [
+        credential
+        for credential in await _credentials.store.get_creds_by_provider(
+            user_id, "stripe_link"
+        )
+        if isinstance(credential, OAuth2Credentials)
+        and LINK_PAYMENT_SCOPE in credential.scopes
+    ]
+    picked = (await selected_credentials(session_id)).get("stripe_link")
+    candidates = [c for c in connected if c.id == picked] or connected
+    if len(candidates) == 1:
+        return candidates[0].id
+    raise CheckoutRefused(LINK_ACCOUNT_NOT_CHOSEN if candidates else LINK_NOT_CONNECTED)
+
+
 def approval_for(
     approval: ApprovalView | None, view: CheckoutView, principal: Principal
 ) -> ApprovalView | None:
@@ -221,6 +248,17 @@ def checkout_response(
     if approval is not None and view.spend_request_id is None:
         response.approval_state = approval.state
     return response
+
+
+def invalid_plan(error: ValidationError) -> str:
+    """Which arguments were wrong and why, so the agent can fix its call.
+    ``CheckoutPlan`` hides inputs in its errors, so only field names and the
+    rule they broke come back."""
+    problems = "; ".join(
+        f"{'.'.join(map(str, detail['loc'])) or 'plan'}: {detail['msg']}"
+        for detail in error.errors(include_url=False, include_input=False)[:6]
+    )
+    return f"Invalid checkout plan. {problems}"[:900]
 
 
 def failure(session: ChatSession, message: str) -> ErrorResponse:

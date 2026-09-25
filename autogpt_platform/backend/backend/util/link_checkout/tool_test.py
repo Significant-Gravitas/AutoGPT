@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,9 +14,14 @@ from backend.copilot.tools import browser_checkout as request_tools
 from backend.copilot.tools import browser_checkout_status as status_tools
 from backend.copilot.tools import browser_checkout_support as support
 from backend.copilot.tools.browser_checkout_support import CheckoutResponse
+from backend.copilot.tools.models import ErrorResponse
 from backend.data.model import OAuth2Credentials
 from backend.util.link_checkout import approval, broker_link
-from backend.util.link_checkout.refusals import DUPLICATE_REQUEST
+from backend.util.link_checkout.refusals import (
+    DUPLICATE_REQUEST,
+    LINK_ACCOUNT_NOT_CHOSEN,
+    LINK_NOT_CONNECTED,
+)
 from backend.util.settings import BehaveAs
 
 
@@ -305,3 +311,113 @@ async def test_a_refusal_tells_the_agent_why(tools, plan):
     result = await run("browser_request_link_payment", **plan.model_dump())
 
     assert DUPLICATE_REQUEST in result.output
+
+
+def link_account(credential_id: str, scopes=("payment_methods.agentic",)):
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="stripe_link",
+        access_token=SecretStr("synthetic"),
+        scopes=list(scopes),
+    )
+
+
+@pytest.fixture
+def link_accounts(tools, monkeypatch):
+    """The user's stored Link connections, the account picked in the chat, and
+    the credential each checkout leased."""
+    state = SimpleNamespace(stored=[], picked={}, leased=[])
+
+    async def by_provider(user_id, provider):
+        assert (user_id, provider) == ("owner", "stripe_link")
+        return state.stored
+
+    async def picks(session_id):
+        assert session_id == "chat"
+        return state.picked
+
+    @asynccontextmanager
+    async def leased_link_credentials(user_id: str, credentials_id: str):
+        state.leased.append(credentials_id)
+        yield MagicMock(access_token=SecretStr("synthetic-token"))
+
+    monkeypatch.setattr(
+        support,
+        "_credentials",
+        MagicMock(store=MagicMock(get_creds_by_provider=by_provider)),
+    )
+    monkeypatch.setattr(support, "selected_credentials", picks)
+    monkeypatch.setattr(request_tools, "link_credentials", leased_link_credentials)
+    return state
+
+
+@pytest.mark.asyncio
+async def test_without_a_credential_the_users_only_link_wallet_pays(
+    link_accounts, plan
+):
+    link_accounts.stored = [
+        link_account("wallet-2"),
+        link_account("profile-only", scopes=["userinfo:read"]),
+    ]
+
+    created = parsed(
+        await run(
+            "browser_request_link_payment",
+            **plan.model_dump(exclude={"credentials_id"}),
+        )
+    )
+
+    assert created.status == "pending_approval"
+    assert link_accounts.leased == ["wallet-2"]
+
+
+@pytest.mark.asyncio
+async def test_among_several_link_wallets_the_one_picked_in_the_chat_pays(
+    link_accounts, plan
+):
+    link_accounts.stored = [link_account("personal"), link_account("work")]
+    link_accounts.picked = {"stripe_link": "work"}
+
+    await run(
+        "browser_request_link_payment", **plan.model_dump(exclude={"credentials_id"})
+    )
+
+    assert link_accounts.leased == ["work"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored,refusal",
+    [([], LINK_NOT_CONNECTED), (["personal", "work"], LINK_ACCOUNT_NOT_CHOSEN)],
+    ids=["none", "several_unpicked"],
+)
+async def test_without_one_link_wallet_the_agent_is_sent_to_the_connect_card(
+    tools, link_accounts, plan, stored, refusal
+):
+    link_accounts.stored = [link_account(credential_id) for credential_id in stored]
+
+    result = await run(
+        "browser_request_link_payment", **plan.model_dump(exclude={"credentials_id"})
+    )
+
+    assert ErrorResponse.model_validate_json(result.output).message == refusal
+    assert link_accounts.leased == []
+    assert tools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_plan_names_what_to_fix_without_echoing_it(tools, plan):
+    arguments = plan.model_dump(exclude={"payment_method_id"}) | {
+        "context": "a short reason",
+        "card_number": "4242424242424242",
+    }
+
+    result = await run("browser_request_link_payment", **arguments)
+
+    message = ErrorResponse.model_validate_json(result.output).message
+    assert "payment_method_id: Field required" in message
+    assert "context: String should have at least 100 characters" in message
+    assert "card_number: Extra inputs are not permitted" in message
+    assert "4242424242424242" not in result.output
+    assert "a short reason" not in result.output
+    assert tools.calls == []
