@@ -58,6 +58,22 @@ describe("EditAgentModal", () => {
     ).toBeDefined();
   });
 
+  it("counts the tagline against its 100-character limit", () => {
+    render(
+      <EditAgentModal
+        isOpen={true}
+        onClose={() => {}}
+        submission={makeSubmission()}
+        onSuccess={() => {}}
+      />,
+    );
+
+    const counts = screen
+      .getAllByTestId("char-count")
+      .map((el) => el.textContent);
+    expect(counts).toContain("9 / 100");
+  });
+
   it("disables the category field when the category list cannot be loaded", async () => {
     server.use(
       http.get("http://localhost:3000/api/proxy/api/store/categories", () =>

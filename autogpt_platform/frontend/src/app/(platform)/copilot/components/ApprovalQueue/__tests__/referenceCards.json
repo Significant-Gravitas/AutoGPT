@@ -72,6 +72,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Delete library folder",
@@ -311,6 +312,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Move agents into library folder",
@@ -396,6 +398,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Pause a schedule",
@@ -479,6 +482,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Hire",
@@ -563,6 +567,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Message another chat",
@@ -669,6 +674,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Give a teammate an account",
@@ -754,6 +760,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Edit an agent",
@@ -827,6 +834,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Update preset",
@@ -900,6 +908,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Delete a preset",
@@ -973,6 +982,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Schedule a routine",
@@ -1085,6 +1095,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Give a teammate a workflow",
@@ -1151,6 +1162,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Take a workflow from a teammate",
@@ -1230,6 +1242,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Confirm the team change",
@@ -1326,6 +1339,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Delete workspace file",
@@ -1392,6 +1406,7 @@
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
+        "decided_by": null,
         "chat_rules_allowed": [],
         "headline": {
           "ask": "Delete a preset",

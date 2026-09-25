@@ -255,8 +255,8 @@ export class MarketplacePage extends BasePage {
 
     await publishAgentModal.getByLabel("Title").fill(agentTitle);
     await publishAgentModal
-      .getByLabel("Subheader")
-      .fill("A deterministic marketplace submission");
+      .getByLabel("Tagline")
+      .fill("Publish a deterministic marketplace submission");
     await publishAgentModal.getByLabel("Slug").fill(agentSlug);
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
