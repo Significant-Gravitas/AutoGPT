@@ -164,7 +164,7 @@ test("the approve menu offers the rules the server allows", async () => {
     await screen.findByRole("button", { name: "More ways to approve" }),
   );
   expect(await screen.findByText("Approve for this chat")).toBeDefined();
-  expect(screen.queryByText(/judge from now on/)).toBeNull();
+  expect(screen.queryByText(/^Let Otto judge/)).toBeNull();
   expect(screen.queryByText(/Always allow/)).toBeNull();
 });
 

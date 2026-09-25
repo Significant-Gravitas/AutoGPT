@@ -39,9 +39,14 @@ function renderQueue() {
 
 test.each([
   ["Approve for this chat", "allow", "a block", mail("m1")],
-  ["Let Otto judge from now on", "judge", "a block", mail("m1")],
+  ["Let Otto judge Gmail Send", "judge", "a block", mail("m1")],
   ["Approve for this chat", "allow", "an MCP tool", mcpTool("m1")],
-  ["Let Otto judge from now on", "judge", "an MCP tool", mcpTool("m1")],
+  [
+    "Let Otto judge create_issue on mcp.linear.app",
+    "judge",
+    "an MCP tool",
+    mcpTool("m1"),
+  ],
 ])(
   "choosing %s approves the call and sets the %s rule on %s",
   async (item, rule, _subject, review) => {
@@ -89,16 +94,53 @@ test("the team toggle starts off and a rule then holds for this chat only", asyn
   expect(sent[0].reviews[0]).not.toHaveProperty("apply_to_team");
 });
 
+const SUBJECT = "Gmail Send";
+
 test.each([
   [
-    "Approve for all my chats",
-    "allow",
-    "runs without asking in all your chats",
+    "off",
+    false,
+    [
+      "Approve for this chat",
+      `${SUBJECT} runs without asking until this chat ends`,
+      `Let Otto judge ${SUBJECT}`,
+      "A check decides each time it runs in this chat, and asks you only when it isn't sure",
+    ],
   ],
-  ["Let Otto judge from now on", "judge", "in all your chats and asks you"],
+  [
+    "on",
+    true,
+    [
+      "Approve for all my chats",
+      `${SUBJECT} runs without asking in all your chats until you revoke it`,
+      `Let Otto judge ${SUBJECT} in all my chats`,
+      "A check decides each time it runs in any of your chats, and asks you only when it isn't sure",
+    ],
+  ],
+])(
+  "with the team toggle %s, both rules name the subject and their scope",
+  async (_state, on, lines) => {
+    serve();
+    renderQueue();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "More ways to approve" }),
+    );
+    if (on)
+      await userEvent.click(
+        await screen.findByRole("menuitemcheckbox", { name: TEAM }),
+      );
+    for (const line of lines)
+      expect(await screen.findByText(line)).toBeDefined();
+  },
+);
+
+test.each([
+  ["Approve for all my chats", "allow"],
+  [`Let Otto judge ${SUBJECT} in all my chats`, "judge"],
 ])(
   "with the team toggle on, %s sends the %s rule for every chat",
-  async (item, rule, detail) => {
+  async (item, rule) => {
     const sent = serve();
     renderQueue();
 
@@ -110,7 +152,6 @@ test.each([
     );
     const toggle = await screen.findByRole("menuitemcheckbox", { name: TEAM });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText(new RegExp(detail))).toBeDefined();
     await userEvent.click(screen.getByText(item));
 
     await waitFor(() => expect(sent).toHaveLength(1));

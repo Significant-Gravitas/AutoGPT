@@ -40,12 +40,16 @@ const RULE_COPY: Record<
           "Approve for this chat",
           `${subject} runs without asking until this chat ends`,
         ],
-  judge: (_, team) => [
-    `Let ${AUTOPILOT_NAME} judge from now on`,
+  judge: (subject, team) =>
     team
-      ? "A check decides each time in all your chats and asks you only when it isn't sure"
-      : "A check decides each time and asks you only when it isn't sure",
-  ],
+      ? [
+          `Let ${AUTOPILOT_NAME} judge ${subject} in all my chats`,
+          "A check decides each time it runs in any of your chats, and asks you only when it isn't sure",
+        ]
+      : [
+          `Let ${AUTOPILOT_NAME} judge ${subject}`,
+          "A check decides each time it runs in this chat, and asks you only when it isn't sure",
+        ],
 };
 
 export function ApproveSplitButton({
