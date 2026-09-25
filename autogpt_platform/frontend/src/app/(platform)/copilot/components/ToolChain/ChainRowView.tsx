@@ -146,7 +146,9 @@ export function ChainRowView({ row, isLast, readOnly = false }: Props) {
       )}
     />
   );
-  const heldTag = row.held ? <HeldTag state={row.held.state} /> : null;
+  const heldTag = row.held ? (
+    <HeldTag state={row.held.state} read={row.held.read} />
+  ) : null;
 
   return (
     <div className="flex items-stretch gap-2.5">

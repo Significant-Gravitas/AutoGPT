@@ -21,6 +21,7 @@ from urllib.parse import quote
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -381,6 +382,7 @@ class StripeLinkMPPPayBlock(Block):
                 "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}, True),
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

@@ -65,6 +65,19 @@ BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
 CapabilityKind = Literal["service", "primitive"]
 
 
+class BlockEffect(Enum):
+    """What running the block does, ranked; declared per block, never derived.
+
+    Undeclared (``None``) means unreadable, which every consumer treats as EXTERNAL.
+    """
+
+    NONE = "none"  # pure computation: no network, no disk, no database
+    READ = "read"  # fetches or computes; changes nothing
+    WORKSPACE = "workspace"  # writes only to the user's workspace or key-value store
+    PLATFORM = "platform"  # changes only the user's own objects on the platform
+    EXTERNAL = "external"  # changes something outside the platform
+
+
 class BlockType(Enum):
     STANDARD = "Standard"
     INPUT = "Input"
@@ -591,6 +604,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
         is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
+        effect: BlockEffect | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -616,6 +630,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 Defaults to ``service`` when the block's credentials name exactly
                 one provider and ``primitive`` otherwise; set it explicitly on
                 provider-backed generic blocks (code sandboxes, SQL, HTTP).
+            effect: What running the block does; see BlockEffect. Irreversible
+                implies EXTERNAL.
         """
         self.id = id
         self.input_schema = input_schema
@@ -633,6 +649,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.webhook_config = webhook_config
         self.is_irreversible_action = is_irreversible_action
         self._capability_kind: CapabilityKind | None = capability_kind
+        self.effect = effect
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()

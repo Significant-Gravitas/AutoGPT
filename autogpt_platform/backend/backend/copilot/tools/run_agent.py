@@ -1,14 +1,20 @@
 """Unified tool for agent operations with automatic state detection."""
 
 import logging
+from contextvars import ContextVar
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.library.model import (
+    LibraryAgent,
+    LibraryAgentPreset,
+    LibraryAgentPresetCreatable,
+)
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_envelope
+from backend.copilot.gate.subject import NO_OP, Subject, workflow_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
@@ -36,7 +42,7 @@ from backend.util.timezone_utils import (
     validate_timezone,
 )
 
-from .base import BaseTool
+from .base import GATE_APPROVED, BaseTool
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -75,6 +81,11 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# The graph the gate resolved for this call, so ``_execute`` fetches it only once.
+_GATE_RESOLVED: ContextVar[
+    tuple[tuple[str, str, str], str, GraphModel | None, LibraryAgent | None] | None
+] = ContextVar("run_agent_gate_resolved", default=None)
 
 
 async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
@@ -164,9 +175,48 @@ class RunAgentTool(BaseTool):
     The response tells the caller what's missing or confirms execution.
     """
 
+    has_gate_subject = True
+
     @property
     def name(self) -> str:
         return "run_agent"
+
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """The workflow this call runs, with its sub-graphs; NO_OP where nothing
+        runs: a dry run, a trigger workflow (which only returns its trigger
+        details), or a call ``_execute`` refuses before looking anything up."""
+        try:
+            params = RunAgentInput(**args)
+        except ValidationError:
+            return NO_OP
+        if params.dry_run or session.dry_run:
+            return NO_OP
+        if params.preset_id:
+            preset, graph = await _preset_graph(user_id, session, params.preset_id)
+            # No such preset for this chat: the run refuses, so nothing asks.
+            if preset is None:
+                return NO_OP
+        else:
+            key = _call_key(user_id, params)
+            await _bind_builder_graph(user_id, session, params)
+            if not _names_an_agent(params):
+                return NO_OP
+            graph, library_agent = await _agent_graph(user_id, params)
+            _GATE_RESOLVED.set((key, params.library_agent_id, graph, library_agent))
+        if graph is None:
+            # A miss must not run ungated; the tool's own effect asks.
+            return None
+        if graph.has_external_trigger:
+            return NO_OP
+        if not params.preset_id and _asks_for_inputs(graph, params):
+            return NO_OP  # the run answers with the inputs it needs
+        return workflow_subject(
+            graph,
+            schedules=bool(params.schedule_name or params.cron),
+            saves_preset=params.save_as_preset,
+        )
 
     @property
     def description(self) -> str:
@@ -259,6 +309,7 @@ class RunAgentTool(BaseTool):
         validation because the parameter set is complex with cross-field
         validators defined in the Pydantic model.
         """
+        approved = bool(kwargs.pop(GATE_APPROVED, False))
         params = RunAgentInput(**kwargs)
         # Session-level dry_run forces all runs to be dry. In normal sessions
         # the LLM may still request dry_run=True on individual calls.
@@ -270,24 +321,20 @@ class RunAgentTool(BaseTool):
         # graph + inputs + credentials). Handle it before agent-identifier
         # resolution below.
         if params.preset_id:
-            return await self._handle_preset_run(user_id, session, params)
+            return await self._handle_preset_run(user_id, session, params, approved)
 
-        # Validate at least one identifier is provided
-        has_slug = params.username_agent_slug and "/" in params.username_agent_slug
+        resolved = _GATE_RESOLVED.get()
+        _GATE_RESOLVED.set(None)
+        if resolved is None or resolved[0] != _call_key(user_id or "", params):
+            resolved = None
+            if user_id:
+                await _bind_builder_graph(user_id, session, params)
+        elif resolved[1]:
+            params.library_agent_id = resolved[1]
+        builder_graph_id = session.metadata.builder_graph_id
         has_library_id = bool(params.library_agent_id)
 
-        # Builder-bound sessions can omit the identifier — default to the
-        # bound graph so the LLM doesn't have to pass IDs the user never sees.
-        builder_graph_id = session.metadata.builder_graph_id
-        if builder_graph_id and user_id and not has_slug and not has_library_id:
-            library_agent = await library_db().get_library_agent_by_graph_id(
-                user_id, builder_graph_id
-            )
-            if library_agent:
-                params.library_agent_id = library_agent.id
-                has_library_id = True
-
-        if not has_slug and not has_library_id:
+        if not _names_an_agent(params):
             return ErrorResponse(
                 message=(
                     "Please provide either a username_agent_slug "
@@ -320,41 +367,14 @@ class RunAgentTool(BaseTool):
 
         try:
             # Step 1: Fetch agent details
-            graph: GraphModel | None = None
-            library_agent = None
-
-            # Priority: library_agent_id if provided
-            if has_library_id:
-                try:
-                    library_agent = await library_db().get_library_agent(
-                        params.library_agent_id, user_id
-                    )
-                except NotFoundError:
-                    # get_library_agent raises rather than returning None, so
-                    # the graph-id fallback this tool documents is only
-                    # reachable from here.
-                    library_agent = None
-                if not library_agent:
-                    library_agent = await library_db().get_library_agent_by_graph_id(
-                        user_id, params.library_agent_id
-                    )
-                if not library_agent:
-                    return ErrorResponse(
-                        message=f"Library agent '{params.library_agent_id}' not found",
-                        session_id=session_id,
-                    )
-                # Sub-graphs are needed to aggregate the full set of required credentials.
-                graph = await graph_db().get_graph(
-                    library_agent.graph_id,
-                    library_agent.graph_version,
-                    user_id=user_id,
-                    include_subgraphs=True,
+            graph, library_agent = (
+                resolved[2:] if resolved else await _agent_graph(user_id, params)
+            )
+            if has_library_id and library_agent is None:
+                return ErrorResponse(
+                    message=f"Library agent '{params.library_agent_id}' not found",
+                    session_id=session_id,
                 )
-            else:
-                # Fetch from marketplace slug
-                username, agent_name = params.username_agent_slug.split("/", 1)
-                graph, _ = await fetch_graph_from_store_slug(username, agent_name)
-
             if not graph:
                 identifier = (
                     params.library_agent_id
@@ -445,6 +465,7 @@ class RunAgentTool(BaseTool):
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
                     dry_run=params.dry_run,
+                    gate_approved=approved,
                 )
 
             # Step 4: persist the validated config as a reusable preset — only
@@ -779,6 +800,7 @@ class RunAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         params: RunAgentInput,
+        approved: bool = False,
     ) -> ToolResponseBase:
         """Run a saved preset by id (mirrors POST /presets/{id}/execute)."""
         session_id = session.session_id
@@ -811,27 +833,13 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        preset = await library_db().get_preset(
-            user_id=user_id, preset_id=params.preset_id
-        )
+        preset, graph = await _preset_graph(user_id, session, params.preset_id)
         if not preset:
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
                 error="preset_not_found",
                 session_id=session_id,
             )
-        if preset.expert_id != session.expert_id:
-            return ErrorResponse(
-                message=f"Preset '{params.preset_id}' not found.",
-                error="preset_not_found",
-                session_id=session_id,
-            )
-        graph = await graph_db().get_graph(
-            preset.graph_id,
-            preset.graph_version,
-            user_id=user_id,
-            include_subgraphs=True,  # needed for full credentials aggregation
-        )
         if not graph:
             return ErrorResponse(
                 message=(
@@ -885,6 +893,7 @@ class RunAgentTool(BaseTool):
             wait_for_result=params.wait_for_result,
             dry_run=params.dry_run,
             preset_id=preset.id,
+            gate_approved=approved,
         )
 
     async def _maybe_save_preset(
@@ -927,8 +936,13 @@ class RunAgentTool(BaseTool):
         dry_run: bool,
         wait_for_result: int = 0,
         preset_id: str | None = None,
+        gate_approved: bool = False,
     ) -> ToolResponseBase:
-        """Execute an agent immediately, optionally waiting for completion."""
+        """Execute an agent immediately, optionally waiting for completion.
+
+        ``gate_approved``: the user approved this run on a card, so it runs
+        under the graph's own safe-mode setting rather than pausing again.
+        """
         session_id = session.session_id
 
         # Check rate limits (dry runs don't count against the session limit)
@@ -976,7 +990,9 @@ class RunAgentTool(BaseTool):
                 trigger=ExecutionTrigger.COPILOT,
                 trigger_ref=session_id,
                 pause_irreversible_actions=(
-                    not dry_run and session.metadata.pauses_irreversible_actions
+                    not dry_run
+                    and not gate_approved
+                    and session.metadata.pauses_irreversible_actions
                 ),
                 # Keeps a graph containing an AutoPilotBlock inside this turn's
                 # tree rather than letting it start a fresh, unbounded one.
@@ -1357,3 +1373,87 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         )
+
+
+# One lookup for the run and for the gate: were they two, a drift between
+# them would gate one graph and run another.
+async def _agent_graph(
+    user_id: str, params: RunAgentInput
+) -> tuple[GraphModel | None, LibraryAgent | None]:
+    if params.library_agent_id:
+        try:
+            library_agent = await library_db().get_library_agent(
+                params.library_agent_id, user_id
+            )
+        except NotFoundError:
+            # get_library_agent raises rather than returning None, so the
+            # graph-id fallback this tool documents is only reachable here.
+            library_agent = None
+        library_agent = library_agent or (
+            await library_db().get_library_agent_by_graph_id(
+                user_id, params.library_agent_id
+            )
+        )
+        if library_agent is None:
+            return None, None
+        # Sub-graphs are needed to aggregate the full set of required credentials.
+        graph = await graph_db().get_graph(
+            library_agent.graph_id,
+            library_agent.graph_version,
+            user_id=user_id,
+            include_subgraphs=True,
+        )
+        return graph, library_agent
+    username, agent_name = params.username_agent_slug.split("/", 1)
+    graph, _ = await fetch_graph_from_store_slug(username, agent_name)
+    return graph, None
+
+
+async def _preset_graph(
+    user_id: str, session: ChatSession, preset_id: str
+) -> tuple[LibraryAgentPreset | None, GraphModel | None]:
+    preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
+    if preset is None or preset.expert_id != session.expert_id:
+        return None, None
+    graph = await graph_db().get_graph(
+        preset.graph_id,
+        preset.graph_version,
+        user_id=user_id,
+        include_subgraphs=True,  # needed for full credentials aggregation
+    )
+    return preset, graph
+
+
+async def _bind_builder_graph(
+    user_id: str, session: ChatSession, params: RunAgentInput
+) -> None:
+    """Builder-bound sessions can omit the identifier: default to the bound
+    graph so the LLM doesn't have to pass ids the user never sees."""
+    builder_graph_id = session.metadata.builder_graph_id
+    if not builder_graph_id or _names_an_agent(params):
+        return
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id, builder_graph_id
+    )
+    if library_agent:
+        params.library_agent_id = library_agent.id
+
+
+def _call_key(user_id: str, params: RunAgentInput) -> tuple[str, str, str]:
+    return (user_id, params.library_agent_id or "", params.username_agent_slug)
+
+
+def _names_an_agent(params: RunAgentInput) -> bool:
+    return bool(params.library_agent_id) or "/" in params.username_agent_slug
+
+
+def _asks_for_inputs(graph: GraphModel, params: RunAgentInput) -> bool:
+    """The input gates of ``_check_prerequisites``: the call runs nothing."""
+    properties = graph.input_schema.get("properties", {})
+    provided = set(params.inputs)
+    if provided - set(properties):
+        return True
+    if params.use_defaults:
+        return False
+    required = set(graph.input_schema.get("required", []))
+    return bool(properties and not provided) or bool(required - provided)

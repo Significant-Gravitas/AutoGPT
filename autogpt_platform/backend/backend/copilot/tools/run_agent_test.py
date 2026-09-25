@@ -1239,16 +1239,18 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
-    "origin, dry_run, expected",
+    "origin, dry_run, gate_approved, expected",
     [
-        ("interactive", False, True),
-        (None, False, True),
-        ("automation", False, False),
-        ("interactive", True, False),
+        ("interactive", False, False, True),
+        (None, False, False, True),
+        ("automation", False, False, False),
+        ("interactive", True, False, False),
+        # The card was the question; the run keeps the graph's own setting.
+        ("interactive", False, True, False),
     ],
 )
 async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
-    mocker, origin, dry_run, expected
+    mocker, origin, dry_run, gate_approved, expected
 ):
     from backend.copilot.model import ChatSessionMetadata
 
@@ -1281,6 +1283,7 @@ async def test_run_agent_pauses_irreversible_actions_for_attended_chats(
         graph_credentials={},
         inputs={},
         dry_run=dry_run,
+        gate_approved=gate_approved,
     )
 
     assert add.await_args.kwargs["pause_irreversible_actions"] is expected

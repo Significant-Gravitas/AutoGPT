@@ -39,13 +39,14 @@ export function AssistantMessageActions({
 }: Props) {
   const {
     feedback,
+    canRate,
     showFeedbackModal,
     handleCopy,
     handleUpvote,
     handleDownvoteClick,
     handleDownvoteSubmit,
     handleDownvoteCancel,
-  } = useMessageFeedback({ sessionID, messageID: message.id });
+  } = useMessageFeedback({ sessionID, message });
 
   const text = extractTextFromParts(message.parts);
 
@@ -66,7 +67,7 @@ export function AssistantMessageActions({
           onClick={handleUpvote}
           variant="ghost"
           size="icon-sm"
-          disabled={feedback === "downvote"}
+          disabled={!canRate || feedback === "downvote"}
           className={cn(
             feedback === "upvote" && "text-green-300 hover:text-green-300",
             feedback === "downvote" && "!opacity-20",
@@ -80,7 +81,7 @@ export function AssistantMessageActions({
           onClick={handleDownvoteClick}
           variant="ghost"
           size="icon-sm"
-          disabled={feedback === "upvote"}
+          disabled={!canRate || feedback === "upvote"}
           className={cn(
             feedback === "downvote" && "text-red-300 hover:text-red-300",
             feedback === "upvote" && "!opacity-20",

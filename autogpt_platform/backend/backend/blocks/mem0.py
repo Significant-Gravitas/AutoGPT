@@ -3,7 +3,13 @@ from typing import Any, Literal, Optional, Union
 from mem0 import MemoryClient
 from pydantic import BaseModel, SecretStr
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -220,6 +226,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -305,6 +312,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -399,6 +407,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
+            effect=BlockEffect.READ,
         )
 
     async def run(

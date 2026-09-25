@@ -25,6 +25,11 @@ import prisma.enums
 import prisma.models
 import prisma.types
 
+from backend.api.features.experts.avatar_catalog import (
+    PRESET_AVATAR_URLS,
+    resolve_avatar_url,
+    resolve_builtin_avatar_url,
+)
 from backend.api.features.experts.models import (
     ExpertDayOneItem,
     VoiceSample,
@@ -2480,7 +2485,7 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "role": entry["role"],
         "jobTitle": entry["job_title"],
         "tagline": entry["tagline"],
-        "avatarUrl": entry["avatar_url"],
+        "avatarUrl": resolve_avatar_url(entry["avatar_url"]),
         "identity": entry["identity"],
         "voicePreferences": encode_voice_preferences(
             entry["voice_preferences"], entry.get("voice_samples") or []
@@ -2556,6 +2561,15 @@ async def _backfill_hired_copies(
                     continue
                 baseline = legacy
             data = presentation_changes(hire, baseline, template)
+            # A hire sitting on a picker preset may have chosen it, and the
+            # row cannot say which. Leaving an older catalog image in place
+            # costs less than overwriting a choice its owner made, so only
+            # URLs the picker cannot produce get migrated. Templates keep the
+            # broad match, since nobody edits those.
+            if hire.avatarUrl not in PRESET_AVATAR_URLS:
+                avatar_url = resolve_builtin_avatar_url(template.name, hire.avatarUrl)
+                if avatar_url != hire.avatarUrl:
+                    data["avatarUrl"] = avatar_url
             if rescope and (hire.role, hire.identity) != (
                 template.role,
                 template.identity,
