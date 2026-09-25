@@ -5,6 +5,7 @@ import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend.api.features.experts import avatar_routes
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts import setup as expert_setup
@@ -53,6 +54,8 @@ router = APIRouter(
     tags=["experts", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+router.include_router(avatar_routes.router)
 
 # Templates are marketplace content: the expert page shows them to signed-out
 # visitors, so they live on a router without the session requirement. It must
