@@ -55,6 +55,7 @@
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
 * [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
+* [Link Private Checkout](contributing/link-private-checkout.md)
 
 ## Changelog
 

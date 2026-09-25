@@ -4505,6 +4505,159 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/link-checkouts/{checkout_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get a Link purchase approval",
+        "operationId": "getV2Get a link purchase approval",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "checkout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Checkout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPurchaseApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such purchase in the caller's chat" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/approve": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Approve a Link purchase",
+        "description": "Record the customer's approval. Approving twice is idempotent.",
+        "operationId": "postV2Approve a link purchase",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "checkout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Checkout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPurchaseApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such purchase in the caller's chat" },
+          "409": { "description": "Already declined, or expired" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/decline": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Decline a Link purchase",
+        "operationId": "postV2Decline a link purchase",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "checkout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Checkout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkPurchaseApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such purchase in the caller's chat" },
+          "409": { "description": "Already approved, or expired" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -25144,6 +25297,37 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "LinkPurchaseApproval": {
+        "properties": {
+          "checkout_id": { "type": "string", "title": "Checkout Id" },
+          "state": {
+            "type": "string",
+            "enum": ["awaiting", "approved", "declined", "expired"],
+            "title": "State"
+          },
+          "merchant_name": { "type": "string", "title": "Merchant Name" },
+          "merchant_url": { "type": "string", "title": "Merchant Url" },
+          "context": { "type": "string", "title": "Context" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "currency": { "type": "string", "title": "Currency" },
+          "test_mode": { "type": "boolean", "title": "Test Mode" },
+          "expires_at": { "type": "number", "title": "Expires At" }
+        },
+        "type": "object",
+        "required": [
+          "checkout_id",
+          "state",
+          "merchant_name",
+          "merchant_url",
+          "context",
+          "amount",
+          "currency",
+          "test_mode",
+          "expires_at"
+        ],
+        "title": "LinkPurchaseApproval",
+        "description": "A purchase waiting for, or given, the customer's decision in the chat.\n\n``merchant_url`` is the page the card will be used on and ``context`` the\nagent's description of the purchase. With an in-chat approval Link shows\nthe customer nothing, so this is everything they approve."
+      },
       "LinkTokenInfoResponse": {
         "properties": {
           "platform": { "type": "string", "title": "Platform" },
@@ -28300,6 +28484,7 @@
           "error",
           "no_results",
           "need_login",
+          "browser_checkout",
           "agents_found",
           "agent_details",
           "setup_requirements",

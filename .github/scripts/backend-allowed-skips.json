@@ -135,6 +135,12 @@
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_blocked_url[http://169.254.169.254/]",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_missing_url",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_returns_response",
+    "backend.util.link_checkout.binding_test.test_a_field_that_is_not_a_card_input_is_refused",
+    "backend.util.link_checkout.binding_test.test_changed_field_or_document_rejected_before_card_retrieval[reload]",
+    "backend.util.link_checkout.binding_test.test_changed_field_or_document_rejected_before_card_retrieval[replace]",
+    "backend.util.link_checkout.browser_test.test_real_worker_pays_in_existing_browser_without_returning_card[0]",
+    "backend.util.link_checkout.browser_test.test_real_worker_pays_in_existing_browser_without_returning_card[5]",
+    "backend.util.link_checkout.iframe_test.test_real_cross_process_payment_frame_keeps_field_binding",
     "test.test_data_creator.test_main_function_runs_without_errors"
   ],
   "python_versions": {

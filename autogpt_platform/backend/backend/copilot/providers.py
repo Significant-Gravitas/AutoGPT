@@ -36,11 +36,27 @@ def _is_github_oauth_configured() -> bool:
     return GITHUB_OAUTH_IS_CONFIGURED
 
 
+def _is_stripe_link_oauth_configured() -> bool:
+    """Lazy for the same reason as :func:`_is_github_oauth_configured`."""
+    from backend.integrations.oauth.stripe_link_hosted import (
+        STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    )
+
+    return STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+
+
 # -- Registry ----------------------------------------------------------------
 # Add new providers here.  Both env-var injection and the setup-card tool read
 # from this single registry.
 
 SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
+    # No env vars: a Link wallet token never enters the sandbox. Listed so the
+    # agent can ask for a Link connection before a checkout.
+    "stripe_link": {
+        "name": "Stripe Link",
+        "env_vars": [],
+        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+    },
     "github": {
         "name": "GitHub",
         "env_vars": ["GH_TOKEN", "GITHUB_TOKEN"],
@@ -55,6 +71,12 @@ def get_provider_auth_types(provider: str) -> list[str]:
     OAuth types are only offered when the corresponding OAuth client env vars
     are configured.
     """
+    if provider == "stripe_link":
+        # Same rule as the Link blocks' credential field: `device_code` is how
+        # the public client connects, `oauth2` what its grant is stored as.
+        if _is_stripe_link_oauth_configured():
+            return ["oauth2"]
+        return ["oauth2", "device_code"]
     if provider == "github":
         if _is_github_oauth_configured():
             return ["api_key", "oauth2"]
