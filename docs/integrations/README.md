@@ -121,7 +121,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Get New Items](block-integrations/exa/websets_items.md#exa-get-new-items) | Get items added since a cursor - enables incremental processing without reprocessing |
 | [Exa List Imports](block-integrations/exa/websets_import_export.md#exa-list-imports) | List all imports with pagination support |
 | [File Read](block-integrations/data.md#file-read) | Reads a file and returns its content as a string, with optional chunking by delimiter and size limits |
+| [Google Calendar Get Event](block-integrations/google/calendar_search.md#google-calendar-get-event) | Get one Google Calendar event by its ID: title, exact times, location, description, video link, organizer, guests and their replies |
+| [Google Calendar List Calendars](block-integrations/google/calendar_search.md#google-calendar-list-calendars) | List the user's Google calendars with each one's ID, name, time zone and the user's access level |
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
+| [Google Calendar Search Events](block-integrations/google/calendar_search.md#google-calendar-search-events) | Search a Google Calendar for events by keyword, across past and future events, optionally within a time range |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
 | [Google Docs Append Plain Text](block-integrations/google/docs.md#google-docs-append-plain-text) | Append plain text to the end of a Google Doc (no formatting applied) |
 | [Google Docs Create](block-integrations/google/docs.md#google-docs-create) | Create a new Google Doc |
@@ -618,6 +621,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Google Calendar Create Event](block-integrations/google/calendar.md#google-calendar-create-event) | This block creates a new event in Google Calendar with customizable parameters |
+| [Google Calendar Delete Event](block-integrations/google/calendar_events.md#google-calendar-delete-event) | Delete a Google Calendar event, or one occurrence of a repeating event, and optionally email the guests a cancellation |
+| [Google Calendar Respond To Event](block-integrations/google/calendar_invitations.md#google-calendar-respond-to-event) | Accept, decline or tentatively accept a Google Calendar invitation, with an optional note to the organizer |
+| [Google Calendar Suggest Meeting Times](block-integrations/google/calendar_availability.md#google-calendar-suggest-meeting-times) | Suggest meeting times when you and the given people are all free, using Google Calendar free/busy |
+| [Google Calendar Update Event](block-integrations/google/calendar_events.md#google-calendar-update-event) | Change a Google Calendar event's title, time, location, description, guests or Google Meet link |
 | [Notion Create Page](block-integrations/notion/create_page.md#notion-create-page) | Create a new page in Notion |
 | [Notion Read Database](block-integrations/notion/read_database.md#notion-read-database) | Query a Notion database with optional filtering and sorting, returning structured entries |
 | [Notion Read Page](block-integrations/notion/read_page.md#notion-read-page) | Read a Notion page by its ID and return its raw JSON |
