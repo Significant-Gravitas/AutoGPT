@@ -25,7 +25,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
-from .classifier import classify
+from .classifier import DecidedBy, supervise
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
@@ -171,6 +171,7 @@ async def check_action(
     if effect in METERED and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling(user_id)
     reason_kind: review_store.ReasonKind
+    decided_by: DecidedBy | None = None
     if hit and rule in ("ask", "unreadable"):
         reason, reason_kind = hit.reason, "rule"
     elif spend is not None:
@@ -190,13 +191,14 @@ async def check_action(
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        allowed, reason = await classify(
+        judgement = await supervise(
             tool_name=tool_name,
             args=args,
             user_message=_last_user_message(session),
         )
-        if allowed:
+        if judgement.allowed:
             return ALLOW
+        reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
@@ -205,7 +207,7 @@ async def check_action(
         rule_key=rule_key,
     )
     return await _park(
-        call, user_id, session, reason, reason_kind, subject, spend_shown
+        call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
     )
 
 
@@ -216,6 +218,7 @@ async def _park(
     reason: str,
     reason_kind: review_store.ReasonKind,
     subject: Subject | None,
+    decided_by: DecidedBy | None,
     spend: dict[str, int] | None = None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
@@ -232,6 +235,7 @@ async def _park(
         spend=spend,
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
+        decided_by=decided_by,
     )
     if headline is None:
         await held.forget(session.session_id, call.review_id)

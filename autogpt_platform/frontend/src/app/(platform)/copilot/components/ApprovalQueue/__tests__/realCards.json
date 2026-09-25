@@ -51,6 +51,7 @@
         },
         "reason": "Runs Gmail Send, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
@@ -236,6 +237,7 @@
         },
         "reason": "Otto does not know what Google Sheets Update Row does, so he asks.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
@@ -455,6 +457,7 @@
         },
         "reason": "it reads a local file of invoices and prints what it finds.",
         "reason_kind": "supervisor",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
@@ -603,6 +606,7 @@
         },
         "reason": "Runs Send Web Request, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
@@ -745,6 +749,7 @@
         },
         "reason": "Runs Post To X, which reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
@@ -1087,6 +1092,7 @@
         },
         "reason": "Runs Morning digest; its step Gmail Send reaches outside the platform.",
         "reason_kind": "subject",
+        "decided_by": null,
         "chat_rules_allowed": ["allow", "judge"],
         "headline": {
           "ask": "Run",
