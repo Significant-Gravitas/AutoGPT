@@ -23,7 +23,11 @@ def test_bwrap_gives_each_sandbox_its_own_processes_and_ipc():
     assert "--unshare-net" in flags
 
 
-async def _bwrap_can_create_namespaces(cwd: str) -> bool:
+# The two below run only where bubblewrap can create namespaces. CI's runners
+# refuse them, so the test skips there and its body is left out of coverage.
+
+
+async def _bwrap_can_create_namespaces(cwd: str) -> bool:  # pragma: no cover
     # Docker's default seccomp profile and Ubuntu's AppArmor userns restriction
     # both stop bwrap from creating namespaces; the sandbox then fails closed.
     if not has_full_sandbox():
@@ -33,7 +37,9 @@ async def _bwrap_can_create_namespaces(cwd: str) -> bool:
 
 
 @pytest.mark.asyncio
-async def test_sandbox_cannot_read_another_sandboxes_command_line(tmp_path):
+async def test_sandbox_cannot_read_another_sandboxes_command_line(
+    tmp_path,
+):  # pragma: no cover
     other = tmp_path / "other"
     scanner = tmp_path / "scanner"
     other.mkdir()
