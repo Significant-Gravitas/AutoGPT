@@ -55,6 +55,7 @@ jobs:
             backend/api/features/store/skill_seed_test.py \
             backend/api/features/store/catalog_release_model_test.py \
             backend/api/features/store/catalog_release_load_test.py \
+            backend/api/features/store/catalog_release_cli_test.py \
             backend/api/features/experts/hire_skill_snapshot_test.py \
             backend/api/features/store/skill_install_pinning_test.py \
             backend/copilot/tools/skill_exact_package_test.py \
