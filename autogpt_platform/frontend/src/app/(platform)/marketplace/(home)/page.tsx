@@ -3,14 +3,14 @@ import {
   prefetchGetV2ListStoreAgentsQuery,
   prefetchGetV2ListStoreCreatorsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { SHELF_SIZE } from "./components/SkillsSection/helpers";
+import { SHELF_SIZE } from "../components/SkillsSection/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { buildPageMetadata } from "@/lib/metadata";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { Suspense } from "react";
-import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
-import { MainMarketplacePageLoading } from "./components/MainMarketplacePageLoading";
+import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
+import { MainMarketplacePageLoading } from "../components/MainMarketplacePageLoading";
 
 export const dynamic = "force-dynamic";
 
