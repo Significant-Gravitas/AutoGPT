@@ -1,7 +1,7 @@
 import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listExpertTemplates } from "@/app/api/__generated__/endpoints/experts/experts";
-import sitemap from "../sitemap";
+import sitemap, { dynamic } from "../sitemap";
 
 vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
   listExpertTemplates: vi.fn(),
@@ -105,26 +105,18 @@ describe("sitemap", () => {
     expect(urls).not.toContain(`${SITE_URL}/marketplace/experts/hired`);
   });
 
-  test("rejects when the fetch throws so ISR keeps the last full sitemap", async () => {
-    vi.mocked(listExpertTemplates).mockRejectedValue(new Error("backend down"));
+  test("renders on request and caches the expert list by fetch for an hour", async () => {
+    mockTemplates([template({ id: "live" })]);
 
-    await expect(sitemap()).rejects.toThrow("backend down");
-    expect(console.error).toHaveBeenCalled();
-  });
+    await sitemap();
 
-  test("rejects on a non-200 response so ISR keeps the last full sitemap", async () => {
-    vi.mocked(listExpertTemplates).mockResolvedValue({
-      data: { detail: [] },
-      status: 422,
-      headers: new Headers(),
+    expect(dynamic).toBe("force-dynamic");
+    expect(listExpertTemplates).toHaveBeenCalledWith(undefined, {
+      next: { revalidate: 3600 },
     });
-
-    await expect(sitemap()).rejects.toThrow("status 422");
-    expect(console.error).toHaveBeenCalled();
   });
 
-  test("falls back to the static entries when the fetch throws during next build", async () => {
-    vi.stubEnv("NEXT_PHASE", "phase-production-build");
+  test("still returns the static entries when the fetch throws", async () => {
     vi.mocked(listExpertTemplates).mockRejectedValue(new Error("backend down"));
 
     const urls = urlsOf(await sitemap());
@@ -133,8 +125,7 @@ describe("sitemap", () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  test("falls back to the static entries on a non-200 response during next build", async () => {
-    vi.stubEnv("NEXT_PHASE", "phase-production-build");
+  test("still returns the static entries on a non-200 response", async () => {
     vi.mocked(listExpertTemplates).mockResolvedValue({
       data: { detail: [] },
       status: 422,
@@ -144,6 +135,7 @@ describe("sitemap", () => {
     const urls = urlsOf(await sitemap());
 
     expect(urls).toEqual([`${SITE_URL}/marketplace`]);
+    expect(console.error).toHaveBeenCalled();
   });
 
   test("never lists private pages", async () => {
