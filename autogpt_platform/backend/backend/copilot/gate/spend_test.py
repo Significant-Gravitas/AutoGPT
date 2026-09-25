@@ -458,9 +458,11 @@ async def test_a_chat_ledger_that_never_opened_opens_on_the_first_paid_read(gate
 
 async def test_an_unreachable_chat_ledger_refuses_the_paid_read(gate):
     """A9: the read raises, and ``BaseTool._gate`` refuses what raises."""
-    with patch.object(tree, "get_redis_async", AsyncMock(return_value=BrokenRedis())):
-        with pytest.raises(ConnectionError):
-            await _check(_PAID)
+    with (
+        patch.object(tree, "get_redis_async", AsyncMock(return_value=BrokenRedis())),
+        pytest.raises(ConnectionError),
+    ):
+        await _check(_PAID)
 
 
 @pytest.mark.parametrize("reset, ledgers", [("never", 1), ("daily", 2)])
@@ -487,7 +489,7 @@ async def test_a_daily_reset_gives_each_utc_day_its_own_ledger(
     # Under "never" the day-one spend still asks on day two.
     assert asked_next_day is (reset == "never")
     if reset == "daily":
-        assert set(redis.ttls[k] for k in keys) == {2 * 24 * 3600}
+        assert {redis.ttls[k] for k in keys} == {2 * 24 * 3600}
 
 
 async def test_a_chat_ceiling_is_not_clamped_to_what_is_left_of_today():
