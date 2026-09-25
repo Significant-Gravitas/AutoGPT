@@ -48,6 +48,9 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "delete_skill": ("Delete skill", ("name",)),
     "delete_workspace_file": ("Delete file", ("path",)),
     "memory_forget_confirm": ("Forget memories", ()),
+    # The card names the block or workflow from the call's subject instead.
+    "run_capability": ("Run a block", ()),
+    "run_agent": ("Run a workflow", ()),
 }
 _MAX_OBJECT_CHARS = 60
 

@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -34,6 +35,7 @@ class WordCharacterCountBlock(Block):
             output_schema=WordCharacterCountBlock.Output,
             test_input={"text": "Hello, how are you?"},
             test_output=[("word_count", 4), ("character_count", 19)],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:

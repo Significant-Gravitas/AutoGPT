@@ -9,6 +9,7 @@ import pydantic
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -105,6 +106,7 @@ class ReadRSSFeedBlock(Block):
                     ]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

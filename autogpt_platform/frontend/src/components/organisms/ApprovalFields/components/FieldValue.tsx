@@ -10,6 +10,7 @@ import {
   humanize,
   lineCount,
   listText,
+  REDACTED,
   scalarText,
 } from "../helpers";
 
@@ -27,11 +28,7 @@ export function FieldValue({ name, value, clipped }: Props) {
 
   switch (kind) {
     case "secret":
-      return (
-        <span className="text-zinc-500">
-          <span aria-hidden="true">•••••••• </span>hidden
-        </span>
-      );
+      return <Hidden />;
     case "code":
       return (
         <pre
@@ -59,7 +56,13 @@ export function FieldValue({ name, value, clipped }: Props) {
             <div key={k} className="contents">
               <dt className="text-zinc-500">{humanize(k)}</dt>
               <dd className="min-w-0">
-                {Array.isArray(v) ? listText(v) : scalarText(v)}
+                {v === REDACTED ? (
+                  <Hidden />
+                ) : Array.isArray(v) ? (
+                  listText(v)
+                ) : (
+                  scalarText(v)
+                )}
               </dd>
             </div>
           ))}
@@ -117,5 +120,13 @@ function LongText({ text, shortened }: LongTextProps) {
         </Button>
       )}
     </div>
+  );
+}
+
+function Hidden() {
+  return (
+    <span className="text-zinc-500">
+      <span aria-hidden="true">•••••••• </span>hidden
+    </span>
   );
 }

@@ -5,6 +5,7 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -140,6 +141,7 @@ class RMFGListOrdersBlock(Block):
                 ("next_cursor", ""),
             ],
             test_mock={"list_orders": lambda *args, **kwargs: ([TEST_ORDER], None)},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

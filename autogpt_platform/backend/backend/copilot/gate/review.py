@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
@@ -31,6 +31,9 @@ from backend.data.db_accessors import review_db
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
 
+if TYPE_CHECKING:
+    from .subject import Subject as GateSubject
+
 logger = logging.getLogger(__name__)
 
 # Keep the stored payload small: @@agptfile: references are expanded before the
@@ -48,6 +51,8 @@ class Subject(BaseModel):
     name: str
     effect: str
     irreversible: bool = False
+    # A block's fields are labelled from its own input schema.
+    block_id: str | None = None
 
 
 class FieldLabel(BaseModel):
@@ -103,6 +108,7 @@ def review_id_for(
 def review_payload(
     tool_name: str,
     args: dict[str, Any],
+    subject: "GateSubject | None" = None,
     *,
     reason: str = "",
     reason_kind: ReasonKind = "mode",
@@ -110,6 +116,12 @@ def review_payload(
     tool_call_id: str = "",
     turn: int = 0,
 ) -> dict[str, Any]:
+    """The subject is kept as decided when the card opened: what the user saw,
+    not a recomputation over a tree that may have moved since."""
+    # A block's card lists the block's own inputs, each clipped on its own.
+    if subject is not None and subject.key.startswith("block:"):
+        block_input = args.get("input")
+        args = block_input if isinstance(block_input, dict) else {}
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
     # the one that matters off the card while the approval still binds it.
@@ -123,15 +135,14 @@ def review_payload(
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,
-        subject=Subject(
-            key=tool_name,
-            name=_label(tool_name),
-            effect=effect_for(tool_name).value,
-            irreversible=is_irreversible(tool_name, args),
-        ),
+        subject=_payload_subject(tool_name, args, subject),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
-        headline=headline_for(tool_name, args),
+        headline=(
+            Headline(ask="Run", object=subject.name)
+            if subject is not None
+            else headline_for(tool_name, args)
+        ),
     ).model_dump()
 
 
@@ -194,6 +205,7 @@ async def open_review(
     tool_name: str,
     args: dict[str, Any],
     reason: str,
+    subject: "GateSubject | None" = None,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
 ) -> bool:
@@ -201,6 +213,7 @@ async def open_review(
     payload = review_payload(
         tool_name,
         args,
+        subject,
         reason=reason,
         reason_kind=reason_kind,
         mode=session.metadata.autopilot_mode or DEFAULT_MODE,
@@ -208,7 +221,7 @@ async def open_review(
         turn=turn_of(session),
     )
     return await open_review_row(
-        review_id, user_id, session, payload, headline_for(tool_name, args).text
+        review_id, user_id, session, payload, payload_headline(payload)
     )
 
 
@@ -242,6 +255,32 @@ async def open_review_row(
 
 def turn_of(session: ChatSession) -> int:
     return sum(1 for m in session.messages if m.role == "user")
+
+
+def payload_headline(payload: dict[str, Any]) -> str:
+    return Headline.model_validate(payload["headline"]).text
+
+
+def _payload_subject(
+    tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
+) -> Subject:
+    if subject is None:
+        return Subject(
+            key=tool_name,
+            name=_label(tool_name),
+            effect=effect_for(tool_name).value,
+            irreversible=is_irreversible(tool_name, args),
+        )
+    # ``block:<id>`` or ``workflow:<graph id>``.
+    kind, _, ident = subject.key.partition(":")
+    return Subject(
+        kind=kind or "tool",
+        key=subject.key,
+        name=subject.name,
+        effect=subject.effect.value,
+        irreversible=subject.irreversible,
+        block_id=ident if kind == "block" else None,
+    )
 
 
 def _label(tool_name: str) -> str:

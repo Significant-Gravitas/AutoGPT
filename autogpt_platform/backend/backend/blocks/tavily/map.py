@@ -8,6 +8,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -74,6 +75,7 @@ class TavilyMapBlock(Block):
                     "usage": {"credits": 1},
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def _map(self, credentials: APIKeyCredentials, **kwargs) -> dict[str, Any]:

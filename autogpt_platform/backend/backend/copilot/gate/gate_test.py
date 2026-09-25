@@ -6,6 +6,7 @@ it should break these.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -41,6 +42,10 @@ def _session(
     )
 
 
+def _row(status: ReviewStatus, payload: dict | None = None) -> SimpleNamespace:
+    return SimpleNamespace(status=status, payload=payload or {})
+
+
 @pytest.fixture
 def gate_on():
     with patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)):
@@ -51,8 +56,9 @@ def gate_on():
 def clean_session_state():
     """No prior approval and nothing rejected in this chat."""
     with (
-        patch(f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)),
+        patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held._held", AsyncMock(return_value={})),
         patch(f"{_GATE}.review_store.open_review", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.ask_reason", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
@@ -77,7 +83,7 @@ async def test_a_session_nobody_is_watching_is_inert_in_every_mode(
     gate_on, mode, origin
 ):
     find = AsyncMock()
-    with patch(f"{_GATE}.review_store.find_decision", find):
+    with patch(f"{_GATE}.review_store.find_review", find):
         decision = await check_action(
             "post_to_chat_platform", {}, "u", _session(mode, origin=origin)
         )
@@ -97,8 +103,8 @@ async def test_an_approval_is_consulted_before_the_effect(gate_on, clean_session
     """Otherwise an approved outward call would park a second card forever."""
     with (
         patch(
-            f"{_GATE}.review_store.find_decision",
-            AsyncMock(return_value=ReviewStatus.APPROVED),
+            f"{_GATE}.review_store.find_review",
+            AsyncMock(return_value=_row(ReviewStatus.APPROVED)),
         ),
         patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
     ):
@@ -155,9 +161,9 @@ async def test_unsupervised_runs_outward_actions(gate_on, clean_session_state):
 
 async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state):
     """An approval means 'you may do this', not 'you may use this tool'."""
-    approved = AsyncMock(return_value=ReviewStatus.APPROVED)
+    approved = AsyncMock(return_value=_row(ReviewStatus.APPROVED))
     with (
-        patch(f"{_GATE}.review_store.find_decision", approved),
+        patch(f"{_GATE}.review_store.find_review", approved),
         patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
@@ -166,7 +172,7 @@ async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state
 
     with (
         patch(
-            f"{_GATE}.review_store.find_decision", AsyncMock(return_value=None)
+            f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)
         ) as other,
         patch(f"{_GATE}.classify", AsyncMock(return_value=(False, "ask"))),
     ):
@@ -177,8 +183,8 @@ async def test_approval_is_bound_to_these_arguments(gate_on, clean_session_state
 async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state):
     with (
         patch(
-            f"{_GATE}.review_store.find_decision",
-            AsyncMock(return_value=ReviewStatus.APPROVED),
+            f"{_GATE}.review_store.find_review",
+            AsyncMock(return_value=_row(ReviewStatus.APPROVED)),
         ),
         patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=False)),
     ):
@@ -193,8 +199,8 @@ async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
     set_ask = AsyncMock()
     with (
         patch(
-            f"{_GATE}.review_store.find_decision",
-            AsyncMock(return_value=ReviewStatus.REJECTED),
+            f"{_GATE}.review_store.find_review",
+            AsyncMock(return_value=_row(ReviewStatus.REJECTED)),
         ),
         patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.set_ask", set_ask),

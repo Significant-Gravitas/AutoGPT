@@ -1,4 +1,6 @@
+import { http, HttpResponse } from "msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import realCardsJson from "./realCards.json";
 
 export const CHAT_SESSION = "s1";
 
@@ -94,10 +96,11 @@ export function mail(id = "mail", chatRules: string[] = ["allow", "judge"]) {
     reasonKind: "subject",
     subject: {
       kind: "block",
-      key: "gmail-send",
+      key: "block:b-gmail",
       name: "Gmail Send",
       effect: "external",
       irreversible: true,
+      block_id: "b-gmail",
     },
     chatRules,
     args: {
@@ -136,6 +139,32 @@ export function deleteFolder(id: string, folderId: string) {
   });
 }
 
+// A workflow run whose step reaches outside the platform.
+export function workflow(id = "wf") {
+  return heldReview({
+    id,
+    tool: "run_agent",
+    mode: "auto",
+    reason:
+      "Runs Morning digest; its step Gmail Send reaches outside the platform.",
+    reasonKind: "subject",
+    subject: {
+      kind: "workflow",
+      key: "workflow:g-1",
+      name: "Morning digest",
+      effect: "external",
+      irreversible: true,
+      block_id: null,
+    },
+    args: { library_agent_id: "lib-1", inputs: { topic: "Q3 invoices" } },
+    fields: [
+      { key: "library_agent_id", label: "Library agent" },
+      { key: "inputs", label: "Inputs" },
+    ],
+    headline: { ask: "Run", object: "Morning digest" },
+  });
+}
+
 // A read the content judge held: its row sits under its own ``read-`` node id.
 export function heldRead(id: string, url: string) {
   const review = heldReview({
@@ -153,4 +182,40 @@ export function heldRead(id: string, url: string) {
   });
   const node = "copilot-node-gate-read-web_fetch";
   return { ...review, node_id: node, node_exec_id: `${node}:${id}` };
+}
+
+export interface RealCard {
+  story: string;
+  review: PendingHumanReviewModel;
+  schema: Record<string, unknown> | null;
+}
+
+// Built by the backend's payload builder from real registry blocks (card_fixture_test.py).
+export function realCards(): RealCard[] {
+  return (realCardsJson as unknown as Omit<RealCard, "review">[]).map(
+    (card) => ({
+      ...card,
+      review: {
+        ...(card as unknown as { review: PendingHumanReviewModel }).review,
+        created_at: new Date(Date.now() - 5 * 60_000),
+      },
+    }),
+  );
+}
+
+export function realCardSchemaHandler(cards: RealCard[]) {
+  return http.get("*/api/builder/blocks/batch", ({ request }) => {
+    const ids = new URL(request.url).searchParams.getAll("block_ids");
+    return HttpResponse.json(
+      cards
+        .filter((card) => card.schema)
+        .map((card) => ({
+          id: (card.review.payload as { subject: { block_id: string } }).subject
+            .block_id,
+          name: card.story,
+          inputSchema: card.schema,
+        }))
+        .filter((block) => ids.includes(block.id)),
+    );
+  });
 }
