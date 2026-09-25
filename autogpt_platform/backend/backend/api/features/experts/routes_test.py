@@ -176,6 +176,12 @@ def test_list_expert_templates_forwards_search_and_category(
         return_value=[],
     )
 
+    mocker.patch.object(
+        prisma.models.ExpertSkillListing,
+        "prisma",
+        return_value=SimpleNamespace(find_many=AsyncMock(return_value=[])),
+    )
+
     response = client.get(
         "/experts/templates", params={"search_query": "Maria", "category": "marketing"}
     )
