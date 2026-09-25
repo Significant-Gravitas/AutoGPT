@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useProcessReviews } from "@/hooks/useProcessReviews";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import type { CardStatus } from "./components/ApprovalCard/ApprovalCard";
-import type { ApprovalItem, ChatRule } from "./helpers";
+import { type ApprovalItem, type ChatRule, isHeldRead } from "./helpers";
 
 export interface Receipt {
   item: ApprovalItem;
@@ -76,7 +76,7 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
         ...prev,
         ...batch.map((item) => ({
           item,
-          text: approved ? "Approved" : "Rejected",
+          text: receiptText(item, approved),
         })),
       ]);
       setConfirmRejectAll(false);
@@ -110,4 +110,9 @@ export function useApprovalQueue({ items, onAnswered }: Args) {
     setConfirmRejectAll,
     answer,
   };
+}
+
+function receiptText(item: ApprovalItem, approved: boolean) {
+  if (isHeldRead(item)) return approved ? "Released" : "Kept out";
+  return approved ? "Approved" : "Rejected";
 }

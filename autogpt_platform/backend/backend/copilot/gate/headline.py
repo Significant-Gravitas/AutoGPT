@@ -65,6 +65,11 @@ class Headline(BaseModel):
 
 def headline_for(tool_name: str, args: dict[str, Any]) -> Headline:
     ask, keys = _ASK.get(tool_name, (f"Run {tool_name.replace('_', ' ')}", ()))
+    return named(ask, keys, args)
+
+
+def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
+    """``ask`` plus the first of ``keys`` that holds a name, shortened."""
     for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value.strip():
