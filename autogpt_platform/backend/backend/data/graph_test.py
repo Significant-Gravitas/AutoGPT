@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -6,8 +7,8 @@ from uuid import UUID, uuid4
 import fastapi.exceptions
 import prisma
 import pytest
-from prisma.enums import SubmissionStatus
-from prisma.models import AgentGraph, LibraryAgent, User
+from prisma.enums import ResourceVisibility, SubmissionStatus
+from prisma.models import AgentGraph, AgentNode, LibraryAgent, User
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
@@ -28,6 +29,8 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    delete_graph,
+    fork_graph,
     get_graph,
     get_graph_settings,
     graph_in_library_filter,
@@ -724,6 +727,115 @@ def test_clear_auto_credentials_keeps_only_listed_ids():
         "sub": None,
     }
     assert graph.nodes[5].input_default == {"data": data}
+
+
+def test_picked_files_of_a_removed_block_are_still_found():
+    """
+    A node whose block was removed has no schema to say which inputs are
+    pickers, so any value embedding a `_credentials_id` counts as a picked
+    file: exports strip it and a save keeps it only for its owner.
+    """
+    node = Node(
+        id="gone",
+        block_id="00000000-0000-0000-0000-0000000dead00",
+        input_default={"file": _picked_file("cred-1"), "note": "plain"},
+    )
+    graph = _graph_of(node)
+
+    stripped = graph.nodes[0].stripped_for_export()
+    cleared = graph.clear_auto_credentials(keep_ids={"own-cred"})
+
+    assert stripped.input_default == {"file": None, "note": "plain"}
+    assert [(n.id, field_name) for n, field_name, _ in cleared] == [("gone", "file")]
+    assert graph.nodes[0].input_default == {"file": None, "note": "plain"}
+
+
+def _sheets_graph_row(owner_id: str) -> AgentGraph:
+    return AgentGraph(
+        id="g-1",
+        version=1,
+        name="Sheets",
+        description="",
+        userId=owner_id,
+        isActive=True,
+        createdAt=datetime.now(timezone.utc),
+        visibility=ResourceVisibility.PRIVATE,
+        organizationId="org-1",
+        Nodes=[
+            AgentNode(
+                id="node-1",
+                agentBlockId=GoogleSheetsReadBlock().id,
+                agentGraphId="g-1",
+                agentGraphVersion=1,
+                constantInput=json.dumps(
+                    {"spreadsheet": _picked_file("owner-cred"), "range": "A1"}
+                ),
+                metadata="{}",
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_graph_clears_picked_files_for_anyone_but_the_owner(mocker):
+    """
+    [SECRT-1772] Only the owner sees the files they picked and the credentials
+    embedded in them. A teammate opening the graph through org visibility gets
+    them cleared, like a marketplace reader does.
+    """
+    graph_client = AsyncMock()
+    graph_client.find_first.side_effect = lambda **_: _sheets_graph_row("owner")
+    mocker.patch.object(prisma.models.AgentGraph, "prisma", return_value=graph_client)
+    mocker.patch(
+        "backend.data.graph.get_user_team_ids", AsyncMock(return_value=["team-a"])
+    )
+
+    teammate_view = await get_graph(
+        "g-1", None, user_id="teammate", organization_id="org-1"
+    )
+    owner_view = await get_graph("g-1", None, user_id="owner", organization_id="org-1")
+
+    assert teammate_view is not None and owner_view is not None
+    assert teammate_view.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}
+    assert owner_view.nodes[0].input_default["spreadsheet"] == _picked_file(
+        "owner-cred"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_fork_graph_clears_picked_files(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    [SECRT-1772] A fork never keeps the files picked in the original: it reads
+    the original through `for_export`, whose stripping nulls them.
+    """
+    # Google blocks disable themselves without an OAuth client, as in CI.
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+    graph = Graph(
+        id="test_fork_picked_file",
+        name="Fork picked file",
+        description="",
+        nodes=[_sheets_node("sheets_node", _picked_file("owner-cred"))],
+    )
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager.store.get_all_creds",
+        new=AsyncMock(return_value=[MagicMock(id="owner-cred")]),
+    ):
+        created = await server.agent_server.test_create_graph(
+            CreateGraph(graph=graph), DEFAULT_USER_ID
+        )
+
+    forked = await fork_graph(created.id, created.version, DEFAULT_USER_ID)
+    try:
+        original = await get_graph(created.id, created.version, DEFAULT_USER_ID)
+        assert original is not None
+        assert original.nodes[0].input_default["spreadsheet"] == _picked_file(
+            "owner-cred"
+        )
+        assert forked.nodes[0].input_default["spreadsheet"] is None
+    finally:
+        await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
 
 
 # ============================================================================

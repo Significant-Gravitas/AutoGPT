@@ -46,7 +46,7 @@ async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphMode
         GraphActivationError: when a required node credential is missing or
             unusable.
     """
-    await _clear_unowned_auto_credentials(graph, user_id)
+    await clear_unowned_auto_credentials(graph, user_id)
     graph = await _before_graph_activate(graph, user_id)
     graph.sub_graphs = await asyncio.gather(
         *(_before_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
@@ -54,12 +54,15 @@ async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphMode
     return graph
 
 
-async def _clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> None:
+async def clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> None:
     """
     Keep picker-selected files (e.g. from the Google Drive picker) that embed one
     of the user's own credentials, and clear the rest. The user's own picks must
     survive a save. An agent imported from someone else's export still embeds
     their `_credentials_id`, which the executor can't resolve for this user.
+
+    `before_graph_activate` runs this; a save that skips activation (an inactive
+    version) must call it itself.
     """
     if not graph.auto_credentials_refs():
         return

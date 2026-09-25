@@ -201,6 +201,15 @@ class NodeModel(Node):
 def _auto_credentials_field_names(node: Node) -> list[str]:
     """Inputs of the node's block that take a file from an auto-credentials
     picker (e.g. a GoogleDriveFile carrying `_credentials_id`)."""
+    if get_block(node.block_id) is None:
+        # The block was removed, so no schema says which inputs are pickers.
+        # Treat any value that embeds a `_credentials_id` as one, so a picked
+        # file doesn't slip through exports and non-owner reads.
+        return [
+            field_name
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
     return [
         info["field_name"]
         for info in node.block.input_schema.get_auto_credentials_fields().values()
@@ -1461,7 +1470,6 @@ async def get_graph(
     # access, so there is deliberately no marketplace lookup beside this one.
     # validate_graph_execution_permissions() reuses this same filter, so
     # execute can never be looser than read. See the invariant note there.
-    read_by_non_owner = False
     if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, version),
@@ -1470,7 +1478,6 @@ async def get_graph(
         )
         if library_agent and library_agent.AgentGraph:
             graph = library_agent.AgentGraph
-            read_by_non_owner = True
 
     if graph is None:
         return None
@@ -1485,9 +1492,9 @@ async def get_graph(
     else:
         graph_model = GraphModel.from_db(graph, for_export)
 
-    if read_by_non_owner:
-        # The publisher's picked files, and the credentials embedded in them,
-        # aren't the reader's to see or use.
+    if user_id is not None and not skip_access_check and graph.userId != user_id:
+        # Only the owner sees the files they picked and the credentials
+        # embedded in them. Marketplace readers and teammates pick their own.
         graph_model.clear_auto_credentials()
     return graph_model
 

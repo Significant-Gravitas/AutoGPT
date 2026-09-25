@@ -796,6 +796,36 @@ def test_update_graph_keeps_the_file_the_owner_picked(
     assert saved.nodes[0].input_default["range"] == "A1"
 
 
+@pytest.mark.usefixtures("google_sheets_enabled")
+def test_update_graph_clears_someone_elses_file_in_an_inactive_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An inactive version skips activation, but must not keep a file picked
+    with someone else's credentials either: activating it later won't
+    rewrite its nodes."""
+    _own_credentials(mocker, "own-cred")
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=True)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph",
+        new=AsyncMock(return_value=Mock(version=2, is_active=False)),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        new=AsyncMock(side_effect=lambda *a, **k: create_graph_mock.await_args.args[0]),
+    )
+    graph = {"id": "graph-1", "is_active": False, **_sheets_read_graph("foreign")}
+
+    response = client.put("/graphs/graph-1", json=graph)
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    assert not saved.is_active
+    assert saved.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}
+
+
 def test_set_active_version_returns_404_for_an_unknown_version(
     mocker: pytest_mock.MockFixture,
 ) -> None:
