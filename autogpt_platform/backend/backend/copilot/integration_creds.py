@@ -26,16 +26,19 @@ import threading
 from collections.abc import Mapping
 from typing import cast
 
+import aiohttp
 from cachetools import TTLCache
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.redis_client import get_redis_async
 from backend.integrations.creds_events import listen_creds_changed
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.request import Requests
 from backend.util.retry import continuous_retry
 
 logger = logging.getLogger(__name__)
@@ -44,6 +47,10 @@ logger = logging.getLogger(__name__)
 PROVIDER_ENV_VARS: dict[str, list[str]] = {
     slug: entry["env_vars"] for slug, entry in SUPPORTED_PROVIDERS.items()
 }
+
+_GRANT_KEY_PREFIX = "e2b:egress:grant:"
+# As long as a paused box can keep a placeholder (E2B's paused-sandbox life).
+_GRANT_TTL = 48 * 3600
 
 # 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
 # (a Redis blip drops the message), so the TTL is the floor on how long a stale
@@ -109,6 +116,11 @@ _token_cache: _LockedTTLCache = _LockedTTLCache(
 _null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
+# Same keys as _token_cache: which stored credential the cached token is.  What
+# a box behind the swap proxy is given instead of the token names it.
+_credential_id_cache: _LockedTTLCache = _LockedTTLCache(
+    maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
+)
 
 # GitHub user identity caches, keyed (user_id, credential_id): a user with two
 # GitHub accounts has two identities, and a chat that picked one must not be
@@ -122,6 +134,13 @@ _gh_identity_cache: _LockedTTLCache = _LockedTTLCache(
 _gh_identity_null_cache: _LockedTTLCache = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
+
+
+# The identity lookup below is a host-side call with the real token, so it goes
+# through Requests' address checks and redirect rules like every other outbound
+# call.  One attempt: a missing identity only costs commit attribution, and the
+# command waits on it.
+_GITHUB_API = Requests(raise_for_status=False, retry_max_attempts=1)
 
 
 def _canonical_provider(provider: str) -> str:
@@ -154,6 +173,7 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     # Every scope-specific entry for this pair is stale too.
     _token_cache.pop_prefix((user_id, provider))
     _null_cache.pop_prefix((user_id, provider))
+    _credential_id_cache.pop_prefix((user_id, provider))
 
     if provider == "github":
         _gh_identity_cache.pop_prefix((user_id,))
@@ -193,6 +213,7 @@ async def get_provider_token(
     credential_id: str | None = None,
     *,
     strict: bool = False,
+    lock: bool = False,
 ) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
@@ -209,6 +230,9 @@ async def get_provider_token(
     token to fall back to raises ``ProviderTokenUnavailable`` instead of
     returning ``None``: for a caller to whom "not connected" means something
     (the swap proxy scrubs against it), a failure must not look like one.
+    *lock* takes the credentials manager's lock around an OAuth refresh, so two
+    concurrent callers cannot both spend a single-use refresh token; only for
+    a process whose callers share one event loop (see ``refresh_if_needed``).
     """
     _ensure_cache_invalidation_listener()
     cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
@@ -241,7 +265,8 @@ async def get_provider_token(
     # Credentials covering the requested scopes come first, then ones with
     # "repo" (full git access, where a public-data-only token lacks push/pull).
     # The sort is stable, so ties keep their stored order, as the card does.
-    # lock=False — background injection; not worth a distributed lock acquisition.
+    # lock=False by default — background injection across the executor's
+    # per-thread event loops, where the manager's lock cannot be taken.
     def rank(creds: OAuth2Credentials) -> tuple[int, int]:
         granted = set(creds.scopes or [])
         return (
@@ -257,7 +282,7 @@ async def get_provider_token(
     for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
-                fresh = await manager.refresh_if_needed(user_id, creds, lock=False)
+                fresh = await manager.refresh_if_needed(user_id, creds, lock=lock)
                 token = fresh.access_token.get_secret_value()
             except Exception:
                 logger.warning(
@@ -275,6 +300,7 @@ async def get_provider_token(
             # A refresh here publishes, and this process's own listener may evict
             # the entry just written; the cost is one extra lookup, not a leak.
             _token_cache[cache_key] = token
+            _credential_id_cache[cache_key] = creds.id
             return token
 
     # Pass 2: fall back to API key (no expiry, no refresh needed).
@@ -282,6 +308,7 @@ async def get_provider_token(
         if creds.type == "api_key":
             token = cast(APIKeyCredentials, creds).api_key.get_secret_value()
             _token_cache[cache_key] = token
+            _credential_id_cache[cache_key] = creds.id
             return token
 
     # Only cache "not connected" when the user truly has no credentials for this
@@ -323,6 +350,146 @@ async def _consume_creds_changed_events() -> None:
 
 _listener_start_lock = threading.Lock()
 _listener_thread: threading.Thread | None = None
+
+
+async def get_provider_credential_id(
+    user_id: str,
+    provider: str,
+    required_scopes: frozenset[str] = frozenset(),
+    credential_id: str | None = None,
+) -> str | None:
+    """The id of the stored credential ``get_provider_token`` picks with the
+    same arguments, or ``None`` if it finds none: the same choice, named
+    instead of handed over."""
+    cache_key = _cache_key(user_id, provider, required_scopes, credential_id)
+    for _ in range(2):
+        if not await get_provider_token(
+            user_id, provider, required_scopes, credential_id
+        ):
+            return None
+        if picked := _credential_id_cache.get(cache_key):
+            return picked
+        # The token was cached without its id (evicted apart from it): look
+        # both up again rather than guess.
+        _token_cache.pop(cache_key, None)
+    return None
+
+
+def swap_placeholder(provider: str, credential_id: str) -> str:
+    """What a box whose egress goes through the credential swap proxy holds
+    instead of *provider*'s token: ``hsurr:<provider>:<credential id>``.
+
+    The proxy puts that credential's value in on the way out, in the
+    ``Authorization`` header of a request to one of the provider's hosts, and
+    only if the credential was granted to that box (``grant_to_box``).
+    Anywhere else it is an inert string: printed, sent elsewhere or copied off
+    the box, it authenticates nothing.
+    """
+    return f"hsurr:{provider}:{credential_id}"
+
+
+# ``git`` does not read GH_TOKEN; ``gh`` does.  This helper, set through git's
+# environment-variable config rather than a file in the box, answers git's
+# credential request for github.com with GH_TOKEN, so a push over HTTPS sends
+# it as HTTP Basic, which the proxy swaps.  It only ever sees the placeholder.
+_GITHUB_CREDENTIAL_HELPER = (
+    '!f() { test "$1" = get || return 0; '
+    'echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+)
+
+
+def git_credential_helper_env() -> dict[str, str]:
+    """Git config, as environment variables, that answers git's credential
+    request for github.com with ``$GH_TOKEN``."""
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "credential.https://github.com.helper",
+        "GIT_CONFIG_VALUE_0": _GITHUB_CREDENTIAL_HELPER,
+    }
+
+
+async def placeholder_grants(
+    user_id: str,
+    required_scopes: Mapping[str, frozenset[str]] | None = None,
+    selected: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Provider to credential id: for each provider, the credential
+    ``get_integration_env_vars`` would have injected with the same arguments
+    (the chat's pick, else the best match for the requested scopes).  A
+    provider with none (not connected, the pick deleted, a failed refresh) is
+    left out."""
+    grants: dict[str, str] = {}
+    for provider in PROVIDER_ENV_VARS:
+        scopes = (required_scopes or {}).get(provider, frozenset())
+        credential_id = await get_provider_credential_id(
+            user_id, provider, scopes, (selected or {}).get(provider)
+        )
+        if credential_id:
+            grants[provider] = credential_id
+    return grants
+
+
+def placeholder_env(grants: Mapping[str, str]) -> dict[str, str]:
+    """The variables for a box behind the swap proxy: each granted provider's
+    placeholder, and every other provider's variables set empty.
+
+    Empty rather than absent: a command's variables are laid over the box's
+    own, so an absent one would fall back to what the box was created with,
+    and a command whose chat has no usable credential would quietly act as
+    another account instead of failing as it does without the proxy.  For the
+    same reason git's helper is switched off (``GIT_CONFIG_COUNT=0``) when
+    GitHub has no placeholder.
+    """
+    env: dict[str, str] = {}
+    for provider, var_names in PROVIDER_ENV_VARS.items():
+        credential_id = grants.get(provider)
+        value = swap_placeholder(provider, credential_id) if credential_id else ""
+        for var in var_names:
+            env[var] = value
+    if env.get("GH_TOKEN"):
+        env.update(git_credential_helper_env())
+    else:
+        env["GIT_CONFIG_COUNT"] = "0"
+    return env
+
+
+def _grant_key(sandbox_id: str, provider: str) -> str:
+    return f"{_GRANT_KEY_PREFIX}{sandbox_id}:{provider}"
+
+
+async def grant_to_box(sandbox_id: str, grants: Mapping[str, str]) -> None:
+    """Record that *sandbox_id* was handed these credentials' placeholders.
+
+    The swap service resolves a placeholder only for a credential granted to
+    the box asking (``swap_credentials.resolve_swap_credential``), so a box
+    can use the accounts its chats were given and no other of the user's,
+    whatever id it types.  A grant outlives the command that made it (a
+    process it started may still hold the placeholder) and lasts as long as a
+    paused box can; every reconnect that runs work renews it
+    (``renew_box_grants``), so a box paused longer keeps its own.
+    """
+    if not grants:
+        return
+    redis = await get_redis_async()
+    for provider, credential_id in grants.items():
+        key = _grant_key(sandbox_id, provider)
+        await redis.sadd(key, credential_id)
+        await redis.expire(key, _GRANT_TTL)
+
+
+async def renew_box_grants(sandbox_id: str) -> None:
+    """Restart the clock on everything granted to *sandbox_id* (see
+    ``grant_to_box``): for a box reconnected after a long pause."""
+    redis = await get_redis_async()
+    for provider in PROVIDER_ENV_VARS:
+        await redis.expire(_grant_key(sandbox_id, provider), _GRANT_TTL)
+
+
+async def granted_to_box(sandbox_id: str, provider: str) -> set[str]:
+    """The credential ids of *provider* granted to *sandbox_id*."""
+    redis = await get_redis_async()
+    members = await redis.smembers(_grant_key(sandbox_id, provider))
+    return {m.decode() if isinstance(m, bytes) else m for m in members}
 
 
 async def get_integration_env_vars(
@@ -382,26 +549,23 @@ async def get_github_user_git_identity(
         _gh_identity_null_cache[key] = True
         return None
 
-    import aiohttp
-
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"token {token}",
-                    "Accept": "application/vnd.github+json",
-                },
-                timeout=aiohttp.ClientTimeout(total=5),
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(
-                        "[git-identity] GitHub /user returned %s for user %s",
-                        resp.status,
-                        user_id,
-                    )
-                    return None
-                data = await resp.json()
+        response = await _GITHUB_API.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+        if response.status != 200:
+            logger.warning(
+                "[git-identity] GitHub /user returned %s for user %s",
+                response.status,
+                user_id,
+            )
+            return None
+        data = response.json()
     except Exception as exc:
         logger.warning(
             "[git-identity] Failed to fetch GitHub profile for user %s: %s",

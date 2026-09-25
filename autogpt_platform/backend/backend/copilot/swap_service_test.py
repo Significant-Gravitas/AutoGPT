@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.routing import Route
 
-from backend.copilot.swap_credentials import SwapCredential
+from backend.copilot.swap_credentials import NoLiveBox, SwapCredential
 from backend.copilot.swap_service import SwapCredentialService
 from backend.data.db_manager import DatabaseManager
 from backend.util.service import EXPOSED_FLAG
@@ -65,11 +65,16 @@ def test_resolve_swap_credential_answers(client):
     ) as resolve:
         response = client.post(
             "/resolve_swap_credential",
-            json={"user_id": "user-1", "name": "github", "host": "github.com"},
+            json={
+                "user_id": "user-1",
+                "name": "github",
+                "host": "github.com",
+                "box": "box-1",
+            },
         )
     assert response.status_code == 200
     assert response.json() == credential.model_dump()
-    resolve.assert_awaited_once_with("user-1", "github", "github.com")
+    resolve.assert_awaited_once_with("user-1", "github", "github.com", "box-1")
 
 
 def test_resolve_swap_credential_answers_none(client):
@@ -79,7 +84,12 @@ def test_resolve_swap_credential_answers_none(client):
     ):
         response = client.post(
             "/resolve_swap_credential",
-            json={"user_id": "user-1", "name": "github", "host": "evil.test"},
+            json={
+                "user_id": "user-1",
+                "name": "github",
+                "host": "evil.test",
+                "box": "box-1",
+            },
         )
     assert response.status_code == 200
     assert response.json() is None
@@ -89,3 +99,22 @@ def test_get_swap_bindings_answers(client):
     response = client.post("/get_swap_bindings", json={})
     assert response.status_code == 200
     assert "github" in response.json()
+
+
+def test_a_box_that_is_not_live_is_an_error_not_an_answer(client):
+    """The proxy reads an error as "cannot say" and refuses that connection's
+    responses; ``None`` would read as "not connected" and pass them on."""
+    with patch(
+        "backend.copilot.swap_service.resolve_swap_credential",
+        AsyncMock(side_effect=NoLiveBox("no live box")),
+    ):
+        response = client.post(
+            "/resolve_swap_credential",
+            json={
+                "user_id": "user-1",
+                "name": "github",
+                "host": "github.com",
+                "box": "box-stale",
+            },
+        )
+    assert response.status_code == 404

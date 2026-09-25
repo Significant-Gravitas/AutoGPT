@@ -1941,3 +1941,104 @@ class TestProxyCredentialIsRevoked:
             mock_cls.connect = AsyncMock(return_value=sb)
             assert asyncio.run(kill_sandbox(_SESSION_ID, _API_KEY)) is False
         forget.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# The box's own environment behind the swap proxy
+# ---------------------------------------------------------------------------
+
+
+class TestCreationEnvBehindTheSwapProxy:
+    """A new box behind the proxy starts with placeholders in its own env, for
+    what does not run through a command, and those credentials are granted to
+    it; without the proxy it starts with no integration env at all, as
+    before."""
+
+    def _create(self, *, proxy: str | None, user_id: str | None) -> dict:
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            _patch_sdk() as mock_cls,
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ) as lookup,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.grant_to_box", AsyncMock()
+            ) as grant,
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(
+                get_or_create_sandbox(
+                    _SESSION_ID, _API_KEY, timeout=_TIMEOUT, user_id=user_id
+                )
+            )
+        _, kwargs = mock_cls.create.call_args
+        self.lookup, self.grant = lookup, grant
+        return kwargs
+
+    def test_behind_the_proxy_the_box_starts_with_granted_placeholders(self):
+        kwargs = self._create(proxy="proxy:1080", user_id="user-a")
+        assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
+        assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
+        self.lookup.assert_awaited_once_with("user-a")
+        self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
+
+    def test_without_the_proxy_the_create_call_is_unchanged(self):
+        kwargs = self._create(proxy=None, user_id="user-a")
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+        self.grant.assert_not_awaited()
+
+    def test_a_box_with_no_user_gets_none(self):
+        kwargs = self._create(proxy="proxy:1080", user_id=None)
+        assert "envs" not in kwargs
+        self.lookup.assert_not_awaited()
+
+
+class TestGrantsAreRenewedOnReconnect:
+    """An expert's box can stay paused longer than a grant lasts: a reconnect
+    that will run work renews its grants, behind the proxy only."""
+
+    def _reconnect(self, *, proxy, pin_egress=True, user_id="user-a"):
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address", return_value=proxy
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.renew_box_grants", AsyncMock()
+            ) as renew,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned(
+                    "sb-1", owner, _API_KEY, user_id=user_id, pin_egress=pin_egress
+                )
+            )
+        return renew
+
+    def test_behind_the_proxy_a_reconnect_renews_the_grants(self):
+        self._reconnect(proxy="proxy:1080").assert_awaited_once_with("sb-1")
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"proxy": None},
+            {"proxy": "proxy:1080", "pin_egress": False},
+            {"proxy": "proxy:1080", "user_id": "user-b"},  # not the box's user
+        ],
+        ids=["no proxy", "pause or kill", "another user"],
+    )
+    def test_otherwise_nothing_is_renewed(self, kwargs):
+        self._reconnect(**kwargs).assert_not_awaited()
