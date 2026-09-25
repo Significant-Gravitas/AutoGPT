@@ -504,10 +504,10 @@ class ChatConfig(BaseSettings):
         "what bounds it.",
     )
     spend_ceiling_reset: Literal["never", "daily"] = Field(
-        default="never",
-        description="When a chat's spend ceiling starts over: never within the "
-        "chat, or at each UTC midnight (the ceiling and any approved raises "
-        "reset with the day).",
+        default="daily",
+        description="When a chat's spend ceiling starts over: at each UTC "
+        "midnight, like the daily usage limit (the ceiling and any approved "
+        "raises reset with the day), or never within the chat.",
     )
     tree_max_nodes: int = Field(
         default=8,

@@ -129,13 +129,17 @@ def gate(redis):
         yield store
 
 
+def _ledger_id() -> str:
+    return tree.chat_ledger_id(_CHAT)
+
+
 def _enter(envelope):
     set_execution_context("user-1", None, envelope=envelope)
 
 
 async def _open(chat: TreeLedger, ceiling: int, spent: int = 0) -> None:
-    await chat.open(_CHAT, ceiling_microdollars=ceiling, max_nodes=1)
-    await chat.charge(_CHAT, spent)
+    await chat.open(_ledger_id(), ceiling_microdollars=ceiling, max_nodes=1)
+    await chat.charge(_ledger_id(), spent)
 
 
 async def _check(
@@ -242,7 +246,7 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
         status=ReviewStatus.APPROVED, payload={"spend": {}}
     )
     assert (await _check(_PAID)).allowed
-    assert (await chat.snapshot(_CHAT))["ceiling"] == 2 * 10**6
+    assert (await chat.snapshot(_ledger_id()))["ceiling"] == 2 * 10**6
     assert (await ledger.snapshot("turn-2"))["ceiling"] == 10**7
 
     gate.find_review.return_value = None
@@ -258,7 +262,7 @@ async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):
         status=ReviewStatus.APPROVED, payload={}
     )
     assert (await _check(_SEND)).allowed
-    assert (await chat.snapshot(_CHAT))["ceiling"] == 0
+    assert (await chat.snapshot(_ledger_id()))["ceiling"] == 0
 
 
 async def test_a_block_run_charges_what_it_cost(gate, ledger, chat):
@@ -277,7 +281,7 @@ async def test_a_block_run_charges_what_it_cost(gate, ledger, chat):
         session_id="s1",
     )
     assert (await ledger.snapshot("turn-1"))["spent"] == 70_000
-    assert (await chat.snapshot(_CHAT))["spent"] == 70_000
+    assert (await chat.snapshot(_ledger_id()))["spent"] == 70_000
 
 
 @pytest.mark.parametrize("charge_fails", [False, True])
@@ -331,7 +335,7 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
         await RunAgentTool()._run_agent(
             "user-1", _session(), graph, {}, {}, dry_run=False
         )
-    assert (await chat.snapshot(_CHAT))["spent"] == 20_000
+    assert (await chat.snapshot(_ledger_id()))["spent"] == 20_000
 
 
 def test_a_paid_block_carries_its_estimate_and_pure_computation_none():
@@ -427,7 +431,7 @@ async def test_flag_on_a_root_turn_opens_its_tree_and_its_chat(ledger, chat):
         await admit_turn(root_envelope("turn-1", session_id=_CHAT), user_id="user-1")
     snapshot = await ledger.snapshot("turn-1")
     assert (snapshot["ceiling"], snapshot["spent"], snapshot["nodes"]) == (42, 0, 1)
-    assert (await chat.snapshot(_CHAT))["ceiling"] == 99
+    assert (await chat.snapshot(_ledger_id()))["ceiling"] == 99
 
 
 async def test_flag_off_opens_no_ledger_and_charges_nothing(ledger, chat):
@@ -435,7 +439,7 @@ async def test_flag_off_opens_no_ledger_and_charges_nothing(ledger, chat):
     with patch.object(tree, "is_feature_enabled", AsyncMock(return_value=False)):
         await admit_turn(root_envelope("turn-1", session_id=_CHAT), user_id="user-1")
         assert await ledger.snapshot("turn-1") == {}
-        assert await chat.snapshot(_CHAT) == {}
+        assert await chat.snapshot(_ledger_id()) == {}
         # A spawned turn's tree exists with the flag off; spend must not reach it.
         await ledger.open("turn-1", ceiling_microdollars=10_000_000, max_nodes=8)
         priced = MagicMock(return_value=7)
@@ -455,7 +459,7 @@ async def test_a_spawned_turn_charges_and_asks_against_the_chat_that_spawned_it(
     isolate = derive_child_envelope(expert, SpawnRequest(shares_memory=True))
     await charge_turn(expert, 600_000)
     await charge_turn(isolate, 400_000)
-    assert (await chat.snapshot(_CHAT))["spent"] == 10**6
+    assert (await chat.snapshot(_ledger_id()))["spent"] == 10**6
 
     _enter(expert)
     assert not (await _check(_PAID)).allowed
@@ -469,7 +473,7 @@ async def test_a_chat_ledger_that_never_opened_opens_on_the_first_paid_read(gate
         tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=0)
     ):
         assert not (await _check(_PAID)).allowed
-    assert (await chat.snapshot(_CHAT))["ceiling"] == 0
+    assert (await chat.snapshot(_ledger_id()))["ceiling"] == 0
 
 
 async def test_an_unreachable_chat_ledger_refuses_the_paid_read(gate):

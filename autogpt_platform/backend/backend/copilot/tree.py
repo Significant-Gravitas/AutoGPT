@@ -508,7 +508,8 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
 
 async def resolve_chat_ceiling_microdollars(user_id: str | None) -> int:
     """A chat's ceiling: the tree's allowance without the remaining-budget
-    clamp, which would carry a late-night remainder into the following days.
+    clamp, which under a "never" reset would carry a late-night remainder
+    into the following days.
     The daily and weekly limits still refuse every turn once spent."""
     if not user_id:
         return 0
