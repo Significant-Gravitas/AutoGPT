@@ -130,6 +130,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
     )
+    run_judge_mode: Literal["off", "shadow", "primary"] = Field(
+        default="shadow",
+        description=(
+            "Post-run TypeSafe Jev judge mode. 'off' never calls Jev; 'shadow' runs "
+            "Jev alongside the existing activity-status LLM and only records its "
+            "verdicts under stats.judge; 'primary' also feeds the verdicts into the "
+            "summary prompt and derives correctness_score from them."
+        ),
+    )
+    run_judge_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=60,
+        description="Hard upper bound on the time the Jev run judge may add to run finalization.",
+    )
     codex_temp_root: str = Field(
         default="",
         description="Optional tmpfs root for isolated Codex runtime homes.",
@@ -1033,6 +1048,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    typesafe_api_key: str = Field(
+        default="",
+        description="TypeSafe API key used by the platform-side Jev run judge",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(

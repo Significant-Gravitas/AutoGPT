@@ -1061,6 +1061,7 @@ class ExecutionProcessor:
         exec_stats.failure_reason = None
         exec_stats.activity_status = None
         exec_stats.correctness_score = None
+        exec_stats.judge = None
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -1096,6 +1097,7 @@ class ExecutionProcessor:
             if activity_response is not None:
                 exec_stats.activity_status = activity_response["activity_status"]
                 exec_stats.correctness_score = activity_response["correctness_score"]
+                exec_stats.judge = activity_response.get("judge")
                 log_metadata.info(
                     f"Generated activity status: {activity_response['activity_status']} "
                     f"(correctness: {activity_response['correctness_score']:.2f})"

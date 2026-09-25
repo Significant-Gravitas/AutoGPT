@@ -29804,6 +29804,14 @@
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Correctness Score",
             "description": "AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose"
+          },
+          "judge": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Judge",
+            "description": "TypeSafe Jev run-judge verdicts and verbatim request/response"
           }
         },
         "additionalProperties": true,

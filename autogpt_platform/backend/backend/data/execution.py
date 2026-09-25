@@ -298,6 +298,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
         )
+        judge: dict[str, Any] | None = Field(
+            default=None,
+            description="TypeSafe Jev run-judge verdicts and verbatim request/response",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -312,12 +316,17 @@ class GraphExecutionMeta(BaseDbModel):
                 failure_reason=self.failure_reason,
                 activity_status=self.activity_status,
                 correctness_score=self.correctness_score,
+                judge=self.judge,
             )
 
         def without_activity_features(self) -> "GraphExecutionMeta.Stats":
-            """Return a copy of stats with activity features (activity_status, correctness_score) set to None."""
+            """Return a copy of stats with activity features (activity_status, correctness_score, judge) set to None."""
             return self.model_copy(
-                update={"activity_status": None, "correctness_score": None}
+                update={
+                    "activity_status": None,
+                    "correctness_score": None,
+                    "judge": None,
+                }
             )
 
     stats: Stats | None
@@ -389,6 +398,7 @@ class GraphExecutionMeta(BaseDbModel):
                     failure_reason=failure_reason,
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
+                    judge=stats.judge,
                 )
                 if stats
                 else None
