@@ -127,6 +127,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.funnel_analytics import emit_funnel_event
+from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -930,7 +931,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     except Exception:
         emit_funnel_event(
             user_id,
-            "hire_failed",
+            PostHogEvent.HIRE_FAILED,
             {"template_id": template_id, "failed_preloads_count": 0},
         )
         raise
@@ -1000,7 +1001,7 @@ async def _hire_expert_impl(
     elif state == "revived":
         emit_funnel_event(
             user_id,
-            "hire_completed",
+            PostHogEvent.HIRE_COMPLETED,
             {"template_id": template.id, "failed_preloads_count": 0},
         )
     return HireResult(expert=_to_model(expert))
@@ -1082,7 +1083,7 @@ async def _run_hire_setup(
     if count_hire:
         emit_funnel_event(
             user_id,
-            "hire_completed",
+            PostHogEvent.HIRE_COMPLETED,
             {"template_id": template_id, "failed_preloads_count": len(failed_preloads)},
         )
 
@@ -1882,7 +1883,9 @@ def _emit_writing_style_added(
     are silent, so the funnel measures personalisation rather than edits."""
     if (before or "").strip() or not (after or "").strip():
         return
-    emit_funnel_event(user_id, "writing_style_added", {"expert_id": expert_id})
+    emit_funnel_event(
+        user_id, PostHogEvent.WRITING_STYLE_ADDED, {"expert_id": expert_id}
+    )
 
 
 async def _install_preloads(
@@ -2058,7 +2061,7 @@ async def _install_library_workflow(
     )
     emit_funnel_event(
         user_id,
-        "workflow_installed_on_expert",
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
             "source": "library",
@@ -2107,7 +2110,7 @@ async def _install_marketplace_workflow(
         return _to_workflow_ref(raced)
     emit_funnel_event(
         user_id,
-        "workflow_installed_on_expert",
+        PostHogEvent.WORKFLOW_INSTALLED_ON_EXPERT,
         {
             "expert_id": expert_id,
             "source": "marketplace",
@@ -2273,7 +2276,7 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
             raise ExpertNotFoundError(expert_id)
         # Re-archiving is an idempotent no-op; the funnel counts each firing once.
         return
-    emit_funnel_event(user_id, "expert_fired", {"expert_id": expert_id})
+    emit_funnel_event(user_id, PostHogEvent.EXPERT_FIRED, {"expert_id": expert_id})
     try:
         await scheduling.detach_expert_triggers(user_id, expert_id)
     except Exception:

@@ -24,6 +24,7 @@ from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_notification_async
+from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
 TRIAL_REMINDER_WINDOW = timedelta(days=3)
@@ -31,6 +32,16 @@ TRIAL_REMINDER_WINDOW = timedelta(days=3)
 TrialNoticeKind = Literal[
     "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
 ]
+
+TRIAL_NOTICE_EVENTS: dict[TrialNoticeKind, PostHogEvent] = {
+    "started": PostHogEvent.SUBSCRIPTION_TRIAL_STARTED,
+    "ending": PostHogEvent.SUBSCRIPTION_TRIAL_ENDING,
+    "canceled": PostHogEvent.SUBSCRIPTION_TRIAL_CANCELED,
+    "resumed": PostHogEvent.SUBSCRIPTION_TRIAL_RESUMED,
+    "ended": PostHogEvent.SUBSCRIPTION_TRIAL_ENDED,
+    "converted": PostHogEvent.SUBSCRIPTION_TRIAL_CONVERTED,
+    "payment_failed": PostHogEvent.SUBSCRIPTION_TRIAL_PAYMENT_FAILED,
+}
 
 
 async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
@@ -84,7 +95,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         await release_claim(claim)
         raise
     _track_billing_event(
-        f"subscription_trial_{kind}",
+        TRIAL_NOTICE_EVENTS[kind],
         user_id,
         {
             "trial_id": trial.id,

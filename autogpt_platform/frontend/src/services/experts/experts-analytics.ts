@@ -3,24 +3,29 @@
 // a home render. The breadcrumb puts the same step on the timeline of any
 // error Sentry records afterwards.
 
+import {
+  ExpertsFunnelEvent,
+  HireFlowEvent,
+  type EventName,
+} from "@/services/analytics/posthog-events";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 
 export type FunnelViewEvent =
-  | "experts_section_viewed"
-  | "home_viewed"
-  | "briefing_opened";
+  | typeof ExpertsFunnelEvent.EXPERTS_SECTION_VIEWED
+  | typeof ExpertsFunnelEvent.HOME_VIEWED
+  | typeof ExpertsFunnelEvent.BRIEFING_OPENED;
 
 interface FunnelEventProperties {
-  expert_profile_opened: { template_id: string };
-  hire_started: { template_id: string };
-  expert_thread_created: { expert_id: string };
-  briefing_outcome_clicked: { status: string };
-  home_attention_actioned: {
+  [ExpertsFunnelEvent.EXPERT_PROFILE_OPENED]: { template_id: string };
+  [ExpertsFunnelEvent.HIRE_STARTED]: { template_id: string };
+  [ExpertsFunnelEvent.EXPERT_THREAD_CREATED]: { expert_id: string };
+  [ExpertsFunnelEvent.BRIEFING_OUTCOME_CLICKED]: { status: string };
+  [ExpertsFunnelEvent.HOME_ATTENTION_ACTIONED]: {
     kind: string;
     action: "approve" | "decline";
   };
-  home_team_member_clicked: { expert_id: string };
+  [ExpertsFunnelEvent.HOME_TEAM_MEMBER_CLICKED]: { expert_id: string };
 }
 
 type FunnelEvent = FunnelViewEvent | keyof FunnelEventProperties;
@@ -54,7 +59,7 @@ export function trackFunnel(
   }
 }
 
-type ExpertsEvent = "hire_flow_completed" | "hire_flow_abandoned";
+type ExpertsEvent = EventName<typeof HireFlowEvent>;
 
 export function trackExperts(
   event: ExpertsEvent,
