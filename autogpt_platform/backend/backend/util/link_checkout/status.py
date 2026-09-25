@@ -29,7 +29,6 @@ class PaymentStatus(StrictModel):
     status: str
     paid: bool = False
     action_url: str = ""
-    action_type: str = ""
     action_message: str = ""
     resolution: str = ""
     message: str
@@ -52,7 +51,6 @@ def payment_status(spend: SpendRequest) -> PaymentStatus:
     action = details.requires_action.next_action
     if action:
         result.action_url = link_action_url(action.action_url)
-        result.action_type = action.type[:_MAX_FIELD_CHARS]
         result.action_message = action.display_message[:MAX_ACTION_MESSAGE_CHARS]
         result.resolution = action.resolution[:_MAX_FIELD_CHARS]
         if action.resolution != "auto_resume":

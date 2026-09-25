@@ -55,8 +55,7 @@ async def pay(job: WorkerJob) -> WorkerReceipt:
                 if spend.card is None:
                     return receipt
                 await cdp.attach(job.intent.browser)
-                receipt.status = "outcome_unknown"
-                await fill(cdp, controls, spend.card)
+                await fill(cdp, controls, spend.card, receipt)
                 await submit(cdp, controls["submit"], job)
                 if await cdp.drain_network():
                     receipt.status = "submitted"
@@ -71,7 +70,12 @@ async def pay(job: WorkerJob) -> WorkerReceipt:
     return receipt
 
 
-async def fill(cdp: CDP, controls: dict[str, Control], card: Card) -> None:
+async def fill(
+    cdp: CDP, controls: dict[str, Control], card: Card, receipt: WorkerReceipt
+) -> None:
+    """Type the card into the pinned fields. The receipt stays `not_submitted`
+    until the first write is sent, so an attempt that stops before any field
+    was touched still counts as one whose card never reached the page."""
     month = f"{card.exp_month:02d}"
     year = f"{card.exp_year % 100:02d}"
     # Each role's spellings, most common first; the field's maxlength picks the
@@ -88,6 +92,7 @@ async def fill(cdp: CDP, controls: dict[str, Control], card: Card) -> None:
             continue
         control = controls[role]
         await cdp.check_control(control, role)
+        receipt.status = "outcome_unknown"
         result = await cdp.call(
             "Runtime.callFunctionOn",
             {

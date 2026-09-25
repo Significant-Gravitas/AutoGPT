@@ -266,3 +266,25 @@ async def test_a_combined_expiry_without_room_for_a_slash_gets_mmyy(
     await worker.pay(job)
 
     assert browser.filled["#expiry"] == "1230"
+
+
+@pytest.mark.asyncio
+async def test_a_field_that_changes_after_the_card_is_fetched_leaves_it_unused(
+    browser, intent, monkeypatch
+):
+    """Nothing was typed, so the attempt reads as one whose card never reached
+    the page, and the broker cancels the unused card."""
+
+    async def fetch_then_change(job, include_card=False):
+        spend = await synthetic_spend(job, include_card)
+        browser.autocomplete["#number"] = "street-address"
+        return spend
+
+    monkeypatch.setattr(worker, "request_spend", fetch_then_change)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "not_submitted"
+    assert browser.filled == {}
+    assert browser.clicks == 0
