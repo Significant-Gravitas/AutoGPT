@@ -105,6 +105,7 @@ from backend.data.execution import (
     get_execution_outputs_by_node_exec_id,
     get_frequently_executed_graphs,
     get_graph_execution,
+    get_graph_execution_copilot_tree,
     get_graph_execution_meta,
     get_graph_executions,
     get_graph_executions_count,
@@ -312,6 +313,7 @@ class DatabaseManager(AppService):
     get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution = _(get_graph_execution)
     get_graph_execution_meta = _(get_graph_execution_meta)
+    get_graph_execution_copilot_tree = _(get_graph_execution_copilot_tree)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
@@ -740,6 +742,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph_execution = d.get_graph_execution
     get_graph_execution_meta = d.get_graph_execution_meta
+    get_graph_execution_copilot_tree = d.get_graph_execution_copilot_tree
     get_graph_executions = d.get_graph_executions
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions

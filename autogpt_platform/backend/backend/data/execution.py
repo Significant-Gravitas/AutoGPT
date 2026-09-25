@@ -882,6 +882,19 @@ async def get_graph_execution_meta(
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
+async def get_graph_execution_copilot_tree(
+    user_id: str, execution_id: str
+) -> Optional[dict[str, JsonValue]]:
+    """The serialised TurnEnvelope a copilot turn started this run with, or
+    None for a run no turn started. Kept off the API models on purpose."""
+    execution = await AgentGraphExecution.prisma().find_first(
+        where={"id": execution_id, "userId": user_id, "isDeleted": False}
+    )
+    if execution is None or not isinstance(execution.copilotTree, dict):
+        return None
+    return execution.copilotTree
+
+
 @overload
 async def get_graph_execution(
     user_id: str,
@@ -978,6 +991,7 @@ async def create_graph_execution(
     trigger_ref: Optional[str] = None,
     schedule_id: Optional[str] = None,
     webhook_id: Optional[str] = None,
+    copilot_tree: Optional[dict[str, JsonValue]] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -1036,6 +1050,7 @@ async def create_graph_execution(
             **({"triggerRef": trigger_ref} if trigger_ref else {}),
             **({"scheduleId": schedule_id} if schedule_id else {}),
             **({"webhookId": webhook_id} if webhook_id else {}),
+            **({"copilotTree": SafeJson(copilot_tree)} if copilot_tree else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),

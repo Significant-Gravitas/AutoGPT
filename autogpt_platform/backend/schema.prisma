@@ -1574,6 +1574,10 @@ model AgentGraphExecution {
   scheduleId    String?
   webhookId     String?
 
+  // The copilot turn's TurnEnvelope when a turn started this run, restored
+  // whenever the run is re-queued. Null = not started by a turn.
+  copilotTree Json?
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?

@@ -1464,6 +1464,9 @@ async def _add_graph_execution(
             )
         expert_id = graph_exec.expert_id
 
+        # The context a re-queue builds cannot know the tree, so the row supplies it.
+        copilot_tree = await _persisted_copilot_tree(edb, user_id, graph_exec.id)
+
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
         if expert_id:
@@ -1527,6 +1530,9 @@ async def _add_graph_execution(
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
+        # A sub-graph inherits the tree through its parent's context.
+        if copilot_tree is None and execution_context is not None:
+            copilot_tree = _copilot_tree_from_context(execution_context)
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
         # inherit dry_run so child-graph validation skips credential checks.
@@ -1601,6 +1607,7 @@ async def _add_graph_execution(
             trigger_ref=trigger_ref,
             schedule_id=schedule_id,
             webhook_id=webhook_id,
+            copilot_tree=_serialise_copilot_tree(copilot_tree),
         )
 
         logger.info(
@@ -1649,15 +1656,6 @@ async def _add_graph_execution(
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),
-            # Copilot tree attribution (None when no turn started this run).
-            copilot_tree_id=copilot_tree.tree_id if copilot_tree else None,
-            copilot_tree_depth=copilot_tree.depth if copilot_tree else 0,
-            copilot_tree_tainted=copilot_tree.tainted if copilot_tree else False,
-            copilot_tree_tools=(
-                sorted(copilot_tree.tools)
-                if copilot_tree is not None and copilot_tree.tools is not None
-                else None
-            ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
             # File-storage workspace (UserWorkspace) — enables
@@ -1704,6 +1702,20 @@ async def _add_graph_execution(
     if pause_irreversible_actions:
         execution_context = execution_context.model_copy(
             update={"sensitive_action_safe_mode": True}
+        )
+
+    if copilot_tree is not None and execution_context.copilot_tree_id is None:
+        execution_context = execution_context.model_copy(
+            update={
+                "copilot_tree_id": copilot_tree.tree_id,
+                "copilot_tree_depth": copilot_tree.depth,
+                "copilot_tree_tainted": copilot_tree.tainted,
+                "copilot_tree_tools": (
+                    sorted(copilot_tree.tools)
+                    if copilot_tree.tools is not None
+                    else None
+                ),
+            }
         )
 
     try:
@@ -1798,6 +1810,42 @@ async def _add_graph_execution(
         )
 
     return graph_exec
+
+
+async def _persisted_copilot_tree(
+    edb, user_id: str, graph_exec_id: str
+) -> Optional[TurnEnvelope]:
+    raw = await edb.get_graph_execution_copilot_tree(user_id, graph_exec_id)
+    return TurnEnvelope.model_validate(raw) if raw is not None else None
+
+
+def _copilot_tree_from_context(
+    execution_context: ExecutionContext,
+) -> Optional[TurnEnvelope]:
+    if not execution_context.copilot_tree_id:
+        return None
+    return TurnEnvelope(
+        tree_id=execution_context.copilot_tree_id,
+        depth=execution_context.copilot_tree_depth,
+        tainted=execution_context.copilot_tree_tainted,
+        tools=(
+            frozenset(execution_context.copilot_tree_tools)
+            if execution_context.copilot_tree_tools is not None
+            else None
+        ),
+    )
+
+
+def _serialise_copilot_tree(
+    copilot_tree: Optional[TurnEnvelope],
+) -> Optional[dict[str, JsonValue]]:
+    if copilot_tree is None:
+        return None
+    data = copilot_tree.model_dump(mode="json")
+    # ``None`` is the unrestricted root and must survive as JSON null, not [].
+    if copilot_tree.tools is not None:
+        data["tools"] = sorted(copilot_tree.tools)
+    return data
 
 
 async def _started_from_attended_chat(
