@@ -177,6 +177,16 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
 }
 
 
+# A paid read with no subject to price it: consult_teammate is one bounded
+# call on the cheap aux model, well under a cent.
+_ESTIMATES = {"consult_teammate": 10_000}
+
+
+def estimate_for(tool_name: str) -> int:
+    """What one call of a tool is expected to cost, in microdollars."""
+    return _ESTIMATES.get(tool_name, 0)
+
+
 # Deletes that destroy data no restore path brings back. A folder delete is not
 # one: its agents move to the root and its rows are only flagged deleted.
 _IRREVERSIBLE = frozenset({"delete_schedule", "delete_skill", "delete_workspace_file"})

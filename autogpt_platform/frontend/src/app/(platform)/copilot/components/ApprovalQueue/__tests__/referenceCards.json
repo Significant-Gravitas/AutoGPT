@@ -78,7 +78,8 @@
           "ask": "Delete library folder",
           "object": "Q3 reports",
           "object_key": "folder_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "delete_folder",
       "editable": false,
@@ -296,8 +297,8 @@
           }
         ],
         "reference_totals": {
-          "folder_id": 1,
-          "agent_ids": 7
+          "agent_ids": 7,
+          "folder_id": 1
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -318,7 +319,8 @@
           "ask": "Move agents into library folder",
           "object": "Archive",
           "object_key": "folder_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "move_agents_to_folder",
       "editable": false,
@@ -404,7 +406,8 @@
           "ask": "Pause a schedule",
           "object": "Daily digest",
           "object_key": "schedule_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "pause_schedule",
       "editable": false,
@@ -488,7 +491,8 @@
           "ask": "Hire",
           "object": "Ada",
           "object_key": "name"
-        }
+        },
+        "spend": null
       },
       "instructions": "hire_expert",
       "editable": false,
@@ -573,7 +577,8 @@
           "ask": "Message another chat",
           "object": "Q3 planning",
           "object_key": "session_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "message_session",
       "editable": false,
@@ -680,7 +685,8 @@
           "ask": "Give a teammate an account",
           "object": "GitHub (work)",
           "object_key": "credential_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "grant_expert_credential",
       "editable": false,
@@ -766,7 +772,8 @@
           "ask": "Edit an agent",
           "object": "Morning digest",
           "object_key": "agent_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "edit_agent",
       "editable": false,
@@ -840,7 +847,8 @@
           "ask": "Update preset",
           "object": "Weekly digest",
           "object_key": "preset_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "update_preset",
       "editable": false,
@@ -914,7 +922,8 @@
           "ask": "Delete a preset",
           "object": "New invoice email",
           "object_key": "preset_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "delete_preset",
       "editable": false,
@@ -988,7 +997,8 @@
           "ask": "Schedule a routine",
           "object": "Month-end close",
           "object_key": "routine_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "schedule_routine",
       "editable": false,
@@ -1101,7 +1111,8 @@
           "ask": "Give a teammate a workflow",
           "object": null,
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "install_expert_workflow",
       "editable": false,
@@ -1168,7 +1179,8 @@
           "ask": "Take a workflow from a teammate",
           "object": "Receipt matcher",
           "object_key": "workflow_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "remove_expert_workflow",
       "editable": false,
@@ -1248,7 +1260,8 @@
           "ask": "Confirm the team change",
           "object": "Grace",
           "object_key": "confirmation_id"
-        }
+        },
+        "spend": null
       },
       "instructions": "confirm_expert_change",
       "editable": false,
@@ -1345,7 +1358,8 @@
           "ask": "Delete workspace file",
           "object": "/reports/q3-report.pdf",
           "object_key": "path"
-        }
+        },
+        "spend": null
       },
       "instructions": "delete_workspace_file",
       "editable": false,
@@ -1412,7 +1426,8 @@
           "ask": "Delete a preset",
           "object": null,
           "object_key": null
-        }
+        },
+        "spend": null
       },
       "instructions": "delete_preset",
       "editable": false,
