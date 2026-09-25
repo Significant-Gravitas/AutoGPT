@@ -28645,6 +28645,14 @@
             "title": "Auto Approve Future",
             "description": "If true and this review is approved, future executions of this same block (node) will be automatically approved. This only affects approved reviews.",
             "default": false
+          },
+          "chat_rule": {
+            "anyOf": [
+              { "type": "string", "enum": ["allow", "judge"] },
+              { "type": "null" }
+            ],
+            "title": "Chat Rule",
+            "description": "AutoPilot cards naming a subject only: once approved, the subject runs ('allow') or goes to the supervisor ('judge') for the rest of the chat instead of asking."
           }
         },
         "type": "object",

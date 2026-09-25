@@ -1,16 +1,18 @@
 """What a call acts on, when the tool's name alone does not say.
 
-``run_capability`` and ``run_agent`` run a block or a workflow; the gate
+``run_capability`` and ``run_agent`` run a block, a workflow or an MCP tool; the gate
 decides on that subject's effect, and the card's headline names it.
 """
 
 import re
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.integrations.mcp_catalog import mcp_tool_effect
 
 from .effects import JUDGED_BLOCKS, block_effect, graph_effect
 from .policy import Effect
@@ -22,22 +24,21 @@ if TYPE_CHECKING:
 class Subject(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # What a chat rule names: ``block:<id>`` or ``workflow:<graph id>``.
+    # What a chat rule names: ``block:<id>``, ``workflow:<graph id>`` or
+    # ``mcp:<host><path>::<tool>``.
     key: str
     name: str
     effect: Effect
     # The line the card shows under the name; empty where nothing asks.
     reason: str = ""
-    # A judge rule still asks: the supervisor may not wave through what
-    # cannot be taken back.
+    # Shows "Can't be undone" and keeps the card out of approve-all; a judge
+    # rule still covers it.
     irreversible: bool = False
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
 # nothing runs, so nothing asks, whatever the mode.
 NO_OP = Subject(key="", name="", effect=Effect.UNGATED)
-# An MCP call keeps its own review until MCP servers carry effect maps.
-OWN_REVIEW = Subject(key="", name="", effect=Effect.UNGATED)
 
 
 def block_subject(block: Block, inputs: dict[str, Any]) -> Subject:
@@ -100,6 +101,32 @@ def workflow_subject(
     ):
         return subject.model_copy(update={"effect": Effect.PLATFORM, "reason": creates})
     return subject
+
+
+def mcp_subject(server_url: str, tool: str) -> Subject:
+    """Keyed on the server (host and path, since one host can serve many) and
+    the tool, so a rule on one tool leaves every other asking. Only the
+    server's effect map decides; a tool's name is no evidence of what it does."""
+    url = urlsplit(server_url)
+    host = url.hostname or server_url
+    port = f":{url.port}" if url.port not in (None, 443) else ""
+    mapped = mcp_tool_effect(server_url, tool)
+    name = f"{tool} on {host}"
+    if mapped is None:
+        effect = Effect.EXTERNAL
+        reason = f"{AUTOPILOT_NAME} does not know what {name} does, so he asks."
+    elif mapped == "read":
+        effect, reason = Effect.READ, ""
+    else:
+        effect = Effect.EXTERNAL
+        reason = f"Runs {name}, which reaches outside the platform."
+    return Subject(
+        key=f"mcp:{host}{port}{url.path.rstrip('/')}::{tool}",
+        name=name,
+        effect=effect,
+        reason=reason,
+        irreversible=mapped == "irreversible",
+    )
 
 
 def display_name(block: Block) -> str:

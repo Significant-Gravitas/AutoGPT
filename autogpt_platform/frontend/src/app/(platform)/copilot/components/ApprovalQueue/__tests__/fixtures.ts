@@ -184,6 +184,29 @@ export function heldRead(id: string, url: string) {
   return { ...review, node_id: node, node_exec_id: `${node}:${id}` };
 }
 
+// An MCP tool on a server the effect map names.
+export function mcpTool(id = "mcp") {
+  const name = "create_issue on mcp.linear.app";
+  return heldReview({
+    id,
+    tool: "run_capability",
+    mode: "auto",
+    reason: `Runs ${name}, which reaches outside the platform.`,
+    reasonKind: "subject",
+    subject: {
+      kind: "mcp",
+      key: "mcp:mcp.linear.app/mcp::create_issue",
+      name,
+      effect: "external",
+      irreversible: false,
+      block_id: null,
+    },
+    chatRules: ["allow", "judge"],
+    args: { title: "Q3 invoices missing PO numbers", team: "Finance" },
+    headline: { ask: "Run", object: name },
+  });
+}
+
 export interface RealCard {
   story: string;
   review: PendingHumanReviewModel;

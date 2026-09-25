@@ -4,10 +4,10 @@ Ordering is the design, cheapest and most certain first:
 
 1. gate inactive                          -> ALLOW (today's behaviour)
 2. an approval for exactly these args     -> ALLOW, consumed single-use
-3. the user rejected this tool in chat    -> ASK, in every mode
-4. what the call acts on: a block or workflow's own effect, or the tool's;
-   a call that runs nothing never asks
-5. the mode's verdict for that effect: run, ask, or the supervisor
+3. what the call acts on: a block, workflow or MCP tool's own effect, or
+   the tool's; a call that runs nothing never asks
+4. the user's rule on that subject in this chat -> allow, judge or ask
+5. otherwise the mode's verdict for that effect: run, ask, or the supervisor
 
 The supervisor is last because it is the least trusted step: it can only turn
 a run into a question, never the reverse.
@@ -54,6 +54,13 @@ _UNRECORDABLE = (
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+# The user's own word on the subject in this chat outranks the mode's rule.
+_RULE_VERDICTS = {
+    "allow": Verdict.RUN,
+    "judge": Verdict.JUDGE,
+    "ask": Verdict.ASK,
+    "unreadable": Verdict.ASK,
+}
 
 
 class Decision(BaseModel):
@@ -136,14 +143,17 @@ async def check_action(
         return ALLOW
     rule_key = subject.key if subject is not None else tool_name
     mode = resolve_mode(session)
-    verdict = verdict_for_effect(mode, effect)
+    # Only a subject that can be parked can carry a rule, so reads and
+    # workspace work skip the Redis round trip.
+    rule = (
+        await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    )
+    # A judge rule covers irreversible subjects too: the user chose the supervisor.
+    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     reason_kind: review_store.ReasonKind
-    # A block or workflow that only reads can never have been parked, though
-    # the tool calling it can, so it skips the Redis round trip too.
-    if effect in _PARKABLE and (
-        rule_reason := await chat_rules.ask_reason(session_id, rule_key)
-    ):
-        reason, reason_kind = rule_reason, "rule"
+    if rule in ("ask", "unreadable"):
+        reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
+        reason_kind = "rule"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:

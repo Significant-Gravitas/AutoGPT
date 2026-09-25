@@ -73,7 +73,7 @@ class GateReviewPayload(BaseModel):
     subject: Subject
     reason: str = ""
     reason_kind: ReasonKind = "mode"
-    # The gate records no chat-scoped rule yet, so none is offered.
+    # Only a card naming a subject can set a rule on it.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
 
@@ -138,6 +138,7 @@ def review_payload(
         subject=_payload_subject(tool_name, args, subject),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
+        chat_rules_allowed=["allow", "judge"] if subject is not None else [],
         headline=(
             Headline(ask="Run", object=subject.name)
             if subject is not None
