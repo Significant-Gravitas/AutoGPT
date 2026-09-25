@@ -513,15 +513,22 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Baas Bot Leave Meeting](block-integrations/baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
 | [Gmail Add Label](block-integrations/google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
 | [Gmail Create Draft](block-integrations/google/gmail.md#gmail-create-draft) | Create draft emails in Gmail with automatic HTML detection and proper text formatting |
+| [Gmail Create Label](block-integrations/google/gmail_labels.md#gmail-create-label) | Create a Gmail label, with an optional color and visibility |
 | [Gmail Draft Reply](block-integrations/google/gmail.md#gmail-draft-reply) | Create draft replies to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Forward](block-integrations/google/gmail.md#gmail-forward) | Forward Gmail messages to other recipients with automatic HTML detection and proper formatting |
+| [Gmail Get Message](block-integrations/google/gmail_messages.md#gmail-get-message) | Get one Gmail email by its message ID or Message-ID header, or a draft by its draft ID |
 | [Gmail Get Profile](block-integrations/google/gmail.md#gmail-get-profile) | Get the authenticated user's Gmail profile details including email address and message statistics |
 | [Gmail Get Thread](block-integrations/google/gmail.md#gmail-get-thread) | A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations |
+| [Gmail List Drafts](block-integrations/google/gmail_messages.md#gmail-list-drafts) | List Gmail drafts, optionally only those matching a Gmail search |
 | [Gmail List Labels](block-integrations/google/gmail.md#gmail-list-labels) | A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails |
+| [Gmail Mark As Read](block-integrations/google/gmail_organize.md#gmail-mark-as-read) | Mark a Gmail message, or a whole thread, as read or unread |
 | [Gmail Read](block-integrations/google/gmail.md#gmail-read) | A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments |
 | [Gmail Remove Label](block-integrations/google/gmail.md#gmail-remove-label) | A block that removes a label from a specific email message in a Gmail account |
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
+| [Gmail Spam](block-integrations/google/gmail_organize.md#gmail-spam) | Report a Gmail message, or a whole thread, as spam, which moves it to Spam |
+| [Gmail Trash](block-integrations/google/gmail_organize.md#gmail-trash) | Move a Gmail message, or a whole thread, to the Trash, or restore it from the Trash |
+| [Gmail Update Labels](block-integrations/google/gmail_labels.md#gmail-update-labels) | Add and remove labels on a Gmail message, or a whole thread, in one step |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools

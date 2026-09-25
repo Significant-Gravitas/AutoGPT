@@ -9,11 +9,11 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional, Protocol, runtime_checkable
+from typing import Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from backend.blocks._base import (
     Block,
@@ -35,6 +35,7 @@ from ._auth import (
     GoogleCredentialsField,
     GoogleCredentialsInput,
 )
+from ._gmail_api import Attachment, Email, Thread, email_from_message
 
 settings = Settings()
 
@@ -183,37 +184,6 @@ async def create_mime_message(
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
 
-class Attachment(BaseModel):
-    filename: str
-    content_type: str
-    size: int
-    attachment_id: str
-
-
-class Email(BaseModel):
-    threadId: str
-    labelIds: list[str]
-    id: str
-    subject: str
-    snippet: str
-    from_: str
-    to: list[str]  # List of recipient email addresses
-    cc: list[str] = Field(default_factory=list)  # CC recipients
-    bcc: list[str] = Field(
-        default_factory=list
-    )  # BCC recipients (rarely available in received emails)
-    date: str
-    body: str = ""  # Default to an empty string
-    sizeEstimate: int
-    attachments: List[Attachment]
-
-
-class Thread(BaseModel):
-    id: str
-    messages: list[Email]
-    historyId: str
-
-
 class GmailSendResult(BaseModel):
     id: str
     status: str
@@ -258,6 +228,14 @@ class GmailBase(Block, ABC):
             scopes=credentials.scopes,
         )
         return build("gmail", "v1", credentials=creds)
+
+    async def _parse_email(
+        self, msg: dict, service, thread_id: str | None = None
+    ) -> Email:
+        """Turn a Gmail API message into an Email with its body and attachments."""
+        body = await self._get_email_body(msg, service)
+        attachments = await self._get_attachments(service, msg)
+        return email_from_message(msg, body, attachments, thread_id)
 
     async def _get_email_body(self, msg, service):
         """Extract email body content with support for multipart messages and HTML conversion."""
@@ -518,41 +496,7 @@ class GmailReadBlock(GmailBase):
                 .get(userId="me", id=message["id"], format=format_type)
                 .execute()
             )
-
-            headers = {
-                header["name"].lower(): header["value"]
-                for header in msg["payload"]["headers"]
-            }
-
-            attachments = await self._get_attachments(service, msg)
-
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
-
-            email = Email(
-                threadId=msg.get("threadId", None),
-                labelIds=msg.get("labelIds", []),
-                id=msg["id"],
-                subject=headers.get("subject", "No Subject"),
-                snippet=msg.get("snippet", ""),
-                from_=parseaddr(headers.get("from", ""))[1],
-                to=to_recipients if to_recipients else [],
-                cc=cc_recipients,
-                bcc=bcc_recipients,
-                date=headers.get("date", ""),
-                body=await self._get_email_body(msg, service),
-                sizeEstimate=msg.get("sizeEstimate", 0),
-                attachments=attachments,
-            )
-            email_data.append(email)
+            email_data.append(await self._parse_email(msg, service))
 
         return email_data
 
@@ -1104,39 +1048,7 @@ class GmailGetThreadBlock(GmailBase):
 
         parsed_messages = []
         for msg in thread.get("messages", []):
-            headers = {
-                h["name"].lower(): h["value"]
-                for h in msg.get("payload", {}).get("headers", [])
-            }
-            body = await self._get_email_body(msg, service)
-            attachments = await self._get_attachments(service, msg)
-
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
-
-            email = Email(
-                threadId=msg.get("threadId", thread_id),
-                labelIds=msg.get("labelIds", []),
-                id=msg.get("id"),
-                subject=headers.get("subject", "No Subject"),
-                snippet=msg.get("snippet", ""),
-                from_=parseaddr(headers.get("from", ""))[1],
-                to=to_recipients if to_recipients else [],
-                cc=cc_recipients,
-                bcc=bcc_recipients,
-                date=headers.get("date", ""),
-                body=body,
-                sizeEstimate=msg.get("sizeEstimate", 0),
-                attachments=attachments,
-            )
+            email = await self._parse_email(msg, service, thread_id)
             parsed_messages.append(email.model_dump())
 
         thread["messages"] = parsed_messages
