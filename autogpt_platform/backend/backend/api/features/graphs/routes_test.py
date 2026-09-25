@@ -14,6 +14,7 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
@@ -692,6 +693,98 @@ def test_create_new_graph_reassigns_ids_and_persists_in_order(
     assert response.status_code == 200
     assert calls == ["graph", "library"]
     assert response.json()["id"] != "submitted-id"
+
+
+def _sheets_read_graph(credentials_id: str) -> dict:
+    """A Google Sheets Read agent whose spreadsheet was chosen in the Drive
+    picker, which embeds the credential it used as `_credentials_id`."""
+    return {
+        "name": "Sheets",
+        "description": "",
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": GoogleSheetsReadBlock().id,
+                "input_default": {
+                    "spreadsheet": {
+                        "_credentials_id": credentials_id,
+                        "id": "sheet-1",
+                        "name": "test",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1",
+                },
+            }
+        ],
+        "links": [],
+    }
+
+
+def _own_credentials(mocker: pytest_mock.MockFixture, *credentials_ids: str) -> None:
+    mocker.patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager.store.get_all_creds",
+        new=AsyncMock(return_value=[Mock(id=cid) for cid in credentials_ids]),
+    )
+
+
+@pytest.mark.parametrize(
+    "owned_ids,expected_credentials_id",
+    [(["own-cred"], "own-cred"), ([], None)],
+    ids=["picked-with-own-account", "imported-with-someone-elses"],
+)
+def test_create_new_graph_keeps_only_a_file_picked_with_the_callers_credentials(
+    mocker: pytest_mock.MockFixture,
+    owned_ids: list[str],
+    expected_credentials_id: str | None,
+) -> None:
+    """[SECRT-1772] Saving a new agent kept the range but dropped the Drive
+    file you had picked, because every save nulled picker inputs. A file that
+    embeds someone else's credentials is still cleared."""
+    _own_credentials(mocker, *owned_ids)
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(),
+    )
+
+    response = client.post("/graphs", json={"graph": _sheets_read_graph("own-cred")})
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    spreadsheet = saved.nodes[0].input_default["spreadsheet"]
+    assert (spreadsheet or {}).get("_credentials_id") == expected_credentials_id
+    assert saved.nodes[0].input_default["range"] == "A1"
+
+
+def test_update_graph_keeps_the_file_the_owner_picked(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """[SECRT-1772] Saving a new version dropped the picked file the same way
+    (reproduced on dev by re-picking the file and saving again)."""
+    _own_credentials(mocker, "own-cred")
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=False)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph",
+        new=AsyncMock(return_value=Mock(version=2, is_active=False)),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        new=AsyncMock(side_effect=lambda *a, **k: create_graph_mock.await_args.args[0]),
+    )
+
+    response = client.put(
+        "/graphs/graph-1", json={"id": "graph-1", **_sheets_read_graph("own-cred")}
+    )
+
+    assert response.status_code == 200
+    saved: GraphModel = create_graph_mock.await_args.args[0]
+    assert saved.nodes[0].input_default["spreadsheet"]["_credentials_id"] == "own-cred"
+    assert saved.nodes[0].input_default["range"] == "A1"
 
 
 def test_set_active_version_returns_404_for_an_unknown_version(

@@ -31,7 +31,8 @@ class GraphActivationError(Exception):
 async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     """
     Pre-activation hook: validates node credentials and clears stale optional
-    credential references in-memory. MUST be called BEFORE the graph is
+    credential references in-memory, along with picked files whose embedded
+    credentials don't belong to the user. MUST be called BEFORE the graph is
     persisted (and before it is marked active) — a failure here means nothing
     should be saved, and the returned graph carries cleanup mutations that
     need to be persisted by the caller.
@@ -45,11 +46,31 @@ async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphMode
         GraphActivationError: when a required node credential is missing or
             unusable.
     """
+    await _clear_unowned_auto_credentials(graph, user_id)
     graph = await _before_graph_activate(graph, user_id)
     graph.sub_graphs = await asyncio.gather(
         *(_before_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
     )
     return graph
+
+
+async def _clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> None:
+    """
+    Keep picker-selected files (e.g. from the Google Drive picker) that embed one
+    of the user's own credentials, and clear the rest. The user's own picks must
+    survive a save. An agent imported from someone else's export still embeds
+    their `_credentials_id`, which the executor can't resolve for this user.
+    """
+    if not graph.auto_credentials_refs():
+        return
+    owned_ids = {c.id for c in await credentials_manager.store.get_all_creds(user_id)}
+    for node, field_name, credentials_id in graph.clear_auto_credentials(
+        keep_ids=owned_ids
+    ):
+        logger.warning(
+            f"Node #{node.id}: cleared the file picked for '{field_name}' because "
+            f"its credentials #{credentials_id} don't belong to user #{user_id}"
+        )
 
 
 @overload

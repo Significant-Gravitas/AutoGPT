@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Container
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
 
@@ -782,20 +783,40 @@ class GraphModel(Graph, GraphMeta):
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-        # Clear auto-credentials references (e.g., _credentials_id in
-        # GoogleDriveFile fields) so the new user must re-authenticate
-        # with their own account. We null the entire field rather than
-        # just the _credentials_id key — a partial object (e.g. a bare
-        # {"id": "...", "name": "..."} left over after stripping) would
-        # be rejected by the auto-credentials validator added below,
-        # breaking fork_graph() for agents that previously had a
-        # picker-selected Drive file.
-        for node in graph.nodes:
-            if not node.input_default:
-                continue
-            for key, value in list(node.input_default.items()):
-                if isinstance(value, dict) and "_credentials_id" in value:
-                    node.input_default[key] = None
+    def clear_auto_credentials(
+        self, keep_ids: Container[str] = frozenset()
+    ) -> list[tuple[Node, str, Any]]:
+        """
+        Null every picker-selected input (e.g. a GoogleDriveFile) whose embedded
+        `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
+        and return the cleared ones in the shape `auto_credentials_refs` uses.
+
+        A fork or copy keeps none: the credentials belong to the original owner,
+        so the new owner has to pick the file again with their own account. A
+        save keeps the saving user's own (see `before_graph_activate`). The whole
+        field is nulled, not just the key, because a file object without a
+        `_credentials_id` is rejected by the auto-credentials check in
+        `_validate_graph`.
+        """
+        cleared = [
+            (node, field_name, credentials_id)
+            for node, field_name, credentials_id in self.auto_credentials_refs()
+            if not (isinstance(credentials_id, str) and credentials_id in keep_ids)
+        ]
+        for node, field_name, _ in cleared:
+            node.input_default[field_name] = None
+        return cleared
+
+    def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
+        """Picker-selected inputs that embed a `_credentials_id`, in this graph
+        and its sub-graphs, as (node, input name, embedded credentials ID)."""
+        return [
+            (node, field_name, value["_credentials_id"])
+            for graph in (self, *self.sub_graphs)
+            for node in graph.nodes
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
 
     def validate_graph(
         self,
@@ -1907,6 +1928,7 @@ async def fork_graph(
     graph.forked_from_version = graph.version
     graph.name = f"{graph.name} (copy)"
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.clear_auto_credentials()
     graph.validate_graph(for_run=False)
 
     async with transaction() as tx:
@@ -1944,6 +1966,7 @@ async def copy_graph(
     graph.forked_from_version = graph.version
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.clear_auto_credentials()
     graph.validate_graph(for_run=False)
 
     dest_team = target_team_id or team_id

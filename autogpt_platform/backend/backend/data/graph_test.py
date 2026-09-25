@@ -21,6 +21,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
+    BaseGraph,
     Graph,
     GraphModel,
     Link,
@@ -29,6 +30,7 @@ from backend.data.graph import (
     get_graph,
     get_graph_settings,
     graph_in_library_filter,
+    make_graph_model,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
@@ -583,153 +585,121 @@ def test_combine_preserves_regular_credential_defaults():
 
 
 # ============================================================================
-# Tests for _reassign_ids credential clearing (Fix 3: SECRT-1772)
+# Tests for picker-selected file credentials (SECRT-1772)
 
 
-def test_reassign_ids_clears_credentials_id():
-    """
-    [SECRT-1772] _reassign_ids should null out the entire
-    GoogleDriveFile-style input_default field so forked agents
-    don't retain the original creator's credential references AND
-    don't leave a partial file object (which would be rejected by
-    the auto-credentials validator).
-    """
-    from backend.data.graph import GraphModel
+def _picked_file(credentials_id: Any) -> dict[str, Any]:
+    return {
+        "_credentials_id": credentials_id,
+        "id": "file-123",
+        "name": "test.xlsx",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+    }
 
-    node = Node(
-        id="node-1",
-        block_id=StoreValueBlock().id,
-        input_default={
-            "spreadsheet": {
-                "_credentials_id": "original-cred-id",
-                "id": "file-123",
-                "name": "test.xlsx",
-                "mimeType": "application/vnd.google-apps.spreadsheet",
-                "url": "https://docs.google.com/spreadsheets/d/file-123",
-            },
-        },
-    )
 
+def _graph_with_inputs(
+    input_default: dict[str, Any],
+    sub_graph_input_default: dict[str, Any] | None = None,
+) -> GraphModel:
+    sub_graphs = []
+    if sub_graph_input_default is not None:
+        sub_node = Node(
+            id="sub-node",
+            block_id=StoreValueBlock().id,
+            input_default=sub_graph_input_default,
+        )
+        sub_graphs.append(
+            BaseGraph(id="sub-graph", name="Sub", description="Sub", nodes=[sub_node])
+        )
     graph = Graph(
         id="test-graph",
         name="Test",
         description="Test",
-        nodes=[node],
+        nodes=[
+            Node(
+                id="node-1", block_id=StoreValueBlock().id, input_default=input_default
+            )
+        ],
         links=[],
+        sub_graphs=sub_graphs,
     )
-
-    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
-
-    # The entire field is nulled — leaving a partial file object behind
-    # would be rejected by the auto-credentials validator, breaking
-    # fork_graph() for agents that previously had a picker-selected file.
-    assert graph.nodes[0].input_default["spreadsheet"] is None
+    return make_graph_model(graph, user_id="test-user")
 
 
-def test_reassign_ids_preserves_non_credential_fields():
+def test_reassign_ids_keeps_picked_files():
     """
-    Regression guard: _reassign_ids should NOT null fields that don't
-    carry a _credentials_id (e.g., plain user-entered values).
+    [SECRT-1772] Creating and updating a graph both go through reassign_ids,
+    which used to null every picker-selected input. Saving your own agent
+    kept the range but dropped the Drive file you had just picked.
     """
-    from backend.data.graph import GraphModel
+    graph = _graph_with_inputs({"spreadsheet": _picked_file("own-cred"), "range": "A1"})
 
-    node = Node(
-        id="node-1",
-        block_id=StoreValueBlock().id,
-        input_default={
-            # No _credentials_id — a plain dict that should be preserved
-            "config": {
-                "id": "file-123",
-                "name": "test.xlsx",
-            },
-        },
-    )
+    graph.reassign_ids(user_id="test-user", reassign_graph_id=True)
 
-    graph = Graph(
-        id="test-graph",
-        name="Test",
-        description="Test",
-        nodes=[node],
-        links=[],
-    )
-
-    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
-
-    field = graph.nodes[0].input_default["config"]
-    assert field == {"id": "file-123", "name": "test.xlsx"}
+    assert graph.nodes[0].input_default == {
+        "spreadsheet": _picked_file("own-cred"),
+        "range": "A1",
+    }
 
 
-def test_reassign_ids_handles_no_credentials():
+def test_clear_auto_credentials_nulls_every_picked_file():
     """
-    Regression guard: _reassign_ids should not error when input_default
-    has no dict fields with _credentials_id.
+    [SECRT-1772] A fork or copy keeps no picked file, because the embedded
+    credentials belong to the original owner. The whole field is nulled: a
+    file object left without `_credentials_id` fails graph validation. Plain
+    dicts and values without a `_credentials_id` are left alone.
     """
-    from backend.data.graph import GraphModel
-
-    node = Node(
-        id="node-1",
-        block_id=StoreValueBlock().id,
-        input_default={
-            "input": "some value",
-            "another_input": 42,
-        },
-    )
-
-    graph = Graph(
-        id="test-graph",
-        name="Test",
-        description="Test",
-        nodes=[node],
-        links=[],
-    )
-
-    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
-
-    # Should not error, fields unchanged
-    assert graph.nodes[0].input_default["input"] == "some value"
-    assert graph.nodes[0].input_default["another_input"] == 42
-
-
-def test_reassign_ids_handles_multiple_credential_fields():
-    """
-    [SECRT-1772] When a node has multiple dict fields with _credentials_id,
-    ALL of them should be cleared.
-    """
-    from backend.data.graph import GraphModel
-
-    node = Node(
-        id="node-1",
-        block_id=StoreValueBlock().id,
-        input_default={
-            "spreadsheet": {
-                "_credentials_id": "cred-1",
-                "id": "file-1",
-                "name": "file1.xlsx",
-            },
-            "doc_file": {
-                "_credentials_id": "cred-2",
-                "id": "file-2",
-                "name": "file2.docx",
-            },
+    graph = _graph_with_inputs(
+        {
+            "spreadsheet": _picked_file("cred-1"),
+            "doc_file": _picked_file("cred-2"),
+            "config": {"id": "file-123", "name": "test.xlsx"},
             "plain_input": "not a dict",
         },
+        sub_graph_input_default={"spreadsheet": _picked_file("cred-3")},
     )
 
-    graph = Graph(
-        id="test-graph",
-        name="Test",
-        description="Test",
-        nodes=[node],
-        links=[],
+    graph.clear_auto_credentials()
+
+    assert graph.nodes[0].input_default == {
+        "spreadsheet": None,
+        "doc_file": None,
+        "config": {"id": "file-123", "name": "test.xlsx"},
+        "plain_input": "not a dict",
+    }
+    assert graph.sub_graphs[0].nodes[0].input_default == {"spreadsheet": None}
+
+
+def test_clear_auto_credentials_keeps_only_listed_ids():
+    """
+    A save keeps files picked with the saving user's own credentials and
+    clears the rest, including malformed IDs a raw API caller could send.
+    """
+    graph = _graph_with_inputs(
+        {
+            "own": _picked_file("own-cred"),
+            "foreign": _picked_file("someone-elses-cred"),
+            "empty": _picked_file(""),
+            "missing": _picked_file(None),
+            "malformed": _picked_file({"id": "own-cred"}),
+        }
     )
 
-    GraphModel._reassign_ids(graph, user_id="new-user", graph_id_map={})
+    cleared = graph.clear_auto_credentials(keep_ids={"own-cred"})
 
-    # Each auto-credential field is nulled entirely — not just the id key —
-    # so the validator accepts the forked graph.
-    assert graph.nodes[0].input_default["spreadsheet"] is None
-    assert graph.nodes[0].input_default["doc_file"] is None
-    assert graph.nodes[0].input_default["plain_input"] == "not a dict"
+    assert [field_name for _, field_name, _ in cleared] == [
+        "foreign",
+        "empty",
+        "missing",
+        "malformed",
+    ]
+    assert graph.nodes[0].input_default == {
+        "own": _picked_file("own-cred"),
+        "foreign": None,
+        "empty": None,
+        "missing": None,
+        "malformed": None,
+    }
 
 
 # ============================================================================
@@ -2349,7 +2319,7 @@ def test_auto_credentials_fully_hydrated_object_accepted():
     """Author pre-selected a file via the builder's Drive picker: the
     object carries a real `_credentials_id` plus metadata. Validator
     must NOT flag this — it's the legitimate author-flow shape and
-    forking clears `_credentials_id` separately via `_reassign_ids`."""
+    forking clears `_credentials_id` separately via `clear_auto_credentials`."""
     graph = _sheets_graph(
         {
             "_credentials_id": "cred-abc-def",
