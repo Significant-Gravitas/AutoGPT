@@ -522,6 +522,14 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Remove Label](block-integrations/google/gmail.md#gmail-remove-label) | A block that removes a label from a specific email message in a Gmail account |
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
+| [Google Chat Find Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-find-direct-message) | Find the user's existing Google Chat direct message with a person, by email address or user ID, and get its ID for reading or sending messages |
+| [Google Chat Find Group Chats](block-integrations/google/chat_spaces.md#google-chat-find-group-chats) | Find Google Chat group chats whose members are exactly the user plus the people you list, by email address or user ID, and get their IDs for reading or sending messages |
+| [Google Chat List Messages](block-integrations/google/chat_messages.md#google-chat-list-messages) | Read the messages in a Google Chat space, group chat or direct message, optionally only one thread or a time range |
+| [Google Chat List Spaces](block-integrations/google/chat_spaces.md#google-chat-list-spaces) | List the Google Chat conversations the user is in (named spaces, group chats and direct messages) with their IDs, names, types and member counts |
+| [Google Chat Search Messages](block-integrations/google/chat_message_search.md#google-chat-search-messages) | Search Google Chat messages across every conversation the user is in, by keywords, sender, conversation, time, unread status, mentions, links or attachments |
+| [Google Chat Search Spaces](block-integrations/google/chat_spaces.md#google-chat-search-spaces) | Find named Google Chat spaces the user is in by words in the space name, and get their IDs |
+| [Google Chat Send Message](block-integrations/google/chat_messages.md#google-chat-send-message) | Send a Google Chat message as the user to a space, group chat or direct message, or reply in a thread of a named space |
+| [Google Chat Start Direct Message](block-integrations/google/chat_direct_messages.md#google-chat-start-direct-message) | Open a Google Chat direct message with a person, by email address or user ID: returns the existing conversation, or creates an empty one |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools
