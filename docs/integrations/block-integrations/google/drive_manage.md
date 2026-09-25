@@ -30,8 +30,11 @@ Copies the file with the Drive API `files.copy` endpoint. Without a new name the
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Copy a template document before filling it in.
-- Duplicate a spreadsheet for each new project.
+**Templates**: Copy a template document before filling it in.
+
+**Project Setup**: Duplicate a spreadsheet for each new project.
+
+**Safe Edits**: Make a backup copy of a file before an agent edits it.
 <!-- END MANUAL -->
 
 ---
@@ -66,8 +69,11 @@ Uploads text or a file with the Drive API `files.create` endpoint. The MIME type
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Save an AI-written report to Drive as a Google Doc.
-- Upload a generated CSV and convert it to a Google Sheet for the team.
+**Save Reports**: Save an AI-written report to Drive as a Google Doc.
+
+**Share Data**: Upload a generated CSV and convert it to a Google Sheet for the team.
+
+**Archive Outputs**: Store files an agent produced, such as images or PDFs, in a project folder.
 <!-- END MANUAL -->
 
 ---
@@ -98,7 +104,11 @@ Creates a folder with the Drive API, inside the parent folder you give or in My 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Create a folder per client or per month before saving files into it.
+**Client Folders**: Create a folder per client before saving files into it.
+
+**Monthly Archives**: Create a folder for each month's invoices.
+
+**Project Setup**: Create a project folder when a new deal closes.
 <!-- END MANUAL -->
 
 ---
@@ -129,8 +139,11 @@ Reads the file's current parent folders, then updates the file to add the destin
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- File processed invoices into an archive folder.
-- Sort new uploads into per-client folders.
+**Invoice Filing**: File processed invoices into an archive folder.
+
+**Upload Sorting**: Sort new uploads into per-client folders.
+
+**Cleanup**: Move finished drafts out of a shared inbox folder.
 <!-- END MANUAL -->
 
 ---

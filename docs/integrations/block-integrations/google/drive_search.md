@@ -32,8 +32,11 @@ Calls the Drive API `files.list` endpoint, skips folders and trashed files, and 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Show the user the documents they worked on this week.
-- Pick up the most recently edited spreadsheet and summarize it with Google Drive Read File.
+**Weekly Recap**: Show the user the documents they worked on this week.
+
+**Resume Work**: Pick up the most recently edited spreadsheet and summarize it with Google Drive Read File.
+
+**Daily Briefing**: Start a morning briefing agent with the files that changed since yesterday.
 <!-- END MANUAL -->
 
 ---
@@ -74,9 +77,11 @@ Builds a Drive search query from the filters you set (name, full text, file type
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Find the latest invoice PDF in a folder and download it.
-- Look up a spreadsheet by name and pass it to the Google Sheets blocks.
-- Find every document that mentions a customer before a renewal call.
+**Invoice Retrieval**: Find the latest invoice PDF in a folder and download it.
+
+**Spreadsheet Lookup**: Find a spreadsheet by name and pass it to the Google Sheets blocks.
+
+**Account Research**: Find every document that mentions a customer before a renewal call.
 <!-- END MANUAL -->
 
 ---

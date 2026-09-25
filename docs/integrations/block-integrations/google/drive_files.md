@@ -31,8 +31,11 @@ Downloads the file through the Drive API. Google Docs, Sheets and Slides can't b
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Export a Google Doc as a PDF and attach it to an email.
-- Pull an image or ZIP file from Drive for further processing.
+**Email Attachments**: Export a Google Doc as a PDF and attach it to an email.
+
+**File Processing**: Pull an image or ZIP file from Drive for further processing.
+
+**Partner Handoff**: Export a Google Sheet as XLSX for a partner who doesn't use Google.
 <!-- END MANUAL -->
 
 ---
@@ -62,8 +65,11 @@ Calls the Drive API `files.get` endpoint and returns the file's name, type, size
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Check when a report was last updated before sending it.
-- Find which folder a file is in.
+**Freshness Check**: Check when a report was last updated before sending it.
+
+**Folder Lookup**: Find which folder a file is in.
+
+**Ownership Check**: See who owns a file before asking for access or moving it.
 <!-- END MANUAL -->
 
 ---
@@ -94,8 +100,11 @@ Lists the file's permissions with the Drive API, following pages until all of th
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Check whether a file is shared publicly before sending the link.
-- Audit who can edit a sensitive document.
+**Public Link Check**: Check whether a file is shared publicly before sending the link.
+
+**Access Audit**: Audit who can edit a sensitive document.
+
+**Offboarding Review**: Confirm a departing teammate no longer has access to key documents.
 <!-- END MANUAL -->
 
 ---
@@ -126,8 +135,11 @@ Looks up the file's type, then turns it into text. Google Docs are exported as M
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Summarize a Google Doc or PDF the user found in Drive.
-- Feed a CSV stored in Drive into an AI block.
+**Document Summaries**: Summarize a Google Doc or PDF the user found in Drive.
+
+**Data Import**: Feed a CSV stored in Drive into an AI block.
+
+**Meeting Prep**: Read the agenda document before a meeting and draft talking points.
 <!-- END MANUAL -->
 
 ---

@@ -31,9 +31,11 @@ Calls the Drive API `comments.list` endpoint, following pages until it has enoug
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-- Summarize the open review comments on a document before a meeting.
-- Find unresolved comments across a folder of contracts.
-- Feed reviewers' feedback into an AI block that drafts the revisions.
+**Review Digest**: Summarize the open review comments on a document before a meeting.
+
+**Contract Follow-up**: Find unresolved comments across a folder of contracts.
+
+**Revision Drafts**: Feed reviewers' feedback into an AI block that drafts the revisions.
 <!-- END MANUAL -->
 
 ---
