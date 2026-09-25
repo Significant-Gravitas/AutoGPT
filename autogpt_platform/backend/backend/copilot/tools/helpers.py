@@ -885,8 +885,7 @@ async def prepare_block_for_execution(
             )
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-    required_keys = set(input_schema.get("required", []))
-    required_non_credential_keys = required_keys - credentials_fields
+    required_non_credential_keys = required_input_keys(block)
     provided_input_keys = set(input_data.keys()) - credentials_fields
 
     # Picker-backed required fields that the caller hasn't filled surface the
@@ -985,6 +984,13 @@ async def prepare_block_for_execution(
         synthetic_graph_id=synthetic_graph_id,
         synthetic_node_id=synthetic_node_id,
     )
+
+
+def required_input_keys(block: AnyBlockSchema) -> set[str]:
+    """Inputs a block needs from its caller; without them ``run_block`` answers
+    with the schema and runs nothing. Credentials resolve on their own."""
+    credentials = set(block.input_schema.get_credentials_fields())
+    return set(block.input_schema.jsonschema().get("required", [])) - credentials
 
 
 async def check_hitl_review(

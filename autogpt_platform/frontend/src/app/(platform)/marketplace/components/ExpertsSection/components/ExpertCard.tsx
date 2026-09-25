@@ -1,3 +1,7 @@
+import {
+  expertPastel,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -10,7 +14,6 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
 import { cn } from "@/lib/utils";
-import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 import { ArrowRight02Icon, Book04Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { CHIP_SHAPE, CHIP_SIZE } from "../../CategoryChip/CategoryChip";
@@ -25,29 +28,32 @@ const NAMED_SKILLS = 3;
 interface Props {
   expert: ExpertTemplate;
   isHired: boolean;
+  category?: string | null;
 }
 
 /** The whole card opens the expert's own page, through a link stretched
  *  behind its contents: a card that is itself a link cannot hold the hire
  *  button, since an anchor may not contain one. */
-export function ExpertCard({ expert, isHired }: Props) {
+export function ExpertCard({ expert, isHired, category }: Props) {
+  const selectedCategory =
+    category && expert.categories?.includes(category) ? category : undefined;
+  const topicColor = getExpertTopicHex(
+    expert.role,
+    selectedCategory ? [selectedCategory] : expert.categories,
+  );
   const skills = expert.bundled_skills ?? [];
   const named = skills.slice(0, NAMED_SKILLS);
   const restSkills = skills.slice(NAMED_SKILLS);
   // The area an expert works in, in the same chip the filters use — the row
   // above the shelf and the card below it name the same thing.
-  const area =
-    expert.categories?.[0] ??
-    (expert.job_title ? undefined : getExpertRoleLabel(expert.role));
+  const area = selectedCategory ?? expert.categories?.[0];
   const areaAccent = getCategoryAccent(area);
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]",
-          areaAccent.accent.band,
-        )}
+        className="pointer-events-none absolute inset-x-0 top-0 h-[4.5rem]"
+        style={{ backgroundColor: expertPastel(topicColor) }}
       />
       <Link
         href={`/marketplace/experts/${expert.id}`}
@@ -57,20 +63,17 @@ export function ExpertCard({ expert, isHired }: Props) {
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={88}
+          backgroundColor={topicColor}
+          category={selectedCategory ?? expert.categories?.[0]}
           className="rounded-full ring-4 ring-white"
         />
 
         <div>
           <ExpertIdentityDetails
             name={expert.name}
+            role={expert.role}
+            jobTitle={expert.job_title}
             nameAlign="baseline"
-            nameAccessory={
-              expert.job_title ? (
-                <span className="min-w-0 truncate text-sm text-zinc-500">
-                  {expert.job_title}
-                </span>
-              ) : undefined
-            }
           />
           {area ? <CategoryTag category={area} className="mt-2" /> : null}
           <ExpertTagline tagline={expert.tagline} compact />
@@ -92,7 +95,8 @@ export function ExpertCard({ expert, isHired }: Props) {
                   <Icon
                     icon={areaAccent.icon ?? Book04Icon}
                     size={12}
-                    className={cn("shrink-0", areaAccent.accent.icon)}
+                    className="shrink-0"
+                    style={{ color: topicColor }}
                     aria-hidden
                   />
                   <span className="truncate">{skill.title}</span>

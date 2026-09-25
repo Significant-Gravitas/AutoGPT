@@ -267,16 +267,29 @@ class ChatConfig(BaseSettings):
     )
     gate_model: str = Field(
         default="anthropic/claude-haiku-4-5",
-        description="Model backing the auto-mode action gate classifier "
-        "(``copilot/gate``). Deliberately NOT routed through "
+        description="Model backing the auto-mode action supervisor "
+        "(``copilot/gate/classifier.py``). Deliberately NOT routed through "
         "``_apply_local_aux_models``: silently swapping a security "
         "classifier for whichever small model a local operator happens to "
         "run is exactly the substitution nobody would notice.",
+    )
+    gate_content_model: str = Field(
+        default="anthropic/claude-sonnet-5",
+        description="Model backing the content judge on outside reads "
+        "(``copilot/gate/content.py``); Haiku missed most injections in pages "
+        "past a few hundred characters. Not routed through "
+        "``_apply_local_aux_models``, for the same reason as ``gate_model``.",
     )
     gate_timeout_s: float = Field(
         default=6.0,
         description="Hard timeout for one gate classification. Expiry is not "
         "an error path — it resolves to 'ask'.",
+    )
+    content_judge_timeout_s: float = Field(
+        default=15.0,
+        description="Hard timeout for one content-judge call on an outside "
+        "read. Provisional until the supervisor measurement sets it from the "
+        "judge's p95; expiry holds the read.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(

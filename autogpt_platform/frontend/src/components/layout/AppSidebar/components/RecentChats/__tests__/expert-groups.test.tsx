@@ -198,11 +198,11 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
-    expect(expertGroup.querySelector('[role="img"]')).not.toBe(null);
+    expect(expertGroup.querySelector("img")).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
-  it("uses a neutral fallback when no appearance is saved", async () => {
+  it("uses a stable warm-stone fallback independent of the accent", async () => {
     const novaExpert: Expert = {
       ...mariaExpert,
       id: "expert-nova",
@@ -220,9 +220,10 @@ describe("RecentChats — expert groups", () => {
     const expertGroup = await screen.findByRole("button", {
       name: "Nova chats",
     });
-    const avatar = expertGroup.querySelector('[role="img"]');
-    expect(avatar?.getAttribute("aria-label")).toBe("Nova, AI Expert");
-    expect(expertGroup.querySelector("[data-avatar]")).toBeNull();
+    const avatar = expertGroup.querySelector("img");
+    expect(avatar?.getAttribute("width")).toBe("32");
+    expect(avatar?.getAttribute("height")).toBe("32");
+    expect(avatar?.getAttribute("src")).toContain("content.png");
   });
 
   it("keeps the group-level and list-level Load more buttons distinct", async () => {

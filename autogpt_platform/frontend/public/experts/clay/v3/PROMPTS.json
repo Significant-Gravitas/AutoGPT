@@ -1,0 +1,42 @@
+[
+  {
+    "name": "jules",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add ONE broad cream rounded cap patch on the upper-right tip of the head, following its slope. The body is now plain terracotta. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/jules.png"
+  },
+  {
+    "name": "remy",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add TWO separate irregular cream pebble-shaped patches on the upper-left and upper-right of the head, above the face. Body plain sea glass. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/remy.png"
+  },
+  {
+    "name": "quinn",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add ONE sweeping cream curved inlay along the left edge of the head, plus ONE cream oval pool on the bottom right of the body. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/quinn.png"
+  },
+  {
+    "name": "harper",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add THREE soft cream round spots of uneven size on the top half of the blue head, keep face clear. Body plain blue. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/harper.png"
+  },
+  {
+    "name": "vera",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add ONE broad cream crescent inset along the upper-right curved edge of the green head, and TWO small rounded cream patches on opposite lower sides of the body. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/vera.png"
+  },
+  {
+    "name": "anika",
+    "prompt": "Edit this existing expert avatar PNG. Remove the body stripe. Add ONE large asymmetric cream teardrop inset along the left edge of the head, well away from eyes. Body plain apricot. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/anika.png"
+  },
+  {
+    "name": "marco",
+    "prompt": "Edit this existing expert avatar PNG. Replace body stripe with TWO separate chunky cream oval pools at the bottom left and bottom right of the body. Keep the rust head plain. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/marco.png"
+  },
+  {
+    "name": "lena",
+    "prompt": "Edit this existing expert avatar PNG. Keep the existing cream body curl and add ONE cream rounded cap inset on the upper-left corner of the head. Cream is warm off-white #EAE2D5, matte clay inlaid flush into the surface with a subtle narrow seam, never raised accessories. Preserve this exact character's mineral hue, head silhouette, body outline, tiny charcoal facial features, expression, proportions, lighting and framing. Only change the cream markings as specified. No added limbs, props, clothing, hair, eyes or text. Full single figure on a truly transparent alpha background, square PNG, safe margins.",
+    "source": "../v2/lena.png"
+  }
+]

@@ -238,6 +238,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
     GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_7 = "x-ai/grok-4.7"
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2_5 = "moonshotai/kimi-k2.5"
@@ -256,6 +257,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     ZAI_GLM_5 = "z-ai/glm-5"
     ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
     ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
+    ZAI_GLM_5_3 = "z-ai/glm-5.3"
     # Sakana AI models
     SAKANA_FUGU_ULTRA_V2 = "sakana/fugu-ultra-v2"
     # Inception Labs models

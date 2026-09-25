@@ -48,6 +48,9 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "delete_skill": ("Delete skill", ("name",)),
     "delete_workspace_file": ("Delete file", ("path",)),
     "memory_forget_confirm": ("Forget memories", ()),
+    # The card names the block or workflow from the call's subject instead.
+    "run_capability": ("Run a block", ()),
+    "run_agent": ("Run a workflow", ()),
 }
 _MAX_OBJECT_CHARS = 60
 
@@ -65,6 +68,11 @@ class Headline(BaseModel):
 
 def headline_for(tool_name: str, args: dict[str, Any]) -> Headline:
     ask, keys = _ASK.get(tool_name, (f"Run {tool_name.replace('_', ' ')}", ()))
+    return named(ask, keys, args)
+
+
+def named(ask: str, keys: tuple[str, ...], args: dict[str, Any]) -> Headline:
+    """``ask`` plus the first of ``keys`` that holds a name, shortened."""
     for key in keys:
         value = args.get(key)
         if isinstance(value, str) and value.strip():

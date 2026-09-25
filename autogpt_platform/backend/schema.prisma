@@ -149,6 +149,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  ChatMessageFeedback  ChatMessageFeedback[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
@@ -753,6 +754,12 @@ model ChatMessage {
   llmAuthProvider String?
   llmCredentialId String?
 
+  // Langfuse trace of the SDK turn that wrote this assistant or reasoning
+  // row, so a rating of the reply can be scored against that trace. Null on
+  // user/tool rows, on baseline turns (no turn-level trace) and on rows
+  // predating this column.
+  langfuseTraceId String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -760,7 +767,39 @@ model ChatMessage {
   // Generic so future per-row state can land here without a migration.
   metadata Json?
 
+  Feedback ChatMessageFeedback[]
+
   @@unique([sessionId, sequence])
+}
+
+// A user's rating of an AutoPilot reply: thumbs up/down from the message
+// actions, or a copy of the reply. One row per user, message and score name,
+// so voting again updates the rating in place. The row id is also the id of
+// the matching Langfuse score, which makes re-sending a rating idempotent.
+model ChatMessageFeedback {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messageId String
+  Message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  // Copied from the message so a chat's ratings read without a join.
+  sessionId String
+
+  scoreName  String // "user-feedback" (1 = up, 0 = down) or "copy" (always 1)
+  scoreValue Int
+  comment    String?
+
+  // The trace the Langfuse score was attached to. Null when the reply had
+  // none and the score went on the chat's Langfuse session instead.
+  langfuseTraceId String?
+
+  @@unique([messageId, userId, scoreName])
+  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).

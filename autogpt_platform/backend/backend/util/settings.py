@@ -600,6 +600,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="MailerLite group that receives the monthly changelog campaign",
     )
 
+    expert_avatar_model: str = Field(
+        default="gpt-image-1.5",
+        description="OpenAI model for transparent expert PNG avatars",
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",

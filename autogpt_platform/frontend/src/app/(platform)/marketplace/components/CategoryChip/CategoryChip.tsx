@@ -1,5 +1,6 @@
 "use client";
 
+import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const NEUTRAL_SELECTED = "border-transparent bg-zinc-100 text-zinc-900";
 interface Props {
   label: string;
   title?: string;
+  color?: string;
   /** The glyph and accent this category wears everywhere else. Left out for
    *  chips that are not categories, e.g. the hero's search terms. */
   icon?: IconSvgElement | null;
@@ -50,6 +52,7 @@ interface Props {
 export function CategoryChip({
   label,
   title,
+  color,
   icon,
   accent = NEUTRAL_ACCENT,
   size = "default",
@@ -67,11 +70,21 @@ export function CategoryChip({
       aria-pressed={isSelected}
       onClick={onClick}
       unmask={false}
+      // Selected takes the category's wash; unselected hands the category's
+      // colour to the glyph and the label together, as the cards' tags do.
+      style={
+        color
+          ? isSelected
+            ? { backgroundColor: expertPastel(color) }
+            : { color }
+          : undefined
+      }
       leftIcon={
         icon ? (
           <Icon
             icon={icon}
             size={CHIP_ICON_SIZE[size]}
+            style={color ? { color } : undefined}
             className={isSelected ? undefined : accent.icon}
             aria-hidden
           />
@@ -83,10 +96,13 @@ export function CategoryChip({
         "min-w-0 hover:border-[#e9e9e9]",
         CHIP_SHAPE,
         CHIP_SIZE[size],
+        !isSelected && icon && accent.icon,
         isSelected &&
-          (accent === NEUTRAL_ACCENT
-            ? NEUTRAL_SELECTED
-            : cn(accent.chip, "border-transparent")),
+          (color
+            ? "border-transparent text-zinc-900"
+            : accent === NEUTRAL_ACCENT
+              ? NEUTRAL_SELECTED
+              : cn(accent.chip, "border-transparent")),
       )}
     >
       {label}
