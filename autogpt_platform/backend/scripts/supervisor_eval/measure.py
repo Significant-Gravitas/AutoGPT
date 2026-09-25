@@ -838,7 +838,12 @@ def _ratio(num: int, den: int) -> float | None:
 def format_report(
     result: Run, scores: dict[str, dict[str, Any]], args: argparse.Namespace
 ) -> str:
-    total = sum(v.cost_usd for v in result.verdicts)
+    # One Jev call is scored as several arms; count its cost once.
+    calls = {
+        (v.rubric, v.item_id, v.run, v.model.split("#")[0]): v.cost_usd
+        for v in result.verdicts
+    }
+    total = sum(calls.values())
     lines = [
         f"# Supervisor measurement — {', '.join(result.models)}",
         "",
