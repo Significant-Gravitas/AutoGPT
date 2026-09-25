@@ -11,7 +11,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useContext } from "react";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CARD, HALF, StatusCard } from "./ResultCards";
-import { asObject, inline, resultItemKey, str } from "./resultHelpers";
+import { inline, resultItemKey, str } from "./resultHelpers";
 
 interface ItemsProps {
   steps: Record<string, unknown>[];
