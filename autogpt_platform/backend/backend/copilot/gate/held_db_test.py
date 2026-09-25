@@ -191,7 +191,7 @@ async def test_a_call_whose_card_could_not_open_leaves_nothing_held(
 ):
     session = await _new_session(test_user_id)
 
-    with patch.object(review_store, "open_review", AsyncMock(return_value=False)):
+    with patch.object(review_store, "open_review", AsyncMock(return_value=None)):
         decision = await check_action(
             _TOOL, {"text": "no card"}, test_user_id, session, tool_call_id="c1"
         )

@@ -15,6 +15,7 @@ from backend.api.features.library.db import (
     create_library_agent,
     create_preset,
     delete_folder,
+    get_folder,
     get_folder_agents_map,
     get_folder_tree,
     get_library_agent,
@@ -46,6 +47,7 @@ from backend.api.features.search.hybrid_search import unified_hybrid_search
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
+    get_store_agent_by_version_id,
     get_store_agent_details,
     get_store_agents,
 )
@@ -399,6 +401,7 @@ class DatabaseManager(AppService):
 
     create_folder = _(create_folder)
     list_folders = _(list_folders)
+    get_folder = _(get_folder)
     get_folder_tree = _(get_folder_tree)
     update_folder = _(update_folder)
     move_folder = _(move_folder)
@@ -416,6 +419,7 @@ class DatabaseManager(AppService):
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
     get_store_agent_details = _(get_store_agent_details)
+    get_store_agent_by_version_id = _(get_store_agent_by_version_id)
     get_agent = _(get_agent)
     get_available_graph = _(get_available_graph)
 
@@ -566,12 +570,14 @@ class DatabaseManager(AppService):
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
+    get_workflow_label = _(experts_db.get_workflow_label)
     grant_expert_credentials = _(expert_credentials.grant_expert_credentials)
     revoke_expert_credential = _(expert_credentials.revoke_expert_credential)
     list_expert_credentials = _(expert_credentials.list_expert_credentials)
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
+    with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
@@ -845,6 +851,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Library Folders ============ #
     create_folder = d.create_folder
     list_folders = d.list_folders
+    get_folder = d.get_folder
     get_folder_tree = d.get_folder_tree
     update_folder = d.update_folder
     move_folder = d.move_folder
@@ -862,6 +869,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Store ============ #
     get_store_agents = d.get_store_agents
     get_store_agent_details = d.get_store_agent_details
+    get_store_agent_by_version_id = d.get_store_agent_by_version_id
     get_agent = d.get_agent
     get_available_graph = d.get_available_graph
 
@@ -977,10 +985,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     remove_expert_skill_name = d.remove_expert_skill_name
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
+    get_workflow_label = d.get_workflow_label
     grant_expert_credentials = d.grant_expert_credentials
     revoke_expert_credential = d.revoke_expert_credential
     list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
+    with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert

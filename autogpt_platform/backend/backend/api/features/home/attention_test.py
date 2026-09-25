@@ -6,6 +6,7 @@ from prisma.enums import ReviewStatus
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.constants import AUTOPILOT_NAME
+from backend.copilot.gate.references import Reference
 from backend.copilot.gate.review import node_id_for, review_payload
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -476,7 +477,7 @@ def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
             "graph_exec_id": "copilot-session-s1",
             "session_id": "s1",
             "payload": payload,
-            "instructions": "Create folder “Q3 reports”",
+            "instructions": "Create library folder “Q3 reports”",
         }
     )
 
@@ -491,9 +492,12 @@ def _one(review: PendingHumanReviewModel):
 def test_a_held_call_reads_as_its_card_on_home() -> None:
     item = _one(_gate_review())
 
-    assert item.title == "Create folder “Q3 reports”"
+    assert item.title == "Create library folder “Q3 reports”"
     assert item.headline is not None
-    assert (item.headline.ask, item.headline.object) == ("Create folder", "Q3 reports")
+    assert (item.headline.ask, item.headline.object) == (
+        "Create library folder",
+        "Q3 reports",
+    )
     # The mode's own reason is the chat's, not this call's.
     assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
     # The headline already names it.
@@ -530,7 +534,7 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
         update={"payload": {"tool": "create_folder", "arguments": {}}}
     )
     item = _one(review)
-    assert item.title == "Create folder “Q3 reports”"
+    assert item.title == "Create library folder “Q3 reports”"
     assert item.headline is None
     assert item.primary_action is not None
     assert item.primary_action.label == "Review"
@@ -545,3 +549,46 @@ def test_home_previews_lists_and_flags_as_the_card_does() -> None:
         ],
     )
     assert _one(review).preview == "To: dana@acme.com, ops@acme.com · Notify: Yes"
+
+
+def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
+    folder = Reference(
+        key="folder_id", entity="library_folder", id="f-9", name="Archive"
+    )
+    agents = [
+        Reference(key="agent_ids", entity="library_agent", id=f"a{i}", name=name)
+        for i, name in enumerate(["Digest", None, "Triage", "Notes", "Inbox"])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        # A blank is not an id, so it counts neither as shown nor as "more".
+        {"agent_ids": ["a0", "", *(f"a{i}" for i in range(1, 7))], "folder_id": "f-9"},
+        references=[folder, *agents],
+    )
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    item = _one(review)
+
+    assert item.title == "Move agents into library folder “Archive”"
+    assert item.preview == "Agents: Digest, a1, Triage, Notes, Inbox +2 more"
+
+
+def test_a_clipped_id_list_still_counts_every_id() -> None:
+    """A long enough list outgrows the per-argument clip, which stores it as a
+    string; the total is kept from the raw call."""
+    ids = [f"{i:03d}" + "0" * 33 for i in range(120)]
+    refs = [
+        Reference(key="agent_ids", entity="library_agent", id=id, name=f"Agent {i}")
+        for i, id in enumerate(ids[:5])
+    ]
+    payload = review_payload(
+        "move_agents_to_folder",
+        {"agent_ids": ids, "folder_id": "f-9"},
+        references=refs,
+    )
+    assert payload["clipped"] == ["agent_ids"]
+    review = _gate_review().model_copy(update={"payload": payload})
+
+    assert _one(review).preview == (
+        "Agents: Agent 0, Agent 1, Agent 2, Agent 3, Agent 4 +115 more · Folder: f-9"
+    )

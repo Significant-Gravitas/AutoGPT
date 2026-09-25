@@ -16,6 +16,7 @@ import {
   heldRead,
   heldReview,
   mail,
+  referenceCard,
   mcpTool,
   realCardSchemaHandler,
   realCards,
@@ -124,6 +125,67 @@ export const IdentifiedOnlyById: Story = {
   args: queueOf([deleteFolder("f1", "f-111"), deleteFolder("f2", "f-222")]),
 };
 
+// Ids the server resolved to names and pages when the call was held.
+export const NamedFolder: Story = {
+  args: queueOf([referenceCard("Delete folder")]),
+};
+
+export const NamedAgentList: Story = {
+  args: queueOf([referenceCard("Move agents")]),
+};
+
+export const NamedSchedule: Story = {
+  args: queueOf([referenceCard("Pause schedule")]),
+};
+
+export const NamedTemplate: Story = {
+  args: queueOf([referenceCard("Hire expert")]),
+};
+
+export const NamedChat: Story = {
+  args: queueOf([referenceCard("Message chat")]),
+};
+
+export const NamedCredential: Story = {
+  args: queueOf([referenceCard("Grant credential")]),
+};
+
+export const NamedAgent: Story = {
+  args: queueOf([referenceCard("Edit agent")]),
+};
+
+export const NamedTemplatePreset: Story = {
+  args: queueOf([referenceCard("Update template")]),
+};
+
+export const NamedTrigger: Story = {
+  args: queueOf([referenceCard("Delete trigger")]),
+};
+
+export const NamedRoutine: Story = {
+  args: queueOf([referenceCard("Schedule routine")]),
+};
+
+export const NamedMarketplaceAgent: Story = {
+  args: queueOf([referenceCard("Install workflow")]),
+};
+
+export const NamedWorkflow: Story = {
+  args: queueOf([referenceCard("Remove workflow")]),
+};
+
+export const NamedTeamChange: Story = {
+  args: queueOf([referenceCard("Confirm team change")]),
+};
+
+export const NamedFile: Story = {
+  args: queueOf([referenceCard("Delete file")]),
+};
+
+export const UnresolvedId: Story = {
+  args: queueOf([referenceCard("Unresolved id")]),
+};
+
 export const FiveWaiting: Story = {
   args: queueOf([
     heldReview({
@@ -168,7 +230,7 @@ const HELD_PART = (id: string, name: string): MessagePart =>
       type: "approval_required",
       tool_name: "create_folder",
       review_id: `copilot-node-gate-create_folder:${id}`,
-      ask: "Create folder",
+      ask: "Create library folder",
       object: name,
     },
   }) as MessagePart;
@@ -192,7 +254,7 @@ export const ChainRows: StoryObj = {
           type: "approval_required",
           tool_name: "create_folder",
           review_id: null,
-          ask: "Create folder",
+          ask: "Create library folder",
         },
       } as MessagePart,
     ];
@@ -319,7 +381,7 @@ function homeRow(
 export const HomeRowBefore: StoryObj = {
   render: () =>
     homeRow(
-      "Create folder — Ask First is on for this chat, so this action needs your approval.",
+      "Create library folder — Ask First is on for this chat, so this action needs your approval.",
       "Otto is waiting for your approval.",
       "Review",
     ),
@@ -328,10 +390,10 @@ export const HomeRowBefore: StoryObj = {
 export const HomeRowAfter: StoryObj = {
   render: () =>
     homeRow(
-      "Create folder “Q3 reports”",
+      "Create library folder “Q3 reports”",
       "Otto is waiting for your approval.",
       "Open chat",
-      { ask: "Create folder", object: "Q3 reports" },
+      { ask: "Create library folder", object: "Q3 reports" },
     ),
 };
 

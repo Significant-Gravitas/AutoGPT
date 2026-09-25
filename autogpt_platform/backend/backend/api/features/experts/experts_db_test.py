@@ -2844,6 +2844,26 @@ async def test_remove_workflow_detaches_it_from_the_expert(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_label_is_its_agents_name_for_the_owner_only(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    label = await experts_db.get_workflow_label(test_user.id, installed.id)
+
+    assert label is not None
+    assert (label.expert_id, label.name) == (hired.expert.id, installed.name)
+    assert label.name
+    stranger = await _create_seed_user()
+    assert await experts_db.get_workflow_label(stranger.id, installed.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_remove_workflow_unknown_id_raises(server: SpinTestServer, test_user):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
