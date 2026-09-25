@@ -5,7 +5,7 @@ const capture = vi.hoisted(() => vi.fn());
 vi.mock("posthog-js", () => ({ default: { capture } }));
 
 const authUser = vi.hoisted(() => ({
-  current: { id: "user-1" } as { id: string } | null,
+  current: { id: "user-1" } as { id: string; created_at?: string } | null,
 }));
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: authUser.current }),
@@ -13,11 +13,18 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
 const flagsReady = vi.hoisted(() => ({ current: true }));
+const flagReadiness = vi.hoisted(() => ({
+  current: {} as Record<string, boolean>,
+}));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
+  Flag: {
+    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    HIRE_EXPERTS: "hire-experts",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+  },
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
-    ready: flagsReady.current,
+    ready: flagReadiness.current[flag] ?? flagsReady.current,
   }),
 }));
 
@@ -48,6 +55,7 @@ beforeEach(() => {
   authUser.current = { id: "user-1" };
   flags.current = { "onboarding-brain-dump": true };
   flagsReady.current = true;
+  flagReadiness.current = {};
   onboarding.current = { state: { completedSteps: [] }, completeStep: vi.fn() };
 });
 
@@ -150,6 +158,55 @@ describe("useTabIntroCard — when it opens", () => {
     expect(capture).not.toHaveBeenCalled();
     expect(onboarding.current.completeStep).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(SEEN_KEY)).toBeNull();
+  });
+});
+
+describe("useTabIntroCard — workflow migration", () => {
+  beforeEach(() => {
+    authUser.current = { id: "user-1", created_at: "2026-09-01T00:00:00Z" };
+    flags.current = {
+      "onboarding-brain-dump": true,
+      "hire-experts": true,
+      "autogpt-new-layout": true,
+    };
+  });
+
+  it("replaces the old agents intro without recording or showing it", () => {
+    onboarding.current.state = { completedSteps: ["WORKFLOWS_MOVED"] };
+
+    expect(renderGate().result.current.isOpen).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+    expect(onboarding.current.completeStep).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(SEEN_KEY)).toBeNull();
+  });
+
+  it.each(["hire-experts", "autogpt-new-layout"])(
+    "waits for %s before deciding which intro applies",
+    (flag) => {
+      flags.current[flag] = false;
+      flagReadiness.current[flag] = false;
+      const { result, rerender } = renderGate();
+      expect(result.current.isOpen).toBe(false);
+      expect(capture).not.toHaveBeenCalled();
+
+      flagReadiness.current[flag] = true;
+      rerender();
+
+      expect(result.current.isOpen).toBe(true);
+    },
+  );
+
+  it.each(["marketplace", "build"] as const)(
+    "preserves the %s intro for existing users",
+    (tab) => {
+      expect(renderGate(tab).result.current.isOpen).toBe(true);
+    },
+  );
+
+  it("preserves the agents intro for users who joined after the rollout", () => {
+    authUser.current = { id: "user-1", created_at: "2026-09-22T00:00:00Z" };
+
+    expect(renderGate().result.current.isOpen).toBe(true);
   });
 });
 
