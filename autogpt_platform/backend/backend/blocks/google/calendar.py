@@ -3,6 +3,7 @@ import enum
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -15,6 +16,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
 
@@ -175,33 +177,43 @@ class GoogleCalendarReadEventsBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         try:
             service = self._build_service(credentials, **kwargs)
 
-            # Calculate end time based on start time and time range
-            end_time = input_data.start_time + timedelta(
-                days=input_data.time_range_days
+            # Google needs a UTC offset; read times without one in the user's zone.
+            start_time = _with_zone(
+                input_data.start_time, execution_context.user_timezone
             )
+            # Calculate end time based on start time and time range
+            end_time = start_time + timedelta(days=input_data.time_range_days)
 
             # Call Google Calendar API
             result = await asyncio.to_thread(
                 self._read_calendar,
                 service=service,
                 calendarId=input_data.calendar_id,
-                time_min=input_data.start_time.isoformat(),
+                time_min=start_time.isoformat(),
                 time_max=end_time.isoformat(),
                 max_results=input_data.max_events,
                 single_events=True,
                 search_term=input_data.search_term,
                 show_deleted=False,
-                show_hidden=input_data.include_declined_events,
                 page_token=input_data.page_token,
             )
 
+            items = result.get("items", [])
+            if not input_data.include_declined_events:
+                items = [item for item in items if not _declined_by_me(item)]
+
             # Format events into a user-friendly structure
-            formatted_events = self._format_events(result.get("items", []))
+            formatted_events = self._format_events(items)
 
             # Include next page token if available
             if next_page_token := result.get("nextPageToken"):
@@ -245,7 +257,6 @@ class GoogleCalendarReadEventsBlock(Block):
         single_events: bool,
         search_term: str | None = None,
         show_deleted: bool = False,
-        show_hidden: bool = False,
         page_token: str | None = None,
     ) -> dict:
         """Read calendar events with optional filtering."""
@@ -260,7 +271,6 @@ class GoogleCalendarReadEventsBlock(Block):
             "singleEvents": single_events,
             "orderBy": "startTime",
             "showDeleted": show_deleted,
-            "showHiddenInvitations": show_hidden,
             **({"pageToken": page_token} if page_token else {}),
         }
 
@@ -328,7 +338,10 @@ class GoogleCalendarReadEventsBlock(Block):
                 has_video_call=has_video_call,
                 video_link=video_link,
                 calendar_link=event.get("htmlLink", ""),
-                is_recurring=bool(event.get("recurrence")),
+                # Expanded occurrences carry recurringEventId, not recurrence.
+                is_recurring=bool(
+                    event.get("recurrence") or event.get("recurringEventId")
+                ),
             )
 
             formatted_events.append(formatted_event)
@@ -405,7 +418,9 @@ class GoogleCalendarCreateEventBlock(Block):
             description="Specify when the event starts and ends",
             default_factory=lambda: DurationTiming(
                 discriminator="duration_timing",
-                start_datetime=datetime.now().replace(microsecond=0, second=0, minute=0)
+                start_datetime=datetime.now(tz=timezone.utc).replace(
+                    microsecond=0, second=0, minute=0
+                )
                 + timedelta(hours=1),
                 duration_minutes=60,
             ),
@@ -482,7 +497,12 @@ class GoogleCalendarCreateEventBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         try:
             service = self._build_service(credentials, **kwargs)
@@ -498,15 +518,13 @@ class GoogleCalendarCreateEventBlock(Block):
                     minutes=input_data.timing.duration_minutes
                 )
 
-            # Format datetimes for Google Calendar API
-            start_time_str = start_datetime.isoformat()
-            end_time_str = end_datetime.isoformat()
-
             # Build the event body
+            zone = _user_zone(execution_context.user_timezone).key
+            recurring = input_data.recurrence.discriminator == "recurring"
             event_body = {
                 "summary": input_data.event_title,
-                "start": {"dateTime": start_time_str},
-                "end": {"dateTime": end_time_str},
+                "start": _event_time(start_datetime, zone, recurring),
+                "end": _event_time(end_datetime, zone, recurring),
             }
 
             # Add optional fields
@@ -603,3 +621,37 @@ class GoogleCalendarCreateEventBlock(Block):
         ).execute()
 
         return result
+
+
+def _user_zone(name: str) -> ZoneInfo:
+    """The user's profile time zone, or UTC if it isn't a known zone."""
+    try:
+        return ZoneInfo(name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def _with_zone(moment: datetime, zone_name: str) -> datetime:
+    """Read a time without a UTC offset as local time in the user's zone."""
+    if moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=_user_zone(zone_name))
+
+
+def _declined_by_me(event: dict) -> bool:
+    return any(
+        attendee.get("self") and attendee.get("responseStatus") == "declined"
+        for attendee in event.get("attendees", [])
+    )
+
+
+def _event_time(moment: datetime, zone: str, recurring: bool) -> dict:
+    """An event start or end.
+
+    Google needs a UTC offset or a time zone to place the time, and always a
+    time zone for repeating events, which it expands in that zone.
+    """
+    body = {"dateTime": moment.isoformat()}
+    if moment.tzinfo is None or recurring:
+        body["timeZone"] = zone
+    return body
