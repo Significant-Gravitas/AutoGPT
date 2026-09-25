@@ -720,6 +720,13 @@ def _sheets_read_graph(credentials_id: str) -> dict:
     }
 
 
+@pytest.fixture
+def google_sheets_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Google blocks disable themselves when no OAuth client is configured, as
+    in CI, and graph validation rejects a disabled block."""
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+
+
 def _own_credentials(mocker: pytest_mock.MockFixture, *credentials_ids: str) -> None:
     mocker.patch(
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager.store.get_all_creds",
@@ -727,6 +734,7 @@ def _own_credentials(mocker: pytest_mock.MockFixture, *credentials_ids: str) -> 
     )
 
 
+@pytest.mark.usefixtures("google_sheets_enabled")
 @pytest.mark.parametrize(
     "owned_ids,expected_credentials_id",
     [(["own-cred"], "own-cred"), ([], None)],
@@ -758,6 +766,7 @@ def test_create_new_graph_keeps_only_a_file_picked_with_the_callers_credentials(
     assert saved.nodes[0].input_default["range"] == "A1"
 
 
+@pytest.mark.usefixtures("google_sheets_enabled")
 def test_update_graph_keeps_the_file_the_owner_picked(
     mocker: pytest_mock.MockFixture,
 ) -> None:
