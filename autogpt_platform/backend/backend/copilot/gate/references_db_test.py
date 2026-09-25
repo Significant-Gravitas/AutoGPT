@@ -7,7 +7,7 @@ from prisma.models import PendingHumanReview
 
 from backend.api.features.library.db import create_folder
 from backend.copilot.gate import review as review_store
-from backend.copilot.gate.references import Reference, resolve_references
+from backend.copilot.gate.references import Fact, Reference, resolve_references
 from backend.copilot.model import ChatSession, upsert_chat_session
 
 
@@ -41,7 +41,7 @@ async def test_a_held_delete_names_the_folder_in_the_stored_card(
             name=name,
             href=f"/library?folder={folder.id}",
             kind="Library folder",
-            meta=["0 agents", "0 subfolders"],
+            meta=[Fact(text="0 agents"), Fact(text="0 subfolders")],
             summary="0 agents · 0 subfolders",
         )
     ]

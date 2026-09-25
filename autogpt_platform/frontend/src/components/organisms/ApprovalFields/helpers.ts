@@ -1,3 +1,6 @@
+import { formatDistanceToNow } from "date-fns";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+
 export const REDACTED = "[redacted]";
 export const MAX_FIELDS = 6;
 export const CLAMP_LINES = 3;
@@ -33,8 +36,37 @@ export interface Reference {
   // The hover card: the thing's family, its own prose, and short facts.
   kind: string | null;
   description: string | null;
-  meta: string[];
+  meta: Fact[];
+  avatarURL: string | null;
+  avatarColor: string | null;
+  skills: string[];
   summary: string | null;
+}
+
+// A card fact: `text` as stored, or a cadence or time the card words for the viewer.
+export interface Fact {
+  text: string;
+  cron: string | null;
+  label: string | null;
+  at: string | null;
+}
+
+export function factText(fact: Fact) {
+  if (fact.cron) return cronText(fact.cron) ?? fact.text;
+  if (fact.label && fact.at) {
+    const at = new Date(fact.at);
+    if (!Number.isNaN(at.getTime()))
+      return `${fact.label} ${formatDistanceToNow(at, { addSuffix: true })}`;
+  }
+  return fact.text;
+}
+
+function cronText(cron: string) {
+  try {
+    return humanizeCronExpression(cron);
+  } catch {
+    return null;
+  }
 }
 
 export function fieldKind(key: string, value: unknown): FieldKind {

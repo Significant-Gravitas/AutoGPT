@@ -30,7 +30,29 @@
             "href": "/library?folder=f-q3",
             "kind": "Library folder",
             "description": null,
-            "meta": ["4 agents", "1 subfolder", "In Finance"],
+            "meta": [
+              {
+                "text": "4 agents",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "1 subfolder",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Finance",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "4 agents · 1 subfolder · In Finance"
           }
         ],
@@ -105,7 +127,23 @@
             "href": "/library?folder=f-archive",
             "kind": "Library folder",
             "description": null,
-            "meta": ["4 agents", "1 subfolder"],
+            "meta": [
+              {
+                "text": "4 agents",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "1 subfolder",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "4 agents · 1 subfolder"
           },
           {
@@ -116,7 +154,29 @@
             "href": "/library/agents/lib-digest",
             "kind": "Agent",
             "description": "Summarises overnight email and news at 7am.",
-            "meta": ["Version 3", "In Mornings", "Last run 2026-09-24"],
+            "meta": [
+              {
+                "text": "Version 3",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Mornings",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Last run 2026-09-24",
+                "cron": null,
+                "label": "Last run",
+                "at": "2026-09-24T14:05:00+00:00"
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Version 3 · In Mornings · Last run 2026-09-24"
           },
           {
@@ -128,6 +188,9 @@
             "kind": null,
             "description": null,
             "meta": [],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": null
           },
           {
@@ -138,7 +201,29 @@
             "href": "/library/agents/lib-triage",
             "kind": "Agent",
             "description": "Labels and routes new support email.",
-            "meta": ["Version 3", "In Mornings", "Never run"],
+            "meta": [
+              {
+                "text": "Version 3",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Mornings",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Never run",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Version 3 · In Mornings · Never run"
           },
           {
@@ -149,7 +234,29 @@
             "href": "/library/agents/lib-notes",
             "kind": "Agent",
             "description": "Turns call recordings into action items.",
-            "meta": ["Version 3", "In Mornings", "Never run"],
+            "meta": [
+              {
+                "text": "Version 3",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Mornings",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Never run",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Version 3 · In Mornings · Never run"
           },
           {
@@ -160,13 +267,35 @@
             "href": "/library/agents/lib-invoices",
             "kind": "Agent",
             "description": "Nudges clients about overdue invoices.",
-            "meta": ["Version 3", "In Mornings", "Never run"],
+            "meta": [
+              {
+                "text": "Version 3",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Mornings",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Never run",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Version 3 · In Mornings · Never run"
           }
         ],
         "reference_totals": {
-          "agent_ids": 7,
-          "folder_id": 1
+          "folder_id": 1,
+          "agent_ids": 7
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -224,11 +353,29 @@
             "kind": "Schedule",
             "description": null,
             "meta": [
-              "Runs 0 7 * * *",
-              "Next 2026-09-25 07:00",
-              "Agent: Morning digest"
+              {
+                "text": "Runs 0 7 * * *",
+                "cron": "0 7 * * *",
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Next run 2026-09-25",
+                "cron": null,
+                "label": "Next run",
+                "at": "2026-09-25T07:00:00+00:00"
+              },
+              {
+                "text": "Agent: Morning digest",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
             ],
-            "summary": "Runs 0 7 * * * · Next 2026-09-25 07:00 · Agent: Morning digest"
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
+            "summary": "Runs 0 7 * * * · Next run 2026-09-25 · Agent: Morning digest"
           }
         ],
         "reference_totals": {
@@ -294,7 +441,22 @@
             "href": "/marketplace/experts/tpl-ada",
             "kind": "Expert template",
             "description": "Keeps the books balanced.",
-            "meta": ["Finance"],
+            "meta": [
+              {
+                "text": "Finance",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#7c3aed",
+            "skills": [
+              "Month-end close",
+              "Receipt matching",
+              "Cash forecast",
+              "Payroll"
+            ],
             "summary": "Finance"
           }
         ],
@@ -361,7 +523,23 @@
             "href": "/copilot?sessionId=s-q3",
             "kind": "Chat",
             "description": null,
-            "meta": ["Started 2026-09-24", "Last active 2026-09-24"],
+            "meta": [
+              {
+                "text": "Started 2026-09-24",
+                "cron": null,
+                "label": "Started",
+                "at": "2026-09-24T14:05:00+00:00"
+              },
+              {
+                "text": "Last active 2026-09-24",
+                "cron": null,
+                "label": "Last active",
+                "at": "2026-09-24T14:05:00+00:00"
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Started 2026-09-24 · Last active 2026-09-24"
           }
         ],
@@ -428,7 +606,23 @@
             "href": "/settings/integrations",
             "kind": "Credential",
             "description": null,
-            "meta": ["github", "api key"],
+            "meta": [
+              {
+                "text": "github",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "api key",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "github · api key"
           },
           {
@@ -439,7 +633,17 @@
             "href": "/team/exp-ada",
             "kind": "Expert",
             "description": null,
-            "meta": ["Bookkeeper"],
+            "meta": [
+              {
+                "text": "Bookkeeper",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#0ea5e9",
+            "skills": [],
             "summary": "Bookkeeper"
           }
         ],
@@ -502,7 +706,29 @@
             "href": "/library/agents/lib-digest",
             "kind": "Agent",
             "description": "Summarises overnight email and news at 7am.",
-            "meta": ["Version 3", "In Mornings", "Last run 2026-09-24"],
+            "meta": [
+              {
+                "text": "Version 3",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "In Mornings",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Last run 2026-09-24",
+                "cron": null,
+                "label": "Last run",
+                "at": "2026-09-24T14:05:00+00:00"
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Version 3 · In Mornings · Last run 2026-09-24"
           }
         ],
@@ -564,7 +790,17 @@
             "href": "/library/agents/lib-digest?activeTab=templates&activeItem=pre-weekly",
             "kind": "Template",
             "description": "The digest, but Mondays only.",
-            "meta": ["Agent: Morning digest"],
+            "meta": [
+              {
+                "text": "Agent: Morning digest",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Agent: Morning digest"
           }
         ],
@@ -626,7 +862,17 @@
             "href": "/library/agents/lib-digest?activeTab=triggers&activeItem=preset%3Apre-inbox",
             "kind": "Trigger",
             "description": "Runs when an invoice lands.",
-            "meta": ["Agent: Morning digest"],
+            "meta": [
+              {
+                "text": "Agent: Morning digest",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Agent: Morning digest"
           }
         ],
@@ -688,7 +934,17 @@
             "href": "/team/exp-ada",
             "kind": "Routine",
             "description": "Reconcile every account against the bank feed, flag anything over $500 that has no receipt, and draft the close summary for review.",
-            "meta": ["Runs 0 9 1 * *"],
+            "meta": [
+              {
+                "text": "Runs 0 9 1 * *",
+                "cron": "0 9 1 * *",
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "Runs 0 9 1 * *"
           }
         ],
@@ -755,7 +1011,29 @@
             "href": "/marketplace/agent/ledgerly/receipt-matcher",
             "kind": "Marketplace agent",
             "description": "Matches card spend to emailed receipts.",
-            "meta": ["By ledgerly", "1,204 runs", "4.6 ★"],
+            "meta": [
+              {
+                "text": "By ledgerly",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "1,204 runs",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "4.6 ★",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "By ledgerly · 1,204 runs · 4.6 ★"
           },
           {
@@ -766,7 +1044,17 @@
             "href": "/team/exp-ada",
             "kind": "Expert",
             "description": null,
-            "meta": ["Bookkeeper"],
+            "meta": [
+              {
+                "text": "Bookkeeper",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#0ea5e9",
+            "skills": [],
             "summary": "Bookkeeper"
           }
         ],
@@ -830,6 +1118,9 @@
             "kind": "Expert workflow",
             "description": null,
             "meta": [],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": null
           }
         ],
@@ -891,8 +1182,24 @@
             "href": null,
             "kind": "New hire",
             "description": "Ships on Thursdays.",
-            "meta": ["Release manager"],
-            "summary": "Release manager"
+            "meta": [
+              {
+                "text": "Release manager",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Engineering",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
+            ],
+            "avatar_url": null,
+            "avatar_color": "#7c3aed",
+            "skills": ["Release notes", "Changelog"],
+            "summary": "Release manager · Engineering"
           }
         ],
         "reference_totals": {
@@ -959,11 +1266,34 @@
             "kind": "Workspace file",
             "description": null,
             "meta": [
-              "application/pdf",
-              "242 KB",
-              "Modified 2026-09-24",
-              "In /reports"
+              {
+                "text": "application/pdf",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "242 KB",
+                "cron": null,
+                "label": null,
+                "at": null
+              },
+              {
+                "text": "Modified 2026-09-24",
+                "cron": null,
+                "label": "Modified",
+                "at": "2026-09-24T14:05:00+00:00"
+              },
+              {
+                "text": "In /reports",
+                "cron": null,
+                "label": null,
+                "at": null
+              }
             ],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": "application/pdf · 242 KB · Modified 2026-09-24 · In /reports"
           }
         ],
@@ -1026,6 +1356,9 @@
             "kind": null,
             "description": null,
             "meta": [],
+            "avatar_url": null,
+            "avatar_color": null,
+            "skills": [],
             "summary": null
           }
         ],

@@ -162,5 +162,6 @@ export function referenceCards(): ReferenceCard[] {
 export function referenceCard(story: string) {
   const card = referenceCards().find((c) => c.story === story);
   if (!card) throw new Error(`No reference card "${story}"`);
-  return card.review;
+  // A copy: tests edit the payload, and the JSON module is shared.
+  return structuredClone(card.review);
 }

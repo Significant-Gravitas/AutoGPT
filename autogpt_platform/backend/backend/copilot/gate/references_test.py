@@ -14,6 +14,7 @@ from backend.copilot.gate import references
 from backend.copilot.gate.headline import _OBJECT_ID, gated_tools, headline_for
 from backend.copilot.gate.references import (
     REFERENCES,
+    Fact,
     Reference,
     resolve_references,
     wanted_references,
@@ -70,7 +71,7 @@ async def test_a_single_id_resolves_to_its_name_and_page():
         name="Q3 reports",
         href="/library?folder=f-111",
         kind="Library folder",
-        meta=["0 agents", "0 subfolders"],
+        meta=[Fact(text="0 agents"), Fact(text="0 subfolders")],
         summary="0 agents · 0 subfolders",
     )
     lib.get_folder.assert_awaited_once_with("f-111", "user-1")
@@ -308,7 +309,7 @@ async def test_a_resolved_agent_carries_its_card_for_the_hover():
         "Digest",
         "Sends the morning digest",
     )
-    assert ref.meta == ["Version 1", "Never run"]
+    assert [fact.text for fact in ref.meta] == ["Version 1", "Never run"]
     assert ref.summary == "Version 1 · Never run"
 
 
@@ -351,7 +352,7 @@ async def _resolved_agent(description: str) -> Reference:
 @pytest.mark.parametrize(
     "next_run, expected",
     [
-        ("2026-09-25T07:00:00+00:00", "Runs 0 7 * * * · Next 2026-09-25 07:00"),
+        ("2026-09-25T07:00:00+00:00", "Runs 0 7 * * * · Next run 2026-09-25"),
         ("", "Runs 0 7 * * * · Paused"),
     ],
 )
@@ -379,3 +380,7 @@ async def test_a_schedule_summary_says_when_it_runs_next_or_that_it_is_paused(
         )
 
     assert (ref.name, ref.summary) == ("Daily digest", expected)
+    # The card words the cadence and the next run itself, from the raw values.
+    assert ref.meta[0].cron == "0 7 * * *"
+    if next_run:
+        assert ref.meta[1].at == datetime.fromisoformat(next_run)

@@ -197,13 +197,19 @@ def _preset(id: str, name: str, description: str, webhook_id: str | None) -> Mag
 
 def _experts() -> MagicMock:
     experts = MagicMock()
-    ada = _named("tpl-ada", "Ada")
-    ada.tagline, ada.job_title, ada.role = "Keeps the books balanced.", None, "Finance"
-    experts.list_templates = AsyncMock(return_value=[ada])
+    ada = _template("tpl-ada", "Ada", "Keeps the books balanced.", None, "Finance")
+    grace = _template(
+        "tpl-grace", "Grace", "Ships on Thursdays.", "Release manager", "Engineering"
+    )
+    experts.list_templates = AsyncMock(return_value=[ada, grace])
+    experts.with_bundled_skills = AsyncMock(
+        side_effect=lambda templates, user_id: templates
+    )
     hired = _named("exp-ada", "Ada")
     hired.tagline, hired.job_title, hired.role = None, "Bookkeeper", "Finance"
     experts.get_expert = AsyncMock(return_value=hired)
     hired.bio, hired.is_archived = None, False
+    hired.avatar_url, hired.color = None, "#0ea5e9"
     routine = ExpertRoutine(
         id="rt-close",
         expert_id="exp-ada",
@@ -218,6 +224,23 @@ def _experts() -> MagicMock:
         return_value=ExpertWorkflowLabel(expert_id="exp-ada", name="Receipt matcher")
     )
     return experts
+
+
+def _template(
+    id: str, name: str, tagline: str, job_title: str | None, role: str
+) -> MagicMock:
+    template = _named(id, name)
+    template.tagline, template.job_title, template.role = tagline, job_title, role
+    template.bio, template.categories = None, [role]
+    template.avatar_url, template.color = None, "#7c3aed"
+    template.bundled_skills = [MagicMock(title=title) for title in _SKILLS.get(id, [])]
+    return template
+
+
+_SKILLS = {
+    "tpl-ada": ["Month-end close", "Receipt matching", "Cash forecast", "Payroll"],
+    "tpl-grace": ["Release notes", "Changelog"],
+}
 
 
 def _store() -> MagicMock:
@@ -244,6 +267,7 @@ async def _redis() -> MagicMock:
             job_title="Release manager",
             tagline="Ships on Thursdays.",
             template_id="tpl-grace",
+            color="#7c3aed",
         ),
         user_turn_watermark=1,
     )

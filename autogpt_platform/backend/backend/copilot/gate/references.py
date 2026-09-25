@@ -7,9 +7,9 @@ from datetime import datetime
 from typing import Any, Awaitable, Callable, Literal
 from urllib.parse import quote, urlencode
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import Expert, ExpertTemplate
 from backend.api.features.library.model import LibraryAgent, LibraryFolder
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession, get_chat_session_metadata
@@ -107,6 +107,21 @@ _MAX_SUMMARY_CHARS = 140
 _MAX_DESCRIPTION_CHARS = 240
 
 
+class Fact(BaseModel):
+    """One short fact; with ``cron`` or ``at`` the card words it for the viewer."""
+
+    text: str
+    cron: str | None = None
+    # Shown as the label and the time relative to now, e.g. "Last active 5 minutes ago".
+    label: str | None = None
+    at: datetime | None = None
+
+    # Stored in a JSON payload, so the card always parses one ISO form.
+    @field_serializer("at")
+    def _iso(self, at: datetime | None) -> str | None:
+        return at.isoformat() if at else None
+
+
 class Reference(BaseModel):
     key: str
     entity: Entity
@@ -117,7 +132,10 @@ class Reference(BaseModel):
     # The hover card: what family the thing is, its own prose, short facts.
     kind: str | None = None
     description: str | None = None
-    meta: list[str] = []
+    meta: list[Fact] = []
+    avatar_url: str | None = None
+    avatar_color: str | None = None
+    skills: list[str] = []
     # The card's facts as one line, for surfaces with room for no more.
     summary: str | None = None
 
@@ -172,7 +190,10 @@ class _Found(BaseModel):
     name: str
     href: str | None = None
     description: str | None = None
-    meta: list[str | None] = []
+    meta: list[str | Fact | None] = []
+    avatar_url: str | None = None
+    avatar_color: str | None = None
+    skills: list[str] = []
 
 
 async def _resolve(ref: Reference, call: _Call) -> Reference:
@@ -189,7 +210,9 @@ async def _resolve(ref: Reference, call: _Call) -> Reference:
         return ref
     if found is None or not found.name.strip():
         return ref
-    meta = [line for m in found.meta if (line := _one_line(m))]
+    facts = [fact for m in found.meta if (fact := _fact(m))]
+    # A role and an area can be the same word; say it once.
+    meta = [f for i, f in enumerate(facts) if f.text not in {g.text for g in facts[:i]}]
     description = _clip(found.description, _MAX_DESCRIPTION_CHARS)
     return ref.model_copy(
         update={
@@ -198,7 +221,11 @@ async def _resolve(ref: Reference, call: _Call) -> Reference:
             "kind": found.kind,
             "description": description,
             "meta": meta,
-            "summary": _one_line(" · ".join(meta)) or _one_line(description),
+            "avatar_url": found.avatar_url,
+            "avatar_color": found.avatar_color or None,
+            "skills": found.skills,
+            "summary": _one_line(" · ".join(fact.text for fact in meta))
+            or _one_line(description),
         }
     )
 
@@ -266,7 +293,7 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
     if job is None:
         return None
     # include_paused lists schedules with no next run.
-    when = job.next_run_time[:16].replace("T", " ")
+    when = datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
     href, agent = "/library/followups", None
     if isinstance(job, GraphExecutionJobInfo):
         agent = await library_db().get_library_agent_by_graph_id(
@@ -279,8 +306,8 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
         name=job.name,
         href=href,
         meta=[
-            f"Runs {job.cron or 'once'}",
-            f"Next {when}" if when else "Paused",
+            _cron(job.cron) if job.cron else "Runs once",
+            _when("Next run", when) if when else "Paused",
             f"Agent: {agent.name}" if agent else None,
         ],
     )
@@ -295,8 +322,8 @@ async def _chat_session(session_id: str, call: _Call) -> _Found | None:
         name=meta.title or "Untitled chat",
         href=f"/copilot?{urlencode({'sessionId': session_id})}",
         meta=[
-            f"Started {meta.started_at:%Y-%m-%d}",
-            f"Last active {meta.updated_at:%Y-%m-%d}",
+            _when("Started", meta.started_at),
+            _when("Last active", meta.updated_at),
         ],
     )
 
@@ -317,8 +344,7 @@ async def _expert_or_name(reference: str, call: _Call) -> _Found | None:
 
 
 async def _expert_template(template_id: str, call: _Call) -> _Found | None:
-    templates = await experts_db().list_templates()
-    template = next((t for t in templates if t.id == template_id), None)
+    template = await _template(template_id, call.user_id)
     if template is None:
         return None
     return _Found(
@@ -326,7 +352,10 @@ async def _expert_template(template_id: str, call: _Call) -> _Found | None:
         name=template.name,
         href=f"/marketplace/experts/{quote(template.id, safe='')}",
         description=template.tagline or template.bio,
-        meta=[template.job_title or template.role],
+        meta=[template.job_title or template.role, _area(template)],
+        avatar_url=template.avatar_url,
+        avatar_color=template.color,
+        skills=[skill.title for skill in template.bundled_skills],
     )
 
 
@@ -366,7 +395,8 @@ async def _routine(routine_id: str, call: _Call) -> _Found | None:
         href=_team_href(routine.expert_id) if routine.expert_id else None,
         description=routine.prompt,
         meta=[
-            _cadence(routine.crons, routine.run_at),
+            *(_cron(cron) for cron in routine.crons),
+            _when("Runs", routine.run_at) if routine.run_at else None,
             None if routine.enabled else "Paused",
         ],
     )
@@ -402,7 +432,7 @@ async def _workspace_file(file_id: str, call: _Call) -> _Found | None:
         meta=[
             file.mime_type,
             _size(file.size_bytes),
-            f"Modified {file.updated_at:%Y-%m-%d}",
+            _when("Modified", file.updated_at),
             f"In {folder}" if folder else None,
         ],
     )
@@ -419,12 +449,21 @@ async def _team_change(confirmation_id: str, call: _Call) -> _Found | None:
     if not _bound(proposal.user_id, proposal.session_id, call):
         return None
     preview = proposal.preview
+    # A hire's skills and area live on its template, as the marketplace card shows them.
+    template = (
+        await _template(preview.template_id, call.user_id)
+        if preview.template_id
+        else None
+    )
     return _Found(
         kind=_TEAM_CHANGE_KINDS[preview.kind],
         name=preview.name,
         href=_team_href(proposal.expert_id) if proposal.expert_id else None,
         description=preview.tagline or preview.about,
-        meta=[preview.job_title or preview.role],
+        meta=[preview.job_title or preview.role, _area(template) if template else None],
+        avatar_url=preview.avatar_url,
+        avatar_color=preview.color,
+        skills=[skill.title for skill in template.bundled_skills] if template else [],
     )
 
 
@@ -498,11 +537,7 @@ def _agent(agent: LibraryAgent) -> _Found:
         meta=[
             f"Version {agent.graph_version}",
             f"In {agent.folder_name}" if agent.folder_name else None,
-            (
-                f"Last run {agent.last_run_at:%Y-%m-%d}"
-                if agent.last_run_at
-                else "Never run"
-            ),
+            _when("Last run", agent.last_run_at) if agent.last_run_at else "Never run",
         ],
     )
 
@@ -517,13 +552,37 @@ def _teammate(expert: Expert) -> _Found:
             expert.job_title or expert.role,
             "Archived" if expert.is_archived else None,
         ],
+        avatar_url=expert.avatar_url,
+        avatar_color=expert.color,
     )
 
 
-def _cadence(crons: list[str], run_at: datetime | None) -> str | None:
-    if crons:
-        return "Runs " + ", ".join(crons)
-    return f"Once at {run_at:%Y-%m-%d %H:%M}" if run_at else None
+async def _template(template_id: str, user_id: str) -> ExpertTemplate | None:
+    templates = await experts_db().list_templates()
+    template = next((t for t in templates if t.id == template_id), None)
+    if template is None:
+        return None
+    [card] = await experts_db().with_bundled_skills([template], user_id)
+    return card
+
+
+def _area(template: ExpertTemplate) -> str | None:
+    return template.categories[0] if template.categories else None
+
+
+def _fact(item: str | Fact | None) -> Fact | None:
+    if isinstance(item, Fact):
+        return item
+    line = _one_line(item)
+    return Fact(text=line) if line else None
+
+
+def _cron(cron: str) -> Fact:
+    return Fact(text=f"Runs {cron}", cron=cron)
+
+
+def _when(label: str, at: datetime) -> Fact:
+    return Fact(text=f"{label} {at:%Y-%m-%d}", label=label, at=at)
 
 
 def _one_line(text: str | None) -> str | None:

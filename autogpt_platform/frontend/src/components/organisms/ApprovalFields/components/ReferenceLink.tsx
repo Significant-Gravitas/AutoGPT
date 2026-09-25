@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { Reference } from "../helpers";
+import { ReferenceCard } from "./ReferenceCard";
 
 interface Props {
   reference: Reference;
@@ -54,29 +55,5 @@ export function ReferenceLink({ reference, children }: Props) {
         </TooltipContent>
       </TooltipPortal>
     </Tooltip>
-  );
-}
-
-function ReferenceCard({ reference }: { reference: Reference }) {
-  const facts = reference.kind ? reference.meta.join(" · ") : reference.summary;
-  return (
-    <div>
-      {reference.kind && <p className="text-zinc-500">{reference.kind}</p>}
-      <p translate="no" className="text-sm font-semibold text-zinc-900">
-        {reference.name}
-      </p>
-      {reference.description && (
-        <p className="mt-1 line-clamp-3 text-zinc-700">
-          {reference.description}
-        </p>
-      )}
-      {facts && <p className="mt-1.5 text-zinc-500">{facts}</p>}
-      <p
-        translate="no"
-        className="mt-1.5 font-mono text-[0.6875rem] text-zinc-400"
-      >
-        {reference.id}
-      </p>
-    </div>
   );
 }

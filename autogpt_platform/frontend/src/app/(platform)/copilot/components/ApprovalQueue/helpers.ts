@@ -2,6 +2,7 @@ import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pen
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
+  type Fact,
   isIdKey,
   type Reference,
   visibleKeys,
@@ -184,10 +185,27 @@ function toReference(value: unknown): Reference[] {
       href: name ? safeHref(str(ref, "href")) : null,
       kind: name ? str(ref, "kind") : null,
       description: name ? str(ref, "description") : null,
-      meta: name
-        ? asArray(ref.meta).filter((m): m is string => typeof m === "string")
+      meta: name ? asArray(ref.meta).flatMap(toFact) : [],
+      avatarURL: name ? str(ref, "avatar_url") : null,
+      avatarColor: name ? str(ref, "avatar_color") : null,
+      skills: name
+        ? asArray(ref.skills).filter((s): s is string => typeof s === "string")
         : [],
       summary: name ? str(ref, "summary") : null,
+    },
+  ];
+}
+
+function toFact(value: unknown): Fact[] {
+  const fact = asObject(value) ?? {};
+  const text = str(fact, "text");
+  if (!text) return [];
+  return [
+    {
+      text,
+      cron: str(fact, "cron"),
+      label: str(fact, "label"),
+      at: str(fact, "at"),
     },
   ];
 }

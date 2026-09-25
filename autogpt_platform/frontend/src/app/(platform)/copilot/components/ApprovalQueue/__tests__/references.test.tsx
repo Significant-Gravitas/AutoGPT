@@ -89,9 +89,44 @@ test("hovering a resolved link shows its kind, description, facts and ID", async
     tip.getByText("Summarises overnight email and news at 7am."),
   ).toBeDefined();
   expect(
-    tip.getByText("Version 3 · In Mornings · Last run 2026-09-24"),
+    tip.getByText(/^Version 3 · In Mornings · Last run .+ ago$/),
   ).toBeDefined();
   expect(tip.getByText("lib-digest")).toBeDefined();
+});
+
+test("a schedule's card words its cadence and next run for a person", async () => {
+  renderCard(referenceCard("Pause schedule"));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Daily digest" }));
+
+  const tip = await screen.findByRole("tooltip");
+  expect(tip.textContent).toContain("Every day at");
+  expect(tip.textContent).toMatch(/Next run (in .+|.+ ago)/);
+  expect(tip.textContent).not.toContain("0 7 * * *");
+});
+
+test("a chat's card says how long ago it was last active", async () => {
+  renderCard(referenceCard("Message chat"));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Q3 planning" }));
+
+  const tip = await screen.findByRole("tooltip");
+  expect(tip.textContent).toMatch(/Last active .+ ago/);
+  expect(tip.textContent).not.toContain("2026-09-24");
+});
+
+test("a template's card lists its skills, as the marketplace card does", async () => {
+  renderCard(referenceCard("Hire expert"));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Ada" }));
+
+  const tip = within(await screen.findByRole("tooltip"));
+  expect(
+    tip.getByText("Month-end close, Receipt matching, Cash forecast +1 more"),
+  ).toBeDefined();
 });
 
 test("a card with nothing but its kind shows only the kind, title and ID", async () => {
