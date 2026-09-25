@@ -496,15 +496,16 @@ def test_pareto_bills_at_authored_rates():
 
 
 def test_ling_3_0_flash_vl_bills_at_authored_rates():
-    """InclusionAI Ling 3.0 Flash VL (OpenRouter, list price $0.06/$0.18
-    per 1M) — flat tier and per-1M projections must match the authored
-    catalog entry."""
+    """InclusionAI Ling 3.0 Flash VL (OpenRouter live rate $0.021/$0.0616
+    per 1M, $0.0042/1M cached input as of 2026-09-25 — dropped from
+    $0.06/$0.18) — flat tier and per-1M projections must match the
+    authored catalog entry."""
     ling = LLMModel("inclusionai/ling-3.0-flash-vl")
     assert MODEL_COST[ling] == 1
     assert TOKEN_COST[ling].model_dump() == {
-        "input": 9.0,
-        "output": 27.0,
-        "cache_read": 1.8,
+        "input": 3.15,
+        "output": 9.24,
+        "cache_read": 0.63,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[ling].max_output_tokens == 32768
