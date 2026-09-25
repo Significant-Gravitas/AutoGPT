@@ -226,6 +226,40 @@ class TestSummarizeBinaryFields:
         raw = json.dumps(data)
         assert _summarize_binary_fields(raw) == raw
 
+    def test_preserves_image_content_base64(self):
+        import json
+
+        data = {
+            "content_base64": "A" * 10_000,
+            "name": "screenshot.png",
+            "mime_type": "image/png",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert result["content_base64"] == "A" * 10_000  # unchanged
+        assert result["mime_type"] == "image/png"
+
+    def test_preserves_jpeg_image_content_base64(self):
+        import json
+
+        data = {
+            "content_base64": "B" * 20_000,
+            "name": "photo.jpg",
+            "mime_type": "image/jpeg",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert result["content_base64"] == "B" * 20_000
+
+    def test_summarizes_non_image_with_mime_type(self):
+        import json
+
+        data = {
+            "content_base64": "C" * 10_000,
+            "name": "audio.mp3",
+            "mime_type": "audio/mpeg",
+        }
+        result = json.loads(_summarize_binary_fields(json.dumps(data)))
+        assert "<binary" in result["content_base64"]
+
 
 # ---------------------------------------------------------------------------
 # Large-output digest (always on)

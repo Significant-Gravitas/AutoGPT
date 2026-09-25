@@ -51,10 +51,15 @@ _OUTLINE_SCALAR_CHARS = 120
 # so a nested field added here would make the two drift.
 _BINARY_FIELD_NAMES = {"content_base64"}
 
+# Image MIME types whose base64 content should be preserved as-is: the model
+# can process them as vision content and the full data is needed end-to-end.
+_IMAGE_MIME_PREFIXES = ("image/",)
+
 
 def _summarize_binary_fields(raw_json: str) -> str:
     """Replace known binary fields with a size summary so truncate() doesn't
-    produce garbled base64 in the middle-out preview."""
+    produce garbled base64 in the middle-out preview.  Image content is kept
+    intact so the model can receive it as a vision block."""
     try:
         data = json.loads(raw_json)
     except (json.JSONDecodeError, TypeError):
@@ -63,9 +68,14 @@ def _summarize_binary_fields(raw_json: str) -> str:
     if not isinstance(data, dict):
         return raw_json
 
+    mime_type = data.get("mime_type", "")
+    is_image = mime_type.startswith(_IMAGE_MIME_PREFIXES)
+
     changed = False
     for key in _BINARY_FIELD_NAMES:
         if key in data and isinstance(data[key], str) and len(data[key]) > 1_000:
+            if is_image:
+                continue  # preserve image base64 for vision processing
             byte_size = len(data[key]) * 3 // 4  # approximate decoded size
             data[key] = f"<binary, ~{byte_size:,} bytes>"
             changed = True
