@@ -5,7 +5,7 @@ import type { MetadataRoute } from "next";
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 // Static at build, re-rendered at most hourly, so experts published or
-// archived after a deploy show up without one.
+// archived later appear or disappear without a new deploy.
 export const dynamic = "force-static";
 export const revalidate = 3600;
 
