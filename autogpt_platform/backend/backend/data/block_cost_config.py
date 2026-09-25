@@ -33,6 +33,12 @@ from backend.blocks.enrichlayer.linkedin import (
 )
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
+from backend.blocks.google_maps_directions import GoogleMapsGetDirectionsBlock
+from backend.blocks.google_maps_places import (
+    GoogleMapsResolveLinksBlock,
+    GoogleMapsResolvePlacesBlock,
+)
+from backend.blocks.google_maps_weather import GoogleMapsWeatherBlock
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -83,6 +89,7 @@ from backend.integrations.credentials_store import (
     elevenlabs_credentials,
     enrichlayer_credentials,
     fal_credentials,
+    google_maps_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -1135,6 +1142,89 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": jina_credentials.id,
                     "provider": jina_credentials.provider,
                     "type": jina_credentials.type,
+                }
+            },
+        )
+    ],
+    # Google Maps Platform, when the platform's Maps key is used. People who
+    # bring their own key pay Google directly. Google's list prices per
+    # request (first volume tier): Weather $0.00015; Place Details Essentials
+    # $0.005 and Pro $0.017; Compute Routes Essentials $0.005, Pro (live
+    # traffic) $0.01 and Enterprise (two-wheeler) $0.015. The ID-only place
+    # search is free. Credits are price x 1.5 at 1 credit = $0.01, rounded up.
+    # Weather: the worst case, a place lookup plus a 240-hour forecast
+    # (10 pages), costs $0.0065, so 1 credit covers every mode.
+    GoogleMapsWeatherBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                }
+            },
+        )
+    ],
+    GoogleMapsGetDirectionsBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "travel_mode": "two_wheeler",
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "use_live_traffic": True,
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                }
+            },
+        ),
+    ],
+    # Resolve Places and Resolve Links: 3 credits for each place looked up
+    # (Place Details Pro, $0.017), billed after the run from the block's
+    # item count. Links read without a lookup are free.
+    GoogleMapsResolvePlacesBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_type=BlockCostType.ITEMS,
+            cost_filter={
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
+                }
+            },
+        )
+    ],
+    GoogleMapsResolveLinksBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_type=BlockCostType.ITEMS,
+            cost_filter={
+                "credentials": {
+                    "id": google_maps_credentials.id,
+                    "provider": google_maps_credentials.provider,
+                    "type": google_maps_credentials.type,
                 }
             },
         )
