@@ -529,12 +529,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-23: $0.06/$0.32 per 1M,
-                # cache read $0.01/1M (further drift since this PR's prior fix).
+                # Live OpenRouter rate as of 2026-09-24: $0.14/$0.42 per 1M,
+                # cache read $0.01/1M (drifted again since the prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=9.0,
-                    output_credits_per_1m=48.0,
+                    input_credits_per_1m=21.0,
+                    output_credits_per_1m=63.0,
                     cache_read_credits_per_1m=1.5,
                 ),
             ),
@@ -1118,6 +1118,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="x-ai/grok-4.7",
+                display_name="Grok 4.7",
+                provider="open_router",
+                creator="xai",
+                context_window=500000,
+                max_output_tokens=450000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=240.0,
+                    output_credits_per_1m=720.0,
+                    cache_read_credits_per_1m=60.0,
+                ),
+            ),
+            CatalogModel(
                 slug="x-ai/grok-4.20-multi-agent",
                 display_name="Grok 4.20 Multi-Agent",
                 provider="open_router",
@@ -1210,6 +1228,16 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=3,
                 cost=CatalogModelCost(run_credits=4),
+            ),
+            CatalogModel(
+                slug="z-ai/glm-5.3",
+                display_name="GLM 5.3",
+                provider="open_router",
+                creator="z.ai",
+                context_window=1048575,
+                max_output_tokens=943717,
+                price_tier=3,
+                cost=CatalogModelCost(run_credits=5),
             ),
             # ----- OpenAI -----
             CatalogModel(

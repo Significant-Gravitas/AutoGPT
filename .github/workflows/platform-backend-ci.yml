@@ -16,6 +16,7 @@ on:
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
+      - "autogpt_platform/frontend/public/integrations/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
@@ -31,6 +32,7 @@ on:
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
+      - "autogpt_platform/frontend/public/integrations/**"
   merge_group:
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the

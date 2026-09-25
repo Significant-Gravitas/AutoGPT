@@ -1,39 +1,55 @@
 "use client";
 
 import { useCallback } from "react";
-import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import {
+  COPILOT_GATE_NODE_PREFIX,
+  PendingReviewsList,
+} from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
-import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { okData } from "@/app/api/helpers";
+import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
+import { isGateReview, toApprovalItem } from "../ApprovalQueue/helpers";
+import { useCopilotPendingReviews } from "./useCopilotPendingReviews";
 
-interface Props {
-  graphExecId: string;
-}
+type Props =
+  | { graphExecId: string; graphId?: string }
+  | { chatSessionId: string; pollWhileEmpty?: boolean; refetchKey?: number };
 
 /**
- * Renders a single consolidated PendingReviewsList for all pending copilot
- * reviews in a session — mirrors the non-copilot review page behavior.
- * Works for both run_capability (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
+ * Renders the chat's pending reviews, or those of an agent run it started:
+ * held AutoPilot calls in one "Waiting for you" queue, oldest first, and
+ * every block, MCP or run review in one consolidated list.
  */
-export function CopilotPendingReviews({ graphExecId }: Props) {
-  const { onSend } = useCopilotChatActions();
-  const { pendingReviews, refetch } = usePendingReviewsForExecution(
-    graphExecId,
-    { enabled: !!graphExecId, refetchInterval: 2000 },
+export function CopilotPendingReviews(props: Props) {
+  const { onSend, onBackendTurn } = useCopilotChatActions();
+  const graphExecId = "graphExecId" in props ? props.graphExecId : "";
+  const { pendingReviews, refetch } = useCopilotPendingReviews(props);
+
+  const heldCalls = pendingReviews
+    .filter(isGateReview)
+    .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
+    .map(toApprovalItem);
+  const otherReviews = pendingReviews.filter(
+    (r) => !r.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX),
   );
 
-  // Graph executions auto-resume after approval; capability reviews need resume_capability.
-  const isGraphExecution = !graphExecId.startsWith("copilot-session-");
+  async function handleHeldCallAnswered() {
+    await refetch();
+    onBackendTurn?.();
+  }
 
   const handleReviewComplete = useCallback(async () => {
     // Brief delay for the server to propagate the approval
     await new Promise((resolve) => setTimeout(resolve, 500));
     const result = await refetch();
-    const remaining = okData(result.data) || [];
+    const remaining = (okData(result.data) || []).filter(
+      (r) => !r.node_exec_id.startsWith(COPILOT_GATE_NODE_PREFIX),
+    );
 
     if (remaining.length > 0) return;
 
-    if (isGraphExecution) {
+    // Graph executions auto-resume after approval; chat reviews need resume_capability.
+    if (graphExecId) {
       onSend(
         `All pending reviews have been processed. ` +
           `The agent execution will resume automatically for approved reviews. ` +
@@ -46,16 +62,17 @@ export function CopilotPendingReviews({ graphExecId }: Props) {
           `For rejected reviews, no further action is needed.`,
       );
     }
-  }, [refetch, onSend, isGraphExecution, graphExecId]);
-
-  if (pendingReviews.length === 0) return null;
+  }, [refetch, onSend, graphExecId]);
 
   return (
-    <div className="py-2">
-      <PendingReviewsList
-        reviews={pendingReviews}
-        onReviewComplete={handleReviewComplete}
-      />
+    <div className="flex flex-col gap-2 py-2 empty:hidden">
+      <ApprovalQueue items={heldCalls} onAnswered={handleHeldCallAnswered} />
+      {otherReviews.length > 0 && (
+        <PendingReviewsList
+          reviews={otherReviews}
+          onReviewComplete={handleReviewComplete}
+        />
+      )}
     </div>
   );
 }

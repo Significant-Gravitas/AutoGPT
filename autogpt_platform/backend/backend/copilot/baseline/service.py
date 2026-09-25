@@ -50,6 +50,8 @@ from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
+from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
@@ -83,6 +85,7 @@ from backend.copilot.pending_messages import (
 from backend.copilot.permissions import denied_tool_names
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
+    approval_mode_supplement,
     get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
@@ -1937,6 +1940,7 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    auto_mode_supplement = approval_mode_supplement(await active_mode(user_id, session))
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the
     # tool-filtering site below so the delegation rules can be gated on the
@@ -1969,6 +1973,7 @@ async def stream_chat_completion_baseline(
         + team_building_supplement
         + chat_platform_supplement
         + graphiti_supplement
+        + auto_mode_supplement
         + builder_session_suffix
         + expert_session_suffix
     )
@@ -2328,6 +2333,16 @@ async def stream_chat_completion_baseline(
     if e2b_sandbox is not None:
         # From here the finally below always runs, so the turn can be counted.
         await count_expert_turn(session_id, session.expert_id)
+
+    # After the execution context: an approved held call runs here, in this
+    # turn's sandbox and tool bounds, and its result opens the turn.
+    held_results = await resolve_answered(user_id, session)
+    if held_results and await persist_pending_as_user_rows(
+        session, transcript_builder, held_results, log_prefix="[Baseline]"
+    ):
+        openai_messages.extend(
+            format_pending_as_user_message(pm) for pm in held_results
+        )
 
     # Propagate user/session context to Langfuse so all LLM calls within
     # this request are grouped under a single trace with proper attribution.

@@ -5,14 +5,14 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast
+from typing import Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
-from backend.blocks._base import Block, BlockCostType, BlockType
+from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -27,6 +27,7 @@ from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
+from backend.data.db_accessors import chat_db
 from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.db_accessors import spend_approval_db
 from backend.data.dynamic_fields import merge_execution_input
@@ -481,8 +482,7 @@ async def _validate_node_input_credentials(
         # `nodes_to_skip` here rather than relying on the post-loop
         # guard — that guard only fires when the NODE-level
         # ``is_creds_optional`` is True. For auto-credential fields the
-        # optionality is usually field-level (``field_name not in
-        # required_fields`` because the schema default is None), so
+        # optionality can be field-level (``_is_optional_picker``), so
         # deferring would let the node silently pass validation and then
         # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
         # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
@@ -582,8 +582,12 @@ async def _validate_node_input_credentials(
         if auto_credentials_fields:
             for _kwarg_name, info in auto_credentials_fields.items():
                 field_name = info["field_name"]
-                field_is_optional = (
-                    is_creds_optional or field_name not in required_fields
+                if _is_linked(graph, node, field_name):
+                    # An upstream block supplies the file at run time, so the
+                    # stored value (possibly a leftover None) isn't what runs.
+                    continue
+                field_is_optional = is_creds_optional or _is_optional_picker(
+                    block.input_schema, field_name
                 )
                 # Check input_default and nodes_input_masks for the field value
                 field_value = node.input_default.get(field_name)
@@ -680,9 +684,12 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} the selected file "
+                            "was picked with an account you don't have connected "
+                            "(it was removed, or it belongs to someone else). "
+                            "Please select the file again with your own account."
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -700,6 +707,27 @@ async def _validate_node_input_credentials(
             nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
+
+
+def _is_optional_picker(input_schema: type[BlockSchema], field_name: str) -> bool:
+    """Whether a block can run with nothing picked in this picker input.
+
+    Picker fields (e.g. `GoogleDriveFileField`) always default to None, so the
+    schema's required fields can't answer this; the annotation does. An
+    `Optional[GoogleDriveFile]` input may stay empty and its node is skipped.
+    A plain `GoogleDriveFile` input needs a file, so leaving it empty (as a
+    fork or copy does) is an error the user can act on, not a silent skip.
+    """
+    field = input_schema.model_fields.get(field_name)
+    return field is not None and type(None) in get_args(field.annotation)
+
+
+def _is_linked(graph: GraphModel, node: Node, field_name: str) -> bool:
+    """Whether a link supplies the whole input. A link into one attribute of
+    it (e.g. `spreadsheet_@_id`) can't bring the `_credentials_id`."""
+    return any(
+        link.sink_id == node.id and link.sink_name == field_name for link in graph.links
+    )
 
 
 def make_node_credentials_input_map(
@@ -1254,6 +1282,7 @@ async def add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
 
@@ -1282,6 +1311,7 @@ async def add_graph_execution(
             bypass_paywall=bypass_paywall,
             trigger=trigger,
             trigger_ref=trigger_ref,
+            pause_irreversible_actions=pause_irreversible_actions,
         )
     except GraphValidationError:
         record_graph_execution(
@@ -1317,6 +1347,7 @@ async def _add_graph_execution(
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
+    pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1348,6 +1379,9 @@ async def _add_graph_execution(
             in REQUEUE mode, where the original row is authoritative.
         trigger_ref: Identifier of what started the run for that trigger
             (schedule id, webhook id, chat session id, API key id, UI surface).
+        pause_irreversible_actions: Pause before every irreversible block
+            whatever the graph's ``sensitive_action_safe_mode`` setting. On
+            resume it is re-derived from the chat that started the run.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1406,6 +1440,13 @@ async def _add_graph_execution(
 
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # A resume rebuilds its context from the graph settings, which would
+        # drop the pause the chat that started this run asked for.
+        pause_irreversible_actions = (
+            pause_irreversible_actions
+            or await _started_from_attended_chat(graph_exec, user_id, edb)
+        )
 
         # The persisted row is authoritative on resume. A caller cannot turn
         # an Otto run into an expert run or swap one expert for another.
@@ -1643,6 +1684,11 @@ async def _add_graph_execution(
             }
         )
 
+    if pause_irreversible_actions:
+        execution_context = execution_context.model_copy(
+            update={"sensitive_action_safe_mode": True}
+        )
+
     try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(
             compiled_nodes_input_masks=compiled_nodes_input_masks,
@@ -1735,6 +1781,30 @@ async def _add_graph_execution(
         )
 
     return graph_exec
+
+
+async def _started_from_attended_chat(
+    graph_exec: GraphExecutionMeta, user_id: str, edb
+) -> bool:
+    # A sub-graph run follows its parent run's chat. A parent or chat that is
+    # gone cannot prove nobody is watching, so the run pauses.
+    while (
+        graph_exec.trigger_source == ExecutionTrigger.SUBGRAPH
+        and graph_exec.trigger_ref
+    ):
+        parent = await edb.get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec.trigger_ref
+        )
+        if parent is None:
+            return True
+        graph_exec = parent
+    if (
+        graph_exec.trigger_source != ExecutionTrigger.COPILOT
+        or not graph_exec.trigger_ref
+    ):
+        return False
+    session = await chat_db().get_chat_session_metadata(graph_exec.trigger_ref)
+    return session is None or session.metadata.pauses_irreversible_actions
 
 
 async def _spend_approval_required(user_id: str, expert_id: str):

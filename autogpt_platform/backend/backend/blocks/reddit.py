@@ -9,6 +9,7 @@ from pydantic import BaseModel, SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -324,6 +325,8 @@ class PostRedditCommentBlock(Block):
             test_mock={
                 "reply_post": lambda creds, post_id, comment: "dummy_comment_id"
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -409,6 +412,8 @@ class CreateRedditPostBlock(Block):
                     "https://reddit.com/r/test/comments/abc123/test_post/",
                 )
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -1791,6 +1796,8 @@ class ReplyToRedditCommentBlock(Block):
             test_mock={
                 "reply_to_comment": lambda creds, comment_id, reply_text: "new_reply_id"
             },
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2035,6 +2042,8 @@ class SendRedditMessageBlock(Block):
                 ("username", "testuser"),
             ],
             test_mock={"send_message": lambda creds, username, subject, message: True},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2262,7 +2271,8 @@ class DeleteRedditPostBlock(Block):
                 ("post_id", "abc123"),
             ],
             test_mock={"delete_post": lambda creds, post_id: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -2321,7 +2331,8 @@ class DeleteRedditCommentBlock(Block):
                 ("comment_id", "xyz789"),
             ],
             test_mock={"delete_comment": lambda creds, comment_id: True},
-            is_sensitive_action=True,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

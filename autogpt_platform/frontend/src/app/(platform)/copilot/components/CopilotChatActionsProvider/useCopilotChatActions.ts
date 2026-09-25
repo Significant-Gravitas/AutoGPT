@@ -20,6 +20,8 @@ export type CopilotChatSurface = "copilot" | "builder" | "share";
 
 interface CopilotChatActions {
   onSend: (message: string) => void | Promise<void>;
+  /** Follow a turn the server started, e.g. after an approval card is answered. */
+  onBackendTurn?: () => void;
   chatSurface: CopilotChatSurface;
   /**
    * Optional: maps execution_id → public share_token for the executions

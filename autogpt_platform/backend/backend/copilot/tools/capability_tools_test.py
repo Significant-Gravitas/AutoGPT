@@ -15,7 +15,6 @@ from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
-from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.copilot.context import set_execution_context
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import SHARED_TOOL_NOTES
@@ -737,7 +736,7 @@ def _review(
     review.node_exec_id = review_id
     review.status = status
     review.payload = payload
-    review.graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
+    review.session_id = session_id
     return review
 
 

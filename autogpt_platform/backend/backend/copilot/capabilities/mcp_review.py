@@ -1,10 +1,10 @@
 """Human review for MCP calls made through ``run_capability``.
 
-MCP tool annotations are untrusted and, on the servers we see today, mostly
-absent, so the gate is conservative: a call to a server that is not in the
-official catalog pauses for review when the tool looks like a write.  Catalog
-servers run without a pause; their tools go through the same review record
-once the per-user tool cache carries ``destructiveHint``.
+With the auto-mode gate off, MCP tool annotations are untrusted and mostly
+absent, so a call to a server that is not in the official catalog pauses for
+review when the tool looks like a write; catalog servers run without a pause.
+With the gate on, none of this runs: the server's effect map decides, or the
+tool asks on first use (``gate/subject.py``).
 
 Records reuse the block review table with a synthetic node id so the
 existing approval UI, the pending-review feed and ``resume_capability`` all
@@ -19,7 +19,6 @@ from pydantic import BaseModel
 
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
-    COPILOT_SESSION_PREFIX,
     COPILOT_SYNTHETIC_ID_PREFIX,
 )
 from backend.data.db_accessors import review_db
@@ -79,11 +78,10 @@ async def open_mcp_review(
     An identical pending call (same server, tool and arguments) reuses its
     review so a retried ``run_capability`` does not stack approvals.
     """
-    graph_exec_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     node_id = mcp_review_node_id(host)
     data = payload.model_dump()
-    for review in await review_db().get_pending_reviews_for_execution(
-        graph_exec_id, user_id
+    for review in await review_db().get_pending_reviews_for_chat_session(
+        session_id, user_id
     ):
         if (
             review.node_id == node_id
@@ -95,9 +93,7 @@ async def open_mcp_review(
     await review_db().get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        graph_exec_id=graph_exec_id,
-        graph_id=graph_exec_id,
-        graph_version=1,
+        chat_session_id=session_id,
         input_data=data,
         message=(
             f"Run MCP tool '{payload.tool}' on {host} with the shown arguments? "

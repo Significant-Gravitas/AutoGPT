@@ -114,6 +114,7 @@ class RunBlockTool(BaseTool):
         block_id: str = "",
         input_data: dict | None = None,
         validate_only: bool = False,
+        gate_approved: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -123,6 +124,8 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
+            gate_approved: The user approved this exact call on a card, so the
+                irreversible-action pause would ask the same question twice.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -283,16 +286,24 @@ class RunBlockTool(BaseTool):
             if spend_gate is not None:
                 return spend_gate
 
-        hitl_or_err = await check_hitl_review(
-            prep,
-            user_id,
-            session_id,
-            organization_id=session.organization_id,
-            team_id=session.team_id,
-        )
-        if isinstance(hitl_or_err, ToolResponseBase):
-            return hitl_or_err
-        synthetic_node_exec_id, input_data = hitl_or_err
+        if gate_approved:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            input_data = prep.input_data
+        else:
+            hitl_or_err = await check_hitl_review(
+                prep,
+                user_id,
+                session_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+            if isinstance(hitl_or_err, ToolResponseBase):
+                return hitl_or_err
+            synthetic_node_exec_id, input_data = hitl_or_err
 
         return await execute_block(
             block=prep.block,
