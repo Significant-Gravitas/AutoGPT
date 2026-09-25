@@ -96,7 +96,7 @@ def _gate_attention(
         created_at=created_at,
         preview=_clip(
             " · ".join(
-                f"{field.label}: {_preview_value(gate.arguments[field.key])}"
+                f"{field.label}: {_named_value(gate, field.key) or _preview_value(gate.arguments[field.key])}"
                 for field in gate.fields
                 if field.key != gate.headline.object_key
                 and gate.arguments.get(field.key) not in (None, "", [], {})
@@ -124,6 +124,16 @@ def _gate_reason(gate: GateReviewPayload) -> str:
     if gate.reason_kind in ("subject", "rule", "content") and gate.reason:
         return gate.reason
     return f"{AUTOPILOT_NAME} is waiting for your approval."
+
+
+def _named_value(gate: GateReviewPayload, key: str) -> str | None:
+    """An id argument as the names it resolved to, as the card shows it."""
+    refs = [ref for ref in gate.references if ref.key == key]
+    if not any(ref.name for ref in refs):
+        return None
+    more = gate.reference_totals.get(key, len(refs)) - len(refs)
+    text = ", ".join(ref.name or ref.id for ref in refs)
+    return f"{text} +{more} more" if more > 0 else text
 
 
 def _preview_value(value: object) -> str:

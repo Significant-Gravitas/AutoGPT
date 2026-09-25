@@ -25,6 +25,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from . import chat_rules, held
 from . import review as review_store
 from .classifier import DecidedBy, supervise
+from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
     AutopilotMode,
@@ -71,10 +72,10 @@ class Decision(BaseModel):
     allowed: bool
     reason: str = ""
     review_id: str | None = None
+    # The held card's headline, ids resolved, for the chat's own row.
+    headline: Headline | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
-    # The block or workflow the card names, so the chain row names it too.
-    subject_name: str | None = None
 
 
 ALLOW = Decision(allowed=True)
@@ -194,7 +195,7 @@ async def _park(
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    if not await review_store.open_review(
+    headline = await review_store.open_review(
         call.review_id,
         user_id,
         session,
@@ -205,14 +206,12 @@ async def _park(
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
         decided_by=decided_by,
-    ):
+    )
+    if headline is None:
         await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
-        allowed=False,
-        reason=reason,
-        review_id=call.review_id,
-        subject_name=subject.name if subject is not None else None,
+        allowed=False, reason=reason, review_id=call.review_id, headline=headline
     )
 
 

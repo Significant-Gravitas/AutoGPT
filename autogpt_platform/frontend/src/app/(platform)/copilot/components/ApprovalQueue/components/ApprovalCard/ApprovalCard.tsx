@@ -98,6 +98,8 @@ export function ApprovalCard({
             clipped={item.clipped}
             hiddenKeys={item.headlineKeys}
             idsWhenAlone={!item.headline.object}
+            references={item.blockId ? [] : item.references}
+            referenceTotals={item.referenceTotals}
           />
         )}
         {actions}

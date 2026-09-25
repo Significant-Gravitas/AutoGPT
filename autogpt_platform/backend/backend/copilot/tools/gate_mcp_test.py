@@ -15,6 +15,7 @@ from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules
 from backend.copilot.gate.classifier import Judgement
+from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.review import payload_headline, review_payload
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.models import MCPToolOutputResponse
@@ -56,7 +57,7 @@ def gate():
     """The gate on, no approval on record, chat rules on a fresh store."""
     store = SimpleNamespace(
         find_review=AsyncMock(return_value=None),
-        open_review=AsyncMock(return_value=True),
+        open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
         own_review=AsyncMock(return_value="copilot-mcp-x:1"),
         classify=AsyncMock(return_value=Judgement(allowed=True, reason="")),
@@ -263,3 +264,10 @@ async def test_flag_off_the_verb_heuristic_decides_as_before(ran, server, tool, 
         await _call(_session(), server, tool)
     assert own_review.await_count == int(pauses)
     assert ran.await_count == int(not pauses)
+
+
+async def _opened(
+    review_id, user_id, session, tool_name, args, reason, subject=None, **_
+) -> Headline:
+    # The headline the real card stores, so the chat row names what it names.
+    return Headline.model_validate(review_payload(tool_name, args, subject)["headline"])

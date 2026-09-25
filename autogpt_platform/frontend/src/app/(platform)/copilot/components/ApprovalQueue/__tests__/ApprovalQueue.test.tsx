@@ -61,7 +61,7 @@ test("the headline names the action and its argument is not repeated below", asy
         { key: "color", label: "Color" },
       ],
       headline: {
-        ask: "Create folder",
+        ask: "Create library folder",
         object: "Q3 reports",
         object_key: "name",
       },
@@ -70,7 +70,7 @@ test("the headline names the action and its argument is not repeated below", asy
   renderQueue();
 
   const heading = await screen.findByRole("heading", {
-    name: "Create folder Q3 reports",
+    name: "Create library folder Q3 reports",
   });
   expect(heading).toBeDefined();
   expect(screen.getByText("Color")).toBeDefined();

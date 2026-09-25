@@ -31,6 +31,7 @@ from backend.data.db_accessors import review_db
 from .classifier import DecidedBy
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
+from .references import Reference, listed_ids, resolve_references
 
 if TYPE_CHECKING:
     from .subject import Subject as GateSubject
@@ -68,6 +69,10 @@ class GateReviewPayload(BaseModel):
     arguments: dict[str, Any]
     clipped: list[str] = []
     fields: list[FieldLabel] = []
+    # What the call's ids name, as they were when it was held.
+    references: list[Reference] = []
+    # Ids per argument before clipping, so a long list still says "+N more".
+    reference_totals: dict[str, int] = {}
     tool_call_id: str = ""
     turn: int = 0
     mode: str | None = None
@@ -119,6 +124,7 @@ def review_payload(
     mode: str | None = None,
     tool_call_id: str = "",
     turn: int = 0,
+    references: list[Reference] | None = None,
 ) -> dict[str, Any]:
     """The subject is kept as decided when the card opened: what the user saw,
     not a recomputation over a tree that may have moved since."""
@@ -136,6 +142,11 @@ def review_payload(
         arguments=shown,
         clipped=[key for key in shown if shown[key] is not redacted[key]],
         fields=_field_labels(tool_name, shown),
+        references=references or [],
+        reference_totals={
+            key: len(listed_ids(args.get(key)))
+            for key in {ref.key for ref in references or []}
+        },
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,
@@ -147,7 +158,7 @@ def review_payload(
         headline=(
             Headline(ask="Run", object=subject.name)
             if subject is not None
-            else headline_for(tool_name, args)
+            else headline_for(tool_name, args, references)
         ),
     ).model_dump()
 
@@ -215,22 +226,34 @@ async def open_review(
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
     decided_by: DecidedBy | None = None,
-) -> bool:
-    """Park the call for approval. False means nothing was recorded."""
-    payload = review_payload(
-        tool_name,
-        args,
-        subject,
-        reason=reason,
-        reason_kind=reason_kind,
-        decided_by=decided_by,
-        mode=session.metadata.autopilot_mode or DEFAULT_MODE,
-        tool_call_id=tool_call_id,
-        turn=turn_of(session),
-    )
-    return await open_review_row(
-        review_id, user_id, session, payload, payload_headline(payload)
-    )
+) -> Headline | None:
+    """Park the call for approval; the card's headline, or None if nothing was
+    recorded."""
+    try:
+        references = await resolve_references(tool_name, args, user_id, session)
+        payload = review_payload(
+            tool_name,
+            args,
+            subject,
+            reason=reason,
+            reason_kind=reason_kind,
+            decided_by=decided_by,
+            mode=session.metadata.autopilot_mode or DEFAULT_MODE,
+            tool_call_id=tool_call_id,
+            turn=turn_of(session),
+            references=references,
+        )
+    except Exception:
+        logger.warning(
+            f"Gate could not build a review for {tool_name} in session "
+            f"{session.session_id}",
+            exc_info=True,
+        )
+        return None
+    headline = Headline.model_validate(payload["headline"])
+    if not await open_review_row(review_id, user_id, session, payload, headline.text):
+        return None
+    return headline
 
 
 async def open_review_row(
@@ -314,7 +337,10 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
 
 
 def _humanize(key: str) -> str:
-    words = key.removesuffix("_id").replace("_", " ").strip()
+    # agent_ids -> "Agents": the card shows names there, not ids.
+    plural = key.endswith("_ids")
+    words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words += "s" if plural else ""
     return words[:1].upper() + words[1:]
 
 

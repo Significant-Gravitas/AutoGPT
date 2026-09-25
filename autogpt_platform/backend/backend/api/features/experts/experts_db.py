@@ -59,6 +59,7 @@ from backend.api.features.experts.models import (
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertTemplate,
+    ExpertWorkflowLabel,
     ExpertWorkflowRef,
     HireResult,
     RaiseAttachment,
@@ -2153,6 +2154,32 @@ async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> lis
         )
     await prisma.models.ExpertWorkflow.prisma().delete(where={"id": row.id})
     return stopped
+
+
+async def get_workflow_label(
+    user_id: str, workflow_id: str
+) -> ExpertWorkflowLabel | None:
+    """An installed workflow's name and expert, if *user_id* owns the expert."""
+    row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={
+            "id": workflow_id,
+            "Expert": {"is": {"ownerUserId": user_id, "isTemplate": False}},
+        },
+        include={
+            "LibraryAgent": {"include": {"AgentGraph": True}},
+            "StoreListingVersion": True,
+        },
+    )
+    if row is None:
+        return None
+    # Named as the roster names it: the listing's title first.
+    if row.StoreListingVersion is not None:
+        name = row.StoreListingVersion.name
+    elif row.LibraryAgent is not None:
+        name = _library_agent_labels(row.LibraryAgent)[0]
+    else:
+        name = None
+    return ExpertWorkflowLabel(expert_id=row.expertId, name=name)
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import referenceCardsJson from "./referenceCards.json";
 import realCardsJson from "./realCards.json";
 
 export const CHAT_SESSION = "s1";
@@ -82,7 +83,11 @@ export function folder(id: string, name: string, minutesAgo = 5) {
     tool: "create_folder",
     args: { name },
     fields: [{ key: "name", label: "Name" }],
-    headline: { ask: "Create folder", object: name, object_key: "name" },
+    headline: {
+      ask: "Create library folder",
+      object: name,
+      object_key: "name",
+    },
     minutesAgo,
   });
 }
@@ -135,8 +140,33 @@ export function deleteFolder(id: string, folderId: string) {
     tool: "delete_folder",
     args: { folder_id: folderId },
     fields: [{ key: "folder_id", label: "Folder" }],
-    headline: { ask: "Delete a folder" },
+    headline: { ask: "Delete library folder" },
   });
+}
+
+export interface ReferenceCard {
+  story: string;
+  review: PendingHumanReviewModel;
+}
+
+// Built by the server's resolvers and payload builder (reference_cards_test.py).
+export function referenceCards(): ReferenceCard[] {
+  return (
+    referenceCardsJson as unknown as { story: string; review: object }[]
+  ).map((card) => ({
+    story: card.story,
+    review: {
+      ...(card.review as PendingHumanReviewModel),
+      created_at: new Date(Date.now() - 5 * 60_000),
+    },
+  }));
+}
+
+export function referenceCard(story: string) {
+  const card = referenceCards().find((c) => c.story === story);
+  if (!card) throw new Error(`No reference card "${story}"`);
+  // A copy: tests edit the payload, and the JSON module is shared.
+  return structuredClone(card.review);
 }
 
 // A workflow run whose step reaches outside the platform.
