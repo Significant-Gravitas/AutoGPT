@@ -29,9 +29,9 @@ describe("WorkflowsMovedWalkthrough", () => {
   it("waits for intentional playback and provides a text alternative", () => {
     render(<WorkflowsMovedWalkthrough />);
     const video = getVideo();
-    expect(video.getAttribute("src")).toBe("/videos/workflows-moved.mp4?v=2");
+    expect(video.getAttribute("src")).toBe("/videos/workflows-moved.mp4");
     expect(video.getAttribute("poster")).toBe(
-      "/videos/workflows-moved-poster.webp?v=2",
+      "/videos/workflows-moved-poster.webp",
     );
     expect(video.preload).toBe("metadata");
     expect(video.autoplay).toBe(false);

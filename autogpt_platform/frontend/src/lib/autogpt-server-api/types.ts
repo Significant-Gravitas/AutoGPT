@@ -927,6 +927,7 @@ export type OnboardingStep =
   | "AGENTS_TAB_INTRO"
   | "MARKETPLACE_TAB_INTRO"
   | "BUILD_TAB_INTRO"
+  // Agents-to-workflows migration notice, dismissed or followed to Otto
   | "WORKFLOWS_MOVED";
 
 export interface UserOnboarding {

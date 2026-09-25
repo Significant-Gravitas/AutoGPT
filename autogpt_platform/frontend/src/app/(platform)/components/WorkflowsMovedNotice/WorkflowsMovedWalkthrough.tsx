@@ -40,8 +40,8 @@ export function WorkflowsMovedWalkthrough() {
           <div className="relative">
             <video
               ref={player.videoRef}
-              src="/videos/workflows-moved.mp4?v=2"
-              poster="/videos/workflows-moved-poster.webp?v=2"
+              src="/videos/workflows-moved.mp4"
+              poster="/videos/workflows-moved-poster.webp"
               aria-label="How to find your workflows"
               aria-describedby={descriptionID}
               className="block aspect-video w-full bg-zinc-100 object-contain"

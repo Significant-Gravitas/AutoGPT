@@ -5,6 +5,7 @@ import {
 
 export const EXPERTS_ROLLOUT_AT = "2026-09-21T00:00:00Z";
 
+// Keep this notice identity stable if the eligibility cutoff changes.
 const SEEN_KEY_PREFIX = "autogpt:workflows-moved:2026-09-21:";
 const LANDING_ROUTES = new Set(["/copilot", "/team", "/library"]);
 const CHAT_INTENT_PARAMS = [
