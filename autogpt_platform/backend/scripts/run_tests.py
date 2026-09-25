@@ -11,12 +11,29 @@ import time
 # and resolve the container before the probe itself runs, which on a loaded CI
 # box is a few seconds on its own -- so ten seconds sits comfortably above a
 # healthy round trip while staying well inside the budget of either retry loop
-# (30 x 2s for Redis, 5 x 5s for Postgres). A single wedged probe then costs
+# (30 x 2s for Redis, 36 x 5s for Postgres). A single wedged probe then costs
 # one attempt instead of the whole run.
 PROBE_TIMEOUT_SECONDS = 10
 
+# docker compose names the project after this directory, so every checkout's
+# test stack is the same "backend" project with the same container names.
+# An `up` from another worktree recreates the containers under a test session
+# that is using them, and its `down` removes them. A run waits for another
+# worktree's stack to go away, and only takes down a stack that is its own.
+COMPOSE_PROJECT = "backend"
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STACK_WAIT_SECONDS = 30 * 60
 
-def wait_for_postgres(max_retries=5, delay=5):
+
+def wait_for_postgres(max_retries=36, delay=5):
+    """Block until the `postgres` role can run a query.
+
+    pg_isready isn't enough: on a fresh data directory the Supabase image runs
+    its init scripts against a temporary server that already accepts
+    connections, before the `postgres` role exists. Starting on that, or having
+    the container recreated mid-init, leaves a half-built database that fails
+    every later run with `role "postgres" does not exist`.
+    """
     for _ in range(max_retries):
         try:
             result = subprocess.run(
@@ -29,24 +46,32 @@ def wait_for_postgres(max_retries=5, delay=5):
                     "../.env",
                     "exec",
                     "db",
-                    "pg_isready",
+                    "psql",
                     "-U",
                     "postgres",
                     "-d",
                     "postgres",
+                    "-tAc",
+                    "select 1",
                 ],
                 check=True,
                 capture_output=True,
                 text=True,
                 timeout=PROBE_TIMEOUT_SECONDS,
             )
-            if "accepting connections" in result.stdout:
+            if result.stdout.strip() == "1":
                 print("PostgreSQL is ready.")
                 return True
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            print(f"PostgreSQL is not ready yet. Retrying in {delay} seconds...")
-            time.sleep(delay)
-    print("Failed to connect to PostgreSQL.")
+            pass
+        print(f"PostgreSQL is not ready yet. Retrying in {delay} seconds...")
+        time.sleep(delay)
+    print(
+        "Failed to connect to PostgreSQL. If `docker compose -f "
+        "docker-compose.test.yaml logs db` says the `postgres` role does not "
+        "exist, the database's first start was interrupted: delete "
+        "../db/docker/volumes/db/data and run the tests again."
+    )
     return False
 
 
@@ -101,7 +126,68 @@ def run_command(command, check=True):
         sys.exit(1)
 
 
+def wait_for_stack_to_be_free(max_wait=STACK_WAIT_SECONDS, delay=10):
+    """Wait until no other checkout's test run is using the test stack."""
+    deadline = time.monotonic() + max_wait
+    reported = set()
+    while owners := other_stack_owners():
+        in_use_by = ", ".join(sorted(owners))
+        if time.monotonic() >= deadline:
+            print(
+                f"The test stack is still in use by {in_use_by}. If no test run "
+                "is going there, take its stack down with `docker compose -f "
+                "docker-compose.test.yaml down` from that directory."
+            )
+            return False
+        if owners != reported:
+            print(f"The test stack is in use by {in_use_by}; waiting for that run.")
+            reported = owners
+        time.sleep(delay)
+    return True
+
+
+def tear_down_stack():
+    """Take the test stack down, unless another checkout has taken it over."""
+    if owners := other_stack_owners():
+        print(f"Leaving the test stack up for {', '.join(sorted(owners))}.")
+        return
+    run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
+
+
+def other_stack_owners():
+    """Directories other than this one whose `docker compose` created the
+    running containers of the test stack."""
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"label=com.docker.compose.project={COMPOSE_PROJECT}",
+                "--format",
+                '{{.Label "com.docker.compose.project.working_dir"}}',
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # Docker isn't answering; the compose command that follows will say so.
+        print(f"`docker ps` timed out after {PROBE_TIMEOUT_SECONDS}s.")
+        return set()
+    owners = {_normalize_path(line) for line in result.stdout.splitlines() if line}
+    return owners - {_normalize_path(BACKEND_DIR)}
+
+
+def _normalize_path(path):
+    return os.path.normcase(os.path.normpath(path.strip()))
+
+
 def test():
+    if not wait_for_stack_to_be_free():
+        sys.exit(1)
+
     # Start PostgreSQL with Docker Compose
     run_command(
         [
@@ -117,7 +203,7 @@ def test():
     )
 
     if not wait_for_postgres() or not wait_for_redis_cluster():
-        run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
+        tear_down_stack()
         sys.exit(1)
 
     # IMPORTANT: Set test database environment variables to prevent accidentally
@@ -207,6 +293,6 @@ def test():
     # not any database that might be configured in the developer's environment
     result = subprocess.run(["pytest"] + sys.argv[1:], env=test_env, check=False)
 
-    run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
+    tear_down_stack()
 
     sys.exit(result.returncode)
