@@ -530,12 +530,12 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=384000,
                 price_tier=1,
                 # Live OpenRouter rate as of 2026-09-25: $0.15/$0.60 per 1M,
-                # cache read $0.01/1M (drifted again since the prior fix).
+                # cache read $0.003/1M (drifted again since the prior fix).
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=22.5,
                     output_credits_per_1m=90.0,
-                    cache_read_credits_per_1m=1.5,
+                    cache_read_credits_per_1m=0.45,
                 ),
             ),
             CatalogModel(
@@ -887,8 +887,9 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_reasoning=True,
                 # Moonshot's premium tier — live OpenRouter rate as of
-                # 2026-09-25: $0.8845/$10.5346 per Mtok (dropped from
-                # $3.00/$15.00; verified via check_openrouter_prices.py).
+                # 2026-09-25: $0.8845/$10.5346 per Mtok, cache read
+                # $0.33/1M (dropped from $3.00/$15.00, previously
+                # unset; verified via check_openrouter_prices.py).
                 # provider_input/output_usd_per_1m intentionally left at the
                 # prior $3.00/$15.00 for in-turn cost estimation — that
                 # field is authored separately and out of scope for this
@@ -897,6 +898,7 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=9,
                     input_credits_per_1m=132.675,
                     output_credits_per_1m=1580.19,
+                    cache_read_credits_per_1m=49.5,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
                 ),
