@@ -264,10 +264,10 @@ def test_archive_fallback_rejects_paths_outside_the_target(
 @pytest.mark.parametrize(
     ("slug", "title"),
     [
-        ("seo-content-brief", "SEO content brief"),
-        ("on-page-seo-audit", "On-page SEO audit"),
-        ("icp-and-positioning", "ICP and positioning"),
-        ("brand-voice-guide", "Brand voice guide"),
+        ("kpi-analysis-getting-started", "KPI analysis getting started"),
+        ("revops-getting-started", "RevOps getting started"),
+        ("max-getting-started", "Sales getting started"),
+        ("paid-ads-getting-started", "Paid ads getting started"),
     ],
 )
 def test_a_shipped_starter_keeps_the_casing_its_author_wrote(slug, title):

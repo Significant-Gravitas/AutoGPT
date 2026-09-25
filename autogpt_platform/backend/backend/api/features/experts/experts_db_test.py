@@ -108,33 +108,20 @@ PERSONAS_WITHOUT_WORKFLOWS = {
 EXPECTED_SKILLS_ONLY_ROSTER = {
     "Devon": [
         "dependency-security-getting-started",
-        "dependency-inventory",
-        "outdated-dependency-review",
-        "vulnerability-triage",
-        "cve-stack-relevance",
-        "dependency-upgrade-plan",
-        "dependency-upgrade-pr",
-        "dependency-change-risk-review",
+        "supply-chain-risk-auditor",
+        "code-change-security-review",
     ],
     "Riley": [
         "customer-success-getting-started",
-        "customer-onboarding-plan",
-        "customer-health-score",
-        "churn-risk-review",
-        "renewal-readiness-review",
-        "renewal-touchpoint-draft",
-        "expansion-opportunity-brief",
-        "customer-success-plan",
+        "customer-support-research",
+        "customer-response-drafting",
+        "customer-escalation",
+        "customer-insight-research",
     ],
     "Jordan": [
         "deal-desk-getting-started",
-        "proposal-draft",
-        "statement-of-work-draft",
-        "pipeline-stage-aging-review",
-        "deal-risk-review",
-        "renewal-negotiation-brief",
-        "pricing-and-terms-approval-brief",
-        "proposal-quality-check",
+        "sales-pipeline-review",
+        "client-proposal-writing",
     ],
 }
 # Every cron the roster ships, as (expert, slug, cron). A cadence fires
@@ -148,33 +135,20 @@ EXPECTED_ROSTER_SCHEDULES = {
 EXPECTED_OPERATIONS_SKILLS = {
     "Harper": [
         "recruiting-getting-started",
-        "role-intake-and-job-description",
-        "hiring-rubric-design",
-        "resume-screening",
-        "interview-plan-and-scorecard",
-        "candidate-interview-debrief",
-        "candidate-rejection-email",
-        "candidate-offer-draft",
+        "candidate-interview-planning",
+        "recruiting-pipeline",
+        "employment-offer-drafting",
     ],
     "Vera": [
         "procurement-getting-started",
-        "vendor-requirements-brief",
-        "vendor-quote-comparison",
-        "vendor-due-diligence",
-        "procurement-decision-memo",
-        "contract-renewal-tracker",
-        "vendor-performance-review",
-        "spend-anomaly-review",
+        "vendor-evaluation",
+        "vendor-contract-status",
+        "operational-risk-assessment",
     ],
     "Ellis": [
         "contract-ops-getting-started",
-        "nda-playbook-review",
-        "msa-playbook-review",
-        "contract-clause-comparison",
-        "contract-key-term-extraction",
-        "contract-deviation-triage",
-        "contract-obligation-tracker",
-        "counsel-escalation-brief",
+        "nda-risk-review",
+        "contract-amendment-history",
     ],
 }
 EXPECTED_WAVE_THREE = {
@@ -183,13 +157,12 @@ EXPECTED_WAVE_THREE = {
         "categories": ["support"],
         "skills": [
             "support-getting-started",
-            "ticket-triage",
-            "support-reply-draft",
-            "support-macro-library",
-            "help-article-from-tickets",
-            "bug-report-handoff",
-            "refund-and-exception-brief",
-            "weekly-ticket-themes",
+            "customer-support-research",
+            "customer-response-drafting",
+            "customer-escalation",
+            "knowledge-base-article-writing",
+            "product-research-synthesis",
+            "support-ticket-triage",
         ],
         "timings": ["after queue access", "on request"],
     },
@@ -198,13 +171,11 @@ EXPECTED_WAVE_THREE = {
         "categories": ["research", "operations"],
         "skills": [
             "product-getting-started",
-            "feedback-synthesis",
-            "feature-request-triage",
-            "user-interview-guide",
-            "opportunity-brief",
-            "product-requirements-draft",
-            "roadmap-prioritisation",
-            "release-notes-draft",
+            "customer-insight-research",
+            "product-research-synthesis",
+            "product-requirements-writing",
+            "product-roadmap-planning",
+            "product-stakeholder-update",
         ],
         "timings": ["after feedback input", "on request"],
     },
@@ -213,13 +184,7 @@ EXPECTED_WAVE_THREE = {
         "categories": ["marketing"],
         "skills": [
             "paid-ads-getting-started",
-            "campaign-structure-plan",
-            "ad-copy-variants",
-            "landing-page-message-match",
-            "wasted-spend-audit",
-            "budget-pacing-review",
-            "creative-test-readout",
-            "paid-performance-report",
+            "conversion-rate-optimization",
         ],
         "timings": ["after account export", "on request"],
     },
@@ -228,13 +193,8 @@ EXPECTED_WAVE_THREE = {
         "categories": ["marketing", "content"],
         "skills": [
             "communications-getting-started",
-            "news-angle-and-key-messages",
-            "press-release-draft",
-            "media-list-research",
-            "media-pitch-email",
-            "launch-communications-plan",
-            "holding-statement-draft",
-            "spokesperson-briefing",
+            "product-launch-marketing",
+            "marketing-copy-editing",
         ],
         "timings": ["day 1", "on request"],
     },
@@ -243,13 +203,11 @@ EXPECTED_WAVE_THREE = {
         "categories": ["development"],
         "skills": [
             "code-quality-getting-started",
-            "pull-request-review",
-            "test-plan-draft",
-            "bug-reproduction-report",
-            "flaky-test-triage",
-            "regression-risk-review",
-            "release-readiness-checklist",
-            "incident-postmortem-draft",
+            "code-review-quality",
+            "software-debugging",
+            "software-test-planning",
+            "verification-before-completion",
+            "software-incident-response",
         ],
         "timings": ["after access", "on request"],
     },
@@ -258,13 +216,10 @@ EXPECTED_WAVE_THREE = {
         "categories": ["operations"],
         "skills": [
             "people-ops-getting-started",
-            "new-hire-onboarding-plan",
-            "handbook-policy-draft",
-            "one-to-one-agenda",
-            "performance-review-prep",
-            "engagement-survey-readout",
-            "offboarding-checklist",
-            "hr-escalation-brief",
+            "employee-onboarding-planning",
+            "company-policy-lookup",
+            "employee-performance-review",
+            "people-analytics-reporting",
         ],
         "timings": ["day 1", "on request"],
     },
@@ -273,13 +228,8 @@ EXPECTED_WAVE_THREE = {
         "categories": ["sales", "operations"],
         "skills": [
             "revops-getting-started",
-            "crm-field-audit",
-            "crm-duplicate-review",
-            "pipeline-stage-definitions",
-            "lead-routing-rules",
-            "sales-forecast-rollup",
-            "lost-deal-analysis",
-            "crm-hygiene-report",
+            "dataset-exploration",
+            "sales-pipeline-review",
         ],
         "timings": ["after CRM export", "on request"],
     },
@@ -288,13 +238,9 @@ EXPECTED_WAVE_THREE = {
         "categories": ["operations"],
         "skills": [
             "compliance-ops-getting-started",
-            "security-questionnaire-answers",
-            "personal-data-map",
-            "subprocessor-register",
-            "dpa-checklist-review",
-            "policy-gap-review",
-            "data-subject-request-draft",
-            "compliance-escalation-brief",
+            "compliance-evidence-tracking",
+            "vendor-contract-status",
+            "legal-response-drafting",
         ],
         "timings": ["day 1", "on request"],
     },
@@ -303,13 +249,11 @@ EXPECTED_WAVE_THREE = {
         "categories": ["support", "operations"],
         "skills": [
             "executive-assistant-getting-started",
-            "inbox-triage",
-            "reply-draft-in-your-voice",
-            "meeting-prep-brief",
-            "meeting-follow-up-draft",
-            "calendar-conflict-review",
-            "travel-plan",
-            "weekly-priorities-review",
+            "productivity-setup",
+            "task-list-management",
+            "workplace-memory-management",
+            "productivity-task-sync",
+            "multi-source-research-synthesis",
         ],
         "timings": ["after inbox access", "on request"],
     },
@@ -3727,13 +3671,19 @@ def test_roster_preload_counts_and_scheduled_cadences():
     assert scheduled == EXPECTED_ROSTER_SCHEDULES
 
 
-def test_roster_bundled_skills_are_seeded_starter_skills():
-    """Every bundled slug must exist in skill_seed.STARTER_SKILLS, or
-    seed_roster raises at _resolve_roster_skills against a real database."""
+def test_each_expert_opens_with_the_onboarding_skill_this_repo_authors():
+    """The onboarding skill is the only listing still checked in here; the rest
+    of a kit comes from the catalog, and seed_roster raises at
+    _resolve_roster_skills if the hub is missing one of those slugs."""
     available = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
+    bundled = {slug for entry in seed.ROSTER for slug in entry["bundled_skills"]}
+
+    assert available <= bundled
+    assert {slug for slug in bundled if slug.endswith("-getting-started")} == available
     for entry in seed.ROSTER:
-        for slug in entry["bundled_skills"]:
-            assert slug in available, (entry["name"], slug)
+        onboarding = [slug for slug in entry["bundled_skills"] if slug in available]
+        assert onboarding == entry["bundled_skills"][: len(onboarding)], entry["name"]
+        assert len(onboarding) <= 1, entry["name"]
 
 
 def test_roster_bundled_skills_are_hub_slugs():
@@ -3810,12 +3760,13 @@ def test_retired_templates_are_off_the_roster():
     assert not names & set(seed.RETIRED_TEMPLATES), names & set(seed.RETIRED_TEMPLATES)
 
 
-def test_every_wave_three_skill_is_a_registered_starter():
+def test_every_wave_three_kit_is_an_onboarding_starter_plus_catalog_skills():
     registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
-    for expected in EXPECTED_WAVE_THREE.values():
-        assert set(expected["skills"]) <= registered
-    slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
-    assert len(slugs) == len(set(slugs)) == 72
+    for name, expected in EXPECTED_WAVE_THREE.items():
+        onboarding, *catalog = expected["skills"]
+        assert onboarding in registered, name
+        assert not set(catalog) & registered, name
+        assert len(catalog) == len(set(catalog)), name
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3920,33 +3871,21 @@ def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
     expected = {
         "Mina": [
             "bookkeeping-getting-started",
-            "expense-categorization",
-            "invoice-drafting-and-issue",
-            "accounts-receivable-follow-up",
-            "statement-reconciliation",
-            "month-end-close-checklist",
-            "monthly-profit-and-loss-summary",
-            "bookkeeping-exception-escalation",
+            "account-reconciliation",
+            "month-end-close-management",
+            "financial-statement-preparation",
         ],
         "Theo": [
             "investor-relations-getting-started",
-            "pitch-deck-review",
-            "fundraising-data-room-checklist",
-            "investor-targeting-and-research",
-            "fundraising-pipeline-review",
-            "cap-table-hygiene",
-            "monthly-investor-update",
-            "board-and-investor-metrics-brief",
+            "financial-statement-preparation",
+            "board-deck-builder",
+            "multi-source-research-synthesis",
         ],
         "Quinn": [
             "kpi-analysis-getting-started",
-            "metric-definition-and-data-quality",
-            "weekly-kpi-digest",
-            "metric-anomaly-detection",
-            "metric-movement-analysis",
-            "cohort-and-retention-analysis",
-            "funnel-conversion-analysis",
-            "experiment-readout",
+            "dataset-exploration",
+            "data-visualization",
+            "user-cohort-analysis",
         ],
     }
     by_name = {entry["name"]: entry for entry in seed.ROSTER}
