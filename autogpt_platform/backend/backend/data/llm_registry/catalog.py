@@ -1229,6 +1229,16 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 cost=CatalogModelCost(run_credits=4),
             ),
+            CatalogModel(
+                slug="z-ai/glm-5.3",
+                display_name="GLM 5.3",
+                provider="open_router",
+                creator="z.ai",
+                context_window=1048575,
+                max_output_tokens=943717,
+                price_tier=3,
+                cost=CatalogModelCost(run_credits=5),
+            ),
             # ----- OpenAI -----
             CatalogModel(
                 slug="gpt-4.1-2025-04-14",
