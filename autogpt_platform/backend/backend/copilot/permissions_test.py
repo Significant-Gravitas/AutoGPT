@@ -13,6 +13,7 @@ from backend.copilot.permissions import (
     CopilotPermissions,
     _block_matches,
     all_known_tool_names,
+    allowed_providers,
     apply_tool_permissions,
     validate_block_identifiers,
     validate_tool_names,
@@ -814,3 +815,106 @@ class TestApplyToolPermissionsIsLossless:
             for name in allowed_unfiltered
             if name.rsplit("__", 1)[-1] in DESCENT_DENIED_TOOLS
         }
+
+
+# ---------------------------------------------------------------------------
+# Providers: the ceiling on a run's connected accounts
+# ---------------------------------------------------------------------------
+
+
+class TestProviders:
+    def test_no_filter_allows_every_provider(self):
+        perms = CopilotPermissions()
+        assert perms.is_provider_allowed("github")
+        assert allowed_providers(perms) is None
+        assert allowed_providers(None) is None
+
+    def test_deny_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert not perms.is_provider_allowed("github")
+        assert perms.is_provider_allowed("linear")
+        assert allowed_providers(perms) == ()
+        assert not perms.is_empty()
+
+    def test_allow_list(self):
+        perms = CopilotPermissions(providers=["github"], providers_exclude=False)
+        assert perms.is_provider_allowed("github")
+        assert not perms.is_provider_allowed("linear")
+        # Every provider a box can be handed is allowed: no ceiling to record.
+        assert allowed_providers(perms) is None
+
+    def test_an_allow_list_of_nothing_the_box_can_use_allows_nothing(self):
+        perms = CopilotPermissions(providers=["linear"], providers_exclude=False)
+        assert allowed_providers(perms) == ()
+
+    def test_a_tool_filter_alone_does_not_restrict_providers(self):
+        perms = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
+        assert allowed_providers(perms) is None
+
+    def test_a_child_cannot_widen_its_parent(self):
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_the_ceiling_survives_serialisation(self):
+        """Permissions cross the executor queue as JSON."""
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        again = CopilotPermissions.model_validate_json(perms.model_dump_json())
+        assert not again.is_provider_allowed("github")
+
+    def test_a_merged_ceiling_survives_the_queue_without_its_parent(self):
+        """``_parent`` is private and does not cross the executor queue."""
+        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
+        child = CopilotPermissions()
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        again = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not again.is_provider_allowed("github")
+        assert allowed_providers(again) == ()
+
+    def test_flattening_keeps_an_open_ceiling_open(self):
+        assert CopilotPermissions().flattened_providers() == ([], True)
+        merged = CopilotPermissions().merged_with_parent(
+            CopilotPermissions(), ALL_TOOL_NAMES
+        )
+        assert allowed_providers(merged) is None
+
+    @pytest.mark.parametrize("round_trip", [False, True])
+    def test_a_child_restriction_under_an_open_parent_is_kept(self, round_trip):
+        """The other direction of inheritance: the child narrows, the parent
+        does not."""
+        child = CopilotPermissions(providers=["github"], providers_exclude=True)
+        merged = child.merged_with_parent(CopilotPermissions(), ALL_TOOL_NAMES)
+        if round_trip:
+            merged = CopilotPermissions.model_validate_json(merged.model_dump_json())
+        assert not merged.is_provider_allowed("github")
+        assert allowed_providers(merged) == ()
+
+    def test_child_and_parent_restrictions_combine(self):
+        child = CopilotPermissions(providers=["github"], providers_exclude=False)
+        parent = CopilotPermissions(providers=["linear"], providers_exclude=True)
+        merged = child.merged_with_parent(parent, ALL_TOOL_NAMES)
+        assert merged.is_provider_allowed("github")
+        assert not merged.is_provider_allowed("linear")
+        assert allowed_providers(merged) is None  # github is every sandbox provider
+
+
+class TestGraphProviders:
+    def _graph(self, *providers):
+        from unittest.mock import MagicMock
+
+        graph = MagicMock()
+        graph.aggregate_credentials_inputs.return_value = {
+            "credentials": (MagicMock(provider=frozenset(providers)), set(), True)
+        }
+        return graph
+
+    def test_a_graph_using_a_denied_provider_is_named(self):
+        from backend.copilot.permissions import denied_graph_providers
+
+        perms = CopilotPermissions(providers=["github"], providers_exclude=True)
+        assert denied_graph_providers(perms, self._graph("github")) == ["github"]
+        # Providers the ceiling does not cover are not its to refuse.
+        assert denied_graph_providers(perms, self._graph("slack")) == []
+        assert denied_graph_providers(None, self._graph("github")) == []

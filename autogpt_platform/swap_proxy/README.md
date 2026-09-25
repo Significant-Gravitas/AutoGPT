@@ -46,7 +46,10 @@ users at once.
    credential) for providers that need it, and arrives with the binding
    table (SECRT-2616); nothing sets it yet. The backend is asked for values
    per user, per host and per box, and refuses hosts a credential is not bound
-   to (see "What a box holds").
+   to (see "What a box holds"). It also holds the box to the run's ceiling on
+   connected accounts (`providers` in `CopilotPermissions`, recorded when the
+   box's egress is pinned): a provider outside it comes back with no host it
+   may be sent to, scrubbed but never swapped.
    (`swap_proxy/swap.py`, `swap_proxy/source.py`)
 5. **Scrub.** A value echoed back in a text response, or in a websocket message
    from the server, is turned back into its placeholder before the box sees it,
@@ -330,6 +333,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   the case, it does not close it.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
+- A box's ceiling on connected accounts is the one recorded at its latest pin.
+  Two turns sharing an expert's box share the later turn's ceiling. A re-pin
+  with no ceiling of its own (the desktop tool, turning the screen on from the
+  UI) keeps the one on record rather than widening it.
 - A connection stays open after its box's credential is rotated (every
   reconnect rotates it), but the backend no longer knows its box: from then on
   nothing is swapped into it, and its text responses from bound hosts are

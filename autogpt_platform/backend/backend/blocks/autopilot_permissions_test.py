@@ -56,6 +56,19 @@ class TestBuildAndValidatePermissions:
         assert result.tools == ["run_block", "web_fetch"]
         assert result.tools_exclude is True
 
+    async def test_providers_are_carried(self):
+        inp = _make_input(providers=["github"], providers_exclude=False)
+        result = await _build_and_validate_permissions(inp)
+        assert isinstance(result, CopilotPermissions)
+        assert result.providers == ["github"]
+        assert result.providers_exclude is False
+
+    async def test_an_unknown_provider_is_refused(self):
+        inp = _make_input(providers=["gitlab"])
+        result = await _build_and_validate_permissions(inp)
+        assert isinstance(result, str)
+        assert "gitlab" in result
+
     async def test_invalid_tool_rejected_by_pydantic(self):
         """Invalid tool names are now caught at Pydantic validation time
         (Literal type), before ``_build_and_validate_permissions`` is called."""

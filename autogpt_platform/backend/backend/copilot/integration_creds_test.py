@@ -711,6 +711,17 @@ class TestPlaceholders:
         assert "GIT_CONFIG_KEY_0" not in env
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_provider_outside_the_runs_ceiling_gets_no_grant(self):
+        manager = self._manager([self.older])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            assert await placeholder_grants(_USER, providers=()) == {}
+            assert await get_integration_env_vars(_USER, providers=()) == {}
+            kept = await get_integration_env_vars(_USER, providers=("github",))
+        assert kept["GH_TOKEN"] == "tok-older"
+        # And its variables are blanked, not inherited from the box's own.
+        assert placeholder_env({})["GH_TOKEN"] == ""
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_grants_are_per_box_and_per_provider(self):
         store: dict[str, set[str]] = {}
         ttls: dict[str, int] = {}

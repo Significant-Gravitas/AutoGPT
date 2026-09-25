@@ -118,12 +118,14 @@ from ..pending_messages import (
 )
 from ..permissions import (
     CopilotPermissions,
+    allowed_providers,
     apply_tool_permissions,
     denied_tool_names,
 )
 from ..prompting import (
     approval_mode_supplement,
     get_chat_platform_supplement,
+    get_provider_ceiling_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
@@ -1724,6 +1726,7 @@ async def _apply_building_mode_restart(
     session_id: str,
     message_id: str,
     log_prefix: str,
+    provider_supplement: str = "",
 ) -> StreamStatus:
     """Reconfigure *state* to relaunch the attempt with the guide in the
     system prompt, returning the status event to yield.
@@ -1762,6 +1765,7 @@ async def _apply_building_mode_restart(
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
+        + provider_supplement
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -4839,6 +4843,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
                     expert_id=owner_expert_id,
                     user_id=user_id,
+                    providers=allowed_providers(permissions),
                 )
                 # Publish the live box before the gather returns: if a sibling
                 # setup leg fails, the finally below still pauses it and
@@ -4925,11 +4930,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # calls into a gate that asks about *this* turn.
         session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
+        # Empty unless the run's permissions restrict connected accounts.
+        provider_supplement = get_provider_ceiling_supplement(permissions)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(
                 use_e2b=use_e2b, expert_session=bool(session.expert_id)
             )
+            + provider_supplement
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
@@ -5756,6 +5764,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state=state,
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
+                    provider_supplement=provider_supplement,
                     delegation_supplement=delegation_supplement,
                     oversight_supplement=oversight_supplement,
                     team_building_supplement=team_building_supplement,

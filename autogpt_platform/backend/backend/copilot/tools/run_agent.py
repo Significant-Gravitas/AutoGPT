@@ -8,7 +8,10 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import denied_graph_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
@@ -929,6 +932,8 @@ class RunAgentTool(BaseTool):
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Check rate limits (dry runs don't count against the session limit)
         if (
@@ -1220,6 +1225,8 @@ class RunAgentTool(BaseTool):
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
+        if refusal := _provider_refusal(graph, session_id):
+            return refusal
 
         # Validate schedule params
         schedule_name = schedule_name.strip()
@@ -1353,3 +1360,21 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         )
+
+
+def _provider_refusal(graph: GraphModel, session_id: str) -> ErrorResponse | None:
+    """Refuse an agent whose blocks act with a provider's credentials the run
+    may not use: the run's ceiling on connected accounts covers what it
+    launches, as it covers its own blocks (``run_block``) and its sandbox."""
+    denied = denied_graph_providers(get_current_permissions(), graph)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Agent '{graph.name}' acts with the user's {names} account, which "
+            "this run is not permitted to use. Tell the user it is outside what "
+            "this run was allowed to do."
+        ),
+        session_id=session_id,
+    )

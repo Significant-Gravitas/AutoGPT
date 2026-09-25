@@ -109,6 +109,11 @@ async def resolve_swap_credential(
     best match for the requested scopes); another of the user's accounts, or
     an id typed by hand, resolves to nothing.
 
+    A provider outside the box's ceiling (``providers`` in its record, the
+    run's ``CopilotPermissions``) comes back with no host it may be sent to:
+    the proxy still scrubs the user's values out of what that provider's
+    hosts send back, and swaps nothing.
+
     ``None`` for an unknown name, an unbound host, or nothing granted that
     still yields a token (disconnected since): in each case the placeholder
     goes out as it is.  :class:`NoLiveBox` if *box* is not a live box of
@@ -123,6 +128,8 @@ async def resolve_swap_credential(
     if entry is None or not _host_is_bound(host, _bound_hosts(entry)):
         return None
     record = await _box_record(box, user_id)
+    ceiling = record.get("providers")
+    permitted = ceiling is None or name in ceiling
     sandbox_id = record.get("sandbox_id")
     granted = await granted_to_box(sandbox_id, name) if sandbox_id else set()
     values: dict[str, str] = {}
@@ -139,5 +146,7 @@ async def resolve_swap_credential(
     if not values:
         return None
     return SwapCredential(
-        name=name, values=values, allowed_hosts=list(entry["swap_hosts"])
+        name=name,
+        values=values,
+        allowed_hosts=list(entry["swap_hosts"]) if permitted else [],
     )

@@ -642,14 +642,15 @@ async def _admitted_turn_envelope(
 def _narrow_permissions(
     permissions: CopilotPermissions | None, envelope: TurnEnvelope
 ) -> CopilotPermissions | None:
-    """The envelope's tool set as the turn's whitelist, keeping any block
-    filter the caller passed. Hides the tools from the model; the refusal
+    """The envelope's tool set as the turn's whitelist, keeping any block and
+    provider filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
     if narrowed is None:
         return permissions
     if permissions is None:
         return narrowed
+    providers, providers_exclude = permissions.flattened_providers()
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
     #
@@ -662,6 +663,10 @@ def _narrow_permissions(
         tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
+        # The effective ceiling, parents included: this instance crosses the
+        # queue, where ``_parent`` does not.
+        providers=providers,
+        providers_exclude=providers_exclude,
     )
 
 

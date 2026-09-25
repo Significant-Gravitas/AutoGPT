@@ -323,3 +323,22 @@ async def test_the_github_content_hosts_that_take_the_token_may_be_sent_it(host)
         credential = await resolve_swap_credential("user-1", "github", host, _BOX)
     assert credential is not None
     assert _host_is_bound(host, credential.allowed_hosts)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "providers, sendable",
+    [(None, True), (["github"], True), ([], False), (["linear"], False)],
+    ids=["no ceiling", "github allowed", "none allowed", "github outside"],
+)
+async def test_a_provider_outside_the_boxs_ceiling_is_scrubbed_never_sent(
+    live_box, providers, sendable
+):
+    live_box["providers"] = providers
+    with _token("ghp_real"):
+        credential = await resolve_swap_credential(
+            "user-1", "github", "api.github.com", _BOX
+        )
+    assert credential is not None
+    assert credential.values["cred-a"] == "ghp_real"
+    assert credential.allowed_hosts == (_GITHUB_HOSTS if sendable else [])
