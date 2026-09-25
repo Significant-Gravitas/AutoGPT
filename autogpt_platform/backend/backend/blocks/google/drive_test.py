@@ -25,6 +25,10 @@ from backend.blocks.google._drive_content import (
     pdf_to_text,
     read_as_text,
 )
+from backend.blocks.google.drive_comments import (
+    GoogleDriveListCommentsBlock,
+    to_drive_comment,
+)
 from backend.blocks.google.drive_manage import (
     GoogleDriveCreateFileBlock,
     GoogleDriveMoveFileBlock,
@@ -335,3 +339,51 @@ def _minimal_pdf(text: str) -> bytes:
     out += b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1)
     out += b"startxref\n%d\n%%%%EOF\n" % xref_at
     return bytes(out)
+
+
+def test_to_drive_comment_drops_deleted_replies_and_missing_fields():
+    comment = to_drive_comment(
+        {
+            "id": "c1",
+            "content": "Looks off",
+            "author": {"displayName": "Sam"},
+            "resolved": False,
+            "replies": [
+                {"id": "r1", "content": "Fixed", "author": {"displayName": "Alex"}},
+                {"id": "r2", "content": "", "deleted": True},
+            ],
+        }
+    )
+    assert comment.author == "Sam"
+    assert comment.author_email is None
+    assert comment.quoted_text is None
+    assert [r.id for r in comment.replies] == ["r1"]
+
+
+class _CommentsService:
+    def __init__(self, pages: list[dict]):
+        self._pages = pages
+        self.calls: list[dict] = []
+
+    def comments(self):
+        return self
+
+    def list(self, **kwargs):
+        self.calls.append(kwargs)
+        return _Request(self._pages[len(self.calls) - 1])
+
+
+def test_list_comments_pages_and_filters_resolved_threads():
+    service = _CommentsService(
+        [
+            {
+                "comments": [{"id": "a", "resolved": True}, {"id": "b"}],
+                "nextPageToken": "p2",
+            },
+            {"comments": [{"id": "c"}, {"id": "d"}]},
+        ]
+    )
+    items = GoogleDriveListCommentsBlock._list_comments(service, "f", 2, False)
+    assert [i["id"] for i in items] == ["b", "c"]
+    assert service.calls[1]["pageToken"] == "p2"
+    assert all("fields" in call for call in service.calls)

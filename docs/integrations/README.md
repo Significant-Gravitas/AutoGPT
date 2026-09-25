@@ -147,6 +147,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Drive Download File](block-integrations/google/drive_files.md#google-drive-download-file) | Download a file from Google Drive (up to 50 MB) |
 | [Google Drive Get File Info](block-integrations/google/drive_files.md#google-drive-get-file-info) | Get a Google Drive file's details: name, type, size, owners, created and modified dates, and the folders it is in |
 | [Google Drive Get File Permissions](block-integrations/google/drive_files.md#google-drive-get-file-permissions) | List who can access a Google Drive file: users, groups, domains or anyone with the link, and their roles |
+| [Google Drive List Comments](block-integrations/google/drive_comments.md#google-drive-list-comments) | List the comment threads on a Google Doc, Sheet, Slides deck or other Drive file: who said what, the text each comment is on, replies, and whether the thread is resolved |
 | [Google Drive List Recent Files](block-integrations/google/drive_search.md#google-drive-list-recent-files) | List the most recently used, modified or viewed files in Google Drive |
 | [Google Drive Move File](block-integrations/google/drive_manage.md#google-drive-move-file) | Move a Google Drive file into another folder |
 | [Google Drive Read File](block-integrations/google/drive_files.md#google-drive-read-file) | Read a Google Drive file as text |

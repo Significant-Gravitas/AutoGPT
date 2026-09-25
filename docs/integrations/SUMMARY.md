@@ -91,6 +91,7 @@
 * [GitHub Users](block-integrations/github/users.md)
 * [Google Calendar](block-integrations/google/calendar.md)
 * [Google Docs](block-integrations/google/docs.md)
+* [Google Drive Comments](block-integrations/google/drive_comments.md)
 * [Google Drive Files](block-integrations/google/drive_files.md)
 * [Google Drive Manage](block-integrations/google/drive_manage.md)
 * [Google Drive Search](block-integrations/google/drive_search.md)
