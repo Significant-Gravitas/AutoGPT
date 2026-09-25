@@ -12,10 +12,11 @@ Every call to ``login.link.com`` authenticates twice: the publishable key of
 the Stripe account that registered the client goes in the ``Authorization``
 header, and the client secret goes in the form body.
 
-When the three ``STRIPE_LINK_*`` settings are present, Stripe Link connects
-through this handler. Credentials it issues are marked in their metadata, so
-refresh and revocation keep reaching the client that issued them even while
-older device-code credentials remain in use.
+When the three ``STRIPE_LINK_*`` settings are present, the handler is
+registered and Stripe Link connects through it; otherwise it is left out of the
+registry and Stripe Link connects by device code. Credentials it issues are
+marked in their metadata, so refresh and revocation keep reaching the client
+that issued them even while older device-code credentials remain in use.
 """
 
 import logging
@@ -64,7 +65,7 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.publishable_key = Secrets().stripe_link_publishable_key
+        self.publishable_key = _secrets.stripe_link_publishable_key
 
     def get_login_url(
         self, scopes: list[str], state: str, code_challenge: Optional[str]
@@ -137,28 +138,43 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+        # Called after the local delete, so a failure is reported as "not
+        # revoked" rather than raised: raising would turn a completed
+        # disconnect into an error. The customer can still end the grant from
+        # their Link account.
         if not credentials.refresh_token:
             return False
-        self._require_own_client(credentials)
+        if not self._owns(credentials):
+            logger.warning(
+                "Stripe Link grant was issued to another client; not revoked"
+            )
+            return False
         # Revoking the refresh token ends the grant, and with it every access
         # token issued from it.
-        await self._post(
-            "revoke",
-            {
-                "token": credentials.refresh_token.get_secret_value(),
-                "token_type_hint": "refresh_token",
-            },
-        )
+        try:
+            await self._post(
+                "revoke",
+                {
+                    "token": credentials.refresh_token.get_secret_value(),
+                    "token_type_hint": "refresh_token",
+                },
+            )
+        except (RuntimeError, httpx.HTTPError) as e:
+            logger.warning(f"Stripe Link grant was not revoked: {type(e).__name__}")
+            return False
         return True
 
     def _require_own_client(self, credentials: OAuth2Credentials) -> None:
         # Tokens are bound to the client that issued them; after a client
         # rotation the old grant cannot be refreshed and must be reconnected.
-        if credentials.metadata.get("link_client_id") != self.client_id:
+        if not self._owns(credentials):
             raise RuntimeError(
                 "These Stripe Link credentials were issued to a different "
                 "OAuth client; reconnect Stripe Link"
             )
+
+    def _owns(self, credentials: OAuth2Credentials) -> bool:
+        return credentials.metadata.get("link_client_id") == self.client_id
 
     async def _post(self, endpoint: str, form: dict[str, str]) -> dict:
         async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:

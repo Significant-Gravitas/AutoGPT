@@ -13,6 +13,7 @@ from backend.integrations.creds_manager import (
     unregister_creds_changed_hook,
 )
 from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
+from backend.util.exceptions import MissingConfigError
 
 
 @pytest.fixture(autouse=True)
@@ -429,6 +430,10 @@ async def test_link_grants_refresh_through_the_client_that_issued_them(mocker):
         "backend.integrations.creds_manager._get_provider_oauth_handler",
         new=AsyncMock(return_value=hosted_handler),
     )
+    mocker.patch(
+        "backend.integrations.creds_manager.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+        True,
+    )
     manager = IntegrationCredentialsManager()
 
     device = await manager._get_oauth_handler(_link_credentials({}))
@@ -441,3 +446,21 @@ async def test_link_grants_refresh_through_the_client_that_issued_them(mocker):
     assert isinstance(device, StripeLinkDeviceAuthHandler)
     assert hosted is hosted_handler
     resolve_hosted.assert_awaited_once_with("stripe_link")
+
+
+@pytest.mark.asyncio
+async def test_a_hosted_link_grant_without_its_client_asks_for_a_reconnect(mocker):
+    """The device client cannot refresh a confidential client's grant, so an
+    unconfigured confidential client means reconnecting, not a device refresh."""
+    mocker.patch(
+        "backend.integrations.creds_manager.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+        False,
+    )
+    manager = IntegrationCredentialsManager()
+
+    with pytest.raises(MissingConfigError, match="reconnect Stripe Link"):
+        await manager._get_oauth_handler(
+            _link_credentials(
+                {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+            )
+        )

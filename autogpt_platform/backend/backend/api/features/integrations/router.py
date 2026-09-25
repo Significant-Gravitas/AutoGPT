@@ -75,7 +75,10 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
-from backend.integrations.oauth.stripe_link_hosted import is_hosted_link_credential
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    is_hosted_link_credential,
+)
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
@@ -1078,7 +1081,12 @@ async def delete_credentials(
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
         elif provider == ProviderName.STRIPE_LINK and is_hosted_link_credential(creds):
-            # Issued by the confidential client, which alone can revoke it.
+            # Issued by the confidential client, which alone can revoke it. If
+            # that client has since been unconfigured nothing here can end the
+            # grant: the local delete stands, and the customer can revoke it
+            # from their Link account.
+            if not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
+                return CredentialsDeletionResponse(revoked=False)
             handler = _get_provider_oauth_handler(request, provider)
         elif (
             device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
@@ -1811,10 +1819,6 @@ def _get_provider_oauth_handler(
         )
 
     if not (client_id and client_secret):
-        if key in DEVICE_HANDLERS_BY_NAME:
-            # Stripe Link has an optional confidential client; without one it
-            # still connects through its device-code flow.
-            raise _device_code_only(key)
         logger.error(
             f"Attempt to use unconfigured {provider_name.value} OAuth integration"
         )
@@ -1843,8 +1847,9 @@ def _get_provider_oauth_handler(
 
 
 def _device_code_only(key: str) -> HTTPException:
-    # A device-code provider with no configured confidential client has no
-    # authorization-code flow to start. Point the caller at the device-auth
+    # A device-code provider with no registered confidential client (Stripe
+    # Link without its STRIPE_LINK_* settings) has no authorization-code flow
+    # to start. Point the caller at the device-auth
     # endpoint rather than reporting "does not support OAuth" or "not
     # configured". The detail is shown to end users verbatim.
     return HTTPException(

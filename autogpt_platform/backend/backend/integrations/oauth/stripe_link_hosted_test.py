@@ -11,8 +11,9 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.oauth import HANDLERS_BY_NAME, stripe_link_hosted
 from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
     StripeLinkHostedOAuthHandler,
     is_hosted_link_credential,
 )
@@ -22,7 +23,11 @@ CALLBACK = "https://platform.example/auth/integrations/oauth_callback"
 
 @pytest.fixture
 def handler(monkeypatch) -> StripeLinkHostedOAuthHandler:
-    monkeypatch.setenv("STRIPE_LINK_PUBLISHABLE_KEY", "pk_test_publishable")
+    monkeypatch.setattr(
+        stripe_link_hosted._secrets,
+        "stripe_link_publishable_key",
+        "pk_test_publishable",
+    )
     return StripeLinkHostedOAuthHandler("lwlcid_client", "client-secret", CALLBACK)
 
 
@@ -72,8 +77,12 @@ def hosted_credentials(client_id: str = "lwlcid_client") -> OAuth2Credentials:
     )
 
 
-def test_registered_as_the_stripe_link_oauth_handler():
-    assert HANDLERS_BY_NAME["stripe_link"] is StripeLinkHostedOAuthHandler
+def test_registered_only_with_a_configured_client():
+    """Unregistered, Stripe Link connects by device code; half a configuration
+    must not start a redirect flow Link will reject."""
+    assert HANDLERS_BY_NAME.get("stripe_link") is (
+        StripeLinkHostedOAuthHandler if STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED else None
+    )
 
 
 def test_login_url_matches_the_documented_authorization_request(handler):
@@ -181,9 +190,17 @@ async def test_a_grant_from_another_client_is_not_refreshed_or_revoked(handler, 
 
     with pytest.raises(RuntimeError, match="different OAuth client"):
         await handler.refresh_tokens(credentials)
-    with pytest.raises(RuntimeError, match="different OAuth client"):
-        await handler.revoke_tokens(credentials)
+    # Revocation runs after the local delete, so it reports rather than raises.
+    assert await handler.revoke_tokens(credentials) is False
     assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_a_refused_revocation_reports_not_revoked(handler, link):
+    _, responses = link
+    responses["/auth/revoke"] = httpx.Response(400, json={"error": "invalid_grant"})
+
+    assert await handler.revoke_tokens(hosted_credentials()) is False
 
 
 @pytest.mark.asyncio
