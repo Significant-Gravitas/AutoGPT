@@ -522,6 +522,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Gmail Remove Label](block-integrations/google/gmail.md#gmail-remove-label) | A block that removes a label from a specific email message in a Gmail account |
 | [Gmail Reply](block-integrations/google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](block-integrations/google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
+| [Google Contacts Get My Profile](block-integrations/google/contacts.md#google-contacts-get-my-profile) | Get the connected Google account's own profile: name, email address, photo, company and job title, plus language when Google shares it |
+| [Google Contacts Search](block-integrations/google/contacts.md#google-contacts-search) | Search the user's Google Contacts by name, email address, phone number or company, optionally including 'Other contacts' (people they have emailed but never saved) |
+| [Google Contacts Search Directory](block-integrations/google/contacts_directory.md#google-contacts-search-directory) | Search the user's Google Workspace directory for colleagues and contacts shared with the organization, by name or email address |
 | [Hub Spot Engagement](block-integrations/hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
 
 ## Developer Tools

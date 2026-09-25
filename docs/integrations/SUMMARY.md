@@ -90,6 +90,8 @@
 * [GitHub Triggers](block-integrations/github/triggers.md)
 * [GitHub Users](block-integrations/github/users.md)
 * [Google Calendar](block-integrations/google/calendar.md)
+* [Google Contacts](block-integrations/google/contacts.md)
+* [Google Contacts Directory](block-integrations/google/contacts_directory.md)
 * [Google Docs](block-integrations/google/docs.md)
 * [Google Gmail](block-integrations/google/gmail.md)
 * [Google Sheets](block-integrations/google/sheets.md)
