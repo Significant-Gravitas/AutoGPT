@@ -6,6 +6,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -144,6 +145,7 @@ class PostToYouTubeBlock(Block):
             input_schema=PostToYouTubeBlock.Input,
             output_schema=PostToYouTubeBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

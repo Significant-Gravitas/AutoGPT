@@ -13,9 +13,9 @@ interface Props {
 
 export function ReceiptLine({ receipt }: Props) {
   const [icon, tone] =
-    receipt.text === "Approved"
+    receipt.text === "Approved" || receipt.text === "Released"
       ? [Tick02Icon, "text-green-600"]
-      : receipt.text === "Rejected"
+      : receipt.text === "Rejected" || receipt.text === "Kept out"
         ? [Cancel01Icon, "text-zinc-400"]
         : [InformationCircleIcon, "text-zinc-400"];
   return (

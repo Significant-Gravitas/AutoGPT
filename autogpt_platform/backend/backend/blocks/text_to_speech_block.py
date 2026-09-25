@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -74,6 +75,7 @@ class UnrealTextToSpeechBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
