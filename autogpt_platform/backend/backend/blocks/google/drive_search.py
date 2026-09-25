@@ -152,7 +152,7 @@ class GoogleDriveSearchFilesBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         query = build_search_query(input_data)
-        order_by = None if input_data.text_contains else "modifiedTime desc"
+        order_by = search_order(input_data)
         service = build_drive_service(credentials)
         try:
             result = await asyncio.to_thread(
@@ -307,12 +307,21 @@ def build_search_query(input_data: GoogleDriveSearchFilesBlock.Input) -> str:
         folder = quote_drive_value(parse_folder_id(input_data.folder_id))
         clauses.append(f"{folder} in parents")
     if input_data.modified_after:
-        clauses.append(f"modifiedTime > '{input_data.modified_after.isoformat()}'")
+        modified_after = input_data.modified_after.replace(microsecond=0).isoformat()
+        clauses.append(f"modifiedTime > '{modified_after}'")
     if input_data.custom_query:
         clauses.append(f"({input_data.custom_query})")
     if not input_data.include_trashed:
         clauses.append("trashed = false")
     return " and ".join(clauses)
+
+
+def search_order(input_data: GoogleDriveSearchFilesBlock.Input) -> str | None:
+    """Newest first, except for content searches: Drive ranks those by
+    relevance and rejects an orderBy."""
+    if input_data.text_contains or "fulltext" in input_data.custom_query.lower():
+        return None
+    return "modifiedTime desc"
 
 
 def list_drive_files(

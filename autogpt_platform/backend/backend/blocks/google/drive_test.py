@@ -32,6 +32,7 @@ from backend.blocks.google.drive_manage import (
 from backend.blocks.google.drive_search import (
     GoogleDriveSearchFilesBlock,
     build_search_query,
+    search_order,
 )
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockInputError
@@ -74,6 +75,26 @@ def test_search_query_combines_filters():
 def test_search_query_can_include_trash():
     query = build_search_query(_search_input(name_contains="x", include_trashed=True))
     assert query == "name contains 'x'"
+
+
+def test_search_query_drops_microseconds():
+    query = build_search_query(
+        _search_input(modified_after=datetime(2026, 9, 1, 8, 30, 5, 123456))
+    )
+    assert query.startswith("modifiedTime > '2026-09-01T08:30:05'")
+
+
+@pytest.mark.parametrize(
+    "fields, expected",
+    [
+        ({}, "modifiedTime desc"),
+        ({"name_contains": "Q3"}, "modifiedTime desc"),
+        ({"text_contains": "revenue"}, None),
+        ({"custom_query": "fullText contains 'revenue'"}, None),
+    ],
+)
+def test_search_order_skips_sorting_for_content_searches(fields, expected):
+    assert search_order(_search_input(**fields)) == expected
 
 
 def test_quote_drive_value_escapes_quotes_and_backslashes():
