@@ -1690,6 +1690,81 @@ class TestStampTurnMessages:
         ), "pre_turn_message_count must be captured AFTER error-marker cleanup"
 
 
+class TestStampTurnTraceId:
+    """A thumbs up/down on a reply is scored against the trace recorded on
+    it, so the stamp must name this turn's trace on this turn's replies."""
+
+    TRACE_ID = "1edf31f11b1693cc6103f358c1481694"
+
+    def _messages(self):
+        from backend.copilot.model import ChatMessage
+
+        return [
+            ChatMessage(role="assistant", content="old", sequence=0),
+            ChatMessage(role="user", content="q", sequence=1),
+            ChatMessage(role="assistant", content="working", sequence=2),
+            ChatMessage(role="tool", content="{}", tool_call_id="t1"),
+            ChatMessage(role="assistant", content="done"),
+        ]
+
+    def test_stamps_this_turns_replies_only(self):
+        from backend.copilot.sdk.service import _stamp_turn_trace_id
+
+        msgs = self._messages()
+        _stamp_turn_trace_id(msgs, start_index=1, trace_id=self.TRACE_ID)
+
+        assert msgs[0].langfuse_trace_id is None  # an earlier turn's reply
+        assert msgs[1].langfuse_trace_id is None  # user row
+        assert msgs[2].langfuse_trace_id == self.TRACE_ID
+        assert msgs[3].langfuse_trace_id is None  # tool row
+        assert msgs[4].langfuse_trace_id == self.TRACE_ID
+
+    def test_flushed_rows_flagged_for_backfill(self):
+        from backend.copilot.sdk.service import _stamp_turn_trace_id
+
+        msgs = self._messages()
+        _stamp_turn_trace_id(msgs, start_index=1, trace_id=self.TRACE_ID)
+
+        assert msgs[2].stamps_pending_save is True  # flushed mid-turn
+        assert msgs[4].stamps_pending_save is False  # inserted by this save
+
+    def test_never_overwrites_an_existing_trace(self):
+        from backend.copilot.sdk.service import _stamp_turn_trace_id
+
+        msgs = self._messages()
+        msgs[2].langfuse_trace_id = "a" * 32
+        _stamp_turn_trace_id(msgs, start_index=0, trace_id=self.TRACE_ID)
+
+        assert msgs[2].langfuse_trace_id == "a" * 32
+        assert msgs[2].stamps_pending_save is False
+
+    def test_no_trace_stamps_nothing(self):
+        """Langfuse off, or its span failed to open: nothing to record."""
+        from backend.copilot.sdk.service import _stamp_turn_trace_id
+
+        msgs = self._messages()
+        _stamp_turn_trace_id(msgs, start_index=0, trace_id=None)
+
+        assert all(m.langfuse_trace_id is None for m in msgs)
+        assert not any(m.stamps_pending_save for m in msgs)
+
+    def test_stamped_in_the_finally_after_the_trace_is_captured(self):
+        """The turn handler is too large to drive in a unit test, so pin at
+        the source that the stamp runs after the trace id is captured and
+        before the end-of-turn save that persists it."""
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        src = inspect.getsource(stream_chat_completion_sdk)
+        captured_at = src.index(
+            "langfuse_trace_id = get_client().get_current_trace_id()"
+        )
+        stamped_at = src.index("_stamp_turn_trace_id(")
+        saved_at = src.index("await asyncio.shield(upsert_chat_session(session))")
+        assert captured_at < stamped_at < saved_at
+
+
 class TestSdkServingSegment:
     def test_platform_turn_is_not_read_from_mutable_session_metadata(self):
         from backend.copilot.sdk.service import _sdk_serving_segment

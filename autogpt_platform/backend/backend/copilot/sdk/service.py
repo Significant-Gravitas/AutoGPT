@@ -6267,6 +6267,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
+            _stamp_turn_trace_id(
+                session.messages,
+                start_index=pre_turn_message_count,
+                trace_id=langfuse_trace_id,
+            )
             # What this turn ran on, recorded on the turn rather than read
             # back off the session later, so a route change cannot rewrite it.
             stamp_segment(
@@ -6671,4 +6676,26 @@ def _stamp_turn_messages(
                 # Row already flushed to the DB mid-turn — flag it so the
                 # save path back-fills the columns (insert only covers
                 # unsequenced rows).
+                msg.stamps_pending_save = True
+
+
+def _stamp_turn_trace_id(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    trace_id: str | None,
+) -> None:
+    """Record the turn's Langfuse trace on the assistant rows it wrote.
+
+    A thumbs up/down on the reply is scored against this trace (see
+    ``backend.copilot.feedback``). Bounded to the turn and never
+    overwriting, exactly like ``_stamp_turn_messages``; rows flushed mid-turn
+    ride the same stamps back-fill.
+    """
+    if not trace_id:
+        return
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.langfuse_trace_id is None:
+            msg.langfuse_trace_id = trace_id
+            if msg.sequence is not None:
                 msg.stamps_pending_save = True
