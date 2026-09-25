@@ -299,7 +299,9 @@ A block that removes a label from a specific email message in a Gmail account.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block first finds the ID of the specified label in the user's Gmail account. If the label exists, it removes it from the specified email message using the message ID.
+The block first finds the ID of the named label in the user's Gmail account, then checks whether the message has that label and removes it if so. Label names must match exactly, so system labels are given by ID, such as `UNREAD` or `STARRED`.
+
+The result's `status` says what happened: `Label removed successfully`, `Label already removed or not applied` when the message didn't have the label, or `Label not found` (with an empty `label_id`) when no label has that name.
 <!-- END MANUAL -->
 
 ### Inputs
