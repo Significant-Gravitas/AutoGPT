@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { PurchaseDetails } from "./components/PurchaseDetails";
+import { SettledDecision } from "./components/SettledDecision";
 import { useInChatApproval } from "./useInChatApproval";
 
 interface Props {
@@ -7,18 +8,16 @@ interface Props {
   checkoutId: string;
 }
 
-const SETTLED: Record<string, string> = {
-  approved: "Approved. Completing the purchase…",
-  declined: "Declined. Nothing was charged.",
-  expired: "This purchase request expired. Nothing was charged.",
-};
-
 export function InChatApproval({ sessionId, checkoutId }: Props) {
   const {
     readOnly,
     state,
     purchase,
     isLoading,
+    loadFailed,
+    retryLoad,
+    agentNotTold,
+    retryTellAgent,
     approving,
     declining,
     error,
@@ -32,9 +31,29 @@ export function InChatApproval({ sessionId, checkoutId }: Props) {
     </p>
   );
   if (readOnly) return walletNote;
-  if (isLoading) return null;
+  if (isLoading) {
+    return <p className="text-sm text-zinc-600">Loading the purchase…</p>;
+  }
+  if (loadFailed) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p role="alert" className="text-sm text-red-600">
+          This purchase could not be loaded.
+        </p>
+        <Button size="small" variant="secondary" onClick={retryLoad}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
   if (state && state !== "awaiting") {
-    return <p className="text-sm text-zinc-600">{SETTLED[state]}</p>;
+    return (
+      <SettledDecision
+        state={state}
+        agentNotTold={agentNotTold}
+        onTellAgent={retryTellAgent}
+      />
+    );
   }
   if (!state || !purchase) {
     return (

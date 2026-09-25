@@ -1,3 +1,5 @@
+import type { LinkPurchaseApproval } from "@/app/api/__generated__/models/linkPurchaseApproval";
+
 const STATUS_LABELS: Record<string, string> = {
   awaiting_approval: "Waiting for your approval",
   created: "Waiting for Link",
@@ -81,6 +83,16 @@ export function continueAfterDecision({
   if (!approved)
     return `I declined purchase ${checkoutId}. Don't buy it; ask me what to do instead.`;
   return `I approved purchase ${checkoutId} in the chat. Complete it now with run_capability id "tool:browser_complete_link_payment" and input {"checkout_id":"${checkoutId}"}.`;
+}
+
+export function purchaseDetails(record: LinkPurchaseApproval) {
+  return {
+    merchant: record.merchant_name,
+    host: purchaseHost(record.merchant_url),
+    total: formatTotal(record.amount, record.currency),
+    context: record.context,
+    testMode: record.test_mode,
+  };
 }
 
 export function purchaseHost(merchantUrl: string) {

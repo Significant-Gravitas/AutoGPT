@@ -25,7 +25,7 @@ export function useLinkCheckout(output: Record<string, unknown>) {
   const sessionId =
     typeof output.session_id === "string" ? output.session_id : "";
   const status = String(output.status);
-  const readOnly = actions?.chatSurface === "share";
+  const readOnly = !actions || actions.chatSurface === "share";
   const checkOnly =
     output.attempted === true || STATUS_ONLY_STATUSES.includes(status);
   const canContinue =

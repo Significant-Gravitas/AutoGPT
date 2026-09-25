@@ -11,6 +11,7 @@ import pytest
 
 from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
+from backend.util.link_checkout import engine as private_browser
 
 from .agent_browser import (
     BrowserActTool,
@@ -961,6 +962,41 @@ class TestSaveBrowserState:
         ):
             # Should not raise
             await _save_browser_state("err-sess", "user1", session)
+
+
+class TestPrivateBrowserStateStaysInTheBrowser:
+    """A payment may happen in a private browser, so its cookies and storage
+    are never copied into the workspace or restored from it."""
+
+    @pytest.mark.asyncio
+    async def test_save_reads_and_writes_nothing(self):
+        session = make_session("private-sess")
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+            ) as run,
+            patch(_GET_MANAGER, new_callable=AsyncMock) as get_manager,
+            private_browser.caller("user1", "private-sess", "user1"),
+        ):
+            await _save_browser_state("private-sess", "user1", session)
+
+        run.assert_not_awaited()
+        get_manager.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_restore_reads_nothing(self):
+        session = make_session("private-sess")
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+            ) as run,
+            patch(_GET_MANAGER, new_callable=AsyncMock) as get_manager,
+            private_browser.caller("user1", "private-sess", "user1"),
+        ):
+            assert await _restore_browser_state("private-sess", "user1", session)
+
+        run.assert_not_awaited()
+        get_manager.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -4,12 +4,9 @@ import {
   usePostV2DeclineALinkPurchase,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { CopilotChatActionsContext } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/useCopilotChatActions";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useContext, useState } from "react";
-import {
-  continueAfterDecision,
-  formatTotal,
-  purchaseHost,
-} from "../../helpers";
+import { continueAfterDecision, purchaseDetails } from "../../helpers";
 
 interface Args {
   sessionId: string;
@@ -20,6 +17,8 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
   const actions = useContext(CopilotChatActionsContext);
   const readOnly = !actions || actions.chatSurface === "share";
   const [error, setError] = useState("");
+  // A recorded decision whose message to the agent did not send.
+  const [unsent, setUnsent] = useState<boolean | null>(null);
   // The purchase as the server recorded it, not as the transcript tells it:
   // this is what the customer approves.
   const approval = useGetV2GetALinkPurchaseApproval(sessionId, checkoutId, {
@@ -33,6 +32,17 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
   const decline = usePostV2DeclineALinkPurchase();
   const pending = approve.isPending || decline.isPending;
   const record = approval.data;
+  const gone =
+    approval.error instanceof ApiError && approval.error.status === 404;
+
+  async function tellAgent(approved: boolean) {
+    try {
+      await actions?.onSend(continueAfterDecision({ checkoutId, approved }));
+      setUnsent(null);
+    } catch {
+      setUnsent(approved);
+    }
+  }
 
   async function decide(approved: boolean) {
     if (readOnly || pending) return;
@@ -50,20 +60,18 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
       return;
     }
     await approval.refetch();
-    await actions?.onSend(continueAfterDecision({ checkoutId, approved }));
+    await tellAgent(approved);
   }
 
   return {
     readOnly,
     state: record?.state,
-    purchase: record && {
-      merchant: record.merchant_name,
-      host: purchaseHost(record.merchant_url),
-      total: formatTotal(record.amount, record.currency),
-      context: record.context,
-      testMode: record.test_mode,
-    },
+    purchase: record ? purchaseDetails(record) : null,
     isLoading: approval.isLoading,
+    loadFailed: approval.isError && !gone,
+    retryLoad: () => approval.refetch(),
+    agentNotTold: unsent !== null,
+    retryTellAgent: () => unsent !== null && tellAgent(unsent),
     approving: approve.isPending,
     declining: decline.isPending,
     error,

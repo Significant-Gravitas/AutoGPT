@@ -29,15 +29,20 @@ export function LinkCheckout({ output }: Props) {
     testMode,
     approvesInChat,
   } = checkoutPresentation(output);
+  const fromRecord = approvesInChat && !readOnly;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-semibold text-zinc-900">{merchant}</p>
+          <p className="font-semibold text-zinc-900">
+            {fromRecord ? "Link purchase" : merchant}
+          </p>
           <p className="text-sm text-zinc-600">{status}</p>
         </div>
-        <p className="text-lg font-semibold text-zinc-900">{total}</p>
+        {!fromRecord && (
+          <p className="text-lg font-semibold text-zinc-900">{total}</p>
+        )}
       </div>
       {testMode && (
         <p className="text-sm font-medium text-zinc-600">

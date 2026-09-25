@@ -159,6 +159,94 @@ describe("LinkCheckout in-chat approval", () => {
     expect(screen.queryByRole("button", { name: "Approve $12.99" })).toBeNull();
   });
 
+  it("keeps the transcript's total out of the header while approving", async () => {
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        approval("awaiting", { amount: 4999 }),
+      ),
+    );
+    renderCard();
+
+    expect(
+      await screen.findByRole("button", { name: "Approve $49.99" }),
+    ).toBeDefined();
+    expect(screen.queryByText("$12.99")).toBeNull();
+  });
+
+  it("offers a retry when the purchase cannot be loaded", async () => {
+    let fail = true;
+    server.use(
+      http.get("*/link-checkouts/:checkoutId", () =>
+        fail
+          ? HttpResponse.json({ detail: "unavailable" }, { status: 500 })
+          : HttpResponse.json(approval("awaiting")),
+      ),
+    );
+    renderCard();
+
+    expect(
+      await screen.findByText("This purchase could not be loaded."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+
+    fail = false;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Approve $12.99" }),
+    ).toBeDefined();
+  });
+
+  it("reads a purchase that no longer exists as no longer waiting", async () => {
+    server.use(
+      http.get("*/link-checkouts/:checkoutId", () =>
+        HttpResponse.json({ detail: "Purchase not found" }, { status: 404 }),
+      ),
+    );
+    renderCard();
+
+    expect(
+      await screen.findByText(
+        "This purchase is no longer waiting for approval.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  it("lets the user resend when the agent was not told", async () => {
+    let state: LinkPurchaseApproval["state"] = "awaiting";
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() => approval(state)),
+      getPostV2ApproveALinkPurchaseMockHandler(() => {
+        state = "approved";
+        return approval(state);
+      }),
+    );
+    onSend.mockRejectedValueOnce(new Error("offline"));
+    renderCard();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Approve $12.99" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Your decision is saved, but the message to the agent did not send.",
+      ),
+    ).toBeDefined();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tell the agent" }),
+    );
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    expect(onSend.mock.calls[1][0]).toContain(`"checkout_id":"${CHECKOUT_ID}"`);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Tell the agent" }),
+      ).toBeNull(),
+    );
+  });
+
   it("shows a decision already made after the chat reloads", async () => {
     server.use(
       getGetV2GetALinkPurchaseApprovalMockHandler(() => approval("approved")),

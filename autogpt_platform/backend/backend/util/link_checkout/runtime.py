@@ -37,6 +37,7 @@ _OPERATION_TIMEOUT = 120
 _IDLE_SECONDS = 60 * 60
 _SWEEP_INTERVAL = 5 * 60
 _last_sweep = 0.0
+_sweeps: set[asyncio.Task] = set()
 
 
 def require_runtime() -> None:
@@ -89,7 +90,7 @@ async def browser_operation(
             assert_observable(directory)
         yield directory
         return
-    await _sweep_now_and_then(directory.parent)
+    _sweep_now_and_then(directory.parent)
     lock_path = directory / "operation.lock"
     with lock_path.open("a") as lock:
         async with asyncio.timeout(_OPERATION_TIMEOUT):
@@ -225,13 +226,24 @@ async def sweep_idle_browsers(root: Path, now: float) -> None:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
-async def _sweep_now_and_then(root: Path) -> None:
+def _sweep_now_and_then(root: Path) -> None:
+    # In the background: closing a stale browser can take seconds, and no
+    # chat's command should wait for another chat's cleanup.
     global _last_sweep
     now = time.time()
     if now - _last_sweep < _SWEEP_INTERVAL:
         return
     _last_sweep = now
-    await sweep_idle_browsers(root, now)
+    task = asyncio.create_task(_sweep_quietly(root, now))
+    _sweeps.add(task)
+    task.add_done_callback(_sweeps.discard)
+
+
+async def _sweep_quietly(root: Path, now: float) -> None:
+    try:
+        await sweep_idle_browsers(root, now)
+    except Exception:
+        pass
 
 
 async def _remove_engine(directory: Path) -> bool:

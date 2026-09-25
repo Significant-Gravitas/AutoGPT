@@ -65,7 +65,6 @@ async def pay(job: WorkerJob) -> WorkerReceipt:
         finally:
             try:
                 await cdp.call("Browser.close", {})
-                receipt.browser_closed = True
             except Exception:
                 pass
             receipt.browser_closed = await retire_payment_browser(job.intent.session_id)
