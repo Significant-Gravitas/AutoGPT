@@ -51,7 +51,7 @@ jobs:
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
-          poetry run pytest --noconftest -p pytest_asyncio.plugin -p pytest_mock.plugin \
+          poetry run pytest --noconftest -p pytest_asyncio.plugin -p pytest_mock.plugin -p pytest_cov.plugin \
             backend/api/features/store/skill_seed_test.py \
             backend/api/features/store/catalog_release_model_test.py \
             backend/api/features/store/catalog_release_load_test.py \
@@ -61,7 +61,8 @@ jobs:
             backend/api/features/experts/catalogue_templates_test.py \
             backend/api/features/experts/hire_skill_snapshot_integration_test.py \
             backend/api/features/store/catalog_release_integration_test.py \
-            -q --junitxml=catalogue-tests.xml
+            -q --junitxml=catalogue-tests.xml \
+            --cov=backend --cov-branch --cov-report= --cov-report=xml:coverage-catalogue.xml
           python - <<'PY'
           import xml.etree.ElementTree as ET
           root = ET.parse("catalogue-tests.xml").getroot()
@@ -72,7 +73,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: catalogue-safety-results
-          path: autogpt_platform/backend/catalogue-tests.xml
+          path: |
+            autogpt_platform/backend/catalogue-tests.xml
+            autogpt_platform/backend/coverage-catalogue.xml
+      - name: Include catalogue safety tests in backend coverage
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-backend
+          files: ./autogpt_platform/backend/coverage-catalogue.xml
       - name: Stop the disposable test instance
         if: always()
         run: docker rm -f catalogue-postgres || true

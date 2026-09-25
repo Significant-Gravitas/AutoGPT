@@ -52,6 +52,7 @@ def checkout(tmp_path):
     }
     (tmp_path / "release.json").write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (tmp_path / "skills/demo/scripts/run.py").chmod(0o755)
     git(tmp_path, "add", ".")
     git(tmp_path, "update-index", "--chmod=+x", "skills/demo/scripts/run.py")
     git(tmp_path, "commit", "-m", "test: catalogue fixture")

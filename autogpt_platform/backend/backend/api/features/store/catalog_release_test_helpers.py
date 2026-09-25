@@ -2,6 +2,8 @@
 
 import hashlib
 
+from typing_extensions import LiteralString
+
 from backend.api.features.store.catalog_release_load import LoadedPackage, LoadedRelease
 from backend.api.features.store.catalog_release_model import (
     Adoption,
@@ -90,7 +92,7 @@ def package(slug: str, number: int) -> LoadedPackage:
 
 
 async def seed_personal_and_platform_records() -> Adoption:
-    sql = [
+    sql: list[LiteralString] = [
         """INSERT INTO "User" (id, email, "updatedAt") VALUES ('catalog-user', 'catalog-test@example.invalid', now())""",
         """INSERT INTO "Profile" (id,"userId",name,username,description,links,"updatedAt")
         VALUES ('catalog-profile','catalog-user','Private','catalog-test','Private',ARRAY[]::text[],now())""",

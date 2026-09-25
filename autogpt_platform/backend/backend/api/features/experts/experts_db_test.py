@@ -2179,7 +2179,8 @@ async def test_hire_existing_team_expert_fails_closed():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_hire_raced_org_expert_fails_closed():
+@pytest.mark.parametrize("skills_enabled", [False, True])
+async def test_hire_raced_org_expert_fails_closed(skills_enabled: bool):
     """Losing the create race to a row that is (now) non-PRIVATE must fail
     closed on the retry instead of returning the shared row."""
     template = SimpleNamespace(
@@ -2205,13 +2206,18 @@ async def test_hire_raced_org_expert_fails_closed():
         visibility=prisma.enums.ResourceVisibility.ORG,
         isArchived=False,
     )
+    pinned_package = {"slug": "research", "version_id": "v1", "title": "Research"}
     expert_client = SimpleNamespace(find_first=AsyncMock(return_value=template))
     tx = SimpleNamespace(
         execute_raw=AsyncMock(),
+        query_raw=AsyncMock(
+            side_effect=[[{"activeReleaseId": "release-1"}], [pinned_package]]
+        ),
         expert=SimpleNamespace(
-            # First reservation: no existing row → create races and loses.
+            # First reservation: no hire, then revalidate the template under
+            # the catalogue lock before create races and loses.
             # Retry reservation: the winner's row is found — and is shared.
-            find_first=AsyncMock(side_effect=[None, raced]),
+            find_first=AsyncMock(side_effect=[None, template, raced]),
             update=AsyncMock(),
             create=AsyncMock(side_effect=prisma.errors.UniqueViolationError({})),
             count=AsyncMock(return_value=0),
@@ -2225,12 +2231,34 @@ async def test_hire_raced_org_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        patch.object(
+            experts_db, "is_feature_enabled", new=AsyncMock(return_value=skills_enabled)
+        ),
+        patch.object(experts_db, "spawn_background_task") as spawn_setup,
         pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
         await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
     tx.expert.create.assert_awaited_once()
+    tx.expert.update.assert_not_awaited()
+    spawn_setup.assert_not_called()
+    assert tx.expert.find_first.await_count == 3
+    assert tx.expert.find_first.await_args_list[1].kwargs["where"] == {
+        "id": "template-1",
+        "isTemplate": True,
+        "isArchived": False,
+        "ownerUserId": None,
+        "organizationId": None,
+        "teamId": None,
+    }
+    assert tx.query_raw.await_count == 1 + int(skills_enabled)
+    assert "FOR SHARE" in tx.query_raw.await_args_list[0].args[0]
+    snapshot = tx.expert.create.await_args.kwargs["data"]["skillInstallSnapshot"].data
+    assert snapshot == {
+        "release_id": "release-1",
+        "packages": [pinned_package] if skills_enabled else [],
+    }
 
 
 @pytest.mark.asyncio(loop_scope="session")
