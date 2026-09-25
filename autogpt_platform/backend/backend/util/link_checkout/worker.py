@@ -72,14 +72,18 @@ async def pay(job: WorkerJob) -> WorkerReceipt:
 
 
 async def fill(cdp: CDP, controls: dict[str, Control], card: Card) -> None:
+    month = f"{card.exp_month:02d}"
+    year = f"{card.exp_year % 100:02d}"
+    # Each role's spellings, most common first; the field's maxlength picks the
+    # one that fits, so a two-character year field gets "30" and not "2030".
     fields = [
-        ("number", card.number.get_secret_value()),
-        ("cvc", card.cvc.get_secret_value()),
-        ("expiry", f"{card.exp_month:02d}/{card.exp_year % 100:02d}"),
-        ("exp_month", f"{card.exp_month:02d}"),
-        ("exp_year", str(card.exp_year)),
+        ("number", [card.number.get_secret_value()]),
+        ("cvc", [card.cvc.get_secret_value()]),
+        ("expiry", [f"{month}/{year}", f"{month}{year}"]),
+        ("exp_month", [month]),
+        ("exp_year", [str(card.exp_year), year]),
     ]
-    for role, value in fields:
+    for role, values in fields:
         if role not in controls:
             continue
         control = controls[role]
@@ -87,15 +91,17 @@ async def fill(cdp: CDP, controls: dict[str, Control], card: Card) -> None:
         result = await cdp.call(
             "Runtime.callFunctionOn",
             {
-                "functionDeclaration": """function(value) {
+                "functionDeclaration": """function(values) {
                 const el = this;
                 if (!el.isConnected || !(el instanceof HTMLInputElement) || el.value !== '' || el.disabled) return false;
+                const value = values.find(v => el.maxLength < 0 || v.length <= el.maxLength);
+                if (value === undefined) return false;
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
                 el.dispatchEvent(new Event('input', {bubbles: true}));
                 el.dispatchEvent(new Event('change', {bubbles: true}));
                 return true;
             }""",
-                "arguments": [{"value": value}],
+                "arguments": [{"value": values}],
                 "objectId": control.object_id,
                 "returnByValue": True,
             },

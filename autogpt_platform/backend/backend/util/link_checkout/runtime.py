@@ -181,10 +181,10 @@ async def browser_endpoint(directory: Path) -> str:
 async def retire_payment_browser(key: str) -> bool:
     """Close the browser and delete its profile. False if either failed, in
     which case the chat stays sealed."""
-    directory = session_home(key)
-    if not (directory / "engine").exists():
-        return True
     try:
+        directory = session_home(key)
+        if not (directory / "engine").exists():
+            return True
         rc, _, _ = await browser_command(directory, "close", timeout=10)
         if rc:
             return False

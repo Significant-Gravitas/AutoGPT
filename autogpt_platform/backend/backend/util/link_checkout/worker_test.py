@@ -21,7 +21,15 @@ from backend.util.link_checkout.refusals import NOT_CARD_FIELDS, CheckoutRefused
 from backend.util.link_checkout.synthetic_link import synthetic_spend
 
 CHECKOUT_URL = "https://shop.example/checkout"
-SELECTORS = {"#number": 11, "#cvc": 12, "#expiry": 13, "#pay": 14, "#note": 15}
+SELECTORS = {
+    "#number": 11,
+    "#cvc": 12,
+    "#expiry": 13,
+    "#pay": 14,
+    "#note": 15,
+    "#month": 16,
+    "#year": 17,
+}
 
 
 class ScriptedBrowser:
@@ -34,9 +42,13 @@ class ScriptedBrowser:
             "#number": "cc-number",
             "#cvc": "cc-csc",
             "#expiry": "cc-exp",
+            "#month": "cc-exp-month",
+            "#year": "cc-exp-year",
             "#note": "",
         }
         self.buttons = {"#pay"}
+        # Fields with a maxlength; the rest take any length.
+        self.max_length: dict[str, int] = {}
         self.filled: dict[str, str] = {}
         self.clicks = 0
         self.closed = False
@@ -84,7 +96,15 @@ class ScriptedBrowser:
             return {"value": self._check(params)}
         if "set.call(el, value)" in code:
             selector = params["objectId"].removeprefix("node:")
-            self.filled[selector] = params["arguments"][0]["value"]
+            limit = self.max_length.get(selector, -1)
+            fitting = [
+                value
+                for value in params["arguments"][0]["value"]
+                if limit < 0 or len(value) <= limit
+            ]
+            if not fitting:
+                return {"value": False}
+            self.filled[selector] = fitting[0]
             return {"value": True}
         if "this.click()" in code:
             self.clicks += 1
@@ -213,3 +233,36 @@ async def test_a_field_that_stops_declaring_itself_a_card_input_gets_no_card(
     assert receipt.status == "not_submitted"
     requested.assert_not_awaited()
     assert browser.filled == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_length,year", [(2, "30"), (4, "2030"), (None, "2030")])
+async def test_a_separate_year_field_gets_the_spelling_that_fits(
+    browser, intent, monkeypatch, max_length, year
+):
+    intent.plan = intent.plan.model_copy(
+        update={"expiry": None, "exp_month": "#month", "exp_year": "#year"}
+    )
+    if max_length is not None:
+        browser.max_length["#year"] = max_length
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "submitted"
+    assert browser.filled["#month"] == "12"
+    assert browser.filled["#year"] == year
+
+
+@pytest.mark.asyncio
+async def test_a_combined_expiry_without_room_for_a_slash_gets_mmyy(
+    browser, intent, monkeypatch
+):
+    browser.max_length["#expiry"] = 4
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    await worker.pay(job)
+
+    assert browser.filled["#expiry"] == "1230"

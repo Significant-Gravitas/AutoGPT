@@ -53,3 +53,16 @@ async def test_idle_browser_profiles_are_swept_but_checkouts_are_left_alone(
     assert all(
         (directory / "engine").exists() for directory in (recent, paying, sealed)
     )
+
+
+@pytest.mark.asyncio
+async def test_a_browser_whose_directory_fails_counts_as_not_retired(monkeypatch):
+    """The caller keeps the chat sealed on False; an exception here used to
+    skip that and leave the attempt without a receipt."""
+
+    def unsafe(key: str) -> Path:
+        raise RuntimeError("Private browser directory permissions are unsafe")
+
+    monkeypatch.setattr(runtime, "session_home", unsafe)
+
+    assert await runtime.retire_payment_browser("chat") is False
