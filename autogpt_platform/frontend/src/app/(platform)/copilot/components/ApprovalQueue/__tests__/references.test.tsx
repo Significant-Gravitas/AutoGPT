@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { server } from "@/mocks/mock-server";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import { act, render, screen, within } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
 import { CHAT_SESSION, referenceCard } from "./fixtures";
@@ -150,6 +150,18 @@ test("a named thing with no page still shows its card, unlinked", async () => {
   const tip = within(await screen.findByRole("tooltip"));
   expect(tip.getByText("New hire")).toBeDefined();
   expect(tip.getByText("Ships on Thursdays.")).toBeDefined();
+});
+
+test("an unlinked name's card opens from the keyboard too", async () => {
+  renderCard(referenceCard("Confirm team change"));
+
+  const view = await card();
+  const grace = view.getByText("Grace");
+  expect(grace.getAttribute("tabindex")).toBe("0");
+  act(() => grace.focus());
+
+  const tip = within(await screen.findByRole("tooltip"));
+  expect(tip.getByText("New hire")).toBeDefined();
 });
 
 test("a link with no card has no tooltip, only the ID as its title", async () => {

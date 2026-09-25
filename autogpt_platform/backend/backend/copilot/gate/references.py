@@ -424,7 +424,7 @@ async def _workspace_file(file_id: str, call: _Call) -> _Found | None:
     if file is None:
         return None
     query = f"?{urlencode({'folder': file.folder_id})}" if file.folder_id else ""
-    folder = file.path.rsplit("/", 1)[0]
+    folder = file.path.rsplit("/", 1)[0].lstrip("/")
     return _Found(
         kind="Workspace file",
         name=file.name,

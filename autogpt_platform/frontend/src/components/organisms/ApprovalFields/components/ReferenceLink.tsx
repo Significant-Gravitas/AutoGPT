@@ -31,10 +31,12 @@ export function ReferenceLink({ reference, children }: Props) {
   ) : (
     <span
       translate="no"
+      // Focusable only when it opens a card, so the keyboard reaches it too.
+      tabIndex={hasCard ? 0 : undefined}
       title={hasCard ? undefined : reference.id}
       className={
         hasCard
-          ? "underline decoration-zinc-400 decoration-dotted underline-offset-2"
+          ? "underline decoration-zinc-400 decoration-dotted underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
           : undefined
       }
     >

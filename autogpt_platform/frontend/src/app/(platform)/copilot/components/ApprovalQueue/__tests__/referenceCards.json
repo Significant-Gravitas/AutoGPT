@@ -1285,7 +1285,7 @@
                 "at": "2026-09-24T14:05:00+00:00"
               },
               {
-                "text": "In /reports",
+                "text": "In reports",
                 "cron": null,
                 "label": null,
                 "at": null
@@ -1294,7 +1294,7 @@
             "avatar_url": null,
             "avatar_color": null,
             "skills": [],
-            "summary": "application/pdf · 242 KB · Modified 2026-09-24 · In /reports"
+            "summary": "application/pdf · 242 KB · Modified 2026-09-24 · In reports"
           }
         ],
         "reference_totals": {
