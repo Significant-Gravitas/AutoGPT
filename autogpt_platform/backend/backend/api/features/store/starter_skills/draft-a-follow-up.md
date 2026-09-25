@@ -8,8 +8,8 @@ version: "1"
 # Draft a follow up
 
 Run this when a sent opener got no reply and the row needs its next
-touch. Only run on a row the user marked sent — never assume a
-message went out.
+touch. The row must be marked sent by the
+user; if it is not, ask rather than treating the opener as delivered.
 
 ## Inputs
 

@@ -74,6 +74,7 @@ twice. Keep it short enough that a new writer reads all of it.
 
 ## What not to do
 
-Never take a brand claim, a customer name or a number off a public page and
-reuse it as fact. Never research a company they did not name. Never write a
-proof point the product cannot demonstrate.
+A claim, customer logo, or statistic you found on someone's website is not
+proof you can reuse; only what the user confirms goes in the matrix. Never
+research a company they did not name. Never write a proof point the product
+cannot demonstrate.

@@ -7,8 +7,8 @@ version: "1"
 
 # Draft a first touch
 
-Use this when a researched row needs its opening message. Never draft from
-a row that is not enriched — send it back through research first.
+Use this when a researched row needs its opening message. If the row has
+not been enriched yet, stop and route it to research before writing a word.
 
 ## Inputs
 

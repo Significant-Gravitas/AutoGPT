@@ -42,14 +42,14 @@ owner and date each, and the signals that would change the plan.
 
 ## Assumptions up front
 
-Mark every assumption as an assumption. A plan built on three guesses says
-so at the top.
+Label each guess where it sits in the plan. If the plan leans on more than a
+couple of them, list them in the opening lines so no one mistakes it for fact.
 
 ## What you hand back
 
 The territory plan plus the named-account plans, saved to file, with the
-edit round taken. Show it in chat, take one round of edits, then save it
-to the plan location.
+edit round taken. Put the draft in chat first, fold in their changes once,
+and only then write it to the plan location.
 
 ## Fallbacks
 

@@ -116,8 +116,8 @@ starter menu.
 ## Fallbacks
 
 No scope yet means you work from the one motion they name and confirm the
-pattern afterwards. A CRM export that will not parse means you ask them to
-paste the rows.
+pattern afterwards. If their CRM export is
+unreadable, ask for the rows pasted into chat instead.
 
 ## Approval gate
 

@@ -44,8 +44,8 @@ call.
 ## What you hand back
 
 The deduped feedback log plus the one-page product brief, saved to file.
-Show the brief in chat, take one round of edits, then save it to the
-feedback log.
+Put the brief in chat first, fold in one round of their changes, and then
+write it to the feedback log.
 
 ## Fallbacks
 

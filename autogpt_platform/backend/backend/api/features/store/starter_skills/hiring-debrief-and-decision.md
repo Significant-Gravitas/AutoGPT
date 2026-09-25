@@ -1,70 +1,81 @@
 ---
 name: "hiring-debrief-and-decision"
-description: "Use after an interview loop finishes and the scorecards need collating, the debrief needs a running order, or the panel's read needs writing up."
+description: "Use when an interview loop has ended and the scorecards need pulling together, the debrief needs an agenda, or the outcome needs recording."
 triggers: ["run the hiring debrief", "collate the interview scorecards", "where did the panel land", "the panel disagrees on this candidate", "write up the loop outcome", "debrief running order", "missing scorecards after the loop"]
 version: "1"
 ---
 
 # Hiring debrief and decision
 
-Run this after a loop finishes and the user needs the scorecards collated, the
-debrief structured, or a written summary of where the panel landed.
+Get every written rating on the table before anyone speaks, organise it by
+competency, run a meeting that resists anchoring, and record what the user
+decided. Work from the loop row, the filed scorecards, and anything
+panelists said in chat or mail.
 
-## Inputs
+## Before the meeting: who has filed
 
-The loop row, the scorecards that came in, and anything the panel said in chat
-or mail.
+Roll-call the loop: each slot's interviewer, their competency, and whether
+the scorecard is in. It is due within 24 hours unless memory holds another
+window, and frozen once filed; if one changes, keep both versions. Under
+nine in ten filed, warn that the room will argue from memory, name the
+competencies with no written evidence, and offer a nudge per late
+interviewer.
 
-## Check what is actually in
+## The brief: one block per competency
 
-List who has filed a scorecard and who has not, and name the competency each
-missing one covers. Scorecards are due within 24 hours of the slot with no
-edits after. Under 90 percent in, say the debrief is a memory test and name
-what cannot be called yet.
+Group by competency, never by person, so a disagreement reads as a question
+about what the candidate showed. Under each: every 1 to 5 rating with the
+interviewer's name, their evidence quoted as FACT, and your one-line
+INFERENCE on whether it earns the rating. Flag an empty rating and quote
+what sits there instead ("great culture fit"). Two points or more apart is
+a split; lead with splits.
 
-## Collate by competency, not by interviewer
+End on the two or three things nobody can answer yet, each with the
+cheapest fix: a follow-up call, a scoped work sample, or a reference check
+where their process allows one.
 
-So a split shows up as a disagreement about the work rather than a clash of
-people. Under each competency: the rating, the evidence behind it in the
-interviewer's own words, and one line on whether that evidence supports the
-rating. Flag any rating with no evidence and quote what was written instead.
-Label each line FACT — quoted evidence — or INFERENCE, with your reasoning
-shown.
+## The meeting: running order
 
-## Name what is still open
+Thirty to forty-five minutes. Anyone unfiled writes a rating down before
+discussion starts. Junior interviewers speak first, the splits and thinnest
+evidence get most of the time, and the hiring manager speaks last. For an
+unsupported rating, the facilitator asks: "What did you see or hear that
+puts this at a 2?"
 
-The two or three questions the panel still disagrees on, and what would settle
-each one: a follow-up conversation, a work sample, a reference check.
+Calibrate the bar before the loop, not here. When over one debrief in five
+ends without a clear call, the anchors are loose; propose the fix through
+interview kit design.
 
-## Give the user the running order
+## After the meeting: the record
 
-Thirty to forty-five minutes. Ratings written down before discussion so nobody
-anchors, junior interviewers first, then the weakest signal, hiring manager
-last. Calibrate the bar before the loop opens; a healthy bar decides clearly
-four times in five.
+Per competency, where the panel landed; the split and what resolved it; and
+the user's decision in their words, never one you arrived at yourself. Keep
+a no's stated reason verbatim; the weekly review looks for repeats.
 
-## Write the summary afterwards
+Cut every remark that isn't about the job (age, family, health, accent,
+origin, looks) and note the removal in one line without repeating it. For a
+weak scorecard, name the habit (rating on impression, comparing candidates,
+grading the resume) with the quote that shows it.
 
-Where the panel landed per competency, the disagreement and how it resolved,
-and the decision the user recorded. Record the decision they tell you, never
-one you inferred. Strip anything that is not job-related evidence out of the
-summary and say in one line when you removed something. Note the habit behind
-any weak scorecard, with the quote that shows it.
+Once the user confirms, set the stage and outcome on the candidate row. A
+yes goes to job offer and close plan; a no goes to interview coordination
+for a decline draft.
 
-## Output
+## Who decides
 
-The collated brief before the debrief, the running order, and the written
-summary after. Update the candidate row with the stage and the outcome once
-they tell you. Saved to the hiring folder with the date and the role.
+You recommend with evidence; the room decides and the user records it. You
+never rate the candidate, break a tie, or say who to hire. Nothing from this
+pass reaches the candidate.
+
+## What you hand back
+
+The competency brief, the running order, and the decision record, each in
+chat and saved to the hiring folder with the date and role in the filename,
+plus the updated tracker row.
 
 ## Fallbacks
 
-With half the scorecards missing, collate what is in, name the missing
-competencies, and say which questions cannot be called yet. Never fill a
-missing scorecard with a guess.
-
-## Approval gate
-
-Never score the candidate yourself, never break a tie, and never tell the user
-who to hire. You recommend with evidence; the human decides and records it.
-Nothing goes to the candidate from this pass.
+Half the scorecards missing: brief from what exists, list uncovered
+competencies, and say what cannot be settled yet; never fill a gap with your
+own view. Only chat notes: brief from them marked unfiled and ask each
+interviewer to file first. A tied panel goes back to the hiring manager.

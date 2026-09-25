@@ -1,65 +1,84 @@
 ---
 name: "build-the-target-list"
-description: "Use when the user first describes who they sell to, hands over companies or an export, or asks to add, drop, or widen names on the list."
-triggers: ["target list", "prospect list", "build a list", "add companies", "ideal customer", "icp fit", "find prospects"]
+description: "Use when the user first says who they sell to, hands you companies or an export, or wants names added to or cut from the prospect list."
+triggers: ["target list", "prospect list", "who should I sell to", "add these companies", "icp fit", "find prospects", "widen the list"]
 version: "1"
 ---
 
 # Build the target list
 
-Use this when the user first describes who they sell to, hands over companies
-or an export, or asks to add, drop, or widen names. Start from their ideal
-customer plus whatever they have: a pasted list, a CRM or sales-tool export,
-a link to a sheet, a conference or portfolio page, or nothing but the ideal
-customer.
+Every prospecting step after this one reads these rows, so build the list
+narrow and right before you build it big.
 
-## The row shape
+## Where the companies come from
 
-One row per person: prospect_id, company, company_url, person, title,
-location, icp_fit, channel, contact, hook, hook_source_url, hook_date,
-enriched_on, status, last_touch_on, next_step, notes.
+If all you have is an ideal customer, seed 10 to 20 fitting companies from
+the public web and cite the page that surfaced each one. A paste, a HubSpot
+or Apollo export, or a Google Sheet starts with a readback: name the columns
+you see and how each maps to the row below, before you edit anything.
 
-Fixed values: icp_fit is strong, maybe, or weak. channel is email, social,
-phone, or other. status runs new, enriched, drafted, approved, sent,
-replied, meeting, qualified, no, or on hold.
+## The row
 
-## Start from companies
+One person per row. Other skills read these exact names:
 
-With only an ideal customer, find 10 to 20 matching companies on the public
-web and say where each one came from. With a paste or an export, read the
-columns back before you change anything.
+- Who: prospect_id (a key you never reuse), company, company_url, person,
+  title, location.
+- Fit: icp_fit, one of strong, maybe, or weak.
+- Reach: channel (email, social, phone, or other) and contact.
+- Why now: hook, never without hook_source_url and hook_date; enriched_on
+  dates your last check.
+- Progress: status, drafted_on (set when a first touch is written),
+  last_touch_on, next_step, notes.
 
-## Score against the ideal customer
+Statuses go new, enriched, drafted, approved, sent, replied, meeting,
+qualified; no or on hold closes a row. You set only new, or enriched once
+the title is confirmed and the hook is sourced and dated.
 
-Score each company strong, maybe, or weak with one line of reason, naming the
-trigger event when there is one — funding, hiring spike, new leader, tool
-switch. Leave the weak ones out unless the user wants them. Personalize by
-tier: strong rows get individual research, maybe rows get company-level
-angles, weak rows get industry-level only.
+## Grade the company first
 
-## Find the people, never guess a contact
+Mark each company strong, maybe, or weak with a one-line reason in notes,
+naming the trigger when there is one: funding, a hiring burst, a new buying
+leader, a switch off a tool you replace. Example: "strong: Series B in
+August (link), six open ops roles, still on spreadsheets." Fit with no
+trigger is a maybe; a trigger never makes a poor fit strong. Keep weak
+companies off unless they ask.
 
-Find three or more people per company — buyer, champion, and user at minimum
-— who hold the jobs the ideal customer names. Confirm the title on the
-company's own site, the person's own profile, or a press page. An unconfirmed
-title stays blank and the row stays at new. Never build an email address from
-a pattern and never assume a profile URL from a name; a contact goes in a row
-only when you found it published and can link to it.
+The grade sets research depth: strong rows earn a hook about the person,
+maybe rows a company-level angle, weak rows an industry line at most.
 
-## Deduplicate and show
+## Three seats per company
 
-Deduplicate on person plus company, then on company URL. Drop anyone on the
-do-not-contact list and anyone already an inbound lead, open deal, or
-customer, and say who you dropped. Show the first ten rows in chat with the
-fit reason, take one round of edits, then save the whole list.
+Find at least three people per company, each in a role the ideal customer
+names: the buyer who signs, a champion who would push for you inside, and a
+user who feels the problem. Confirm each title on a page you can link: the
+company website, their own profile, or a press release. An unconfirmed
+title stays empty and holds the row at new. Name any empty seat rather than
+stretch a nearby title.
+
+## Contacts are found, never made
+
+Never build an email from a naming pattern or guess a profile URL from a
+name. The contact field holds only what you found published and can link;
+otherwise it stays blank.
+
+## Clean, preview, save
+
+Collapse duplicates by person and company first, then by company URL. Strike
+anyone the do-not-contact list names, plus anyone already an inbound lead,
+open deal, or customer (check HubSpot, or ask), and name each person
+you struck. Show ten rows with fit reasons, let them edit once, then save.
+Nothing sends or reaches the CRM without their yes. Cap the first pass at 25
+rows so they can judge your aim, and go wider when asked. Later adds and
+drops land in the same turn.
 
 ## What you hand back
 
-The scored target list saved to file, with fit reasons and the dropped names
-named. Stop the first build at 25 rows so they can check your aim before you
-go wide, and edit the list in the same turn they add or drop a name.
+The saved, graded list with a reason on every row, who you struck and why,
+and the seats or titles still open.
 
 ## Fallbacks
 
-An export that will not parse means you ask them to paste the rows. A company
-with no public team page gets a note asking them to name the person.
+An export you cannot read cleanly: ask for a paste. No public team page:
+the row stays new and you ask them who holds the seat. Under ten matches:
+show them and name the constraint to loosen. No do-not-contact list given:
+ask once before saving.

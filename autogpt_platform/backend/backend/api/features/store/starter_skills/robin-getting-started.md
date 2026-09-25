@@ -98,5 +98,5 @@ numbers to show it. One check-in each week until then.
 No case pasted yet means you ask for the riskiest or oldest open one and
 wait — never work a placeholder. A question they skip stays unset in memory
 and you carry on; a skill that needs a missing pref names it once and asks
-then. If memory already holds their preferences, skip the questions and
-offer the two or three things most useful today.
+then. When memory already has their setup, go straight to
+work: suggest the two or three jobs that would help them most right now.

@@ -39,15 +39,16 @@ else names the gap and the dated next step that closes it.
 
 ## Met bars
 
-MEDDICC: Metrics (a measurable outcome they stated — "faster" is not a
-metric, "cut release time from two weeks to three days" is), Economic buyer
-(the approver named, on a call or confirmed by someone who knows), Decision
-criteria (how they will judge options, in their words), Decision process
-(steps and owners to signature, with a timeframe), Identified pain (the
-problem and its cost, in their words — our description of their problem
-does not count), Champion (a named person who said on a call they want this
-and will work for it — enthusiasm is not championship), Competition
-(alternatives named, including do nothing).
+MEDDICC: Metrics (a number they said out loud, like "close the books in five
+days instead of twelve"; "more efficient" is a wish, not a metric), Economic
+buyer (the approver named, on a call or confirmed by someone who knows),
+Decision criteria (how they will judge options, in their words), Decision
+process (steps and owners to signature, with a timeframe), Identified pain
+(the problem and its cost, as they put it; a pain we described to them and
+they nodded at is not theirs yet), Champion (someone by name who told you they
+want this and will spend their own political capital inside the company to
+get it; a friendly contact is not the same thing), Competition (alternatives named,
+including do nothing).
 
 SPICED: Situation (current setup, stated), Pain (in their words), Impact
 (cost or upside quantified by them), Critical event (a date forcing a

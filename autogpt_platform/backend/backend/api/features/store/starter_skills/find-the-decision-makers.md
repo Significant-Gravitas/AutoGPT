@@ -23,9 +23,10 @@ door — enthusiasm alone is a coach.
 
 ## Verify and deduplicate
 
-Verify every title against the company's own site, the person's own
-profile, or a press page. Deduplicate against the target list and against
-CRM ownership the user confirms, and say who you skipped and why.
+Confirm each title from a source you can link: the company's team or about
+page, a profile the person keeps themselves, or a press release naming them.
+Deduplicate against the target list and against CRM ownership the user
+confirms, and say who you skipped and why.
 
 ## Never guess a contact
 

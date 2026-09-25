@@ -1,88 +1,110 @@
 ---
 name: "interview-kit-design"
-description: "Use when a role needs its loop designed, a panel needs question banks and anchored scorecards, or tomorrow's interviewers need prep packets."
+description: "Use when a role needs its interview loop planned, the panel needs question banks and anchored scorecards, or tomorrow's interviewers need prep packets."
 triggers: ["design the interview loop", "build an interview question bank", "write interview scorecards", "prep packet for tomorrow's panel", "what should each interviewer ask", "structured interview kit", "which competency does each slot cover"]
 version: "1"
 ---
 
 # Interview kit design
 
-Run this when a role needs its loop designed, a panel needs question banks and
-scorecards, or the evening before interviews when the panel needs a packet.
+A structured kit makes a loop fair and a debrief possible: every candidate
+for the role meets the same competencies, core questions, and anchored
+scale. Build it from the role scorecard, the job description, the loop shape
+(stages, slots, lengths), and the panel. Packets also use what the candidate
+sent, their public professional work, and earlier scorecards.
 
-## Inputs
+## Map competencies to slots
 
-The role scorecard, the loop shape — stages, slots, lengths — the panel with
-who covers what, the job description, and per candidate whatever they sent
-plus public professional work and earlier scorecards.
+Every must-have on the role scorecard gets exactly one owner, so nothing is
+asked twice or skipped. Deal-breakers go early: screen, then the competency
+most likely to rule people out, then the deep-dive, with the hiring
+manager's close last. Anything a candidate may need room to explain, like a
+career change, sits in a later slot.
 
-## Assign one competency per interviewer
+Before interview coordination books it, confirm every slot has a
+competency and the timings fit the day.
 
-So two people do not ask the same thing. Order the loop deal-breakers first:
-screen, then the knockout competency, then the deep-dive, hiring-manager close
-last. Attributes that need explaining go late. Confirm slots, coverage, and
-timing before anything is booked.
+## Write the questions
 
-## Build the question bank one competency at a time
+Go one competency at a time, four to six questions per slot. Under each
+question, note what a strong answer shows and one probe that tests whether
+the candidate did the work themselves: "Which part was yours?", "What number
+moved?", "What would you change?"
 
-Every question gets the signal it is meant to produce and the follow-up that
-separates a real answer from a rehearsed one. Four to six questions per slot.
-Cut anything that only checks whether the candidate has heard of a tool. Kill
-leading questions, two-part questions, and anything answerable straight off
-the job post.
+Drop any question that:
 
-Structure each slot: minutes for context, minutes for the main problem,
-minutes for the candidate's questions. Say where interviewers usually run out
-of time.
+- checks recognition of a tool name rather than use of it;
+- signals the wanted answer ("You're fine with ambiguity, right?");
+- bundles two questions into one;
+- a candidate could answer by reading the posting back.
 
-## Write the scorecard on an anchored scale
+Tighten and open up the user's own questions before adding new ones.
 
-One to five: 1 unsatisfactory, 2 below bar, 3 meets bar, 4 above bar, 5
-exceptional. One line per competency saying what each level looks like in this
-role's work. Every rating needs a quote or an observed behaviour behind it —
-rewrite "seemed junior" into what the candidate actually did or did not do.
-Give each section its minutes, and end with one overall box: hire or no-hire
-with the reason in one line. Same questions per candidate, same scorecard per
-role.
+Give each slot a clock: for 45 minutes, roughly 5 on context, 30 on the
+main problem, 10 for the candidate's questions. Warn that the main problem
+overruns and eats the candidate's time. Core questions never change between
+candidates; follow-ups vary only to clarify.
 
-## Build the prep packet
+## Anchor the scorecard
 
-One short page per interview, ordered by slot time. Head each page with the
-slot: time in both timezones, interviewer, and the owned competency. Candidate
-summary in five lines or fewer, built only from what the user gave you and
-public professional work, with a source on every claim and "not stated" for
-gaps. Add what earlier rounds covered and the open question this interviewer
-should close. Logistics on one line: room or link, who greets, when the
-scorecard is due.
+Rate each competency 1 to 5: 1 unsatisfactory, 2 below bar, 3 meets bar, 4
+above bar, 5 exceptional. Describe each level in one line of this role's
+real work, so a 3 means the same to every interviewer. Add "not assessed"
+so nobody guesses at ground they did not cover.
 
-This is also the pass behind an on-demand prep run the evening before a loop.
+Each rating cites something the candidate said or did. "Seemed junior" is a
+label; "could not say how the migration was rolled back" is evidence. The
+card closes with hire or no hire and a one-sentence reason. Interviewers
+file alone, before talking to the rest of the panel, inside the scorecard
+window in memory. One scorecard per role. For the meeting, point the panel
+to the running order and challenge line in hiring debrief and decision.
 
-## Screen every question
+## Build the prep packets
 
-Nothing about race, colour, sex, age, graduation year, family or pregnancy
-plans, health or disability, religion, national origin, marital status, or
-home language. Test language only as the job task needs it, never as
-background. Work authorisation only if their process requires it, and only as
-a yes or no. When a question they gave you drifts there, say so and offer a
-job-related version.
+One page per interview, in slot order. Top line: the time in the
+candidate's timezone and the user's, the interviewer, and the competency
+they own. Then:
 
-Point the panel at the running order in the hiring debrief skill, plus the
-phrasing to challenge a rating with nothing behind it.
+- a candidate summary of five lines at most, using only what the user
+  supplied and the candidate's public professional work, a source on each
+  line and "not stated" for any gap;
+- that competency's questions;
+- what earlier rounds covered, and the open question this slot should
+  close;
+- one logistics line: room or video link, who greets them, and the
+  scorecard deadline.
 
-## Output
+The evening prep routine runs this pass for tomorrow's loops.
 
-The kit — question banks, scorecards, slot structure — in chat and saved one
-file per role, plus prep packets with the date and role in the filename and
-one line naming any slot with no interviewer or no competency.
+## Keep every question job-related
+
+Nothing may touch race, colour, sex, age or graduation year, pregnancy or
+family plans, health or disability, religion, national origin, marital
+status, or the language someone speaks at home. Test a language only when
+the work happens in it. Work authorisation comes up only if their process
+needs it, as a yes or no. Name who handles accommodation requests, and
+never ask for medical detail.
+
+When a question drifts, say which one and why, then offer a job-related
+version: "Do you have young kids?" becomes "The role travels one week a
+month; does that work for you?"
+
+## What needs a yes
+
+Kits and packets are drafts. Nothing reaches the panel or a candidate until
+the user approves that particular send.
+
+## What you hand back
+
+The kit (question banks, anchored scorecards, slot timings) in chat and
+saved to the hiring folder as one file per role; prep packets saved with
+the date and role in the filename; and one line naming any slot missing an
+interviewer or a competency.
 
 ## Fallbacks
 
-With no resume and no profile, build the packet from the job description and
-the scorecard, and say the candidate summary is thin. With no loop shape,
-propose a default — screen, knockout competency, deep-dive, hiring-manager
-close — and take one round of edits.
-
-## Approval gate
-
-Kits and packets are drafts. Nothing is mailed to the panel or the candidate
-without the owner's yes for that specific send.
+Nothing from or about the candidate: base the packet on the role scorecard
+and posting, and flag the summary as thin. No loop shape: propose screen,
+knockout competency, deep-dive, hiring-manager close, and take one round of
+edits. No role scorecard: run role intake and scorecard first, or draft from
+the posting with every anchor marked draft until the hiring manager sees it.

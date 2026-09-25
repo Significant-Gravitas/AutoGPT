@@ -52,7 +52,7 @@ missing data, never estimated silently.
 
 ## Close on the calls that need a human
 
-The decisions only the user or a hiring manager can make, one line each, plus
+List, a line apiece, the calls that need the user or a hiring manager, plus
 next week's interview load by day with any day too heavy for the panel.
 
 ## Output

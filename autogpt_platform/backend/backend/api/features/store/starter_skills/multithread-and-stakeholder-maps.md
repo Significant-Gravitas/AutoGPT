@@ -19,8 +19,8 @@ list, or org chart.
 ## Build the map
 
 Start from the names they already have. Someone in their notes matters
-more than anyone found cold. Verify every title against the company's own
-site, the person's own profile, or a press page.
+more than anyone found cold. Confirm each title from a source you can link:
+the company's team page, a profile the person keeps, or a press release.
 
 Tag each person champion, economic buyer, end user, executive sponsor,
 technical buyer, legal/procurement, gatekeeper, influencer, evaluator,

@@ -1,77 +1,95 @@
 ---
 name: "role-intake-and-scorecard"
-description: "Use when a new role opens or a req needs scoping, and the hiring manager and recruiter have to agree on a checkable bar before sourcing starts."
-triggers: ["new role to scope", "kick off a new req", "write a role scorecard", "agree the hiring bar", "intake call with the hiring manager", "what should we require for this role", "calibrate on a benchmark hire"]
+description: "Use when a new role opens or a req needs rescoping: agree a checkable role scorecard and hiring plan with the hiring manager before any posting or sourcing."
+triggers: ["scope this new role", "kick off a new req", "write a role scorecard", "agree the hiring bar", "intake with the hiring manager", "what should this role require", "calibrate on a benchmark hire"]
 version: "1"
 ---
 
 # Role intake and scorecard
 
-Run this when a new role opens, a req needs scoping, or the hiring manager and
-the recruiter need to agree on the bar before any sourcing starts.
+Every search starts here. The role scorecard you write is the bar that
+postings, sourcing, screening and interview kits all read.
 
-## Inputs
+## What to collect
 
-The hiring manager's ask — a call, a note, a rough req — any draft job
-description, and the team context: who this person works with and what success
-looks like in year one.
+The hiring manager's ask in any form (call notes, a rough req, an old posting)
+and the team context: who the hire reports to and what gap opened the role.
+Ask for anything missing one question at a time, and keep drafting.
 
-## Pull out the work itself
+## Start from the work, not the title
 
-What this person owns in year one, who they work with, and the two or three
-problems they are hired to solve. Quote the lines you are working from so the
-hiring manager can correct you.
+In plain outcomes, write what the hire must own by the end of year one, their
+closest collaborators, and the two or three problems the company needs solved.
+Quote the hiring manager's sentence behind each point so misreadings surface
+now.
 
-## Write must-haves that are checkable
+## Write the bar
 
-Three to six must-haves, and every one checkable from something public or
-observable in an interview. "Shipped a design system used by more than one
-team" is checkable. "Strong communicator" is not, so convert it into the
-evidence you could actually see — a conference talk, a public writeup.
+**Must-haves:** three to six, each confirmable from public work or a
+structured interview question, so two reviewers with the same evidence would
+agree. "Has run on-call for a service with paying customers" passes; "great
+ownership mentality" fails until you ask what ownership looks like in practice
+and write that. Swap years-of-experience floors and degree requirements for
+the outcome behind them unless the hiring manager can defend them.
 
-Write the nice-to-haves separately and label them. They break ties and nothing
-else.
+**Nice-to-haves:** labelled separately; they break ties and never keep anyone
+out.
 
-Write the disqualifiers in the hiring manager's own words. Add the tenure
-rule: flag anyone whose last three roles all ran under 12 months as a note on
-the card, never as an automatic reject.
+**Disqualifiers:** in the hiring manager's words, then through the fairness
+check. Three straight jobs under a year each is a note on the candidate card
+for the interviewer, never a disqualifier.
 
-## Calibrate on a benchmark
+## Keep it fair and job-related
 
-Ask for one person, inside or outside the company, whose work is the bar. If
-they name someone, note the four to six checkable things that make that person
-good and take one round of edits. This is the whole search.
+Every line must tie to the work. None may name or proxy for a protected
+characteristic such as age, race, ethnicity, national origin, sex, gender
+identity, sexual orientation, religion, disability, pregnancy or family
+status. "Digital native", "native English speaker", "culture fit" and
+graduation-year cut-offs become the real skill underneath ("writes
+customer-facing docs in English") or get cut, and you say which.
 
-## Agree the hiring plan in the same pass
+## Calibrate against one real person
 
-Interview stages ordered deal-breakers first — screen, knockout competency,
-deep-dive, hiring-manager close — with the panel, who owns which competency,
-the target slate size, the timeline, and how compensation will be set. Name
-where the evidence lives for this role family: public repositories and
-packages for engineers, portfolios and case studies for designers, published
-writing and talks for marketing and research, public decks and panels for
-sales and finance.
+Ask whether someone's work, inside the company or out, sets the bar. If it
+does, list four to six checkable things that make that person the benchmark:
+keep what transfers (owning a hard problem end to end), drop the incidental
+(school, employer brand, exact tools). Take one round of edits; sourcing's
+lookalike search runs from this list.
 
-## Build the target company profile
+## Map where the people are
 
-Describe the kind of company where this work actually happens, then name 10 to
-20 of them. Ask whether direct competitors are in bounds before you use them.
+- **Target companies:** where this work really happens (stage, size, product),
+  with 10 to 20 named examples.
+- **Boundaries:** whether direct competitors are fair game, and which
+  companies are off limits (customers, partners, a non-solicit clause).
+- **Title variants:** five to ten current and adjacent titles.
+- **Evidence sources:** engineers show public code and packages; designers,
+  portfolios and case studies; marketing and research, articles and talks;
+  support and solutions, forum answers and help-center writing; sales and
+  finance, panels, podcasts and published decks.
 
-## Output
+## Agree the hiring plan in the same sitting
 
-The role scorecard — must-haves, nice-to-haves, disqualifiers, target
-companies, title variants, evidence sources — plus the agreed hiring plan,
-shown in chat, one round of edits, then saved to the hiring folder.
+Order stages so deal-breakers are tested first: screen, knockout competency,
+deep-dive, hiring-manager close. Name the panel and each interviewer's
+competency, the target slate size, the fill date, and who sets compensation
+and how. Never propose a pay figure yourself.
+
+You recommend; the hiring manager decides. Nothing reaches a posting, screen
+or sourcing run until they approve the scorecard, and later edits go back to
+them too.
+
+## What you hand back
+
+The role scorecard in chat (must-haves, nice-to-haves, disqualifiers,
+benchmark traits, target companies and boundaries, title variants, evidence
+sources), then the hiring plan. After one round of edits, save both to the
+hiring folder.
 
 ## Fallbacks
 
-With no hiring manager available, build the scorecard from the title plus four
-questions — what they own in year one, the two things that would make you say
-no, whether there is a benchmark person, and the timeline — and mark it a
-draft pending calibration. Never start sourcing on an uncalibrated bar without
-saying so.
-
-## Approval gate
-
-The bar is a recommendation. The hiring manager owns it, and nothing goes to a
-posting or a sourcing run until they have seen it.
+No hiring manager to hand? Take the title and ask four questions: what the
+hire must deliver in year one, which two things rule a candidate out, whether
+anyone's work sets the bar, and when the seat must be filled. Label the result
+"draft pending calibration". Sourcing against it is allowed if every batch
+flags the bar as uncalibrated.

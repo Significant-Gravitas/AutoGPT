@@ -41,9 +41,9 @@ know. When you cut a line, say what you cut and why in one line.
 
 ## Never invent the numbers
 
-Pay, title, and start date only when the user gave them to you. Never estimate
-a band and never infer one from the company's stage. Mark anything unconfirmed
-UNKNOWN rather than drafting around it.
+Pay, title, and start date go in only as the user stated them. Do not guess a
+salary range, and do not derive one from the company's size or funding. Mark
+anything unconfirmed UNKNOWN rather than drafting around it.
 
 ## Output
 

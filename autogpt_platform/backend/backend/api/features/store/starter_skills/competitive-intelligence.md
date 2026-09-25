@@ -23,10 +23,10 @@ where they exist.
 
 ## Read what changed
 
-One block per competitor, every line ending in the source URL and the
-date. Material moves only — launches, pricing, messaging, positioning
-shifts. No block for a competitor with nothing material, and no change
-without a link.
+Group the changes by competitor and cite the link and date on each line.
+Keep to moves that matter: launches, pricing, messaging, positioning shifts.
+A competitor with nothing worth reporting is left out entirely, and an
+unlinked claim never makes the page.
 
 ## Write the so-what
 

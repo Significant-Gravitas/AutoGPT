@@ -1,49 +1,52 @@
 ---
 name: "weekly-marketing-read"
-description: "Report the marketing week honestly: fix the period, check which sources you actually have, find the biggest moves, decompose each one into what caused it, and say plainly when the numbers cannot explain themselves."
+description: "Use when someone asks for the weekly marketing report or why a marketing number changed, or when the Monday read comes due: fix the period, check which sources you actually have, find the biggest moves, trace each to its cause, and say plainly when the numbers cannot explain themselves."
 triggers: ["weekly marketing report", "what moved last week", "why did this number change", "week over week", "marketing numbers", "read my marketing week"]
 version: "1"
 ---
 
 # Weekly marketing read
 
-Use this when someone asks for a weekly report, asks why a number changed, or
-when a recurring read comes due.
+Use this for the weekly report, for any question about why a marketing figure
+moved, and whenever the Monday read routine runs.
 
 ## Fix the period out loud
 
-Name the seven days you are reporting and the seven you are comparing against.
-Never compare a partial week to a full one. Say it plainly when an export stops
-mid-week.
+Before any number, write both windows with their dates: the week under review
+and the week it is measured against. Both must be complete and equal. If an
+export ends early, trim the other window to match or flag the missing days in
+the headline, so a short week never passes for a down week.
 
 ## Check coverage before you compute anything
 
-Which sources you have, and which days each one covers. A source with no
-numbers gets named in the report rather than dropped quietly. One source only
-means you build the read for that one and name what is missing.
+List the sources you have and the days each one covers. A source that came
+back empty still appears, marked empty, so nobody reads silence as a zero.
+With one source, build from it and carry the absent ones into the gaps.
 
 ## Compute the headline set from the columns you actually have
 
-- **Where a spend column exists** — spend, impressions, clicks, CTR, cost per
+- **Where a spend column exists:** spend, impressions, clicks, CTR, cost per
   click (CPC), conversions, cost per acquisition (CPA), and conversion value
   plus return on ad spend (ROAS) where a value column exists.
-- **Where email columns exist** — delivered, bounced, clicks, conversions or
+- **Where email columns exist:** delivered, bounced, clicks, conversions or
   replies, unsubscribes, spam complaints, and list growth. Opens are a
   deliverability health check only.
-- **Always** — content shipped against the editorial calendar, and pipeline
-  linkage when the customer relationship management (CRM) columns exist:
-  marketing-qualified leads, sales-qualified leads, visitor-to-lead rate.
+- **Always:** content shipped against the editorial calendar and what is stuck
+  on it, plus pipeline linkage when the customer relationship management (CRM)
+  columns exist: marketing-qualified leads, sales-qualified leads,
+  visitor-to-lead rate.
 
-Money rounds to whole units, rates to one decimal.
+Currency to the whole unit, percentages to one decimal place.
 
 ## Judge email against benchmarks, not vibes
 
-Published all-industry averages from the big email providers — roughly a third
+Published all-industry averages from the big email providers (roughly a third
 of recipients opening, a low single-digit click rate, and a fraction of a
-percent unsubscribing, with wide spread by industry and drift year to year —
-are a sanity check, not a target; cite the report and year if you quote one. Mail privacy features preload images and inflate opens, so score
-clicks, conversions and replies instead. Cold, warm and customer sends each get
-their own target.
+percent unsubscribing, with wide spread by industry and drift year to year)
+are a sanity check, not a target; cite the report and year if you quote one.
+Mail privacy features preload images and inflate opens, so score clicks,
+conversions and replies instead. Cold, warm and customer sends each get their
+own target.
 
 ## Read goal against actual, by funnel stage
 
@@ -55,20 +58,22 @@ preliminary.
 
 ## Find the biggest move, then decompose it
 
-Compare every figure to the prior week in both absolute and percent terms and
-start from the biggest move in whatever sources you have. Then break it down
-with the columns you hold: a CPA move is a CPC move or a conversion-rate move,
-so say which one carries it and how much of it. Tie it to something visible — a
-campaign that started or stopped, a send that went out, a page that shipped.
+Put each figure beside last week's and show the change twice, as a raw
+difference and as a percentage: a 40% jump on a tiny base can matter less than
+a 5% slide in spend. Start from the largest move and take it apart with the
+columns you hold. CPA equals CPC divided by the click-to-conversion rate, so a
+CPA change came from one of those two or both; name which carried it and by
+roughly how much. Then anchor it to an event you can point at: a campaign
+switched on or off, a send that went out, a page that went live.
 
-When the numbers cannot explain the move, say so in one line and name the one
-thing you would need. Never reach for seasonality or an algorithm change as
-filler.
+If your data cannot account for a move, say so in a sentence and name the
+single input that would settle it. Seasonality and algorithm updates are not
+explanations unless the numbers show them.
 
-## Call a thin sample what it is
+## Treat small samples as noise
 
-Fewer than about 30 conversions on a source in the period gets a line saying the
-move sits inside the noise.
+Below roughly 30 conversions for a source in the period, CPA and conversion
+rate swing on chance alone. Call the move noise and build no story on it.
 
 ## Monthly and quarterly
 
@@ -77,14 +82,26 @@ compounded, and what to change. Read the quarter the same way.
 
 ## Rules
 
-No claim without a number behind it. No recommendation to raise or cut a budget
-without the metric that justifies it — and even then, the read proposes and the
-approver disposes. Never estimate a figure missing from the export. Label every
-line FACT, INFERENCE or UNKNOWN.
+Every claim carries its number and that number's source. A suggestion to
+raise or cut a budget names the metric behind it, and the named approver
+decides. Ad platforms count conversions under their own attribution windows,
+so never set one against another unless the windows match. A figure the
+export lacks stays blank; never estimate it. Label every line FACT, INFERENCE
+or UNKNOWN.
 
 ## What you hand back
 
-The headline, the table, the top movers with their causes, what to look at
-next, and the gaps. Save it dated, write the period's figures to the metrics
-history, and compare against the last saved one. Anything that posts to a
-channel or goes out by email goes as a draft first.
+The headline (the period and its biggest move), the table with last week
+beside every figure, the top movers with their causes, what shipped and what
+is stuck on the calendar, what to look at next, and the gaps. A quiet week gets
+the headline, the table, one line saying so, and the stuck list. Save the read
+dated, add this week to the metrics history, and compare against the previous
+saved read. Nothing reaches a channel or an inbox until they say yes; stage it
+as a draft.
+
+## Fallbacks
+
+- No prior week on file: this read is the baseline, and comparisons start
+  with the next one.
+- No plan targets: skip goal against actual, report against last week and the
+  rolling average, and ask for targets once.
