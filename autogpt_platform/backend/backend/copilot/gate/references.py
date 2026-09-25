@@ -3,12 +3,14 @@ linked to its page, resolved once when the call is held and frozen into the card
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Literal
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel
 
 from backend.api.features.experts.models import Expert
+from backend.api.features.library.model import LibraryAgent, LibraryFolder
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession, get_chat_session_metadata
 from backend.data.db_accessors import experts_db, library_db, store_db
@@ -102,6 +104,7 @@ CARD_SECONDS = 2.0
 # Ids of a list resolved for the card; the rest read "+N more".
 MAX_LISTED = 5
 _MAX_SUMMARY_CHARS = 140
+_MAX_DESCRIPTION_CHARS = 240
 
 
 class Reference(BaseModel):
@@ -111,7 +114,11 @@ class Reference(BaseModel):
     # None: unresolved, and the card shows the raw id. href is None then too.
     name: str | None = None
     href: str | None = None
-    # One line for the link's hover, e.g. an agent's description.
+    # The hover card: what family the thing is, its own prose, short facts.
+    kind: str | None = None
+    description: str | None = None
+    meta: list[str] = []
+    # The card's facts as one line, for surfaces with room for no more.
     summary: str | None = None
 
 
@@ -161,9 +168,11 @@ class _Call(BaseModel):
 
 
 class _Found(BaseModel):
+    kind: str
     name: str
     href: str | None = None
-    summary: str | None = None
+    description: str | None = None
+    meta: list[str | None] = []
 
 
 async def _resolve(ref: Reference, call: _Call) -> Reference:
@@ -180,39 +189,43 @@ async def _resolve(ref: Reference, call: _Call) -> Reference:
         return ref
     if found is None or not found.name.strip():
         return ref
+    meta = [line for m in found.meta if (line := _one_line(m))]
+    description = _clip(found.description, _MAX_DESCRIPTION_CHARS)
     return ref.model_copy(
         update={
             "name": " ".join(found.name.split()),
             "href": found.href,
-            "summary": _one_line(found.summary),
+            "kind": found.kind,
+            "description": description,
+            "meta": meta,
+            "summary": _one_line(" · ".join(meta)) or _one_line(description),
         }
     )
 
 
 async def _library_folder(folder_id: str, call: _Call) -> _Found | None:
     folder = await library_db().get_folder(folder_id, call.user_id)
+    parent = await _parent_folder(folder.parent_id, call) if folder.parent_id else None
     return _Found(
+        kind="Library folder",
         name=folder.name,
         href=f"/library?{urlencode({'folder': folder.id})}",
-        summary=f"{_count(folder.agent_count, 'agent')} · "
-        f"{_count(folder.subfolder_count, 'folder')}",
+        meta=[
+            _count(folder.agent_count, "agent"),
+            _count(folder.subfolder_count, "subfolder"),
+            f"In {parent.name}" if parent else None,
+        ],
     )
 
 
 async def _library_agent(agent_id: str, call: _Call) -> _Found | None:
     agent = await library_db().get_library_agent(agent_id, call.user_id)
-    return _Found(
-        name=agent.name, href=_agent_href(agent.id), summary=agent.description
-    )
+    return _agent(agent)
 
 
 async def _graph(graph_id: str, call: _Call) -> _Found | None:
     agent = await library_db().get_library_agent_by_graph_id(call.user_id, graph_id)
-    if agent is None:
-        return None
-    return _Found(
-        name=agent.name, href=_agent_href(agent.id), summary=agent.description
-    )
+    return _agent(agent) if agent else None
 
 
 async def _agent_or_graph(agent_id: str, call: _Call) -> _Found | None:
@@ -226,18 +239,21 @@ async def _preset(preset_id: str, call: _Call) -> _Found | None:
     agent = await library_db().get_library_agent_by_graph_id(
         call.user_id, preset.graph_id
     )
-    if agent is None:
-        return _Found(name=preset.name, summary=preset.description)
     # A preset with a webhook lists under Triggers, the rest under Templates.
-    tab, item = (
-        ("triggers", f"preset:{preset_id}")
+    kind, tab, item = (
+        ("Trigger", "triggers", f"preset:{preset_id}")
         if preset.webhook_id
-        else ("templates", preset_id)
+        else ("Template", "templates", preset_id)
     )
     return _Found(
+        kind=kind,
         name=preset.name,
-        href=_agent_href(agent.id, activeTab=tab, activeItem=item),
-        summary=preset.description,
+        href=_agent_href(agent.id, activeTab=tab, activeItem=item) if agent else None,
+        description=preset.description,
+        meta=[
+            f"Agent: {agent.name}" if agent else None,
+            None if preset.is_active else "Inactive",
+        ],
     )
 
 
@@ -249,18 +265,25 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
     job = next((j for j in jobs if j.id == schedule_id), None)
     if job is None:
         return None
-    cadence = job.cron or "once"
     # include_paused lists schedules with no next run.
     when = job.next_run_time[:16].replace("T", " ")
-    summary = f"Runs {cadence} · " + (f"next {when}" if when else "paused")
-    href = "/library/followups"
+    href, agent = "/library/followups", None
     if isinstance(job, GraphExecutionJobInfo):
         agent = await library_db().get_library_agent_by_graph_id(
             call.user_id, job.graph_id
         )
         if agent is not None:
             href = _agent_href(agent.id, activeTab="scheduled", activeItem=schedule_id)
-    return _Found(name=job.name, href=href, summary=summary)
+    return _Found(
+        kind="Schedule",
+        name=job.name,
+        href=href,
+        meta=[
+            f"Runs {job.cron or 'once'}",
+            f"Next {when}" if when else "Paused",
+            f"Agent: {agent.name}" if agent else None,
+        ],
+    )
 
 
 async def _chat_session(session_id: str, call: _Call) -> _Found | None:
@@ -268,9 +291,13 @@ async def _chat_session(session_id: str, call: _Call) -> _Found | None:
     if meta is None:
         return None
     return _Found(
+        kind="Chat",
         name=meta.title or "Untitled chat",
         href=f"/copilot?{urlencode({'sessionId': session_id})}",
-        summary=f"Last active {meta.updated_at:%Y-%m-%d}",
+        meta=[
+            f"Started {meta.started_at:%Y-%m-%d}",
+            f"Last active {meta.updated_at:%Y-%m-%d}",
+        ],
     )
 
 
@@ -295,9 +322,11 @@ async def _expert_template(template_id: str, call: _Call) -> _Found | None:
     if template is None:
         return None
     return _Found(
+        kind="Expert template",
         name=template.name,
         href=f"/marketplace/experts/{quote(template.id, safe='')}",
-        summary=template.tagline or template.job_title or template.role,
+        description=template.tagline or template.bio,
+        meta=[template.job_title or template.role],
     )
 
 
@@ -305,7 +334,9 @@ async def _expert_workflow(workflow_id: str, call: _Call) -> _Found | None:
     label = await experts_db().get_workflow_label(call.user_id, workflow_id)
     if label is None or label.name is None:
         return None
-    return _Found(name=label.name, href=_team_href(label.expert_id))
+    return _Found(
+        kind="Expert workflow", name=label.name, href=_team_href(label.expert_id)
+    )
 
 
 async def _credential(credential_id: str, call: _Call) -> _Found | None:
@@ -314,11 +345,11 @@ async def _credential(credential_id: str, call: _Call) -> _Found | None:
     )
     if creds is None:
         return None
-    kind = creds.type.replace("_", " ")
     return _Found(
+        kind="Credential",
         name=creds.title or str(creds.provider),
         href="/settings/integrations",
-        summary=f"{creds.provider} · {kind}",
+        meta=[str(creds.provider), creds.type.replace("_", " ")],
     )
 
 
@@ -330,19 +361,30 @@ async def _routine(routine_id: str, call: _Call) -> _Found | None:
     if routine is None:
         return None
     return _Found(
+        kind="Routine",
         name=routine.title,
         href=_team_href(routine.expert_id) if routine.expert_id else None,
-        summary=routine.prompt,
+        description=routine.prompt,
+        meta=[
+            _cadence(routine.crons, routine.run_at),
+            None if routine.enabled else "Paused",
+        ],
     )
 
 
 async def _store_listing(version_id: str, call: _Call) -> _Found | None:
     agent = await store_db().get_store_agent_by_version_id(version_id)
     return _Found(
+        kind="Marketplace agent",
         name=agent.agent_name,
         href=f"/marketplace/agent/{quote(agent.creator, safe='')}/"
         f"{quote(agent.slug, safe='')}",
-        summary=f"By {agent.creator} · {agent.description}",
+        description=agent.sub_heading or agent.description,
+        meta=[
+            f"By {agent.creator}",
+            _count(agent.runs, "run"),
+            f"{agent.rating:.1f} ★" if agent.rating else None,
+        ],
     )
 
 
@@ -352,10 +394,17 @@ async def _workspace_file(file_id: str, call: _Call) -> _Found | None:
     if file is None:
         return None
     query = f"?{urlencode({'folder': file.folder_id})}" if file.folder_id else ""
+    folder = file.path.rsplit("/", 1)[0]
     return _Found(
+        kind="Workspace file",
         name=file.name,
         href=f"/artifacts{query}",
-        summary=f"{file.mime_type} · {_size(file.size_bytes)}",
+        meta=[
+            file.mime_type,
+            _size(file.size_bytes),
+            f"Modified {file.updated_at:%Y-%m-%d}",
+            f"In {folder}" if folder else None,
+        ],
     )
 
 
@@ -371,9 +420,11 @@ async def _team_change(confirmation_id: str, call: _Call) -> _Found | None:
         return None
     preview = proposal.preview
     return _Found(
+        kind=_TEAM_CHANGE_KINDS[preview.kind],
         name=preview.name,
         href=_team_href(proposal.expert_id) if proposal.expert_id else None,
-        summary=preview.tagline or preview.job_title or preview.role,
+        description=preview.tagline or preview.about,
+        meta=[preview.job_title or preview.role],
     )
 
 
@@ -386,8 +437,15 @@ async def _soul_change(confirmation_id: str, call: _Call) -> _Found | None:
     proposal = SoulEditProposal.model_validate_json(raw)
     if not _bound(proposal.user_id, proposal.session_id, call):
         return None
-    return await _expert(proposal.expert_id, call)
+    found = await _expert(proposal.expert_id, call)
+    return found.model_copy(update={"kind": "Expert update"}) if found else None
 
+
+_TEAM_CHANGE_KINDS = {
+    "hire": "New hire",
+    "raise": "New expert",
+    "update": "Expert update",
+}
 
 _RESOLVERS: dict[Entity, Callable[[str, _Call], Awaitable[_Found | None]]] = {
     "library_folder": _library_folder,
@@ -423,23 +481,64 @@ def _team_href(expert_id: str) -> str:
     return f"/team/{quote(expert_id, safe='')}"
 
 
-def _teammate(expert: Expert) -> _Found:
+async def _parent_folder(parent_id: str, call: _Call) -> LibraryFolder | None:
+    try:
+        return await library_db().get_folder(parent_id, call.user_id)
+    except Exception:
+        # The folder itself resolved; a missing parent only drops the line.
+        return None
+
+
+def _agent(agent: LibraryAgent) -> _Found:
     return _Found(
-        name=expert.name,
-        href=_team_href(expert.id),
-        summary=expert.tagline or expert.job_title or expert.role,
+        kind="Agent",
+        name=agent.name,
+        href=_agent_href(agent.id),
+        description=agent.description,
+        meta=[
+            f"Version {agent.graph_version}",
+            f"In {agent.folder_name}" if agent.folder_name else None,
+            (
+                f"Last run {agent.last_run_at:%Y-%m-%d}"
+                if agent.last_run_at
+                else "Never run"
+            ),
+        ],
     )
 
 
+def _teammate(expert: Expert) -> _Found:
+    return _Found(
+        kind="Expert",
+        name=expert.name,
+        href=_team_href(expert.id),
+        description=expert.tagline or expert.bio,
+        meta=[
+            expert.job_title or expert.role,
+            "Archived" if expert.is_archived else None,
+        ],
+    )
+
+
+def _cadence(crons: list[str], run_at: datetime | None) -> str | None:
+    if crons:
+        return "Runs " + ", ".join(crons)
+    return f"Once at {run_at:%Y-%m-%d %H:%M}" if run_at else None
+
+
 def _one_line(text: str | None) -> str | None:
+    return _clip(text, _MAX_SUMMARY_CHARS)
+
+
+def _clip(text: str | None, limit: int) -> str | None:
     line = " ".join((text or "").split())
-    if len(line) > _MAX_SUMMARY_CHARS:
-        return line[: _MAX_SUMMARY_CHARS - 1] + "…"
+    if len(line) > limit:
+        return line[: limit - 1] + "…"
     return line or None
 
 
 def _count(n: int, noun: str) -> str:
-    return f"{n} {noun}{'' if n == 1 else 's'}"
+    return f"{n:,} {noun}{'' if n == 1 else 's'}"
 
 
 def _size(size_bytes: int) -> str:

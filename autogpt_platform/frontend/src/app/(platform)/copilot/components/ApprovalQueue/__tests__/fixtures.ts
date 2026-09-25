@@ -81,7 +81,11 @@ export function folder(id: string, name: string, minutesAgo = 5) {
     tool: "create_folder",
     args: { name },
     fields: [{ key: "name", label: "Name" }],
-    headline: { ask: "Create folder", object: name, object_key: "name" },
+    headline: {
+      ask: "Create library folder",
+      object: name,
+      object_key: "name",
+    },
     minutesAgo,
   });
 }
@@ -133,7 +137,7 @@ export function deleteFolder(id: string, folderId: string) {
     tool: "delete_folder",
     args: { folder_id: folderId },
     fields: [{ key: "folder_id", label: "Folder" }],
-    headline: { ask: "Delete a folder" },
+    headline: { ask: "Delete library folder" },
   });
 }
 

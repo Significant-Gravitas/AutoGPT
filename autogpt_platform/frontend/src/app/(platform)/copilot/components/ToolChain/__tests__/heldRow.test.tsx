@@ -16,7 +16,7 @@ const HELD: MessagePart = {
     tool_name: "create_folder",
     reason: "Ask First is on.",
     review_id: "copilot-node-gate-create_folder:abc",
-    ask: "Create folder",
+    ask: "Create library folder",
     object: "Q3 reports",
   },
 } as MessagePart;
@@ -36,7 +36,7 @@ test("a held call's row flips from waiting to approved when its late result land
 
   expect(await screen.findByText("Waiting for you")).toBeDefined();
   expect(
-    screen.getAllByText('Create folder "Q3 reports"').length,
+    screen.getAllByText('Create library folder "Q3 reports"').length,
   ).toBeGreaterThan(0);
 
   rerender(
@@ -60,8 +60,8 @@ test("a late result for another call leaves the row waiting", async () => {
 });
 
 test.each([
-  ["rejected", "Rejected", "Didn't create folder"],
-  ["expired", "Expired", "Didn't create folder"],
+  ["rejected", "Rejected", "Didn't create library folder"],
+  ["expired", "Expired", "Didn't create library folder"],
 ] as const)("a %s call says so on its row", async (outcome, tag, label) => {
   render(chain(new Map([["call-7", { outcome, output: "" }]])));
   expect(await screen.findByText(tag)).toBeDefined();
@@ -95,5 +95,5 @@ test("a call that may have run claims neither approval nor refusal", async () =>
   expect(await screen.findByText("Unclear")).toBeDefined();
   expect(screen.queryByText("Approved")).toBeNull();
   expect(screen.queryByText(/Created folder/)).toBeNull();
-  expect(screen.queryByText(/Didn't create folder/)).toBeNull();
+  expect(screen.queryByText(/Didn't create library folder/)).toBeNull();
 });

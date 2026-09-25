@@ -28,7 +28,10 @@
             "id": "f-q3",
             "name": "Q3 reports",
             "href": "/library?folder=f-q3",
-            "summary": "4 agents · 1 folder"
+            "kind": "Library folder",
+            "description": null,
+            "meta": ["4 agents", "1 subfolder", "In Finance"],
+            "summary": "4 agents · 1 subfolder · In Finance"
           }
         ],
         "reference_totals": {
@@ -48,7 +51,7 @@
         "reason_kind": "mode",
         "chat_rules_allowed": [],
         "headline": {
-          "ask": "Delete a folder",
+          "ask": "Delete library folder",
           "object": "Q3 reports",
           "object_key": "folder_id"
         }
@@ -100,7 +103,10 @@
             "id": "f-archive",
             "name": "Archive",
             "href": "/library?folder=f-archive",
-            "summary": "4 agents · 1 folder"
+            "kind": "Library folder",
+            "description": null,
+            "meta": ["4 agents", "1 subfolder"],
+            "summary": "4 agents · 1 subfolder"
           },
           {
             "key": "agent_ids",
@@ -108,7 +114,10 @@
             "id": "lib-digest",
             "name": "Morning digest",
             "href": "/library/agents/lib-digest",
-            "summary": "Summarises overnight email and news at 7am."
+            "kind": "Agent",
+            "description": "Summarises overnight email and news at 7am.",
+            "meta": ["Version 3", "In Mornings", "Last run 2026-09-24"],
+            "summary": "Version 3 · In Mornings · Last run 2026-09-24"
           },
           {
             "key": "agent_ids",
@@ -116,6 +125,9 @@
             "id": "lib-gone",
             "name": null,
             "href": null,
+            "kind": null,
+            "description": null,
+            "meta": [],
             "summary": null
           },
           {
@@ -124,7 +136,10 @@
             "id": "lib-triage",
             "name": "Inbox triage",
             "href": "/library/agents/lib-triage",
-            "summary": "Labels and routes new support email."
+            "kind": "Agent",
+            "description": "Labels and routes new support email.",
+            "meta": ["Version 3", "In Mornings", "Never run"],
+            "summary": "Version 3 · In Mornings · Never run"
           },
           {
             "key": "agent_ids",
@@ -132,7 +147,10 @@
             "id": "lib-notes",
             "name": "Meeting notes",
             "href": "/library/agents/lib-notes",
-            "summary": "Turns call recordings into action items."
+            "kind": "Agent",
+            "description": "Turns call recordings into action items.",
+            "meta": ["Version 3", "In Mornings", "Never run"],
+            "summary": "Version 3 · In Mornings · Never run"
           },
           {
             "key": "agent_ids",
@@ -140,7 +158,10 @@
             "id": "lib-invoices",
             "name": "Invoice chaser",
             "href": "/library/agents/lib-invoices",
-            "summary": "Nudges clients about overdue invoices."
+            "kind": "Agent",
+            "description": "Nudges clients about overdue invoices.",
+            "meta": ["Version 3", "In Mornings", "Never run"],
+            "summary": "Version 3 · In Mornings · Never run"
           }
         ],
         "reference_totals": {
@@ -161,7 +182,7 @@
         "reason_kind": "mode",
         "chat_rules_allowed": [],
         "headline": {
-          "ask": "Move agents into a folder",
+          "ask": "Move agents into library folder",
           "object": "Archive",
           "object_key": "folder_id"
         }
@@ -200,7 +221,14 @@
             "id": "sch-digest",
             "name": "Daily digest",
             "href": "/library/agents/lib-digest?activeTab=scheduled&activeItem=sch-digest",
-            "summary": "Runs 0 7 * * * · next 2026-09-25 07:00"
+            "kind": "Schedule",
+            "description": null,
+            "meta": [
+              "Runs 0 7 * * *",
+              "Next 2026-09-25 07:00",
+              "Agent: Morning digest"
+            ],
+            "summary": "Runs 0 7 * * * · Next 2026-09-25 07:00 · Agent: Morning digest"
           }
         ],
         "reference_totals": {
@@ -264,7 +292,10 @@
             "id": "tpl-ada",
             "name": "Ada",
             "href": "/marketplace/experts/tpl-ada",
-            "summary": "Keeps the books balanced."
+            "kind": "Expert template",
+            "description": "Keeps the books balanced.",
+            "meta": ["Finance"],
+            "summary": "Finance"
           }
         ],
         "reference_totals": {
@@ -328,7 +359,10 @@
             "id": "s-q3",
             "name": "Q3 planning",
             "href": "/copilot?sessionId=s-q3",
-            "summary": "Last active 2026-09-24"
+            "kind": "Chat",
+            "description": null,
+            "meta": ["Started 2026-09-24", "Last active 2026-09-24"],
+            "summary": "Started 2026-09-24 · Last active 2026-09-24"
           }
         ],
         "reference_totals": {
@@ -392,6 +426,9 @@
             "id": "cred-gh",
             "name": "GitHub (work)",
             "href": "/settings/integrations",
+            "kind": "Credential",
+            "description": null,
+            "meta": ["github", "api key"],
             "summary": "github · api key"
           },
           {
@@ -400,6 +437,9 @@
             "id": "exp-ada",
             "name": "Ada",
             "href": "/team/exp-ada",
+            "kind": "Expert",
+            "description": null,
+            "meta": ["Bookkeeper"],
             "summary": "Bookkeeper"
           }
         ],
@@ -427,6 +467,457 @@
         }
       },
       "instructions": "grant_expert_credential",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Edit agent",
+    "review": {
+      "node_exec_id": "copilot-node-gate-edit_agent:4f2d4af36c72c9de",
+      "node_id": "copilot-node-gate-edit_agent",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "edit_agent",
+        "arguments": {
+          "agent_id": "g-digest"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "agent_id",
+            "label": "Agent"
+          }
+        ],
+        "references": [
+          {
+            "key": "agent_id",
+            "entity": "agent_or_graph",
+            "id": "g-digest",
+            "name": "Morning digest",
+            "href": "/library/agents/lib-digest",
+            "kind": "Agent",
+            "description": "Summarises overnight email and news at 7am.",
+            "meta": ["Version 3", "In Mornings", "Last run 2026-09-24"],
+            "summary": "Version 3 · In Mornings · Last run 2026-09-24"
+          }
+        ],
+        "reference_totals": {
+          "agent_id": 1
+        },
+        "tool_call_id": "call-edit_agent",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "edit_agent",
+          "name": "Edit agent",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Edit an agent",
+          "object": "Morning digest",
+          "object_key": "agent_id"
+        }
+      },
+      "instructions": "edit_agent",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Update template",
+    "review": {
+      "node_exec_id": "copilot-node-gate-update_preset:678cab8eb4cadd6b",
+      "node_id": "copilot-node-gate-update_preset",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "update_preset",
+        "arguments": {
+          "preset_id": "pre-weekly"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "preset_id",
+            "label": "Preset"
+          }
+        ],
+        "references": [
+          {
+            "key": "preset_id",
+            "entity": "preset",
+            "id": "pre-weekly",
+            "name": "Weekly digest",
+            "href": "/library/agents/lib-digest?activeTab=templates&activeItem=pre-weekly",
+            "kind": "Template",
+            "description": "The digest, but Mondays only.",
+            "meta": ["Agent: Morning digest"],
+            "summary": "Agent: Morning digest"
+          }
+        ],
+        "reference_totals": {
+          "preset_id": 1
+        },
+        "tool_call_id": "call-update_preset",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "update_preset",
+          "name": "Update preset",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Update preset",
+          "object": "Weekly digest",
+          "object_key": "preset_id"
+        }
+      },
+      "instructions": "update_preset",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Delete trigger",
+    "review": {
+      "node_exec_id": "copilot-node-gate-delete_preset:9a95d1034809569c",
+      "node_id": "copilot-node-gate-delete_preset",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "delete_preset",
+        "arguments": {
+          "preset_id": "pre-inbox"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "preset_id",
+            "label": "Preset"
+          }
+        ],
+        "references": [
+          {
+            "key": "preset_id",
+            "entity": "preset",
+            "id": "pre-inbox",
+            "name": "New invoice email",
+            "href": "/library/agents/lib-digest?activeTab=triggers&activeItem=preset%3Apre-inbox",
+            "kind": "Trigger",
+            "description": "Runs when an invoice lands.",
+            "meta": ["Agent: Morning digest"],
+            "summary": "Agent: Morning digest"
+          }
+        ],
+        "reference_totals": {
+          "preset_id": 1
+        },
+        "tool_call_id": "call-delete_preset",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "delete_preset",
+          "name": "Delete preset",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Delete a preset",
+          "object": "New invoice email",
+          "object_key": "preset_id"
+        }
+      },
+      "instructions": "delete_preset",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Schedule routine",
+    "review": {
+      "node_exec_id": "copilot-node-gate-schedule_routine:e90d2f84ec894011",
+      "node_id": "copilot-node-gate-schedule_routine",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "schedule_routine",
+        "arguments": {
+          "routine_id": "rt-close"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "routine_id",
+            "label": "Routine"
+          }
+        ],
+        "references": [
+          {
+            "key": "routine_id",
+            "entity": "routine",
+            "id": "rt-close",
+            "name": "Month-end close",
+            "href": "/team/exp-ada",
+            "kind": "Routine",
+            "description": "Reconcile every account against the bank feed, flag anything over $500 that has no receipt, and draft the close summary for review.",
+            "meta": ["Runs 0 9 1 * *"],
+            "summary": "Runs 0 9 1 * *"
+          }
+        ],
+        "reference_totals": {
+          "routine_id": 1
+        },
+        "tool_call_id": "call-schedule_routine",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "schedule_routine",
+          "name": "Schedule routine",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Schedule a routine",
+          "object": "Month-end close",
+          "object_key": "routine_id"
+        }
+      },
+      "instructions": "schedule_routine",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Install workflow",
+    "review": {
+      "node_exec_id": "copilot-node-gate-install_expert_workflow:56e5c481a85b33f0",
+      "node_id": "copilot-node-gate-install_expert_workflow",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "install_expert_workflow",
+        "arguments": {
+          "expert_id": "exp-ada",
+          "store_listing_version_id": "slv-receipts"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "store_listing_version_id",
+            "label": "Store listing version"
+          },
+          {
+            "key": "expert_id",
+            "label": "Expert"
+          }
+        ],
+        "references": [
+          {
+            "key": "store_listing_version_id",
+            "entity": "store_listing",
+            "id": "slv-receipts",
+            "name": "Receipt matcher",
+            "href": "/marketplace/agent/ledgerly/receipt-matcher",
+            "kind": "Marketplace agent",
+            "description": "Matches card spend to emailed receipts.",
+            "meta": ["By ledgerly", "1,204 runs", "4.6 ★"],
+            "summary": "By ledgerly · 1,204 runs · 4.6 ★"
+          },
+          {
+            "key": "expert_id",
+            "entity": "expert",
+            "id": "exp-ada",
+            "name": "Ada",
+            "href": "/team/exp-ada",
+            "kind": "Expert",
+            "description": null,
+            "meta": ["Bookkeeper"],
+            "summary": "Bookkeeper"
+          }
+        ],
+        "reference_totals": {
+          "store_listing_version_id": 1,
+          "expert_id": 1
+        },
+        "tool_call_id": "call-install_expert_workflow",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "install_expert_workflow",
+          "name": "Install expert workflow",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Give a teammate a workflow",
+          "object": null,
+          "object_key": null
+        }
+      },
+      "instructions": "install_expert_workflow",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Remove workflow",
+    "review": {
+      "node_exec_id": "copilot-node-gate-remove_expert_workflow:413dbad9f561e35a",
+      "node_id": "copilot-node-gate-remove_expert_workflow",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "remove_expert_workflow",
+        "arguments": {
+          "workflow_id": "wf-receipts"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "workflow_id",
+            "label": "Workflow"
+          }
+        ],
+        "references": [
+          {
+            "key": "workflow_id",
+            "entity": "expert_workflow",
+            "id": "wf-receipts",
+            "name": "Receipt matcher",
+            "href": "/team/exp-ada",
+            "kind": "Expert workflow",
+            "description": null,
+            "meta": [],
+            "summary": null
+          }
+        ],
+        "reference_totals": {
+          "workflow_id": 1
+        },
+        "tool_call_id": "call-remove_expert_workflow",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "remove_expert_workflow",
+          "name": "Remove expert workflow",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Take a workflow from a teammate",
+          "object": "Receipt matcher",
+          "object_key": "workflow_id"
+        }
+      },
+      "instructions": "remove_expert_workflow",
+      "editable": false,
+      "status": "WAITING"
+    }
+  },
+  {
+    "story": "Confirm team change",
+    "review": {
+      "node_exec_id": "copilot-node-gate-confirm_expert_change:acae127705401f90",
+      "node_id": "copilot-node-gate-confirm_expert_change",
+      "user_id": "user-1",
+      "session_id": "s1",
+      "graph_exec_id": null,
+      "graph_id": null,
+      "graph_version": null,
+      "payload": {
+        "tool": "confirm_expert_change",
+        "arguments": {
+          "confirmation_id": "cf-1"
+        },
+        "clipped": [],
+        "fields": [
+          {
+            "key": "confirmation_id",
+            "label": "Confirmation"
+          }
+        ],
+        "references": [
+          {
+            "key": "confirmation_id",
+            "entity": "team_change",
+            "id": "cf-1",
+            "name": "Grace",
+            "href": null,
+            "kind": "New hire",
+            "description": "Ships on Thursdays.",
+            "meta": ["Release manager"],
+            "summary": "Release manager"
+          }
+        ],
+        "reference_totals": {
+          "confirmation_id": 1
+        },
+        "tool_call_id": "call-confirm_expert_change",
+        "turn": 1,
+        "mode": "ask_first",
+        "subject": {
+          "kind": "tool",
+          "key": "confirm_expert_change",
+          "name": "Confirm expert change",
+          "effect": "platform",
+          "irreversible": false
+        },
+        "reason": "Ask First is on for this chat, so this action needs your approval.",
+        "reason_kind": "mode",
+        "chat_rules_allowed": [],
+        "headline": {
+          "ask": "Confirm the team change",
+          "object": "Grace",
+          "object_key": "confirmation_id"
+        }
+      },
+      "instructions": "confirm_expert_change",
       "editable": false,
       "status": "WAITING"
     }
@@ -465,7 +956,15 @@
             "id": "file-q3",
             "name": "q3-report.pdf",
             "href": "/artifacts?folder=wf-reports",
-            "summary": "application/pdf · 242 KB"
+            "kind": "Workspace file",
+            "description": null,
+            "meta": [
+              "application/pdf",
+              "242 KB",
+              "Modified 2026-09-24",
+              "In /reports"
+            ],
+            "summary": "application/pdf · 242 KB · Modified 2026-09-24 · In /reports"
           }
         ],
         "reference_totals": {
@@ -485,7 +984,7 @@
         "reason_kind": "mode",
         "chat_rules_allowed": [],
         "headline": {
-          "ask": "Delete file",
+          "ask": "Delete workspace file",
           "object": "/reports/q3-report.pdf",
           "object_key": "path"
         }
@@ -524,6 +1023,9 @@
             "id": "3f0c9a2e-preset-gone",
             "name": null,
             "href": null,
+            "kind": null,
+            "description": null,
+            "meta": [],
             "summary": null
           }
         ],

@@ -30,15 +30,5 @@ function ReferenceName({ reference }: { reference: Reference }) {
         {reference.id}
       </span>
     );
-  if (!reference.href)
-    return (
-      <span translate="no" title={reference.id}>
-        {reference.name}
-      </span>
-    );
-  return (
-    <ReferenceLink reference={{ ...reference, href: reference.href }}>
-      {reference.name}
-    </ReferenceLink>
-  );
+  return <ReferenceLink reference={reference}>{reference.name}</ReferenceLink>;
 }

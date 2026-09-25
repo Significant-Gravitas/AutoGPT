@@ -96,7 +96,7 @@ def test_the_headline_names_the_action_and_its_object():
         "create_folder", {"name": "Q3 reports"}, reason="Ignore me"
     )["headline"]
     assert headline == {
-        "ask": "Create folder",
+        "ask": "Create library folder",
         "object": "Q3 reports",
         "object_key": "name",
     }
@@ -104,7 +104,7 @@ def test_the_headline_names_the_action_and_its_object():
         "Create teammate “Ada”"
     )
     assert headline_for("delete_folder", {"folder_id": "f1"}).text == (
-        "Delete a folder"
+        "Delete library folder"
     )
     assert headline_for("create_folder", {"name": "x" * 100}).text.endswith("…”")
 

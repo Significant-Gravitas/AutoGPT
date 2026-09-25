@@ -14,10 +14,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import SecretStr
 
+from backend.api.features.experts.models import ExpertRoutine, ExpertWorkflowLabel
 from backend.api.features.library.model import LibraryFolder
 from backend.copilot.gate import references
 from backend.copilot.gate.review import review_id_for, review_payload
 from backend.copilot.model import ChatSession, ChatSessionInfo
+from backend.copilot.tools.expert_proposal import ExpertChangeProposal
+from backend.copilot.tools.models import ExpertChangePreview
 from backend.data.model import APIKeyCredentials
 from backend.data.workspace import WorkspaceFile
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -29,7 +32,8 @@ FIXTURE = (
     / "referenceCards.json"
 )
 _USER = "user-1"
-_FOLDERS = {"f-q3": "Q3 reports", "f-archive": "Archive"}
+_FOLDERS = {"f-q3": "Q3 reports", "f-archive": "Archive", "f-finance": "Finance"}
+_PARENTS = {"f-q3": "f-finance"}
 _AGENTS = {
     "lib-digest": ("Morning digest", "Summarises overnight email and news at 7am."),
     "lib-triage": ("Inbox triage", "Labels and routes new support email."),
@@ -39,6 +43,7 @@ _AGENTS = {
     "lib-social": ("Social scheduler", "Queues the week's posts."),
 }
 _WHEN = datetime(2026, 9, 24, 14, 5, tzinfo=UTC)
+_SESSION = "session-1"
 # The call, as the model sends it, per story.
 _CALLS: list[tuple[str, str, dict[str, Any]]] = [
     ("Delete folder", "delete_folder", {"folder_id": "f-q3"}),
@@ -66,6 +71,17 @@ _CALLS: list[tuple[str, str, dict[str, Any]]] = [
         "grant_expert_credential",
         {"expert_id": "exp-ada", "credential_id": "cred-gh"},
     ),
+    ("Edit agent", "edit_agent", {"agent_id": "g-digest"}),
+    ("Update template", "update_preset", {"preset_id": "pre-weekly"}),
+    ("Delete trigger", "delete_preset", {"preset_id": "pre-inbox"}),
+    ("Schedule routine", "schedule_routine", {"routine_id": "rt-close"}),
+    (
+        "Install workflow",
+        "install_expert_workflow",
+        {"expert_id": "exp-ada", "store_listing_version_id": "slv-receipts"},
+    ),
+    ("Remove workflow", "remove_expert_workflow", {"workflow_id": "wf-receipts"}),
+    ("Confirm team change", "confirm_expert_change", {"confirmation_id": "cf-1"}),
     (
         "Delete file",
         "delete_workspace_file",
@@ -83,6 +99,8 @@ async def build_cards() -> list[dict[str, Any]]:
         patch.object(references, "get_chat_session_metadata", _chat),
         patch.object(references, "IntegrationCredentialsManager", _credentials),
         patch.object(references, "get_workspace_manager", _workspace),
+        patch.object(references, "store_db", return_value=_store()),
+        patch.object(references, "get_redis_async", _redis),
     ):
         cards = [await _card(*call) for call in _CALLS]
     return json.loads(json.dumps(cards, default=str))
@@ -98,7 +116,9 @@ async def test_the_frontend_reference_fixture_is_what_the_builder_makes():
 
 
 async def _card(story: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
-    session = ChatSession.new(user_id=_USER, dry_run=False)
+    session = ChatSession.new(user_id=_USER, dry_run=False).model_copy(
+        update={"session_id": _SESSION, "expert_id": "exp-ada"}
+    )
     refs = await references.resolve_references(tool, args, _USER, session)
     review_id = review_id_for("session-1", _USER, tool, args)
     return {
@@ -136,6 +156,7 @@ def _library() -> MagicMock:
             id=folder_id,
             user_id=user_id,
             name=_FOLDERS[folder_id],
+            parent_id=_PARENTS.get(folder_id),
             agent_count=4,
             subfolder_count=1,
             created_at=now,
@@ -145,21 +166,33 @@ def _library() -> MagicMock:
     async def get_library_agent(agent_id: str, user_id: str) -> MagicMock:
         if agent_id not in _AGENTS:
             raise NotFoundError(f"Library agent #{agent_id} not found")
-        return _named(agent_id, *_AGENTS[agent_id])
+        return _agent(agent_id)
 
     async def by_graph(user_id: str, graph_id: str) -> MagicMock | None:
-        return (
-            _named("lib-digest", *_AGENTS["lib-digest"])
-            if graph_id == "g-digest"
-            else None
-        )
+        return _agent("lib-digest") if graph_id == "g-digest" else None
+
+    async def get_preset(user_id: str, preset_id: str) -> MagicMock | None:
+        return _presets().get(preset_id)
 
     lib = MagicMock()
     lib.get_folder = AsyncMock(side_effect=get_folder)
     lib.get_library_agent = AsyncMock(side_effect=get_library_agent)
     lib.get_library_agent_by_graph_id = AsyncMock(side_effect=by_graph)
-    lib.get_preset = AsyncMock(return_value=None)
+    lib.get_preset = AsyncMock(side_effect=get_preset)
     return lib
+
+
+def _agent(agent_id: str) -> MagicMock:
+    agent = _named(agent_id, *_AGENTS[agent_id])
+    agent.graph_version, agent.folder_name = 3, "Mornings"
+    agent.last_run_at = _WHEN if agent_id == "lib-digest" else None
+    return agent
+
+
+def _preset(id: str, name: str, description: str, webhook_id: str | None) -> MagicMock:
+    preset = _named(id, name, description)
+    preset.graph_id, preset.webhook_id, preset.is_active = "g-digest", webhook_id, True
+    return preset
 
 
 def _experts() -> MagicMock:
@@ -170,7 +203,51 @@ def _experts() -> MagicMock:
     hired = _named("exp-ada", "Ada")
     hired.tagline, hired.job_title, hired.role = None, "Bookkeeper", "Finance"
     experts.get_expert = AsyncMock(return_value=hired)
+    hired.bio, hired.is_archived = None, False
+    routine = ExpertRoutine(
+        id="rt-close",
+        expert_id="exp-ada",
+        title="Month-end close",
+        prompt="Reconcile every account against the bank feed, flag anything "
+        "over $500 that has no receipt, and draft the close summary for review.",
+        crons=["0 9 1 * *"],
+        enabled=True,
+    )
+    experts.list_routines = AsyncMock(return_value=[routine])
+    experts.get_workflow_label = AsyncMock(
+        return_value=ExpertWorkflowLabel(expert_id="exp-ada", name="Receipt matcher")
+    )
     return experts
+
+
+def _store() -> MagicMock:
+    listing = MagicMock(
+        agent_name="Receipt matcher",
+        creator="ledgerly",
+        slug="receipt-matcher",
+        sub_heading="Matches card spend to emailed receipts.",
+        description="",
+        runs=1_204,
+        rating=4.6,
+    )
+    return MagicMock(get_store_agent_by_version_id=AsyncMock(return_value=listing))
+
+
+async def _redis() -> MagicMock:
+    proposal = ExpertChangeProposal(
+        user_id=_USER,
+        session_id=_SESSION,
+        preview=ExpertChangePreview(
+            kind="hire",
+            name="Grace",
+            role="Engineering",
+            job_title="Release manager",
+            tagline="Ships on Thursdays.",
+            template_id="tpl-grace",
+        ),
+        user_turn_watermark=1,
+    )
+    return MagicMock(get=AsyncMock(return_value=proposal.model_dump_json()))
 
 
 def _scheduler() -> MagicMock:
@@ -225,3 +302,14 @@ def _named(id: str, name: str, description: str = "") -> MagicMock:
     thing = MagicMock(id=id, description=description)
     thing.name = name
     return thing
+
+
+def _presets() -> dict[str, MagicMock]:
+    return {
+        "pre-weekly": _preset(
+            "pre-weekly", "Weekly digest", "The digest, but Mondays only.", None
+        ),
+        "pre-inbox": _preset(
+            "pre-inbox", "New invoice email", "Runs when an invoice lands.", "wh-1"
+        ),
+    }

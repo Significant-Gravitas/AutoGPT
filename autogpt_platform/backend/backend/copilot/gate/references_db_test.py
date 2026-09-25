@@ -29,7 +29,7 @@ async def test_a_held_delete_names_the_folder_in_the_stored_card(
         review_id, test_user_id, session, "delete_folder", args, "needs you"
     )
 
-    assert headline is not None and headline.text == f"Delete a folder “{name}”"
+    assert headline is not None and headline.text == f"Delete library folder “{name}”"
     row = await PendingHumanReview.prisma().find_unique(where={"nodeExecId": review_id})
     assert row is not None
     stored = review_store.GateReviewPayload.model_validate(row.payload)
@@ -40,7 +40,9 @@ async def test_a_held_delete_names_the_folder_in_the_stored_card(
             id=folder.id,
             name=name,
             href=f"/library?folder={folder.id}",
-            summary="0 agents · 0 folders",
+            kind="Library folder",
+            meta=["0 agents", "0 subfolders"],
+            summary="0 agents · 0 subfolders",
         )
     ]
 

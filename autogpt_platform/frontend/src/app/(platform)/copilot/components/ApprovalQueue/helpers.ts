@@ -182,6 +182,11 @@ function toReference(value: unknown): Reference[] {
       name,
       // A link is only ever built for an id that resolved.
       href: name ? safeHref(str(ref, "href")) : null,
+      kind: name ? str(ref, "kind") : null,
+      description: name ? str(ref, "description") : null,
+      meta: name
+        ? asArray(ref.meta).filter((m): m is string => typeof m === "string")
+        : [],
       summary: name ? str(ref, "summary") : null,
     },
   ];

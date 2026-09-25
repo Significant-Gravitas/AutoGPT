@@ -58,10 +58,8 @@ export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
         <>
           {" "}
           <b className="font-semibold" translate="no">
-            {reference?.href ? (
-              <ReferenceLink reference={{ ...reference, href: reference.href }}>
-                {object}
-              </ReferenceLink>
+            {reference ? (
+              <ReferenceLink reference={reference}>{object}</ReferenceLink>
             ) : (
               object
             )}
@@ -72,8 +70,8 @@ export function HeadlineText({ item, linked = false }: HeadlineTextProps) {
   );
 }
 
-// The headline names a resolved id's thing, and its field is hidden, so the link lives here.
+// The headline names a resolved id's thing, and its field is hidden, so its link and card live here.
 function objectReference(item: ApprovalItem) {
   const [key] = item.headlineKeys;
-  return item.references.find((ref) => ref.key === key && ref.href) ?? null;
+  return item.references.find((ref) => ref.key === key && ref.name) ?? null;
 }

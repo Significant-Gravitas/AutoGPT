@@ -30,6 +30,10 @@ export interface Reference {
   id: string;
   name: string | null;
   href: string | null;
+  // The hover card: the thing's family, its own prose, and short facts.
+  kind: string | null;
+  description: string | null;
+  meta: string[];
   summary: string | null;
 }
 

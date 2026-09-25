@@ -477,7 +477,7 @@ def _gate_review(**payload_overrides) -> PendingHumanReviewModel:
             "graph_exec_id": "copilot-session-s1",
             "session_id": "s1",
             "payload": payload,
-            "instructions": "Create folder “Q3 reports”",
+            "instructions": "Create library folder “Q3 reports”",
         }
     )
 
@@ -492,9 +492,12 @@ def _one(review: PendingHumanReviewModel):
 def test_a_held_call_reads_as_its_card_on_home() -> None:
     item = _one(_gate_review())
 
-    assert item.title == "Create folder “Q3 reports”"
+    assert item.title == "Create library folder “Q3 reports”"
     assert item.headline is not None
-    assert (item.headline.ask, item.headline.object) == ("Create folder", "Q3 reports")
+    assert (item.headline.ask, item.headline.object) == (
+        "Create library folder",
+        "Q3 reports",
+    )
     # The mode's own reason is the chat's, not this call's.
     assert item.description == f"{AUTOPILOT_NAME} is waiting for your approval."
     # The headline already names it.
@@ -531,7 +534,7 @@ def test_a_gate_row_from_before_the_headline_falls_back() -> None:
         update={"payload": {"tool": "create_folder", "arguments": {}}}
     )
     item = _one(review)
-    assert item.title == "Create folder “Q3 reports”"
+    assert item.title == "Create library folder “Q3 reports”"
     assert item.headline is None
     assert item.primary_action is not None
     assert item.primary_action.label == "Review"
@@ -566,7 +569,7 @@ def test_home_names_a_held_calls_ids_as_the_card_does() -> None:
 
     item = _one(review)
 
-    assert item.title == "Move agents into a folder “Archive”"
+    assert item.title == "Move agents into library folder “Archive”"
     assert item.preview == "Agents: Digest, a1, Triage, Notes, Inbox +2 more"
 
 

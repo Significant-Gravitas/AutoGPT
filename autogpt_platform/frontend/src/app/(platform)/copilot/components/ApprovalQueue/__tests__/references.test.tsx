@@ -30,7 +30,7 @@ test("a held delete names its folder in the headline, not as a raw id", async ()
 
   const view = await card();
   expect(
-    view.getByRole("heading", { name: /Delete a folder Q3 reports/ }),
+    view.getByRole("heading", { name: /Delete library folder Q3 reports/ }),
   ).toBeDefined();
   expect(view.queryByText("f-q3")).toBeNull();
   const folder = view.getByRole("link", { name: "Q3 reports" });
@@ -76,23 +76,56 @@ test("a stored link that leaves the app is dropped, the name kept", async () => 
   expect(view.queryAllByRole("link")).toHaveLength(0);
 });
 
-test("hovering a resolved link shows its summary and its ID", async () => {
+test("hovering a resolved link shows its kind, description, facts and ID", async () => {
   renderCard(referenceCard("Move agents"));
 
   const view = await card();
   await userEvent.hover(view.getByRole("link", { name: "Morning digest" }));
 
-  const tip = await screen.findByRole("tooltip");
-  expect(tip.textContent).toContain(
-    "Summarises overnight email and news at 7am.",
-  );
-  expect(tip.textContent).toContain("lib-digest");
+  const tip = within(await screen.findByRole("tooltip"));
+  expect(tip.getByText("Agent")).toBeDefined();
+  expect(tip.getByText("Morning digest")).toBeDefined();
+  expect(
+    tip.getByText("Summarises overnight email and news at 7am."),
+  ).toBeDefined();
+  expect(
+    tip.getByText("Version 3 · In Mornings · Last run 2026-09-24"),
+  ).toBeDefined();
+  expect(tip.getByText("lib-digest")).toBeDefined();
 });
 
-test("a link with no summary has no tooltip, only the ID as its title", async () => {
+test("a card with nothing but its kind shows only the kind, title and ID", async () => {
+  renderCard(referenceCard("Remove workflow"));
+
+  const view = await card();
+  await userEvent.hover(view.getByRole("link", { name: "Receipt matcher" }));
+
+  const tip = await screen.findByRole("tooltip");
+  const lines = [...tip.querySelectorAll("p")].map((p) => p.textContent);
+  expect(lines).toEqual(["Expert workflow", "Receipt matcher", "wf-receipts"]);
+});
+
+test("a named thing with no page still shows its card, unlinked", async () => {
+  renderCard(referenceCard("Confirm team change"));
+
+  const view = await card();
+  expect(view.queryAllByRole("link")).toHaveLength(0);
+  await userEvent.hover(view.getByText("Grace"));
+
+  const tip = within(await screen.findByRole("tooltip"));
+  expect(tip.getByText("New hire")).toBeDefined();
+  expect(tip.getByText("Ships on Thursdays.")).toBeDefined();
+});
+
+test("a link with no card has no tooltip, only the ID as its title", async () => {
   const review = referenceCard("Move agents");
-  const payload = review.payload as { references: { summary: unknown }[] };
-  payload.references.forEach((ref) => (ref.summary = null));
+  const payload = review.payload as {
+    references: { kind: unknown; summary: unknown }[];
+  };
+  payload.references.forEach((ref) => {
+    ref.kind = null;
+    ref.summary = null;
+  });
   renderCard(review);
 
   const view = await card();
@@ -145,7 +178,9 @@ test("unresolved agent IDs stay listed beside a resolved folder headline", async
 
   const view = await card();
   expect(
-    view.getByRole("heading", { name: /Move agents into a folder Archive/ }),
+    view.getByRole("heading", {
+      name: /Move agents into library folder Archive/,
+    }),
   ).toBeDefined();
   expect(view.getByText(/lib-lost-1/)).toBeDefined();
   expect(view.getByText(/lib-lost-2/)).toBeDefined();

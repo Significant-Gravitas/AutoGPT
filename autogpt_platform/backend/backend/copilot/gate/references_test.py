@@ -69,7 +69,9 @@ async def test_a_single_id_resolves_to_its_name_and_page():
         id="f-111",
         name="Q3 reports",
         href="/library?folder=f-111",
-        summary="0 agents · 0 folders",
+        kind="Library folder",
+        meta=["0 agents", "0 subfolders"],
+        summary="0 agents · 0 subfolders",
     )
     lib.get_folder.assert_awaited_once_with("f-111", "user-1")
 
@@ -152,18 +154,20 @@ def test_the_headline_takes_the_resolved_name_as_its_object():
     )
     headline = headline_for("delete_folder", {"folder_id": "f-1"}, [folder])
 
-    assert headline.text == "Delete a folder “Q3 reports”"
+    assert headline.text == "Delete library folder “Q3 reports”"
     # The card does not list the folder a second time.
     assert headline.object_key == "folder_id"
     unresolved = folder.model_copy(update={"name": None})
-    assert headline_for("delete_folder", {}, [unresolved]).text == "Delete a folder"
+    assert (
+        headline_for("delete_folder", {}, [unresolved]).text == "Delete library folder"
+    )
 
 
 def test_a_name_the_call_carries_wins_over_the_resolved_one():
     """``update_folder.name`` is the NEW name, which is what the user approves."""
     old = Reference(key="folder_id", entity="library_folder", id="f-1", name="Old")
     headline = headline_for("update_folder", {"folder_id": "f-1", "name": "New"}, [old])
-    assert headline.text == "Update folder “New”"
+    assert headline.text == "Update library folder “New”"
 
 
 def test_the_payload_freezes_the_references_and_the_named_headline():
@@ -198,9 +202,11 @@ async def test_holding_a_call_resolves_its_ids_into_the_stored_card():
             "rid", "user-1", session, "delete_folder", {"folder_id": "f-111"}, ""
         )
 
-    assert headline is not None and headline.text == "Delete a folder “Q3 reports”"
+    assert (
+        headline is not None and headline.text == "Delete library folder “Q3 reports”"
+    )
     stored = reviews.get_or_create_human_review.await_args.kwargs
-    assert stored["message"] == "Delete a folder “Q3 reports”"
+    assert stored["message"] == "Delete library folder “Q3 reports”"
     assert stored["input_data"]["references"][0]["name"] == "Q3 reports"
 
 
@@ -256,6 +262,7 @@ def _library(
         agent = MagicMock(id=agent_id)
         agent.name = agents[agent_id]
         agent.description = ""
+        agent.graph_version, agent.folder_name, agent.last_run_at = 1, None, None
         return agent
 
     lib = MagicMock()
@@ -293,24 +300,59 @@ def test_a_summary_is_one_short_line_or_none(text, expected):
     assert references._one_line(text) == expected
 
 
-async def test_a_resolved_agent_carries_its_description_for_the_hover():
+async def test_a_resolved_agent_carries_its_card_for_the_hover():
+    ref = await _resolved_agent(description="Sends the morning digest")
+
+    assert (ref.kind, ref.name, ref.description) == (
+        "Agent",
+        "Digest",
+        "Sends the morning digest",
+    )
+    assert ref.meta == ["Version 1", "Never run"]
+    assert ref.summary == "Version 1 · Never run"
+
+
+async def test_a_long_description_is_capped_for_the_card():
+    ref = await _resolved_agent(description="word " * 100)
+
+    assert ref.description is not None
+    assert len(ref.description) == 240 and ref.description.endswith("…")
+
+
+async def test_without_facts_the_summary_is_the_description():
+    lib = MagicMock()
+    lib.get_preset = AsyncMock(
+        return_value=MagicMock(
+            description="Posts at noon", webhook_id=None, is_active=True, graph_id="g"
+        )
+    )
+    lib.get_preset.return_value.name = "Noon post"
+    lib.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    with patch.object(references, "library_db", return_value=lib):
+        [ref] = await resolve_references(
+            "delete_preset", {"preset_id": "p-1"}, "user-1", _session()
+        )
+
+    assert (ref.kind, ref.meta, ref.summary) == ("Template", [], "Posts at noon")
+
+
+async def _resolved_agent(description: str) -> Reference:
     lib = _library(agents={"a0": "Digest"})
     agent = await lib.get_library_agent("a0", "user-1")
-    agent.description = "Sends the morning digest"
+    agent.description = description
     lib.get_library_agent = AsyncMock(return_value=agent)
     with patch.object(references, "library_db", return_value=lib):
         [ref] = await resolve_references(
             "move_agents_to_folder", {"agent_ids": ["a0"]}, "user-1", _session()
         )
-
-    assert (ref.name, ref.summary) == ("Digest", "Sends the morning digest")
+    return ref
 
 
 @pytest.mark.parametrize(
     "next_run, expected",
     [
-        ("2026-09-25T07:00:00+00:00", "Runs 0 7 * * * · next 2026-09-25 07:00"),
-        ("", "Runs 0 7 * * * · paused"),
+        ("2026-09-25T07:00:00+00:00", "Runs 0 7 * * * · Next 2026-09-25 07:00"),
+        ("", "Runs 0 7 * * * · Paused"),
     ],
 )
 async def test_a_schedule_summary_says_when_it_runs_next_or_that_it_is_paused(
