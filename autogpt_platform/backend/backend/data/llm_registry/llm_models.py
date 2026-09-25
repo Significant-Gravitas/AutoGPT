@@ -177,6 +177,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_4_8_OPUS = "claude-opus-4-8"
     CLAUDE_5_OPUS = "claude-opus-5"
     CLAUDE_5_5_OPUS = "claude-opus-5-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"

@@ -159,6 +159,28 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-opus-4-8",
+                display_name="Claude Opus 4.8",
+                provider="anthropic",
+                creator="anthropic",
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                # Same generation/tokenizer as 4.7 (CLAUDE_5_TOKENIZER_
+                # GENERATION_PREFIXES already lists claude-opus-4-8, and
+                # util/llm/providers.py already strips `temperature` for
+                # it — verified live). It shipped between 4.7 and Opus 5
+                # at the same list price as 4.7, so it was never priced
+                # separately; carrying 4.7's rate forward here.
+                cost=CatalogModelCost(
+                    run_credits=14,
+                    input_credits_per_1m=750.0,
+                    output_credits_per_1m=3750.0,
+                    cache_read_credits_per_1m=75.0,
+                    cache_creation_credits_per_1m=938.0,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-opus-5",
                 display_name="Claude Opus 5",
                 provider="anthropic",
