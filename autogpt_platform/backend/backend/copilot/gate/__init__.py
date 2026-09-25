@@ -20,17 +20,20 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
-from .classifier import classify
+from .classifier import DecidedBy, supervise
+from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
     AutopilotMode,
     Effect,
     Verdict,
     effect_for,
+    estimate_for,
     verdict_for_effect,
 )
 from .subject import Subject
@@ -53,7 +56,11 @@ _UNRECORDABLE = (
 )
 _ASK_FIRST = "Ask First is on for this chat, so this action needs your approval."
 _OUTWARD = "This action reaches outside the platform, so it needs your approval."
+# One approval of a paid read over the ceiling buys one more dollar.
+CEILING_UNIT_MICRODOLLARS = 1_000_000
 _PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+# Paid steps that otherwise run in every mode; the costliest blocks are workspace.
+METERED = frozenset({Effect.READ, Effect.WORKSPACE})
 # The user's own word on the subject in this chat outranks the mode's rule.
 _RULE_VERDICTS = {
     "allow": Verdict.RUN,
@@ -71,10 +78,10 @@ class Decision(BaseModel):
     allowed: bool
     reason: str = ""
     review_id: str | None = None
+    # The held card's headline, ids resolved, for the chat's own row.
+    headline: Headline | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
-    # The block or workflow the card names, so the chain row names it too.
-    subject_name: str | None = None
 
 
 ALLOW = Decision(allowed=True)
@@ -114,8 +121,9 @@ async def check_action(
     assert user_id is not None
 
     # Reads, workspace work and the ungated tools run in every mode and can
-    # never have been parked, so they skip the review and rule lookups.
-    if effect_for(tool_name) not in _PARKABLE:
+    # never have been parked, so they skip the review and rule lookups; a paid
+    # step can be parked over the ceiling, so it cannot.
+    if effect_for(tool_name) not in _PARKABLE and not estimate_for(tool_name):
         return ALLOW
 
     session_id = session.session_id
@@ -124,12 +132,17 @@ async def check_action(
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
         if await review_store.consume(review_id, user_id):
+            if review_store.is_spend_card(review):
+                await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True)
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
         await chat_rules.set_ask(
-            session_id, await held.rule_key(session_id, review_id, tool_name)
+            session_id,
+            await held.rule_key(session_id, review_id, tool_name),
+            user_id,
+            session.expert_id,
         )
         return Decision(allowed=False, reason=_REJECTED)
     if review is not None and review.status == ReviewStatus.WAITING:
@@ -145,15 +158,30 @@ async def check_action(
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
-    rule = (
-        await chat_rules.rule_for(session_id, rule_key) if effect in _PARKABLE else None
+    hit = (
+        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
+        if effect in _PARKABLE
+        else None
     )
+    rule = hit.rule if hit else None
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
+    estimate = subject.estimate if subject is not None else estimate_for(tool_name)
+    spend = spend_shown = None
+    if effect in METERED and estimate > 0 and mode != "unsupervised":
+        spend = await spent_past_ceiling(user_id)
     reason_kind: review_store.ReasonKind
-    if rule in ("ask", "unreadable"):
-        reason = chat_rules.DECLINED if rule == "ask" else chat_rules.UNREADABLE
-        reason_kind = "rule"
+    decided_by: DecidedBy | None = None
+    if hit and rule in ("ask", "unreadable"):
+        reason, reason_kind = hit.reason, "rule"
+    elif spend is not None:
+        spend_shown = _spend_shown(estimate, *spend)
+        reason = (
+            f"costs about {_dollars(estimate)}, and this chat has spent "
+            f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; approving "
+            f"adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
+        )
+        reason_kind = "spend"
     elif verdict is Verdict.RUN:
         return ALLOW
     elif verdict is Verdict.ASK and subject is not None and subject.reason:
@@ -163,13 +191,14 @@ async def check_action(
         reason_kind = "mode"
     else:
         reason_kind = "supervisor"
-        allowed, reason = await classify(
+        judgement = await supervise(
             tool_name=tool_name,
             args=args,
             user_message=_last_user_message(session),
         )
-        if allowed:
+        if judgement.allowed:
             return ALLOW
+        reason, decided_by = judgement.reason, judgement.decided_by
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
@@ -177,7 +206,9 @@ async def check_action(
         args=args,
         rule_key=rule_key,
     )
-    return await _park(call, user_id, session, reason, reason_kind, subject)
+    return await _park(
+        call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
+    )
 
 
 async def _park(
@@ -187,11 +218,13 @@ async def _park(
     reason: str,
     reason_kind: review_store.ReasonKind,
     subject: Subject | None,
+    decided_by: DecidedBy | None,
+    spend: dict[str, int] | None = None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
-    if not await review_store.open_review(
+    headline = await review_store.open_review(
         call.review_id,
         user_id,
         session,
@@ -199,16 +232,16 @@ async def _park(
         call.args,
         reason,
         subject,
+        spend=spend,
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
-    ):
+        decided_by=decided_by,
+    )
+    if headline is None:
         await held.forget(session.session_id, call.review_id)
         return Decision(allowed=False, reason=_UNRECORDABLE)
     return Decision(
-        allowed=False,
-        reason=reason,
-        review_id=call.review_id,
-        subject_name=subject.name if subject is not None else None,
+        allowed=False, reason=reason, review_id=call.review_id, headline=headline
     )
 
 
@@ -225,6 +258,20 @@ def refusal_message(reason: str, review_id: str | None) -> str:
         "<held_call_result> naming this call. Carry on with whatever does not "
         "depend on it. Do not retry it or reach the same effect another way."
     )
+
+
+def _spend_shown(estimate: int, spent: int, ceiling: int) -> dict[str, int]:
+    """In microdollars: the card formats money itself."""
+    return {
+        "estimate": estimate,
+        "spent": spent,
+        "ceiling": ceiling,
+        "unit": CEILING_UNIT_MICRODOLLARS,
+    }
+
+
+def _dollars(microdollars: int) -> str:
+    return f"${max(microdollars, 0) / 1_000_000:,.2f}"
 
 
 def _last_user_message(session: ChatSession) -> str:

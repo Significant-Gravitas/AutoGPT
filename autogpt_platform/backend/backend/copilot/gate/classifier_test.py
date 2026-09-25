@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.gate.classifier import ACTION_RUBRIC, classify
+from backend.copilot.gate.classifier import ACTION_RUBRIC, supervise
 
 _MOD = "backend.copilot.gate.classifier"
 
@@ -28,13 +28,14 @@ async def _classify(raw_or_error, *, args=None, user_message="list the files"):
     with (
         patch(f"{_MOD}.call_provider_openai_compat_sync", call),
         patch("backend.copilot.service._get_aux_client", MagicMock()),
+        patch(f"{_MOD}.jev.enabled", return_value=False),
     ):
-        result = await classify(
+        judgement = await supervise(
             tool_name="bash_exec",
             args=args or {"command": "ls"},
             user_message=user_message,
         )
-    return result, call
+    return (judgement.allowed, judgement.reason), call
 
 
 async def test_a_clean_allow_is_honoured_with_its_reason():

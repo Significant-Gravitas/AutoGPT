@@ -2,15 +2,32 @@ import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pen
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
+  type Fact,
   isIdKey,
+  type Reference,
   visibleKeys,
 } from "@/components/organisms/ApprovalFields/helpers";
 import { beautifyString } from "@/lib/utils";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
-export type ReasonKind = "mode" | "subject" | "supervisor" | "rule" | "content";
+export type ReasonKind =
+  | "mode"
+  | "subject"
+  | "supervisor"
+  | "rule"
+  | "content"
+  | "spend";
+
+// Microdollars, as the server sends them.
+export interface ApprovalSpend {
+  estimate: number;
+  spent: number;
+  ceiling: number;
+  unit: number;
+}
 
 export type ChatRule = "allow" | "judge";
+export type RuleScope = "chat" | "expert" | "team";
 
 export interface ApprovalItem {
   reviewId: string;
@@ -20,6 +37,9 @@ export interface ApprovalItem {
   toolCallId: string;
   args: Record<string, unknown>;
   fields: { key: string; label: string }[];
+  references: Reference[];
+  // Ids per argument before the server clipped it.
+  referenceTotals: Record<string, number>;
   clipped: string[];
   subject: { kind: string; key: string; name: string; irreversible: boolean };
   blockId: string | null;
@@ -28,6 +48,8 @@ export interface ApprovalItem {
   mode: string | null;
   // A held read's flagged passage, which the card quotes.
   passage: string | null;
+  // Over the task's spend ceiling: what this step costs and what approving adds.
+  spend: ApprovalSpend | null;
   // A held read the check could not assess, so it names no passage.
   unjudged: boolean;
   chatRulesAllowed: ChatRule[];
@@ -64,6 +86,8 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
         key: String(f.key),
         label: str(f, "label") ?? String(f.key),
       })),
+    references: asArray(payload.references).flatMap(toReference),
+    referenceTotals: toTotals(payload.reference_totals),
     clipped: asArray(payload.clipped).filter(
       (k): k is string => typeof k === "string",
     ),
@@ -78,6 +102,7 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
     passage: str(payload, "passage"),
+    spend: toSpend(payload.spend),
     unjudged: payload.judged === false,
     chatRulesAllowed: asArray(payload.chat_rules_allowed).filter(
       (r): r is ChatRule => r === "allow" || r === "judge",
@@ -142,6 +167,7 @@ export function shownFieldKeys(item: ApprovalItem) {
     values: item.args,
     hiddenKeys: item.headlineKeys,
     idsWhenAlone: !item.headline.object,
+    references: item.references,
   });
 }
 
@@ -150,7 +176,8 @@ export function isBare(item: ApprovalItem) {
   return (
     shownFieldKeys(item).length === 0 &&
     !reasonLine(item) &&
-    !item.subject.irreversible
+    !item.subject.irreversible &&
+    !item.spend
   );
 }
 
@@ -164,6 +191,7 @@ export function canApproveAll(items: ApprovalItem[], compact: boolean) {
       item.subject.key === key &&
       !item.subject.irreversible &&
       !isHeldRead(item) &&
+      !item.spend &&
       !isIdOnly(item) &&
       (!compact || isBare(item)),
   );
@@ -179,6 +207,70 @@ function isIdOnly(item: ApprovalItem) {
   return !item.headline.object && keys.length > 0 && keys.every(isIdKey);
 }
 
+function toReference(value: unknown): Reference[] {
+  const ref = asObject(value) ?? {};
+  const key = str(ref, "key");
+  const id = str(ref, "id");
+  if (!key || !id) return [];
+  const name = str(ref, "name");
+  return [
+    {
+      key,
+      id,
+      entity: str(ref, "entity") ?? "",
+      name,
+      // A link is only ever built for an id that resolved.
+      href: name ? safeHref(str(ref, "href")) : null,
+      kind: name ? str(ref, "kind") : null,
+      description: name ? str(ref, "description") : null,
+      meta: name ? asArray(ref.meta).flatMap(toFact) : [],
+      avatarURL: name ? str(ref, "avatar_url") : null,
+      avatarColor: name ? str(ref, "avatar_color") : null,
+      skills: name
+        ? asArray(ref.skills).filter((s): s is string => typeof s === "string")
+        : [],
+      summary: name ? str(ref, "summary") : null,
+    },
+  ];
+}
+
+function toFact(value: unknown): Fact[] {
+  const fact = asObject(value) ?? {};
+  const text = str(fact, "text");
+  if (!text) return [];
+  return [
+    {
+      text,
+      cron: str(fact, "cron"),
+      label: str(fact, "label"),
+      at: str(fact, "at"),
+    },
+  ];
+}
+
+// Only an in-app path: the payload is stored data, never a place to send the user.
+// Browsers read a leading /\ as //, a protocol-relative jump off the site.
+export function safeHref(href: string | null) {
+  return href && /^\/[^/\\]/.test(href) ? href : null;
+}
+
+function toTotals(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(asObject(value) ?? {}).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
+}
+
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function toSpend(raw: unknown): ApprovalSpend | null {
+  const spend = asObject(raw);
+  if (!spend) return null;
+  const { estimate, spent, ceiling, unit } = spend;
+  if (![estimate, spent, ceiling, unit].every((n) => typeof n === "number"))
+    return null;
+  return { estimate, spent, ceiling, unit } as ApprovalSpend;
 }

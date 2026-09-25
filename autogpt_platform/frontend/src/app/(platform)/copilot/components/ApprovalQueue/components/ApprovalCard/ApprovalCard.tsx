@@ -6,6 +6,7 @@ import { ApprovalFields } from "@/components/organisms/ApprovalFields/ApprovalFi
 import {
   type ApprovalItem,
   type ChatRule,
+  type RuleScope,
   isBare,
   isHeldRead,
   reasonLine,
@@ -13,6 +14,7 @@ import {
 import { ApprovalHeadline } from "../ApprovalHeadline";
 import { ApproveSplitButton } from "./ApproveSplitButton";
 import { HeldPassage } from "./HeldPassage";
+import { MoneyBlock } from "./MoneyBlock";
 import { useApprovalFields } from "./useApprovalFields";
 
 export type CardStatus = "idle" | "approving" | "rejecting";
@@ -21,7 +23,8 @@ interface Props {
   item: ApprovalItem;
   status: CardStatus;
   failed: boolean;
-  onApprove: (rule?: ChatRule) => void;
+  expertName: string | null;
+  onApprove: (rule?: ChatRule, scope?: RuleScope) => void;
   onReject: () => void;
 }
 
@@ -29,6 +32,7 @@ export function ApprovalCard({
   item,
   status,
   failed,
+  expertName,
   onApprove,
   onReject,
 }: Props) {
@@ -42,7 +46,8 @@ export function ApprovalCard({
       <ApproveSplitButton
         label={read ? `Release to ${AUTOPILOT_NAME}` : "Approve"}
         subjectName={item.subject.name}
-        rules={read ? [] : item.chatRulesAllowed}
+        expertName={expertName}
+        rules={read || item.spend ? [] : item.chatRulesAllowed}
         loading={status === "approving"}
         disabled={busy}
         onApprove={onApprove}
@@ -89,6 +94,7 @@ export function ApprovalCard({
           </p>
         )}
         {reason && <p className="-mt-1 text-sm text-zinc-500">{reason}</p>}
+        {item.spend && <MoneyBlock spend={item.spend} />}
         {read ? (
           item.passage && <HeldPassage passage={item.passage} />
         ) : (
@@ -98,6 +104,8 @@ export function ApprovalCard({
             clipped={item.clipped}
             hiddenKeys={item.headlineKeys}
             idsWhenAlone={!item.headline.object}
+            references={item.blockId ? [] : item.references}
+            referenceTotals={item.referenceTotals}
           />
         )}
         {actions}

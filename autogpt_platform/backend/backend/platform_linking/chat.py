@@ -399,7 +399,7 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         # Roots its own tree, and born tainted: the message was written on a
         # chat platform by someone who need not be the account owner, so
         # anything this turn spawns inherits the bit.
-        envelope=root_envelope(turn_id, tainted=True),
+        envelope=root_envelope(turn_id, tainted=True, session_id=session_id),
     )
 
     logger.info(

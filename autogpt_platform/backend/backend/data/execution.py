@@ -141,6 +141,9 @@ class ExecutionContext(BaseModel):
     # field entirely would reopen the whole registry on the far side, which is
     # the amplification the envelope exists to prevent.
     copilot_tree_tools: Optional[list[str]] = None
+    # The chat whose spend ceiling the tree's paid calls count against.
+    copilot_tree_spend_session_id: Optional[str] = None
+    copilot_tree_deadline_at: Optional[datetime] = None
 
 
 # -------------------------- Models -------------------------- #

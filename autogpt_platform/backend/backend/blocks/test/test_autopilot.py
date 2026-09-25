@@ -1,7 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,8 +12,10 @@ from backend.blocks.autopilot import (
     _autopilot_recursion_depth,
     _autopilot_recursion_limit,
     _check_recursion,
+    _enqueue_for_recovery,
     _reset_recursion,
 )
+from backend.copilot.tree import TurnEnvelope
 from backend.data.execution import ExecutionContext
 
 
@@ -424,3 +426,43 @@ class TestRecoveryEnqueue:
         # error must be yielded even when recovery raises CancelledError
         assert outputs.get("error") == "e2b stall"
         assert outputs.get("session_id") == "sess-cancel"
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_turn_spends_against_its_own_chat():
+    """Kills: a recovery envelope with no chat, whose paid reads never ask."""
+    enqueue = AsyncMock()
+    session = AsyncMock(return_value=MagicMock())
+    with (
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+        patch("backend.copilot.model.get_chat_session", session),
+    ):
+        await _enqueue_for_recovery("sess-1", "user-1", "resume", dry_run=False)
+    call = enqueue.await_args
+    assert call is not None and call.kwargs["envelope"].spend_session_id == "sess-1"
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_graph_nested_turn_stays_in_its_spawners_tree_and_chat():
+    """Kills: recovery re-rooting a graph-nested turn, which would drop its
+    depth and tools and charge its own chat instead of the one that started it."""
+    spawner = TurnEnvelope(
+        tree_id="tree-1",
+        depth=1,
+        tools=frozenset({"run_sub_session"}),
+        spend_session_id="chat-origin",
+    )
+    enqueue = AsyncMock()
+    session = AsyncMock(return_value=MagicMock())
+    with (
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+        patch("backend.copilot.model.get_chat_session", session),
+    ):
+        await _enqueue_for_recovery(
+            "sess-1", "user-1", "resume", dry_run=False, spawner_envelope=spawner
+        )
+    call = enqueue.await_args
+    assert call is not None
+    envelope = call.kwargs["envelope"]
+    assert (envelope.tree_id, envelope.depth) == ("tree-1", 2)
+    assert envelope.spend_session_id == "chat-origin"

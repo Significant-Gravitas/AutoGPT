@@ -8,6 +8,7 @@ import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/store
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { validateYouTubeUrl } from "@/lib/utils";
+import { SUB_HEADING_MAX } from "../../PublishAgentModal/components/AgentInfoStep/helpers";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
@@ -35,8 +36,12 @@ export const useEditAgentForm = ({
       .max(100, "Title must be less than 100 characters"),
     subheader: z
       .string()
-      .min(1, "Subheader is required")
-      .max(200, "Subheader must be less than 200 characters"),
+      .trim()
+      .min(1, "Tagline is required")
+      .max(
+        SUB_HEADING_MAX,
+        `Tagline must be ${SUB_HEADING_MAX} characters or less`,
+      ),
     youtubeLink: z
       .string()
       .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),

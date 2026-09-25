@@ -384,7 +384,7 @@ async def get_available_graph(
                 f"Store listing version {store_listing_version_id} not found",
             )
 
-        return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
+        graph = (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
             store_listing_version.AgentGraph,
             sub_graphs=(
                 await get_sub_graphs(store_listing_version.AgentGraph)
@@ -392,6 +392,10 @@ async def get_available_graph(
                 else None
             ),
         )
+        # A marketplace listing is public: the publisher's picked files, and
+        # the credentials embedded in them, aren't part of it.
+        graph.clear_auto_credentials()
+        return graph
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
@@ -837,12 +841,12 @@ async def create_store_submission(
     graph_version: int,
     slug: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Initial Submission",
     recommended_schedule_cron: str | None = None,
@@ -860,7 +864,7 @@ async def create_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 
@@ -1040,11 +1044,11 @@ async def edit_store_submission(
     user_id: str,
     store_listing_version_id: str,
     name: str,
+    sub_heading: str,
     video_url: str | None = None,
     agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
-    sub_heading: str = "",
     categories: list[str] = [],
     changes_summary: str | None = "Update submission",
     recommended_schedule_cron: str | None = None,
@@ -1061,7 +1065,7 @@ async def edit_store_submission(
         video_url: Optional URL to video demo
         image_urls: List of image URLs for the listing
         description: Description of the agent
-        sub_heading: Optional sub-heading for the agent
+        sub_heading: Short CTA line shown under the agent name
         categories: List of categories for the agent
         changes_summary: Summary of changes made in this submission
 

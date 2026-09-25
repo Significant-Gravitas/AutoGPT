@@ -600,7 +600,7 @@ async def _validate_node_input_credentials(
 
                 if field_value is None:
                     # Sentry HIGH: an explicitly-None value (e.g. cleared by
-                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # `stripped_for_export` on fork, or nulled by a mask) means
                     # credentials were there and are now gone. Treat as
                     # missing so optional fields hit `nodes_to_skip` and
                     # required fields surface a clean re-auth message —
@@ -1716,6 +1716,8 @@ async def _add_graph_execution(
                     if copilot_tree.tools is not None
                     else None
                 ),
+                "copilot_tree_spend_session_id": copilot_tree.spend_session_id,
+                "copilot_tree_deadline_at": copilot_tree.deadline_at,
             }
         )
 

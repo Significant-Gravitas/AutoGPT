@@ -32,6 +32,13 @@ def main():
         default="type=gha,mode=max",
         help="Cache destination configuration; pass an empty value to disable export",
     )
+    parser.add_argument(
+        "--cache-to-components",
+        nargs="*",
+        choices=CACHE_BUILDS_FOR_COMPONENTS,
+        default=CACHE_BUILDS_FOR_COMPONENTS,
+        help="Components that export cache (default: all)",
+    )
     for component in CACHE_BUILDS_FOR_COMPONENTS:
         parser.add_argument(
             f"--{component}-hash",
@@ -149,21 +156,23 @@ def main():
                 master_scope = f"platform-{component}-{target}-{DEFAULT_BRANCH}"
                 cache_from_list.append(f"{args.cache_from},scope={master_scope}")
 
-        if args.cache_to and "type=gha" in args.cache_to:
+        cache_to = args.cache_to if component in args.cache_to_components else ""
+
+        if cache_to and "type=gha" in cache_to:
             # Write to both hash-based and branch-based scopes
             if component_hash:
                 hash_scope = f"platform-{component}-{target}-{component_hash}"
-                cache_to_list.append(f"{args.cache_to},scope={hash_scope}")
+                cache_to_list.append(f"{cache_to},scope={hash_scope}")
 
             if git_ref_scope:
                 ref_scope = f"platform-{component}-{target}-{git_ref_scope}"
-                cache_to_list.append(f"{args.cache_to},scope={ref_scope}")
+                cache_to_list.append(f"{cache_to},scope={ref_scope}")
 
         # Ensure we have at least one cache source/target
         if not cache_from_list:
             cache_from_list.append(args.cache_from)
-        if args.cache_to and not cache_to_list:
-            cache_to_list.append(args.cache_to)
+        if cache_to and not cache_to_list:
+            cache_to_list.append(cache_to)
 
         build_config["cache_from"] = cache_from_list
         if cache_to_list:

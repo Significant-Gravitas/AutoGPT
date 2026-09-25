@@ -23,6 +23,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
+from backend.copilot.tree import charge_credits
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import (
     credit_db,
@@ -184,6 +185,8 @@ async def _charge_block_credits(
                 reason="copilot_block_execution",
             ),
         )
+        # Before the expert metering, which can fail after the debit landed.
+        await charge_credits(user_id, lambda: cost)
         if expert_id:
             await add_weekly_spend(expert_id, cost)
     except Exception as e:

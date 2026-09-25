@@ -1717,7 +1717,7 @@ async def test_validate_node_input_credentials_auto_creds_optional_none_value_sk
     mocker: MockerFixture,
 ):
     """Sentry HIGH regression: if input_default[field_name] is explicitly
-    ``None`` (e.g. cleared by ``_reassign_ids`` on fork) and the field is
+    ``None`` (e.g. cleared by ``stripped_for_export`` on fork) and the field is
     optional, the validator previously silently skipped the whole
     auto-credentials block — ``has_missing_credentials`` never flipped
     true and the node never landed in ``nodes_to_skip``. Then

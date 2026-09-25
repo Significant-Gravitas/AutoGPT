@@ -233,9 +233,19 @@ jobs:
             sed -i '/NEXT_PUBLIC_PW_TEST/a\        NEXT_PUBLIC_SOURCEMAPS: "true"' docker-compose.resolved.yml
           fi
 
+          # frontend/.env is in the frontend image's build context, and a fresh
+          # BETTER_AUTH_SECRET every run made every frontend layer miss the cache.
+          # The resolved compose file already hands the secret to the container.
+          sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=/' frontend/.env
+
           cache_to=""
+          cache_to_components="backend frontend"
           if [[ "$PUBLISH_BUILD_CACHE" == "true" ]]; then
             cache_to="type=gha,mode=max"
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            # Just the final frontend image, so a push that leaves the frontend alone reuses it
+            cache_to="type=gha,mode=min"
+            cache_to_components="frontend"
           fi
 
           python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
@@ -244,7 +254,8 @@ jobs:
             --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend/**') }}" \
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}-sourcemaps" \
             --git-ref "$GIT_REF" \
-            --cache-to "$cache_to"
+            --cache-to "$cache_to" \
+            --cache-to-components $cache_to_components
 
       - name: Set up Platform - Wait for BuildKit image
         wait: [buildkit-image]
@@ -257,12 +268,47 @@ jobs:
             image=${{ env.BUILDKIT_IMAGE }}
             network=host
 
-      - name: Set up Platform - Build Docker images
-        id: platform-build
+      # The frontend Dockerfile keeps Next.js's webpack cache in a BuildKit cache
+      # mount. A fresh builder starts empty, so seed the mount from the last run.
+      - name: Set up Platform - Restore Next.js build cache
+        id: next-build-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/next-build-cache
+          # Next.js drops the whole cache when next.config.mjs or its dependencies change
+          key: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+          restore-keys: next-build-cache-v2-${{ hashFiles('autogpt_platform/frontend/next.config.mjs', 'autogpt_platform/frontend/pnpm-lock.yaml') }}-
+
+      - name: Set up Platform - Load Next.js build cache into BuildKit
+        if: steps.next-build-cache.outputs.cache-matched-key != ''
+        working-directory: /tmp/next-build-cache
+        run: |
+          docker buildx build --progress=plain -f - . <<'EOF'
+          FROM node:24.18-alpine3.23
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              --mount=type=bind,target=/seed \
+              cp -a /seed/. /app/.next/cache/
+          EOF
+
+      # The backend images finish minutes before the Next.js build, so they are
+      # baked on their own and the backend stack starts while the frontend builds.
+      - name: Set up Platform - Build backend Docker images
+        id: platform-build-backend
         working-directory: autogpt_platform
         background: true
         run: |
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
+          targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
+          echo "Baking: $targets"
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load $targets
+
+      - name: Set up Platform - Build frontend Docker image
+        id: platform-build-frontend
+        working-directory: autogpt_platform
+        background: true
+        run: |
+          # Lint and type checks run in their own jobs, so the e2e build skips them
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+            --set frontend.args.NEXT_SKIP_BUILD_CHECKS=true frontend
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
@@ -301,8 +347,8 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Wait for image build and database
-        wait: [platform-build, database]
+      - name: Wait for backend image build and database
+        wait: [platform-build-backend, database]
 
       - name: Set up Platform - Run migrations
         run: |
@@ -329,7 +375,9 @@ jobs:
 
       - name: Set up Platform - Start (all other services)
         run: |
-          docker compose -f ../docker-compose.resolved.yml up -d --no-build
+          # Everything but the frontend, whose image may still be building
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build \
+            $(docker compose -f ../docker-compose.resolved.yml config --services | grep -vx frontend)
           echo "Waiting for rest_server to be ready..."
           timeout 180 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || {
             echo "❌ rest_server did not become healthy in 180s"
@@ -375,6 +423,19 @@ jobs:
           docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
             sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
 
+      - name: Wait for frontend image build
+        wait: [platform-build-frontend]
+
+      - name: Set up Platform - Start frontend
+        run: |
+          docker compose -f ../docker-compose.resolved.yml up -d --no-build --no-deps frontend
+          echo "Waiting for frontend to be ready..."
+          timeout 120 sh -c 'until curl -fsS -o /dev/null http://localhost:3000; do sleep 2; done' || {
+            echo "frontend did not become ready in 120s"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=100 frontend
+            exit 1
+          }
+
       - name: Copy source maps from Docker for E2E coverage
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
@@ -387,6 +448,26 @@ jobs:
           PLAYWRIGHT_RETRIES: "0"
           # One worker per vCPU on the 4-vCPU standard runner; the CI default of 8 starves the stack.
           PLAYWRIGHT_WORKERS: "4"
+
+      - name: Export Next.js build cache from BuildKit
+        id: next-build-cache-export
+        # Copying ~3.7 GB competes with the browser tests, so it waits for them
+        if: ${{ !cancelled() && steps.next-build-cache.outputs.cache-hit != 'true' && github.event_name != 'merge_group' }}
+        continue-on-error: true
+        working-directory: /tmp
+        background: true
+        run: |
+          rm -rf /tmp/next-build-cache
+          # No --no-cache: it hands the RUN an empty cache mount. The run id keeps the step uncached.
+          docker buildx build --progress=plain --build-arg RUN_ID=${{ github.run_id }} --output type=local,dest=/tmp/next-build-cache -f - "$(mktemp -d)" <<'EOF'
+          FROM node:24.18-alpine3.23 AS export
+          ARG RUN_ID
+          RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache \
+              mkdir /out && cp -a /app/.next/cache/. /out/
+          FROM scratch
+          COPY --from=export /out /
+          EOF
+          du -sh /tmp/next-build-cache
 
       - name: Validate Playwright JSON report
         if: ${{ always() }}
@@ -436,3 +517,14 @@ jobs:
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.resolved.yml logs
+
+      - name: Wait for Next.js build cache export
+        wait: [next-build-cache-export]
+
+      - name: Save Next.js build cache
+        if: ${{ !cancelled() && steps.next-build-cache-export.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/next-build-cache
+          key: ${{ steps.next-build-cache.outputs.cache-primary-key }}

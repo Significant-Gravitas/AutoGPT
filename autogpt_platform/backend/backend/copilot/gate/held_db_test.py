@@ -191,7 +191,7 @@ async def test_a_call_whose_card_could_not_open_leaves_nothing_held(
 ):
     session = await _new_session(test_user_id)
 
-    with patch.object(review_store, "open_review", AsyncMock(return_value=False)):
+    with patch.object(review_store, "open_review", AsyncMock(return_value=None)):
         decision = await check_action(
             _TOOL, {"text": "no card"}, test_user_id, session, tool_call_id="c1"
         )
@@ -414,7 +414,9 @@ async def test_a_rejection_never_runs_and_the_tool_asks_from_then_on(
     assert post_tool.runs == []
     assert "declined" in delivered[0].content
     assert delivered[0].metadata["held_call"]["outcome"] == "rejected"
-    assert await chat_rules.rule_for(session.session_id, _TOOL) == "ask"
+    assert await chat_rules.rule_for(
+        session.session_id, _TOOL, test_user_id, None
+    ) == chat_rules.RuleHit(rule="ask")
 
 
 @pytest.mark.asyncio(loop_scope="session")

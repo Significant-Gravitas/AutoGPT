@@ -245,6 +245,7 @@ def file_path_to_title(file_path: str) -> str:
         "Mpp": "MPP",  # Machine Payments Protocol
         "Hubspot": "HubSpot",
         "Allquiet": "All Quiet",
+        "Anysearch": "AnySearch",
         "Linkedin": "LinkedIn",
         "Tiktok": "TikTok",
         "Youtube": "YouTube",

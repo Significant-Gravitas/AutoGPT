@@ -766,6 +766,8 @@ def _spawner_envelope_from(
             if execution_context.copilot_tree_tools is not None
             else None
         ),
+        deadline_at=execution_context.copilot_tree_deadline_at,
+        spend_session_id=execution_context.copilot_tree_spend_session_id,
     )
 
 
@@ -933,7 +935,7 @@ async def _enqueue_for_recovery(
                 spawner_envelope, SpawnRequest(may_spawn=True)
             )
         else:
-            recovery_envelope = root_envelope(recovery_turn_id)
+            recovery_envelope = root_envelope(recovery_turn_id, session_id=session_id)
         await asyncio.wait_for(
             enqueue_copilot_turn(
                 session_id=session_id,

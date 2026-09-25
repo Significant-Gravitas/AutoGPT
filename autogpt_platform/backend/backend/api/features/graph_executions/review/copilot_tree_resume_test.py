@@ -7,6 +7,7 @@ real database; only the queue publish is captured.
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -20,13 +21,7 @@ from backend.api.rest_api import app
 from backend.blocks.autopilot import AutoPilotBlock, _spawner_envelope_from
 from backend.copilot.executor.utils import _admitted_turn_envelope
 from backend.copilot.sdk.session_waiter import SessionResult
-from backend.copilot.tree import (
-    MAX_DEPTH,
-    TreeLedger,
-    TreeRefusal,
-    TurnEnvelope,
-    get_tree_ledger,
-)
+from backend.copilot.tree import MAX_DEPTH, TreeRefusal, TurnEnvelope, get_tree_ledger
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -88,11 +83,15 @@ def _child(tools: list[str], depth: int = 2) -> TurnEnvelope:
         depth=depth,
         tainted=True,
         tools=frozenset(tools),
+        deadline_at=datetime.now(UTC) + timedelta(hours=1),
+        spend_session_id=f"chat-{uuid.uuid4()}",
     )
 
 
 def _unrestricted_root() -> TurnEnvelope:
-    return TurnEnvelope(tree_id=f"tree-{uuid.uuid4()}")
+    return TurnEnvelope(
+        tree_id=f"tree-{uuid.uuid4()}", spend_session_id=f"chat-{uuid.uuid4()}"
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -148,10 +147,11 @@ async def test_a_resume_after_the_ledger_expired_keeps_the_trees_bounds(
         assert child.tree_id == tree.tree_id
         assert child.depth == tree.depth + 1
         assert child.tainted
+        assert child.spend_session_id == tree.spend_session_id
         assert tree.tools is not None and child.tools is not None
         assert child.tools <= tree.tools
     finally:
-        await (await get_redis_async()).delete(TreeLedger.key(tree.tree_id))
+        await (await get_redis_async()).delete(ledger.key(tree.tree_id))
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -241,6 +241,7 @@ async def _nested_turn(context: ExecutionContext, user_id: str) -> TurnEnvelope:
     kwargs = turn.await_args.kwargs
     return await _admitted_turn_envelope(
         f"turn-{uuid.uuid4()}",
+        kwargs["session_id"],
         user_id,
         kwargs["permissions"],
         kwargs["spawn"],
