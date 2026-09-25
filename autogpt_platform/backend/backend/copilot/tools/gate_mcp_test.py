@@ -14,6 +14,7 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.copilot.gate import chat_rules
+from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.review import payload_headline, review_payload
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.models import MCPToolOutputResponse
@@ -58,7 +59,7 @@ def gate():
         open_review=AsyncMock(return_value=True),
         consume=AsyncMock(return_value=True),
         own_review=AsyncMock(return_value="copilot-mcp-x:1"),
-        classify=AsyncMock(return_value=(True, "")),
+        classify=AsyncMock(return_value=Judgement(allowed=True, reason="")),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
@@ -66,7 +67,7 @@ def gate():
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.classify", store.classify),
+        patch(f"{_GATE}.supervise", store.classify),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
         patch(f"{_CAP}.open_mcp_review", store.own_review),
