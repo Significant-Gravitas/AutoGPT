@@ -188,8 +188,9 @@ function toReference(value: unknown): Reference[] {
 }
 
 // Only an in-app path: the payload is stored data, never a place to send the user.
-function safeHref(href: string | null) {
-  return href && href.startsWith("/") && !href.startsWith("//") ? href : null;
+// Browsers read a leading /\ as //, a protocol-relative jump off the site.
+export function safeHref(href: string | null) {
+  return href && /^\/[^/\\]/.test(href) ? href : null;
 }
 
 function toTotals(value: unknown): Record<string, number> {
