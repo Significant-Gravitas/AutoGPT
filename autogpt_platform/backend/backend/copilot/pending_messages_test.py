@@ -17,15 +17,18 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    claim_client_message,
     clear_pending_messages_unsafe,
     drain_and_format_for_injection,
     drain_pending_for_persist,
     drain_pending_messages,
     format_pending_as_followup,
     format_pending_as_user_message,
+    is_client_message_claimed,
     peek_pending_count,
     peek_pending_messages,
     push_pending_message,
+    release_client_message,
     stash_pending_for_persist,
 )
 
@@ -38,6 +41,7 @@ class _FakeRedis:
         # bytes when ``decode_responses=False``; the drain path must
         # handle both and our tests exercise both.
         self.lists: dict[str, list[str | bytes]] = {}
+        self.strings: dict[str, str] = {}
         self.published: list[tuple[str, str]] = []
 
     async def rpush(self, key: str, *values: Any) -> int:
@@ -93,7 +97,18 @@ class _FakeRedis:
         if key in self.lists:
             del self.lists[key]
             return 1
-        return 0
+        return int(self.strings.pop(key, None) is not None)
+
+    async def set(
+        self, key: str, value: str, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        if nx and key in self.strings:
+            return None
+        self.strings[key] = value
+        return True
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.strings or key in self.lists)
 
     def pipeline(self, transaction: bool = True) -> "_FakePipeline":
         # Returns a fake pipeline that records ops and replays them in
@@ -802,3 +817,47 @@ def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
             f"CROSSSLOT regression: {buf!r} (slot {_redis_keyslot(buf)}) "
             f"!= {meta!r} (slot {_redis_keyslot(meta)})"
         )
+
+
+# ── Client message claims (SECRT-2695) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_client_message_claim_is_granted_once(fake_redis: _FakeRedis) -> None:
+    """A retransmit of an accepted send must find the id already claimed."""
+    assert await claim_client_message("sess-1", "msg-a") is True
+    assert await claim_client_message("sess-1", "msg-a") is False
+    assert await is_client_message_claimed("sess-1", "msg-a") is True
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_are_per_id_and_session(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await claim_client_message("sess-1", "msg-a") is True
+    assert await claim_client_message("sess-1", "msg-b") is True
+    assert await claim_client_message("sess-2", "msg-a") is True
+
+
+@pytest.mark.asyncio
+async def test_released_client_message_can_be_claimed_again(
+    fake_redis: _FakeRedis,
+) -> None:
+    """A refused send drops its claim so the same id can land on retry."""
+    assert await claim_client_message("sess-1", "msg-a") is True
+    await release_client_message("sess-1", "msg-a")
+    assert await is_client_message_claimed("sess-1", "msg-a") is False
+    assert await claim_client_message("sess-1", "msg-a") is True
+
+
+@pytest.mark.asyncio
+async def test_client_message_claims_fail_open_on_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dedup is best effort: a Redis blip must never block a send."""
+    monkeypatch.setattr(
+        pm_module, "get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+    )
+    assert await claim_client_message("sess-1", "msg-a") is True
+    assert await is_client_message_claimed("sess-1", "msg-a") is False
+    await release_client_message("sess-1", "msg-a")

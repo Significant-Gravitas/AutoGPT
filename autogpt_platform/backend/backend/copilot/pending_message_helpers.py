@@ -24,10 +24,13 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    claim_client_message,
     drain_pending_messages,
     format_pending_as_user_message,
+    peek_pending_count,
     push_pending_message,
     push_pending_message_if_session_running,
+    release_client_message,
 )
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
@@ -207,6 +210,7 @@ async def queue_pending_for_http(
     file_ids: list[str] | None,
     folder_ids: list[str] | None,
     expert_id: str | None,
+    client_message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -221,6 +225,11 @@ async def queue_pending_for_http(
     Attached folders are appended to the message text here rather than carried
     as a field: a pending message is rendered from ``content`` when the turn
     drains it, and entries written by older workers are still in Redis.
+
+    ``client_message_id`` is the send's scoped idempotency key.  A send
+    whose key was already accepted is answered without pushing again (see
+    :func:`already_accepted_response`), and a push that does not land gives
+    the key back so a genuine retry can.
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
@@ -252,14 +261,31 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    response = await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
-        require_turn_in_flight=True,
-    )
+    if client_message_id is not None and not await claim_client_message(
+        session_id, client_message_id
+    ):
+        logger.info(
+            "pending_messages: skipped retransmit of an accepted message "
+            "for session=%s",
+            session_id,
+        )
+        return await already_accepted_response(session_id)
+
+    try:
+        response = await queue_user_message(
+            session_id=session_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+        )
+    except BaseException:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id)
+        raise
     if not response.turn_in_flight:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id)
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
@@ -280,6 +306,20 @@ async def queue_pending_for_http(
         )
 
     return response
+
+
+async def already_accepted_response(session_id: str) -> QueuePendingMessageResponse:
+    """Answer a retransmit of a send the server already accepted.
+
+    ``turn_in_flight`` is ``True`` whatever the turn is doing now: it tells the
+    client its message was taken, and ``False`` would make it fall back to
+    ``POST /stream`` and send the message all over again.
+    """
+    return QueuePendingMessageResponse(
+        buffer_length=await peek_pending_count(session_id),
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
 
 
 async def check_pending_call_rate(user_id: str) -> int:

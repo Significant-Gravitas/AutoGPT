@@ -56,6 +56,14 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 # message as a wake-up hint; the value itself is not meaningful.
 _NOTIFY_PAYLOAD = "1"
 
+# Client idempotency keys (``StreamChatRequest.message_id``, already scoped to
+# user + session) of sends the chat API has accepted.  A buffered message has
+# no ``ChatMessage`` row until a turn drains it, and the drained row gets a
+# fresh id, so the PK that dedupes a turn-start send cannot catch a
+# retransmit of a queued one: without this claim every copy was buffered
+# again and ran as another follow-up.
+_CLIENT_MESSAGE_KEY_PREFIX = "copilot:pending:client-msg:"
+
 
 class PendingMessageContext(BaseModel):
     """Structured page context attached to a pending message.
@@ -97,6 +105,62 @@ def _buffer_key(session_id: str) -> str:
 
 def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
+
+
+def _client_message_key(session_id: str, message_id: str) -> str:
+    return f"{_CLIENT_MESSAGE_KEY_PREFIX}{session_id}:{message_id}"
+
+
+async def claim_client_message(session_id: str, message_id: str) -> bool:
+    """Record that the send carrying *message_id* was accepted.
+
+    Returns ``False`` when it already was: the caller holds a retransmit of
+    a message that is queued, drained or persisted, and must not act on it
+    again.  Fails open on a Redis error so dedup can never block a send.
+    """
+    try:
+        redis = await get_redis_async()
+        claimed = await redis.set(
+            _client_message_key(session_id, message_id),
+            "1",
+            nx=True,
+            ex=_PENDING_TTL_SECONDS,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message claim failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return True
+    return bool(claimed)
+
+
+async def is_client_message_claimed(session_id: str, message_id: str) -> bool:
+    """Whether a send carrying *message_id* was already accepted."""
+    try:
+        redis = await get_redis_async()
+        return bool(await redis.exists(_client_message_key(session_id, message_id)))
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return False
+
+
+async def release_client_message(session_id: str, message_id: str) -> None:
+    """Drop a claim whose send was refused, so a genuine retry can land."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(_client_message_key(session_id, message_id))
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message release failed for session=%s: %s",
+            session_id,
+            e,
+        )
 
 
 def _decode_redis_item(item: Any) -> str:
