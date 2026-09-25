@@ -890,17 +890,18 @@ def _build_catalog() -> CatalogPayload:
                 # 2026-09-25: $0.8845/$10.5346 per Mtok, cache read
                 # $0.33/1M (dropped from $3.00/$15.00, previously
                 # unset; verified via check_openrouter_prices.py).
-                # provider_input/output_usd_per_1m intentionally left at the
-                # prior $3.00/$15.00 for in-turn cost estimation — that
-                # field is authored separately and out of scope for this
-                # display-price-only drift fix.
+                # provider_input/output_usd_per_1m now updated to match:
+                # these feed _override_cost_for_moonshot()'s initial
+                # rate-limit cost estimate, and leaving them stale meant
+                # kimi-k3 users' rate limits were consumed ~3.4x their
+                # actual spend (Sentry-flagged, HIGH).
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=132.675,
                     output_credits_per_1m=1580.19,
                     cache_read_credits_per_1m=49.5,
-                    provider_input_usd_per_1m=3.00,
-                    provider_output_usd_per_1m=15.00,
+                    provider_input_usd_per_1m=0.8845,
+                    provider_output_usd_per_1m=10.5346,
                 ),
             ),
             CatalogModel(
