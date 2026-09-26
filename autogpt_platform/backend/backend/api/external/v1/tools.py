@@ -10,11 +10,16 @@ handled separately (e.g., via API key quotas).
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, Depends, Security
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import (
+    EXECUTION_MAX_REQUESTS,
+    EXECUTION_WINDOW_SECONDS,
+    require_rate_limit,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
@@ -84,6 +89,15 @@ def _create_ephemeral_session(
 
 @tools_router.post(
     path="/find-agent",
+    dependencies=[
+        Depends(
+            require_rate_limit(
+                max_requests=EXECUTION_MAX_REQUESTS,
+                window_seconds=EXECUTION_WINDOW_SECONDS,
+                scope="execution",
+            )
+        ),
+    ],
 )
 async def find_agent(
     request: FindAgentRequest,
@@ -111,6 +125,15 @@ async def find_agent(
 
 @tools_router.post(
     path="/run-agent",
+    dependencies=[
+        Depends(
+            require_rate_limit(
+                max_requests=EXECUTION_MAX_REQUESTS,
+                window_seconds=EXECUTION_WINDOW_SECONDS,
+                scope="execution",
+            )
+        ),
+    ],
 )
 async def run_agent(
     request: RunAgentRequest,
