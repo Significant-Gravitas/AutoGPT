@@ -64,10 +64,13 @@ DreamPhase = Literal["consolidate", "recombine", "sanitize"]
 
 
 # Tool name the model must emit for each phase. A forced ``tool_choice``
-# constrains output to exactly one tool_use block whose ``input`` matches
-# the corresponding Pydantic schema — no JSON-parse-prose failures. A model
-# that rejects a forced tool gets ``auto`` and a prompt line asking for the
-# call; a text answer is parsed on arrival (``batch_callbacks``).
+# makes the model answer with exactly one tool_use block — no prose around
+# the JSON. It does not make the ``input`` schema-valid (that takes
+# Anthropic's strict tool mode, which is not enabled), so ``batch_callbacks``
+# still validates each result against the phase's Pydantic model. A model
+# that rejects a forced tool gets ``auto``, with the tool description and
+# the last user turn asking for the call; a text answer is parsed on
+# arrival.
 PHASE_TOOL_NAMES: dict[DreamPhase, str] = {
     "consolidate": "emit_consolidation",
     "recombine": "emit_recombination",
@@ -196,13 +199,17 @@ async def submit_phase(
     )
     tool_name = PHASE_TOOL_NAMES[phase]
     tool_choice = structured_tool_choice(model, tool_name)
+    description = PHASE_DESCRIPTIONS[phase]
     if not is_forced_tool_choice(tool_choice):
+        # Nothing forces the call, so the tool description and the last
+        # user turn ask for it.
+        description = f"{description} {OUTPUT_TOOL_CALL_ONCE}"
         messages = with_output_tool_instruction(messages, tool_name)
     tools = [
         pydantic_to_anthropic_tool(
             PHASE_RESPONSE_MODELS[phase],
             tool_name=tool_name,
-            description=f"{PHASE_DESCRIPTIONS[phase]} {OUTPUT_TOOL_CALL_ONCE}",
+            description=description,
         )
     ]
     # Anthropic's custom_id must match ``^[a-zA-Z0-9_-]{1,64}$`` —

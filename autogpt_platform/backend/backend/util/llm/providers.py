@@ -197,8 +197,12 @@ def anthropic_accepts_forced_tool_choice(model: str) -> bool:
 
 def is_forced_tool_choice_rejection(exc: BaseException) -> bool:
     """Whether *exc* is Anthropic's 400 for a forced ``tool_choice`` on a
-    model that takes none: ``tool_choice: type "tool" and "any" are not
-    supported for this model.``"""
+    model that takes none: an ``anthropic.BadRequestError`` reading
+    ``tool_choice: type "tool" and "any" are not supported for this
+    model.`` Nothing else counts, not even another error quoting that text:
+    a 5xx or a failure of our own is not a reason to drop the forced tool."""
+    if not isinstance(exc, anthropic.BadRequestError):
+        return False
     error_text = str(exc).lower()
     return "tool_choice" in error_text and "not supported" in error_text
 
@@ -590,7 +594,9 @@ async def _call_anthropic_messages(
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
-    # single prefix; reads cost 10% of normal input tokens.
+    # single prefix. Cache reads bill at a fraction of the input rate:
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
 
@@ -1338,6 +1344,21 @@ class BatchResultRow:
     # Provider-native result object for callers that need raw access.
     # Kept out of repr + pydantic serialization (it's an opaque SDK object).
     raw_result: Any = Field(default=None, repr=False, exclude=True)
+
+    def with_content(self, content: str) -> BatchResultRow:
+        """This row with *content* in place of the provider's text, every
+        other field kept: the dream callback stores the JSON it parsed out
+        of a text answer."""
+        return BatchResultRow(
+            custom_id=self.custom_id,
+            content=content,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens,
+            error=self.error,
+            raw_result=self.raw_result,
+        )
 
 
 async def poll_batch(

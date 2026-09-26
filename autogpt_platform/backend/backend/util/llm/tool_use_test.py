@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 import pytest
@@ -27,6 +28,17 @@ class _Operations(BaseModel):
     writes: list[str] = Field(default_factory=list)
     demotions: list[_Demotion] = Field(default_factory=list)
     summary_for_user: str = ""
+
+
+class _Kind(str, Enum):
+    """Kinds of memory."""
+
+    FACT = "fact"
+    RULE = "rule"
+
+
+class _Finding(BaseModel):
+    kind: _Kind = Field(default=_Kind.FACT, description="What the finding is.")
 
 
 class TestPydanticToAnthropicTool:
@@ -157,6 +169,44 @@ class TestInlineRefs:
             result["properties"]["items"]["items"]["properties"]["x"]["type"]
             == "integer"
         )
+
+    def test_keys_beside_a_ref_survive_and_win(self):
+        """A field's ``default`` and ``description`` sit beside its ``$ref``;
+        inlining keeps them, over the definition's own description."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "$ref": "#/$defs/Kind",
+                    "default": "fact",
+                    "description": "What the finding is.",
+                }
+            },
+            "$defs": {
+                "Kind": {
+                    "type": "string",
+                    "enum": ["fact", "rule"],
+                    "description": "Kinds of memory.",
+                }
+            },
+        }
+        result = _inline_refs(schema)
+        assert result["properties"]["kind"] == {
+            "type": "string",
+            "enum": ["fact", "rule"],
+            "default": "fact",
+            "description": "What the finding is.",
+        }
+
+    def test_pydantic_ref_field_keeps_its_default_and_description(self):
+        """An enum field with a default and a description, as pydantic
+        emits it: the tool schema keeps both next to the inlined enum."""
+        tool = pydantic_to_anthropic_tool(_Finding, tool_name="x", description="x")
+        kind = tool["input_schema"]["properties"]["kind"]
+        assert kind["enum"] == ["fact", "rule"]
+        assert kind["default"] == "fact"
+        assert kind["description"] == "What the finding is."
+        assert "$ref" not in kind
 
     def test_leaves_unknown_ref_form_alone(self):
         """A ref to an external schema (not #/$defs/...) shouldn't crash;

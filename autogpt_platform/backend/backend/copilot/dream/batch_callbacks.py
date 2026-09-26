@@ -35,7 +35,6 @@ side effects at-most-once across batch re-dispatch:
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Literal
@@ -479,9 +478,7 @@ async def _handle_phase_result(
         return
 
     await _write_phase_to_state(
-        pass_id=pass_id,
-        phase=phase,
-        row=dataclasses.replace(row, content=json.dumps(payload)),
+        pass_id=pass_id, phase=phase, row=row.with_content(json.dumps(payload))
     )
 
     next_phase = NEXT_PHASE[phase]

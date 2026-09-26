@@ -30,9 +30,11 @@ from backend.util.llm.tool_use import (
 _TOOL_NAME_UNSAFE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 _TOOL_NAME_MAX_LENGTH = 64
 
-# Closes every output tool's description, here and on the batch path. Under
-# ``tool_choice`` ``auto`` it and the prompt line are what get the tool
-# called; under a forced choice it is simply true.
+# Appended to a batch phase tool's description when the tool is not forced
+# (``tool_choice`` ``auto``): with the prompt line from
+# ``with_output_tool_instruction`` it is what gets the tool called. Forced
+# tools keep their description as written, and the sync path's description
+# asks for one complete call in either mode.
 OUTPUT_TOOL_CALL_ONCE = (
     "Call this tool exactly once, with the complete result as its input."
 )
@@ -84,7 +86,8 @@ def structured_request(
         response_model,
         tool_name=tool_name,
         description=(
-            f"Return the {response_model.__name__} result. {OUTPUT_TOOL_CALL_ONCE}"
+            f"Return the {response_model.__name__} result: call this once, "
+            "with every field the schema requires."
         ),
     )
     return StructuredRequest(

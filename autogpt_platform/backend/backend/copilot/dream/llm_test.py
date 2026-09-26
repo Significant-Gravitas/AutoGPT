@@ -31,7 +31,6 @@ from .llm import (
     structured_completion,
 )
 from .structured_output import (
-    OUTPUT_TOOL_CALL_ONCE,
     output_tool_name,
     structured_request,
     with_output_tool_instruction,
@@ -473,6 +472,13 @@ def _bad_request(message: str) -> anthropic.BadRequestError:
     return anthropic.BadRequestError(message, response=response, body=None)
 
 
+def _server_error(message: str) -> anthropic.InternalServerError:
+    response = httpx.Response(
+        500, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    )
+    return anthropic.InternalServerError(message, response=response, body=None)
+
+
 # Anthropic's 400 for a forced ``tool_choice`` on a model that takes none.
 _FORCED_TOOL_REJECTION = (
     'tool_choice: type "tool" and "any" are not supported for this model.'
@@ -532,6 +538,10 @@ class TestAnthropicToolPath:
         assert [tool["name"] for tool in kwargs["tools"]] == [tool_name]
         assert kwargs["tools"][0]["input_schema"]["required"] == ["facts"]
         assert kwargs["tool_choice"] == force_tool_choice(tool_name)
+        assert kwargs["tools"][0]["description"] == (
+            "Return the _SampleOutput result: call this once, with every "
+            "field the schema requires."
+        )
         # A forced tool needs no prompt line asking for it.
         assert kwargs["messages"] == [{"role": "user", "content": "give me a fact"}]
         # Usage names the model that was called, the spelling the price
@@ -565,7 +575,8 @@ class TestAnthropicToolPath:
         tool_name = output_tool_name(_SampleOutput)
         assert kwargs["model"] == "claude-opus-5-5"
         assert kwargs["tool_choice"] == auto_tool_choice()
-        assert kwargs["tools"][0]["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
+        # The sync description asks for one complete call in either mode.
+        assert "call this once" in kwargs["tools"][0]["description"]
         system, user = kwargs["messages"]
         assert system == {"role": "system", "content": "you consolidate facts"}
         assert user["role"] == "user"
@@ -782,6 +793,28 @@ class TestAnthropicToolPath:
         assert call_provider_mock.await_count == 2
         # Neither call came back with a response, so nothing was billed.
         assert exc_info.value.usage is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [_server_error(_FORCED_TOOL_REJECTION), RuntimeError(_FORCED_TOOL_REJECTION)],
+        ids=["500", "runtime-error"],
+    )
+    async def test_only_a_400_rejection_is_retried(self, error: Exception):
+        """The documented text is not enough: a 5xx or an exception of our
+        own quoting it keeps the forced tool and fails once."""
+        call_provider_mock = AsyncMock(side_effect=error)
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            with pytest.raises(DreamLLMError, match="tool_choice"):
+                await structured_completion(
+                    model="anthropic/claude-sonnet-5",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
+        assert call_provider_mock.await_count == 1
 
     @pytest.mark.asyncio
     async def test_other_bad_requests_are_not_retried(self):

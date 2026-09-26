@@ -39,6 +39,7 @@ import json
 import logging
 from typing import Generic, TypeVar
 
+import anthropic
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.transport_routing import (
@@ -182,10 +183,11 @@ async def _call_provider_sync(
     """One sync ``call_provider`` round trip; any failure is a ``DreamLLMError``
     with no usage, since no response came back to bill.
 
-    A model that turns the forced output tool down (Anthropic's 400 naming
-    ``tool_choice``) is asked once more with the tool left to its choice
-    and the prompt asking for the call: the self-heal for a model missing
-    from the provider's forced-tool list."""
+    A model that turns the forced output tool down (Anthropic's 400
+    ``BadRequestError`` naming ``tool_choice``, and only that) is asked
+    once more with the tool left to its choice and the prompt asking for
+    the call: the self-heal for a model missing from the provider's
+    forced-tool list. A second failure is final."""
 
     async def send(
         attempt: StructuredRequest,
@@ -213,7 +215,7 @@ async def _call_provider_sync(
     try:
         try:
             response = await send(request)
-        except Exception as exc:
+        except anthropic.BadRequestError as exc:
             if not (
                 request.forces_output_tool and is_forced_tool_choice_rejection(exc)
             ):

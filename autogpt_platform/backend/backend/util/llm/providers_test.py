@@ -2067,6 +2067,28 @@ class TestDownloadBatchResults:
         assert rows[0].output_tokens == 0
 
 
+def test_batch_result_row_with_content_keeps_every_other_field():
+    row = BatchResultRow(
+        custom_id="passid-1_consolidate",
+        content='Here are the facts: {"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+        cache_read_tokens=3,
+        cache_creation_tokens=2,
+        error="kept as is",
+        raw_result=object(),
+    )
+
+    swapped = row.with_content('{"facts": []}')
+
+    assert swapped.content == '{"facts": []}'
+    assert row.content == 'Here are the facts: {"facts": []}'
+    # Every field the row has, so a field added later can't be dropped.
+    for name in getattr(BatchResultRow, "__pydantic_fields__"):
+        if name != "content":
+            assert getattr(swapped, name) == getattr(row, name), name
+
+
 def _fake_async_iter(items):
     """Build an awaitable that yields an async iterator over ``items``.
 
@@ -2574,3 +2596,17 @@ class TestForcedToolChoiceCapability:
     )
     def test_rejection_ignores_other_errors(self, message: str):
         assert not is_forced_tool_choice_rejection(self._err(message))
+
+    def test_only_a_bad_request_counts_as_the_rejection(self):
+        """The documented text is not enough on its own: a 500 or an
+        exception of our own quoting it is not Anthropic's 400."""
+        text = 'tool_choice: type "tool" and "any" are not supported for this model.'
+        server_error = anthropic.InternalServerError(
+            text,
+            response=httpx.Response(
+                500, request=httpx.Request("POST", "https://api.anthropic.com")
+            ),
+            body=None,
+        )
+        assert not is_forced_tool_choice_rejection(server_error)
+        assert not is_forced_tool_choice_rejection(RuntimeError(text))

@@ -1,12 +1,13 @@
 """Pydantic → Anthropic tool definition conversion.
 
-Anthropic's Messages API supports forced structured output via tool
-use: provide a tool whose ``input_schema`` matches the desired output
-shape, then set ``tool_choice={"type":"tool","name":<tool_name>}``
-and the model is constrained to call exactly that tool with arguments
-matching the schema — no preamble, no markdown, no "Looking at the
-inputs, I need to..." prose. The model literally cannot emit anything
-else.
+Anthropic's Messages API supports structured output via tool use:
+provide a tool whose ``input_schema`` matches the desired output shape,
+then set ``tool_choice={"type":"tool","name":<tool_name>}`` and the
+model answers with exactly one call to that tool — no preamble, no
+markdown, no "Looking at the inputs, I need to..." prose. Forcing the
+call does not make its arguments schema-valid: that takes Anthropic's
+strict tool mode, which these helpers don't enable, so callers still
+validate the arguments against their Pydantic model.
 
 Anthropic's newest models (Opus 5.5 among them) answer a forced
 ``tool_choice`` with a 400, so ``structured_tool_choice`` picks per
@@ -115,9 +116,11 @@ def _inline_refs(schema: dict[str, Any]) -> dict[str, Any]:
 
     Pydantic emits ``{"$ref": "#/$defs/Foo"}`` for nested models. This
     walks the schema, replaces each ``$ref`` with the referenced
-    definition, and returns a fully inlined copy. Mutually recursive
-    schemas would loop forever; the dream-pass schemas don't have
-    that shape (validated by tests).
+    definition, and returns a fully inlined copy. Keys beside a ``$ref``
+    (a field's ``default`` and ``description``) are laid over the
+    inlined definition and win over its own. Mutually recursive schemas
+    would loop forever; the dream-pass schemas don't have that shape
+    (validated by tests).
     """
     defs = schema.get("$defs", {})
     return _resolve(schema, defs)
@@ -131,8 +134,16 @@ def _resolve(node: Any, defs: dict[str, Any]) -> Any:
                 key = ref.split("/")[-1]
                 target = defs.get(key)
                 if target is not None:
-                    # Resolve nested refs in the target before returning.
-                    return _resolve(target, defs)
+                    # Resolve nested refs in the target, then keep what the
+                    # referencing node says itself: pydantic puts a field's
+                    # ``default`` and ``description`` beside its ``$ref``.
+                    resolved = _resolve(target, defs)
+                    siblings = {
+                        k: _resolve(v, defs) for k, v in node.items() if k != "$ref"
+                    }
+                    if isinstance(resolved, dict):
+                        return {**resolved, **siblings}
+                    return resolved
             # Unknown ref form — leave as-is rather than fabricate.
             return node
         return {k: _resolve(v, defs) for k, v in node.items()}

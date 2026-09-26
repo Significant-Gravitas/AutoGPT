@@ -20,6 +20,7 @@ import pytest
 from backend.copilot.config import ChatConfig
 from backend.copilot.dream.batch_submit import (
     INPUT_TTL_SECONDS,
+    PHASE_DESCRIPTIONS,
     input_bundle_key,
     persist_input_bundle,
     phase_models_for_config,
@@ -294,7 +295,8 @@ async def test_submitted_phase_tool_carries_the_phase_schema(fake_redis):
     assert tool["input_schema"]["properties"] == expected["properties"]
     assert tool["input_schema"]["required"] == expected.get("required", [])
     assert tool["input_schema"]["properties"]["facts"]["items"]["properties"]
-    assert tool["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
+    # A forced tool keeps its description as written.
+    assert tool["description"] == PHASE_DESCRIPTIONS["consolidate"]
     assert params["tool_choice"] == force_tool_choice("emit_consolidation")
     assert params["model"] == "claude-sonnet-5"
     # A forced tool needs no prompt line asking for it.
@@ -332,10 +334,18 @@ async def test_opus_5_5_phase_offers_the_tool_under_auto(fake_redis):
     assert params["tool_choice"] == auto_tool_choice()
     (tool,) = params["tools"]
     assert tool["name"] == "emit_recombination"
-    assert tool["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
+    assert tool["description"] == (
+        f"{PHASE_DESCRIPTIONS['recombine']} {OUTPUT_TOOL_CALL_ONCE}"
+    )
     last = params["messages"][-1]
     assert last["role"] == "user"
     assert "emit_recombination" in last["content"]
+    # The ``$ref``'d enum field keeps its own default and description.
+    proposal = tool["input_schema"]["properties"]["proposals"]["items"]
+    memory_kind = proposal["properties"]["memory_kind"]
+    assert "finding" in memory_kind["enum"]
+    assert memory_kind["default"] == "finding"
+    assert memory_kind["description"].startswith("Envelope kind")
 
 
 def test_phase_models_take_the_native_anthropic_spelling():
