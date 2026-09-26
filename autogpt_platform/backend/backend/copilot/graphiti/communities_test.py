@@ -23,9 +23,17 @@ def _free_rebuild_lock():
     redis = AsyncMock()
     redis.set = AsyncMock(return_value=True)
     redis.eval = AsyncMock(return_value=1)
-    with patch(
-        "backend.copilot.graphiti.communities.get_redis_async",
-        new=AsyncMock(return_value=redis),
+    with (
+        patch(
+            "backend.copilot.graphiti.communities.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.sdk.env.config",
+            new=SimpleNamespace(
+                transport=SimpleNamespace(supports_flex_tier=True),
+            ),
+        ),
     ):
         yield redis
 
