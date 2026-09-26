@@ -21,8 +21,10 @@ from backend.copilot.inference.context import (
     InferenceUsage,
     RouteDecision,
 )
+from backend.copilot.inference.trace import TracedCall
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
+from . import billing as billing_mod
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
@@ -1051,6 +1053,146 @@ async def test_partial_failure_still_charges_completed_phases(mocker):
     assert charge_spy.await_count == 1  # consolidate charged, recombine never ran
     assert charge_spy.await_args.args[0].job.phase == "consolidate"
     apply_mock.assert_not_awaited()
+
+
+def _tracing_failures(seen: list[InferenceUsage | None]):
+    """A stand-in for ``trace`` that keeps the usage the real one would write
+    on a span closing on an error (``call.usage or exc.usage``)."""
+
+    @asynccontextmanager
+    async def fake_trace(ctx):
+        call = TracedCall(ctx=ctx)
+        try:
+            yield call
+        except InferenceError as exc:
+            seen.append(call.usage or exc.usage)
+            raise
+
+    return fake_trace
+
+
+@pytest.mark.asyncio
+async def test_a_phase_whose_answer_did_not_parse_is_still_billed(mocker):
+    """The provider billed the answer it sent back even though it did not
+    parse: one cost row with its tokens, priced like any phase, the trace
+    shows the attempt, and the pass fails at that phase as before, with the
+    attempt in its usage."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="claude-sonnet-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("LLM JSON did not match", billed)),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+    traced: list[InferenceUsage | None] = []
+    mocker.patch.object(orchestrator_mod, "trace", _tracing_failures(traced))
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.error is not None
+    assert result.error.startswith("consolidate: LLM JSON did not match")
+    apply_mock.assert_not_awaited()
+    persist.assert_awaited_once()
+    row = persist.await_args.kwargs
+    assert (row["prompt_tokens"], row["completion_tokens"]) == (1_000_000, 100_000)
+    # Sonnet 5's catalog card: $2 in, $10 out per Mtok.
+    assert row["cost_usd"] == pytest.approx(3.0)
+    assert row["block_name_override"] == "copilot:dream:consolidate"
+    assert row["graph_exec_id_override"] == result.pass_id
+    assert row["expert_id"] == "expert-1"
+    (seen,) = traced
+    assert seen is not None and seen.cost_usd == pytest.approx(3.0)
+    assert result.usage is not None
+    assert [(p.phase, p.input_tokens) for p in result.usage.phases] == [
+        ("consolidate", 1_000_000)
+    ]
+    assert result.usage.total_cost_usd == pytest.approx(3.0)
+
+
+@pytest.mark.asyncio
+async def test_a_phase_that_got_no_answer_records_nothing(mocker):
+    """No response came back, so nothing was billed: no cost row, and the
+    pass fails at that phase as before."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=InferenceError("LLM call failed: TimeoutError: ")),
+    )
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    persist = mocker.patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert result.error.startswith("consolidate: LLM call failed")
+    persist.assert_not_awaited()
+    assert result.usage is not None and result.usage.phases == []
+
+
+@pytest.mark.asyncio
+async def test_a_later_phase_that_did_not_parse_is_charged_after_the_completed_one(
+    mocker,
+):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input()),
+    )
+    billed = InferenceUsage(
+        model="advanced-model",
+        input_tokens=90,
+        output_tokens=9,
+        payer="platform_allowance",
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                InferenceError("LLM returned empty content", billed),
+            ]
+        ),
+    )
+    charge_spy = _charge_spy()
+    mocker.patch.object(orchestrator_mod, "record_phase_cost", charge_spy)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is not None
+    assert result.error.startswith("recombine:")
+    assert [c.args[0].job.phase for c in charge_spy.await_args_list] == [
+        "consolidate",
+        "recombine",
+    ]
+    assert charge_spy.await_args.args[1] == billed
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == ["consolidate", "recombine"]
 
 
 # ---------------------------------------------------------------------------

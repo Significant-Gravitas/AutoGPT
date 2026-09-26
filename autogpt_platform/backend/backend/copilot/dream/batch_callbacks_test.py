@@ -842,6 +842,34 @@ class TestErrorPaths:
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
 
     @pytest.mark.asyncio
+    async def test_a_row_that_did_not_parse_is_still_billed(self, fake_redis):
+        """The provider billed the answer even though it did not parse: the
+        failed phase gets exactly one cost row with its tokens, on the batch
+        route, and the pass still ends errored without chaining."""
+        await _persist_autopilot_bundle()
+        submit_phase = AsyncMock()
+        mark_errored = AsyncMock()
+        persist = AsyncMock()
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.inference.record.persist_and_record_usage", persist
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [_row(custom_id="p1:consolidate", content="this is not JSON at all")],
+            )
+        submit_phase.assert_not_awaited()
+        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        persist.assert_awaited_once()
+        row = persist.await_args.kwargs
+        assert (row["prompt_tokens"], row["completion_tokens"]) == (10, 20)
+        assert row["block_name_override"] == "copilot:dream:consolidate"
+        assert row["extra_metadata"]["execution_path"] == "anthropic_batch"
+        # Sonnet 5 at half its $2 / $10 per Mtok list price.
+        assert row["cost_usd"] == pytest.approx((10 * 2.0 + 20 * 10.0) / 1e6 / 2)
+
+    @pytest.mark.asyncio
     async def test_text_answer_around_the_json_still_chains(self, fake_redis):
         """A model the output tool can't be forced on (``auto``) may answer
         in text. The JSON in it, fenced behind a line of prose, is the

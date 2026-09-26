@@ -619,22 +619,48 @@ async def _run_phase(
     The usage comes back priced: the provider's cost when it reported one
     (OpenRouter's ``usage.cost``, what we were billed), else the model's
     catalog list rate; unknown when the response reported no usage at all.
-    Raises ``InferenceError`` when the phase got no usable answer.
+
+    Raises ``InferenceError`` when the phase got no usable answer. An answer
+    that came back but did not parse was still billed, so its usage is
+    recorded like a completed phase's (the cost row and the trace show the
+    attempt) and leaves on the error, priced, for the pass's failure result.
     """
     job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
     route = resolve_route(run.scope, job, config=run.config)
     ctx = InferenceContext(scope=run.scope, job=job, route=route)
     async with trace(ctx) as call:
-        completion = await structured_complete(
-            call.ctx,
-            messages,
-            response_model,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-        )
+        try:
+            completion = await structured_complete(
+                call.ctx,
+                messages,
+                response_model,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+            )
+        except InferenceError as exc:
+            await _record_failed_attempt(call.ctx, exc)
+            raise
         usage = await record_phase_cost(call.ctx, completion.usage)
         call.usage = usage
     return completion.value, _phase_usage(phase, usage)
+
+
+async def _record_failed_attempt(ctx: InferenceContext, exc: InferenceError) -> None:
+    """Record the usage a failed call was billed for, and put it back on the
+    error priced. A call that got no response carries none: nothing to
+    record, and the trace closes on the error alone."""
+    if exc.usage is not None:
+        exc.usage = await record_phase_cost(ctx, exc.usage)
+
+
+def _billed_phases(
+    completed: list[PhaseUsage], phase: DreamPhase, exc: InferenceError
+) -> list[PhaseUsage]:
+    """The phases a failed pass was billed for: the completed ones, and the
+    failed one when its answer came back (``_run_phase`` recorded it)."""
+    if exc.usage is None:
+        return completed
+    return [*completed, _phase_usage(phase, exc.usage)]
 
 
 def _phase_usage(phase: DreamPhase, usage: InferenceUsage) -> PhaseUsage:
@@ -920,7 +946,9 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"consolidate: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
+                    usage=_aggregate_usage(
+                        _billed_phases(step_usages, "consolidate", exc), execution_path
+                    ),
                 )
             step_usages.append(usage)
 
@@ -936,7 +964,9 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"recombine: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
+                    usage=_aggregate_usage(
+                        _billed_phases(step_usages, "recombine", exc), execution_path
+                    ),
                 )
             step_usages.append(usage)
 
@@ -952,7 +982,9 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"sanitize: {exc}",
-                    usage=_aggregate_usage(step_usages, execution_path),
+                    usage=_aggregate_usage(
+                        _billed_phases(step_usages, "sanitize", exc), execution_path
+                    ),
                 )
             step_usages.append(usage)
 
@@ -1045,8 +1077,9 @@ def _failure_result(
     usage: DreamPassUsage | None = None,
 ) -> DreamPassResult:
     """Build a failure ``DreamPassResult`` that still carries usage for
-    the phases that completed before the error — billing has to charge
-    for tokens we already paid for, even on partial failure."""
+    the phases that completed before the error, and for a failed phase whose
+    answer came back — billing has to charge for tokens we already paid
+    for, even on partial failure."""
     return DreamPassResult(
         user_id=user_id,
         pass_id=pass_id,
