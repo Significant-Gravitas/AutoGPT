@@ -50,6 +50,7 @@ from pydantic import BaseModel
 from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .scope import MemoryScope
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -226,6 +227,41 @@ async def clean_graph(
     finally:
         await _drop_database(driver)
         await driver.close()
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def scope_graph(
+    falkordb_available: bool,
+) -> AsyncIterator[tuple[AutoGPTFalkorDriver, MemoryScope]]:
+    """A fresh account scope and a driver on that scope's own database.
+
+    For code that opens its own driver from a ``MemoryScope`` (the recall
+    layer, ratification): ``clean_graph``'s standalone ``test_*`` database is
+    not derivable from any scope, so such code would read an empty graph.
+    Indices are built first, as the ingestion write path does, so graphiti's
+    searches and ``add_episode`` work. The graph is dropped afterwards with a
+    real ``GRAPH.DELETE``; ``DETACH DELETE`` would leave an empty
+    ``user_test-*`` graph behind on a shared instance.
+    """
+    scope = MemoryScope.for_user(f"test-{uuid.uuid4().hex[:16]}")
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=scope.group_id,
+        build_indices=False,
+    )
+    try:
+        await driver.ensure_indices()
+        yield driver, scope
+    finally:
+        try:
+            await driver._get_graph(None).delete()
+        except Exception as exc:
+            if "empty key" not in str(exc).lower():
+                raise
+        finally:
+            await driver.close()
 
 
 @pytest_asyncio.fixture(loop_scope="function")

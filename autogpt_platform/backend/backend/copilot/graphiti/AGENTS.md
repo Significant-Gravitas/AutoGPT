@@ -20,6 +20,7 @@ Runtime prompt instructions live in `prompting.py:get_graphiti_supplement()`.
 - Build a `MemoryScope` (`scope.py`) once where a request enters the memory code and pass it down; read `group_id` / `scope_key` / `redis_key(...)` off it rather than re-deriving them from a `(user_id, expert_id)` pair, and open drivers with `open_driver(scope)`.
 - Be careful about memory pollution from assistant/tool phrasing; extraction quality matters as much as ingestion success.
 - Keep warm-context and tool-driven recall resilient: failures should degrade gracefully rather than break chat execution.
+- Recall goes through `recall.py`, so a forgotten fact cannot come back through a path that filters differently. Read facts with `search_facts` and episodes with `recent_episodes`; code with its own Cypher (the settings and admin fact lists) uses `live_fact_predicate`. A fact is live while `expired_at` is unset and `status` is `active` or `tentative`. Every forget goes through `recall_forget.retract`: soft sets `status='retracted'` and stamps `redacted_at` on episodes left without a live fact, hard deletes the edge and what it orphans. The dream keeps its own Cypher (`dream/fetch.py`, `dream/ratification.py`) but must skip `retracted` facts and `redacted_at` episodes too.
 
 ## Query Cookbook
 

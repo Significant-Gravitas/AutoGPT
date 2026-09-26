@@ -11,6 +11,7 @@ from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.copilot.graphiti.recall import live_fact_predicate
 
 from .memory_admin_routes import router as memory_admin_router
 
@@ -581,6 +582,18 @@ class TestListFacts:
     def test_status_must_be_valid_enum(self) -> None:
         resp = client.get("/admin/memory/abc/facts?status=garbage")
         assert resp.status_code == 422
+
+    def test_active_filter_uses_the_recall_live_test(self) -> None:
+        """The "active" filter lists what recall would return, tentatives
+        aside: an expired edge still stamped active, or a legacy edge with no
+        status, is judged the way recall judges it."""
+        driver = _driver_returning([])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/facts?status=active")
+        assert resp.status_code == 200
+        query = driver.execute_query.call_args.args[0]
+        assert live_fact_predicate("e", include_tentative=False) in query
+        assert "status" not in driver.execute_query.call_args.kwargs
 
 
 class TestListCommunities:

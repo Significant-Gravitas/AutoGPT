@@ -10,6 +10,9 @@ from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.copilot.graphiti.memory_model import ForgetResult, MemoryForgetFailure
+from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.scope import MemoryScope
 
 from .routes import router as memory_router
 
@@ -84,11 +87,13 @@ class TestOverview:
         assert resp.status_code == 403
 
     def test_fact_count_only_counts_live_edges(self) -> None:
+        """Counted with recall's own live-fact test, so the number shown is
+        the number of facts the assistant can still recall."""
         driver = _driver_returning([{"c": 0}], [{"c": 0}], [{"c": 0}])
         with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             client.get("/memory/overview")
         fact_query = driver.execute_query.await_args_list[0].args[0]
-        assert "expired_at IS NULL" in fact_query
+        assert live_fact_predicate("e") in fact_query
 
 
 class TestListFacts:
@@ -113,7 +118,7 @@ class TestListFacts:
         assert body["items"][0]["uuid"] == "edge-1"
         assert body["items"][0]["fact"] == "Prefers Monday summaries"
         query = driver.execute_query.await_args_list[0].args[0]
-        assert "expired_at IS NULL" in query
+        assert live_fact_predicate("e") in query
         assert "ORDER BY e.created_at DESC" in query
 
     def test_missing_graph_is_empty_list(self) -> None:
@@ -158,22 +163,44 @@ class TestListFacts:
 
 
 class TestForgetFact:
-    def test_retracts_matching_edge(self) -> None:
-        driver = _driver_returning([{"uuid": "edge-1"}])
-        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+    """The settings forget is the chat tool's soft ``retract`` (its Cypher is
+    pinned in ``graphiti/recall_forget_test.py``)."""
+
+    def test_retracts_matching_edge(self, test_user_id) -> None:
+        retract = AsyncMock(return_value=ForgetResult(deleted=["edge-1"]))
+        with patch(f"{_MOCK_MODULE}.retract", retract):
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 200
         assert resp.json() == {"uuid": "edge-1", "forgotten": True}
-        query = driver.execute_query.await_args_list[0].args[0]
-        assert "SET e.expired_at = $now" in query
-        assert "group_id: $g" in query
-        assert "DELETE" not in query
+        retract.assert_awaited_once_with(MemoryScope.for_user(test_user_id), ["edge-1"])
 
     def test_no_match_is_404(self) -> None:
-        driver = _driver_returning([])
-        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+        result = ForgetResult(failures=[MemoryForgetFailure.no_match("edge-unknown")])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
             resp = client.delete("/memory/facts/edge-unknown")
         assert resp.status_code == 404
+
+    def test_query_error_is_500_not_404(self) -> None:
+        failure = MemoryForgetFailure.query_error("edge-1", RuntimeError("down"))
+        result = ForgetResult(failures=[failure])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 500
+
+    def test_expert_forget_uses_expert_scope(self, test_user_id) -> None:
+        retract = AsyncMock(return_value=ForgetResult(deleted=["edge-1"]))
+        with (
+            patch(f"{_MOCK_MODULE}.retract", retract),
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert()),
+            ),
+        ):
+            resp = client.delete(f"/memory/experts/{_EXPERT_ID}/facts/edge-1")
+        assert resp.status_code == 200
+        retract.assert_awaited_once_with(
+            MemoryScope.for_expert(test_user_id, _EXPERT_ID), ["edge-1"]
+        )
 
 
 class TestEraseScope:

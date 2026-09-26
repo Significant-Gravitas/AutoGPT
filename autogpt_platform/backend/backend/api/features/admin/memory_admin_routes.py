@@ -35,6 +35,7 @@ from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
 from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.clients import get_scheduler_client
 
@@ -533,10 +534,13 @@ async def _list_facts_impl(
     )
     group_id = memory_scope.group_id
 
-    # Build optional filters
+    # Build optional filters. "active" means live and active under the recall
+    # policy, so a forgotten or expired fact never shows as active.
     where_clauses = ["e.group_id = $g"]
     params: dict[str, Any] = {"g": group_id, "limit": limit}
-    if status != "any":
+    if status == "active":
+        where_clauses.append(live_fact_predicate("e", include_tentative=False))
+    elif status != "any":
         where_clauses.append("e.status = $status")
         params["status"] = status
     if scope:

@@ -2,20 +2,22 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
-from backend.copilot.graphiti._format import (
-    extract_episode_body,
-    extract_episode_body_raw,
-    extract_episode_timestamp,
-    extract_fact,
-    extract_temporal_validity,
-)
-from backend.copilot.graphiti.client import get_graphiti_client
+from graphiti_core.edges import EntityEdge
+
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.recall import (
+    episode_scope,
+    recent_episodes,
+    record_hit,
+    render,
+    render_episode,
+    search_facts,
+)
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
+from backend.util.background import spawn_background_task
 
 from .base import BaseTool
 from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
@@ -23,6 +25,8 @@ from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
 logger = logging.getLogger(__name__)
 
 _MAX_LIMIT = 50
+# Recent raw episodes returned next to the facts.
+_RECENT_EPISODES = 5
 
 
 class MemorySearchTool(BaseTool):
@@ -102,7 +106,7 @@ class MemorySearchTool(BaseTool):
         limit = min(limit, _MAX_LIMIT)
 
         try:
-            group_id = MemoryScope.build(user_id, session.expert_id).group_id
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",
@@ -110,19 +114,9 @@ class MemorySearchTool(BaseTool):
             )
 
         try:
-            client = await get_graphiti_client(group_id)
-
             edges, episodes = await asyncio.gather(
-                client.search(
-                    query=query,
-                    group_ids=[group_id],
-                    num_results=limit,
-                ),
-                client.retrieve_episodes(
-                    reference_time=datetime.now(timezone.utc),
-                    group_ids=[group_id],
-                    last_n=5,
-                ),
+                search_facts(memory_scope, query, limit=limit),
+                recent_episodes(memory_scope, _RECENT_EPISODES),
             )
         except Exception:
             logger.warning(
@@ -133,15 +127,16 @@ class MemorySearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        facts = _format_edges(edges)
-
-        # Scope hard-filter: if a scope was requested, filter episodes
-        # whose MemoryEnvelope JSON contains a different scope.
-        # Skip redundant _format_episodes() when scope is set.
-        if scope:
-            recent = _filter_episodes_by_scope(episodes, scope)
-        else:
-            recent = _format_episodes(episodes)
+        _count_hits(memory_scope, edges)
+        facts = [render(edge) for edge in edges]
+        # Scope hard-filter: when a scope is requested, drop episodes whose
+        # MemoryEnvelope names a different one (plain conversation counts as
+        # ``real:global``).
+        recent = [
+            render_episode(ep)
+            for ep in episodes
+            if not scope or episode_scope(ep) == scope
+        ]
 
         if not facts and not recent:
             return MemorySearchResponse(
@@ -164,51 +159,14 @@ class MemorySearchTool(BaseTool):
         )
 
 
-def _format_edges(edges) -> list[str]:
-    results = []
-    for e in edges:
-        fact = extract_fact(e)
-        valid_from, valid_to = extract_temporal_validity(e)
-        results.append(f"{fact} (valid: {valid_from} — {valid_to})")
-    return results
+def _count_hits(memory_scope: MemoryScope, edges: list[EntityEdge]) -> None:
+    """Count the returned facts as used, so a tentative one can be ratified.
 
-
-def _format_episodes(episodes) -> list[str]:
-    results = []
-    for ep in episodes:
-        ts = extract_episode_timestamp(ep)
-        body = extract_episode_body(ep)
-        results.append(f"[{ts}] {body}")
-    return results
-
-
-def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
-    """Filter episodes by scope — hard filter on MemoryEnvelope JSON content.
-
-    Episodes that are plain conversation text (not JSON envelopes) are
-    included by default since they have no scope metadata and belong
-    to the implicit ``real:global`` scope.
-
-    Uses ``extract_episode_body_raw`` (no truncation) for JSON parsing
-    so that long MemoryEnvelope payloads are parsed correctly.
+    Detached, like warm context's hit hook: the answer never waits on Redis.
     """
-    import json
-
-    results = []
-    for ep in episodes:
-        raw_body = extract_episode_body_raw(ep)
-        try:
-            data = json.loads(raw_body)
-            if not isinstance(data, dict):
-                raise TypeError("non-dict JSON")
-            ep_scope = data.get("scope", "real:global")
-            if ep_scope != scope:
-                continue
-        except (json.JSONDecodeError, TypeError):
-            # Not JSON or non-dict JSON — plain conversation episode, treat as real:global
-            if scope != "real:global":
-                continue
-        display_body = extract_episode_body(ep)
-        ts = extract_episode_timestamp(ep)
-        results.append(f"[{ts}] {display_body}")
-    return results
+    if not edges:
+        return
+    spawn_background_task(
+        record_hit(memory_scope, [edge.uuid for edge in edges]),
+        name=f"memory-search-hits-{memory_scope.owner_user_id[:12]}",
+    )

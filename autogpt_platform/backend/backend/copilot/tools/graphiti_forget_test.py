@@ -1,9 +1,22 @@
-"""Tests for graphiti_forget delete helpers."""
+"""Tests for the memory_forget tools and the demotion helpers they share a
+module with.
 
-from unittest.mock import AsyncMock
+The retraction itself (Cypher, per-uuid failures) is pinned in
+``graphiti/recall_forget_test.py``; here the tools are exercised with that
+layer either mocked or driven through a mock driver.
+"""
+
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
 
+from backend.copilot.graphiti.memory_model import (
+    ForgetResult,
+    MemoryForgetFailure,
+    MemoryForgetFailureCode,
+)
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
@@ -11,17 +24,28 @@ from backend.copilot.tools.graphiti_forget import (
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
-    _hard_delete_edges,
-    _retract_edges,
     _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
 from backend.copilot.tools.models import (
+    MemoryForgetCandidatesResponse,
     MemoryForgetConfirmResponse,
-    MemoryForgetFailure,
-    MemoryForgetFailureCode,
 )
+
+_MODULE = "backend.copilot.tools.graphiti_forget"
+
+
+async def _enabled(_user_id: str) -> bool:
+    return True
+
+
+def _mock_driver(*results) -> AsyncMock:
+    """A FalkorDB driver whose queries return ``results`` in order, for
+    driving the real ``retract`` from the confirm tool."""
+    driver = AsyncMock()
+    driver.execute_query.side_effect = [(r, [], None) for r in results]
+    return driver
 
 
 class TestSoftDeleteOverReportsSuccess:
@@ -45,80 +69,103 @@ class TestSoftDeleteOverReportsSuccess:
 
 class TestExpertMemoryScope:
     @pytest.mark.asyncio
-    async def test_forget_search_uses_expert_memory_group(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _enabled(_user_id: str) -> bool:
-            return True
+    async def test_forget_search_uses_expert_memory_group(self) -> None:
+        search_facts = AsyncMock(return_value=[])
+        session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.search_facts", search_facts),
+        ):
+            await MemoryForgetSearchTool()._execute(
+                "user-abc", session, query="private fact"
+            )
 
-        client = type("Client", (), {"search": AsyncMock(return_value=[])})()
-        opened: list[str] = []
-
-        async def _get_client(group_id: str):
-            opened.append(group_id)
-            return client
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
-        )
-
-        session = ChatSession.new(
-            "user-abc",
-            dry_run=False,
-            expert_id="expert-1",
-        )
-        await MemoryForgetSearchTool()._execute(
-            "user-abc",
-            session,
-            query="private fact",
-        )
-
-        expert_group = MemoryScope.for_expert("user-abc", "expert-1").group_id
-        assert opened == [expert_group]
-        client.search.assert_awaited_once_with(
-            query="private fact",
-            group_ids=[expert_group],
-            num_results=10,
+        search_facts.assert_awaited_once_with(
+            MemoryScope.for_expert("user-abc", "expert-1"), "private fact", limit=10
         )
 
     @pytest.mark.asyncio
-    async def test_forget_confirm_uses_expert_memory_group(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _enabled(_user_id: str) -> bool:
-            return True
+    async def test_forget_confirm_uses_expert_memory_group(self) -> None:
+        retract = AsyncMock(return_value=ForgetResult())
+        session = ChatSession.new("user-abc", dry_run=False, expert_id="expert-1")
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.retract", retract),
+        ):
+            await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["private-edge"]
+            )
 
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)
-        client = type("Client", (), {"graph_driver": driver})()
-        opened: list[str] = []
-
-        async def _get_client(group_id: str):
-            opened.append(group_id)
-            return client
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
+        retract.assert_awaited_once_with(
+            MemoryScope.for_expert("user-abc", "expert-1"),
+            ["private-edge"],
+            hard=False,
         )
 
-        session = ChatSession.new(
-            "user-abc",
-            dry_run=False,
-            expert_id="expert-1",
-        )
-        await MemoryForgetConfirmTool()._execute(
-            "user-abc",
-            session,
-            uuids=["private-edge"],
-        )
 
-        assert opened == [MemoryScope.for_expert("user-abc", "expert-1").group_id]
+class TestForgetSearchCandidates:
+    @pytest.mark.asyncio
+    async def test_candidates_carry_uuid_fact_and_validity(self) -> None:
+        edge = EntityEdge(
+            uuid="e1",
+            group_id="user_user-abc",
+            source_node_uuid="a",
+            target_node_uuid="b",
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            name="works_on",
+            fact="Alice works on Atlas",
+            valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=[edge])),
+        ):
+            response = await MemoryForgetSearchTool()._execute(
+                "user-abc", session, query="atlas"
+            )
+
+        assert isinstance(response, MemoryForgetCandidatesResponse)
+        assert response.candidates == [
+            {
+                "uuid": "e1",
+                "fact": "Alice works on Atlas",
+                "valid_from": "2025-01-01 00:00:00+00:00",
+                "valid_to": "present",
+            }
+        ]
+
+
+class TestForgetConfirmModes:
+    @pytest.mark.asyncio
+    async def test_hard_delete_asks_for_a_hard_retract(self) -> None:
+        retract = AsyncMock(return_value=ForgetResult(deleted=["e1"]))
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.retract", retract),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["e1"], hard_delete=True
+            )
+
+        assert retract.await_args.kwargs == {"hard": True}
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.message == "1 memory edge(s) permanently deleted."
+
+    @pytest.mark.asyncio
+    async def test_unavailable_graph_is_an_error_response(self) -> None:
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.retract", AsyncMock(side_effect=OSError("refused"))),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["e1"]
+            )
+
+        assert not isinstance(response, MemoryForgetConfirmResponse)
+        assert "temporarily unavailable" in response.message
 
 
 class TestSoftDeleteNoMatchReportsFailure:
@@ -139,172 +186,30 @@ class TestSoftDeleteNoMatchReportsFailure:
         assert "mentions-edge-uuid" not in deleted
 
 
-class TestHardDeleteBasicFlow:
-    """Verify _hard_delete_edges calls the right queries."""
-
-    @pytest.mark.asyncio
-    async def test_hard_delete_calls_both_queries(self) -> None:
-        driver = AsyncMock()
-        # First call (delete) returns a matched record, second (cleanup) returns empty
-        driver.execute_query.side_effect = [
-            ([{"uuid": "uuid-1"}], None, None),
-            ([], None, None),
-        ]
-
-        deleted, failed = await _hard_delete_edges(driver, ["uuid-1"], "test-user")
-        assert deleted == ["uuid-1"]
-        assert failed == []
-        # Should call: 1) delete edge, 2) clean episode back-refs
-        assert driver.execute_query.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_hard_delete_reports_failure_when_no_edge_matched(self) -> None:
-        driver = AsyncMock()
-        # Delete query returns no records — edge not found
-        driver.execute_query.return_value = ([], None, None)
-
-        deleted, failed = await _hard_delete_edges(
-            driver, ["nonexistent-uuid"], "test-user"
-        )
-        assert deleted == []
-        assert [f.uuid for f in failed] == ["nonexistent-uuid"]
-        assert failed[0].reason  # actionable, non-empty reason
-        assert failed[0].code == MemoryForgetFailureCode.NO_MATCH
-        # Only the delete query should run — cleanup skipped
-        assert driver.execute_query.call_count == 1
-
-
-class TestRetractEdgesSnodgrass:
-    """`_retract_edges` is the system-retraction soft delete — must set
-    ONLY `expired_at`, never `invalid_at`. Conflating the two breaks the
-    bi-temporal model (see graphiti audit §6.13)."""
-
-    @pytest.mark.asyncio
-    async def test_retract_sets_only_expired_at(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        await _retract_edges(driver, ["u1"], "test-user")
-
-        query = driver.execute_query.call_args.args[0]
-        assert "e.expired_at = $now" in query
-        # ``now`` parameter is bound from Python (FalkorDB doesn't
-        # implement Cypher's no-arg ``datetime()``).
-        assert "now" in driver.execute_query.call_args.kwargs
-        # Critical contract: must NOT touch invalid_at
-        assert "invalid_at" not in query
-
-    @pytest.mark.asyncio
-    async def test_retract_never_uses_falkordb_incompatible_datetime(self) -> None:
-        """Root cause of SECRT-2371: the shipped soft delete used Cypher's
-        no-arg ``datetime()``, which FalkorDB rejects with "Unknown function
-        'datetime'". The raised error was swallowed, so every soft delete
-        reported "0 invalidated, N failed" while hard delete (no datetime())
-        worked. The timestamp must be bound from Python as ``$now``."""
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        await _retract_edges(driver, ["u1"], "test-user")
-
-        query = driver.execute_query.call_args.args[0]
-        assert "datetime()" not in query
-        assert "$now" in query
-
-    @pytest.mark.asyncio
-    async def test_retract_reports_failure_on_no_match(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)
-
-        deleted, failed = await _retract_edges(driver, ["missing"], "test-user")
-        assert deleted == []
-        assert [f.uuid for f in failed] == ["missing"]
-        # No-match must carry an actionable reason, not a bare count.
-        assert failed[0].reason
-        assert failed[0].code == MemoryForgetFailureCode.NO_MATCH
-
-
 class TestForgetFailuresAreActionable:
     """SECRT-2371: soft delete must not fail silently. Every failure — whether
     the query errored or matched nothing — has to carry a per-UUID reason so
     the model can act (retry, hard-delete, or tell the user) instead of seeing
-    a bare "0 invalidated, N failed"."""
+    a bare "0 invalidated, N failed". Driven through the real ``retract``
+    with a mock driver."""
 
     @pytest.mark.asyncio
-    async def test_retract_surfaces_query_exception_reason(self) -> None:
-        driver = AsyncMock()
-        # Reproduces the original root cause: FalkorDB rejected the no-arg
-        # Cypher datetime() with "Unknown function 'datetime'". The exception
-        # used to be swallowed, leaving the model no clue why it failed.
-        driver.execute_query.side_effect = RuntimeError("Unknown function 'datetime'")
-
-        deleted, failed = await _retract_edges(driver, ["u1"], "test-user")
-
-        assert deleted == []
-        assert [f.uuid for f in failed] == ["u1"]
-        assert "datetime" in failed[0].reason
-        assert failed[0].code == MemoryForgetFailureCode.QUERY_ERROR
-
-    @pytest.mark.asyncio
-    async def test_retract_distinguishes_no_match_from_error(self) -> None:
-        driver = AsyncMock()
-        # First uuid errors, second matches nothing.
-        driver.execute_query.side_effect = [
-            RuntimeError("boom"),
-            ([], None, None),
-        ]
-
-        deleted, failed = await _retract_edges(
-            driver, ["errored", "missing"], "test-user"
-        )
-
-        assert deleted == []
-        by_uuid = {f.uuid: f for f in failed}
-        assert "boom" in by_uuid["errored"].reason
-        # No-match reason must be distinct from the error reason.
-        assert by_uuid["missing"].reason != by_uuid["errored"].reason
-        # ...and the machine-switchable codes distinguish them too.
-        assert by_uuid["errored"].code == MemoryForgetFailureCode.QUERY_ERROR
-        assert by_uuid["missing"].code == MemoryForgetFailureCode.NO_MATCH
-
-    @pytest.mark.asyncio
-    async def test_hard_delete_surfaces_query_exception_reason(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = RuntimeError("edge locked")
-
-        deleted, failed = await _hard_delete_edges(driver, ["u1"], "test-user")
-
-        assert deleted == []
-        assert [f.uuid for f in failed] == ["u1"]
-        assert "edge locked" in failed[0].reason
-        assert failed[0].code == MemoryForgetFailureCode.QUERY_ERROR
-
-    @pytest.mark.asyncio
-    async def test_confirm_tool_reports_reasons_in_response(self, monkeypatch) -> None:
+    async def test_confirm_tool_reports_reasons_in_response(self) -> None:
         """End to end: a soft delete that matches nothing must return the
         per-UUID reason in both the structured `failures` field and the
         human-readable message — not a bare "0 invalidated, 1 failed"."""
-
-        async def _enabled(_user_id: str) -> bool:
-            return True
-
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)
-        client = type("Client", (), {"graph_driver": driver})()
-
-        async def _get_client(_group_id: str):
-            return client
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
-        )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
-        )
-
+        driver = _mock_driver([])  # the edge lookup finds nothing
         session = ChatSession.new("user-abc", dry_run=False)
-        response = await MemoryForgetConfirmTool()._execute(
-            "user-abc", session, uuids=["missing-uuid"]
-        )
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(
+                "backend.copilot.graphiti.recall_forget.open_driver",
+                MagicMock(return_value=driver),
+            ),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["missing-uuid"]
+            )
 
         assert isinstance(response, MemoryForgetConfirmResponse)
         assert response.deleted_uuids == []
@@ -316,36 +221,26 @@ class TestForgetFailuresAreActionable:
         assert "missing-uuid" in response.message
 
     @pytest.mark.asyncio
-    async def test_confirm_tool_mixed_batch_reports_both(self, monkeypatch) -> None:
+    async def test_confirm_tool_mixed_batch_reports_both(self) -> None:
         """A batch where some UUIDs delete and some fail must co-populate
         `deleted_uuids` and `failures`, and the message must carry BOTH the
         success count and the per-UUID failure detail."""
-
-        async def _enabled(_user_id: str) -> bool:
-            return True
-
-        driver = AsyncMock()
-        # _retract_edges runs one query per UUID: first matches, second doesn't.
-        driver.execute_query.side_effect = [
-            ([{"uuid": "kept"}], None, None),
-            ([], None, None),
-        ]
-        client = type("Client", (), {"graph_driver": driver})()
-
-        async def _get_client(_group_id: str):
-            return client
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
+        driver = _mock_driver(
+            [{"uuid": "kept"}],  # lookup: only "kept" exists
+            [{"uuid": "kept"}],  # retract "kept"
+            [],  # redact its episodes
         )
-        monkeypatch.setattr(
-            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
-        )
-
         session = ChatSession.new("user-abc", dry_run=False)
-        response = await MemoryForgetConfirmTool()._execute(
-            "user-abc", session, uuids=["kept", "gone"]
-        )
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(
+                "backend.copilot.graphiti.recall_forget.open_driver",
+                MagicMock(return_value=driver),
+            ),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["kept", "gone"]
+            )
 
         assert isinstance(response, MemoryForgetConfirmResponse)
         assert response.deleted_uuids == ["kept"]

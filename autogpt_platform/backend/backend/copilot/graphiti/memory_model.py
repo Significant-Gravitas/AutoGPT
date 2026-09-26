@@ -4,6 +4,9 @@ Domain-agnostic envelope that works across business, fiction, research,
 personal life, and arbitrary knowledge domains.  Designed so retrieval
 can distinguish user-asserted facts from assistant-derived findings
 and filter by scope.
+
+Also holds the fact-status and forget vocabulary shared by the recall
+layer (``recall.py``) and the chat tools that report on it.
 """
 
 from enum import Enum
@@ -28,10 +31,86 @@ class MemoryKind(str, Enum):
 
 
 class MemoryStatus(str, Enum):
+    # Only ``active`` and ``tentative`` facts are recalled (``recall.py``);
+    # a fact in any other state stays on the graph for audit.
     active = "active"
     tentative = "tentative"
     superseded = "superseded"
     contradicted = "contradicted"
+    retracted = "retracted"
+    """Set by an explicit user or API forget (``recall_forget.retract``). A
+    retracted fact is never recalled; the edge is kept for audit."""
+
+
+class MemoryForgetFailureCode(str, Enum):
+    """Stable, machine-switchable reason a forget delete failed.
+
+    The frontend/model can branch on this code (retry vs. give up) without
+    parsing the free-text ``reason``. New codes may be added over time, so
+    consumers must tolerate unknown values.
+    """
+
+    NO_MATCH = "no_match"
+    QUERY_ERROR = "query_error"
+
+
+# Reason given when a forget matched no edge: the UUID is stale, already
+# deleted, or not a forgettable edge type.
+FORGET_NO_MATCH_REASON = (
+    "No matching edge found — it may already be deleted, or the UUID is not a "
+    "forgettable edge (RELATES_TO, MENTIONS, HAS_MEMBER)."
+)
+
+
+class MemoryForgetFailure(BaseModel):
+    """One edge that could not be deleted, with an actionable reason.
+
+    Surfaced so the assistant (and user) can tell *why* a delete failed —
+    e.g. the edge was not found vs. the query itself errored — instead of a
+    bare "N failed" count that gives the model nothing to act on.
+    """
+
+    uuid: str
+    code: MemoryForgetFailureCode
+    reason: str
+
+    @classmethod
+    def no_match(cls, uuid: str) -> "MemoryForgetFailure":
+        return cls(
+            uuid=uuid,
+            code=MemoryForgetFailureCode.NO_MATCH,
+            reason=FORGET_NO_MATCH_REASON,
+        )
+
+    @classmethod
+    def query_error(cls, uuid: str, exc: Exception) -> "MemoryForgetFailure":
+        """The reason names the exception type and its first argument (e.g.
+        FalkorDB's ``Unknown function 'datetime'``), so the model can tell a
+        real query error from a plain no-match; never the full ``repr``,
+        which can carry connection details. Log the exception where caught.
+        """
+        detail = exc.args[0] if exc.args else type(exc).__name__
+        return cls(
+            uuid=uuid,
+            code=MemoryForgetFailureCode.QUERY_ERROR,
+            reason=f"Deletion query failed: {type(exc).__name__}: {detail}",
+        )
+
+
+class ForgetResult(BaseModel):
+    """What one ``recall_forget.retract`` call did.
+
+    ``deleted`` lists the edges retracted (soft) or removed (hard);
+    ``failures`` holds one entry per other requested uuid, in the shape
+    ``memory_forget_confirm`` reports. The episode and entity lists record
+    the clean-up each mode did.
+    """
+
+    deleted: list[str] = Field(default_factory=list)
+    failures: list[MemoryForgetFailure] = Field(default_factory=list)
+    redacted_episodes: list[str] = Field(default_factory=list)
+    deleted_episodes: list[str] = Field(default_factory=list)
+    deleted_entities: list[str] = Field(default_factory=list)
 
 
 class RuleMemory(BaseModel):

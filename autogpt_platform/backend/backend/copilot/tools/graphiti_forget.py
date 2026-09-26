@@ -2,15 +2,22 @@
 
 Step 1 (memory_forget_search): search for matching facts, return candidates.
 Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirms.
+
+Both steps go through the recall policy (``graphiti/recall.py`` and
+``graphiti/recall_forget.py``): the candidates are the facts recall would
+return, and a confirmed forget keeps every recall path from returning them.
 """
 
 import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
-from backend.copilot.graphiti.client import get_graphiti_client
+from graphiti_core.edges import EntityEdge
+
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.memory_model import MemoryForgetFailure
+from backend.copilot.graphiti.recall import fact_text, fact_validity, search_facts
+from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
@@ -19,16 +26,7 @@ from .models import (
     ErrorResponse,
     MemoryForgetCandidatesResponse,
     MemoryForgetConfirmResponse,
-    MemoryForgetFailure,
-    MemoryForgetFailureCode,
     ToolResponseBase,
-)
-
-# Reason shown when the delete query ran fine but matched no edge — the UUID
-# is stale, already deleted, or not a forgettable edge type.
-_NO_MATCH_REASON = (
-    "No matching edge found — it may already be deleted, or the UUID is not a "
-    "forgettable edge (RELATES_TO, MENTIONS, HAS_MEMBER)."
 )
 
 # Cap on how many per-UUID failure reasons are inlined into the confirm
@@ -51,19 +49,6 @@ def _now_iso() -> str:
 
 
 logger = logging.getLogger(__name__)
-
-
-def _delete_error_reason(exc: Exception) -> str:
-    """Sanitized, actionable reason for a delete query that raised.
-
-    Surfaces the exception type plus its first message arg (e.g. FalkorDB's
-    ``Unknown function 'datetime'``) so the model can tell a real query error
-    from a plain no-match — but never the full ``repr(exc)``, which can carry
-    connection/host details. The complete exception is logged server-side with
-    ``exc_info=True`` at each call site for debugging.
-    """
-    detail = exc.args[0] if exc.args else type(exc).__name__
-    return f"Deletion query failed: {type(exc).__name__}: {detail}"
 
 
 class MemoryForgetSearchTool(BaseTool):
@@ -125,7 +110,7 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         try:
-            group_id = MemoryScope.build(user_id, session.expert_id).group_id
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",
@@ -133,12 +118,9 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         try:
-            client = await get_graphiti_client(group_id)
-            edges = await client.search(
-                query=query,
-                group_ids=[group_id],
-                num_results=10,
-            )
+            # Only facts recall would still return: a forgotten one is not
+            # offered for forgetting again.
+            edges = await search_facts(memory_scope, query, limit=10)
         except Exception:
             logger.warning(
                 "Memory forget search failed for user %s", user_id[:12], exc_info=True
@@ -155,21 +137,7 @@ class MemoryForgetSearchTool(BaseTool):
                 candidates=[],
             )
 
-        candidates = []
-        for e in edges:
-            edge_uuid = getattr(e, "uuid", None) or getattr(e, "id", None)
-            if not edge_uuid:
-                continue
-            fact = extract_fact(e)
-            valid_from, valid_to = extract_temporal_validity(e)
-            candidates.append(
-                {
-                    "uuid": str(edge_uuid),
-                    "fact": fact,
-                    "valid_from": str(valid_from),
-                    "valid_to": str(valid_to),
-                }
-            )
+        candidates = [_candidate(edge) for edge in edges]
 
         return MemoryForgetCandidatesResponse(
             message=f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs.",
@@ -250,50 +218,34 @@ class MemoryForgetConfirmTool(BaseTool):
             )
 
         try:
-            group_id = MemoryScope.build(user_id, session.expert_id).group_id
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",
                 session_id=session.session_id,
             )
 
+        # A soft forget is a *system* retraction, not a world change: the
+        # edge keeps its ``invalid_at`` (``_soft_delete_edges``, which sets
+        # it, is reserved for the contradiction detector). See ``retract``.
         try:
-            client = await get_graphiti_client(group_id)
+            result = await retract(memory_scope, uuids, hard=hard_delete)
         except Exception:
             logger.warning(
-                "Failed to get Graphiti client for user %s", user_id[:12], exc_info=True
+                "Memory forget failed for user %s", user_id[:12], exc_info=True
             )
             return ErrorResponse(
                 message="Memory service is temporarily unavailable.",
                 session_id=session.session_id,
             )
 
-        driver = getattr(client, "graph_driver", None) or getattr(
-            client, "driver", None
-        )
-        if not driver:
-            return ErrorResponse(
-                message="Could not access graph driver for deletion.",
-                session_id=session.session_id,
-            )
-
-        if hard_delete:
-            deleted, failures = await _hard_delete_edges(driver, uuids, user_id)
-            mode = "permanently deleted"
-        else:
-            # User-initiated forget is a *system* retraction, not a world
-            # change. Per Snodgrass bi-temporal semantics, only `expired_at`
-            # is set. `_soft_delete_edges` (which also sets `invalid_at`)
-            # is reserved for the contradiction detector.
-            deleted, failures = await _retract_edges(driver, uuids, user_id)
-            mode = "retracted from memory"
-
+        mode = "permanently deleted" if hard_delete else "retracted from memory"
         return MemoryForgetConfirmResponse(
-            message=_build_confirm_message(len(deleted), mode, failures),
+            message=_build_confirm_message(len(result.deleted), mode, result.failures),
             session_id=session.session_id,
-            deleted_uuids=deleted,
-            failed_uuids=[f.uuid for f in failures],
-            failures=failures,
+            deleted_uuids=result.deleted,
+            failed_uuids=[f.uuid for f in result.failures],
+            failures=result.failures,
         )
 
 
@@ -321,65 +273,15 @@ def _build_confirm_message(
     return f"{summary} {len(failures)} failed — {detail}"
 
 
-async def _retract_edges(
-    driver, uuids: list[str], user_id: str
-) -> tuple[list[str], list[MemoryForgetFailure]]:
-    """System retraction — set ONLY ``expired_at`` on the edge.
-
-    Per Snodgrass bi-temporal semantics (see ``dream/dreaming-graphiti.md``
-    §6.13), ``expired_at`` is *transaction time* ("we retracted the
-    record") and ``invalid_at`` is *valid time* ("the world changed").
-    User-initiated forget, dream demotion, and entity invalidation are
-    all system retractions and must NOT set ``invalid_at``.
-
-    For contradiction detection (the world really did change) use
-    ``_soft_delete_edges`` below, which sets both.
-
-    Matches the same edge types as ``_hard_delete_edges`` so that edges of
-    any type (RELATES_TO, MENTIONS, HAS_MEMBER) can be retracted.
-
-    Returns ``(succeeded_uuids, failures)`` where each failure carries an
-    actionable reason (SECRT-2371) — a swallowed error used to look
-    identical to a no-op no-match.
-    """
-    deleted: list[str] = []
-    failures: list[MemoryForgetFailure] = []
-    for uuid in uuids:
-        try:
-            records, _, _ = await driver.execute_query(
-                """
-                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                SET e.expired_at = $now
-                RETURN e.uuid AS uuid
-                """,
-                uuid=uuid,
-                now=_now_iso(),
-            )
-            if records:
-                deleted.append(uuid)
-            else:
-                failures.append(
-                    MemoryForgetFailure(
-                        uuid=uuid,
-                        code=MemoryForgetFailureCode.NO_MATCH,
-                        reason=_NO_MATCH_REASON,
-                    )
-                )
-        except Exception as exc:
-            logger.warning(
-                "Failed to retract edge %s for user %s",
-                uuid,
-                user_id[:12],
-                exc_info=True,
-            )
-            failures.append(
-                MemoryForgetFailure(
-                    uuid=uuid,
-                    code=MemoryForgetFailureCode.QUERY_ERROR,
-                    reason=_delete_error_reason(exc),
-                )
-            )
-    return deleted, failures
+def _candidate(edge: EntityEdge) -> dict[str, str]:
+    """One forget candidate, in the shape ``memory_forget_search`` returns."""
+    valid_from, valid_to = fact_validity(edge)
+    return {
+        "uuid": edge.uuid,
+        "fact": fact_text(edge),
+        "valid_from": valid_from,
+        "valid_to": valid_to,
+    }
 
 
 async def _soft_delete_edges(
@@ -390,8 +292,8 @@ async def _soft_delete_edges(
     Reserved for the *contradiction detector*: when new evidence proves
     a fact ceased being true in the world, set ``invalid_at`` (valid time)
     in addition to ``expired_at`` (transaction time). User-initiated
-    forget should use ``_retract_edges`` instead; conflating the two
-    breaks the bi-temporal model (audit §6.13).
+    forget goes through ``recall_forget.retract`` instead; conflating the
+    two breaks the bi-temporal model (audit §6.13).
 
     Matches RELATES_TO, MENTIONS, HAS_MEMBER edges.
     """
@@ -435,8 +337,8 @@ async def mark_edges_superseded(
     """Retract edges AND set the custom audit-trail ``status`` property.
 
     Intended for the dream pass (P0.3 stale-fact deprecation): retract
-    the edge per ``_retract_edges`` semantics and stamp
-    ``status='superseded'`` (or ``'contradicted'``) plus
+    the edge (``expired_at`` only, as ``recall_forget.retract`` does) and
+    stamp ``status='superseded'`` (or ``'contradicted'``) plus
     ``expiration_reason=<reason>`` so the demotion is queryable from
     search (``WHERE e.status = 'superseded'``).
 
@@ -535,77 +437,3 @@ async def invalidate_entity_direct_neighbors(
             exc_info=True,
         )
         return []
-
-
-async def _hard_delete_edges(
-    driver, uuids: list[str], user_id: str
-) -> tuple[list[str], list[MemoryForgetFailure]]:
-    """Permanent removal — delete edges and clean up back-references.
-
-    Uses graphiti's ``Edge.delete()`` pattern (handles MENTIONS,
-    RELATES_TO, HAS_MEMBER in one query).  Does NOT delete orphaned
-    entity nodes — they may have summaries, embeddings, or future
-    connections.  Cleans up episode ``entity_edges`` back-references.
-
-    Returns ``(succeeded_uuids, failures)`` with a per-UUID reason on each
-    failure (SECRT-2371).
-    """
-    deleted: list[str] = []
-    failures: list[MemoryForgetFailure] = []
-    for uuid in uuids:
-        try:
-            # Use WITH to capture the uuid before DELETE so we don't
-            # access properties of deleted relationships (FalkorDB #1393).
-            # Single atomic query avoids TOCTOU between check and delete.
-            records, _, _ = await driver.execute_query(
-                """
-                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                WITH e.uuid AS uuid, e
-                DELETE e
-                RETURN uuid
-                """,
-                uuid=uuid,
-            )
-            if not records:
-                failures.append(
-                    MemoryForgetFailure(
-                        uuid=uuid,
-                        code=MemoryForgetFailureCode.NO_MATCH,
-                        reason=_NO_MATCH_REASON,
-                    )
-                )
-                continue
-            # Edge was deleted — report success regardless of cleanup outcome.
-            deleted.append(uuid)
-            # Clean up episode back-references (best-effort).
-            try:
-                await driver.execute_query(
-                    """
-                    MATCH (ep:Episodic)
-                    WHERE $uuid IN ep.entity_edges
-                    SET ep.entity_edges = [x IN ep.entity_edges WHERE x <> $uuid]
-                    """,
-                    uuid=uuid,
-                )
-            except Exception:
-                logger.warning(
-                    "Edge %s deleted but back-ref cleanup failed for user %s",
-                    uuid,
-                    user_id[:12],
-                    exc_info=True,
-                )
-        except Exception as exc:
-            logger.warning(
-                "Failed to hard-delete edge %s for user %s",
-                uuid,
-                user_id[:12],
-                exc_info=True,
-            )
-            failures.append(
-                MemoryForgetFailure(
-                    uuid=uuid,
-                    code=MemoryForgetFailureCode.QUERY_ERROR,
-                    reason=_delete_error_reason(exc),
-                )
-            )
-    return deleted, failures

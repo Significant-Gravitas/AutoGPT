@@ -149,11 +149,16 @@ async def _fetch_recent_episodes(
     # which exceeds typical 14-day activity for any one user). The
     # ``window_start`` argument is kept for caller bookkeeping but the
     # Cypher itself just relies on the ORDER BY + LIMIT clamp.
+    #
+    # A redacted episode (stamped by ``recall_forget.retract`` once none of
+    # its facts is live) is skipped like a retracted fact: consolidating its
+    # text would re-derive the fact the user forgot.
     _ = window_start
     try:
         result = await driver.execute_query(
             """
             MATCH (n:Episodic {group_id: $g})
+            WHERE n.redacted_at IS NULL
             RETURN n.uuid AS uuid,
                    n.name AS name,
                    n.content AS content,
@@ -192,6 +197,8 @@ async def _fetch_active_facts(
     group_id: str,
     limit: int,
 ) -> list[FactRow]:
+    # Active facts only: tentative, superseded, contradicted and retracted
+    # (user-forgotten) edges all fail the status test.
     try:
         result = await driver.execute_query(
             """

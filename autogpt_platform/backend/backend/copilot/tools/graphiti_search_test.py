@@ -1,112 +1,146 @@
-"""Tests for graphiti_search helper functions."""
+"""Tests for the memory_search tool."""
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.edges import EntityEdge
+from graphiti_core.nodes import EpisodeType, EpisodicNode
 
 from backend.copilot.graphiti.memory_model import MemoryEnvelope, MemoryKind, SourceKind
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.graphiti_search import (
-    MemorySearchTool,
-    _filter_episodes_by_scope,
-    _format_episodes,
-)
+from backend.copilot.tools.graphiti_search import MemorySearchTool
 from backend.copilot.tools.models import MemorySearchResponse
+
+_MODULE = "backend.copilot.tools.graphiti_search"
+_NOW = datetime(2025, 1, 1, tzinfo=timezone.utc)
+
+
+def _edge(uuid: str, fact: str) -> EntityEdge:
+    return EntityEdge(
+        uuid=uuid,
+        group_id="user_user-1",
+        source_node_uuid="a",
+        target_node_uuid="b",
+        created_at=_NOW,
+        name="relates",
+        fact=fact,
+        valid_at=_NOW,
+        attributes={"status": "active"},
+    )
+
+
+def _episode(content: str) -> EpisodicNode:
+    return EpisodicNode(
+        name="ep",
+        group_id="user_user-1",
+        source=EpisodeType.text,
+        source_description="chat",
+        content=content,
+        created_at=_NOW,
+        valid_at=_NOW,
+    )
+
+
+async def _search(
+    edges: list[EntityEdge],
+    episodes: list[EpisodicNode],
+    *,
+    expert_id: str | None = None,
+    **tool_kwargs,
+):
+    """Run the tool with both recall reads and the hit recorder mocked."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
+    search_facts = AsyncMock(return_value=edges)
+    recent_episodes = AsyncMock(return_value=episodes)
+    record_hit = MagicMock(return_value="hit-coroutine")
+    spawn = MagicMock()
+    with (
+        patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
+        patch(f"{_MODULE}.search_facts", search_facts),
+        patch(f"{_MODULE}.recent_episodes", recent_episodes),
+        patch(f"{_MODULE}.record_hit", record_hit),
+        patch(f"{_MODULE}.spawn_background_task", spawn),
+    ):
+        result = await MemorySearchTool()._execute(
+            "user-1", session, query="private fact", **tool_kwargs
+        )
+    return result, search_facts, recent_episodes, record_hit, spawn
 
 
 @pytest.mark.asyncio
 async def test_expert_session_searches_only_expert_memory_group() -> None:
-    session = ChatSession.new(
-        "user-1",
-        dry_run=False,
-        expert_id="expert-1",
+    result, search_facts, recent_episodes, _, _ = await _search(
+        [], [], expert_id="expert-1"
     )
-    client = SimpleNamespace(
-        search=AsyncMock(return_value=[]),
-        retrieve_episodes=AsyncMock(return_value=[]),
-    )
-
-    with (
-        patch(
-            "backend.copilot.tools.graphiti_search.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ),
-        patch(
-            "backend.copilot.tools.graphiti_search.get_graphiti_client",
-            new_callable=AsyncMock,
-            return_value=client,
-        ) as get_client_mock,
-    ):
-        result = await MemorySearchTool()._execute(
-            "user-1",
-            session,
-            query="private fact",
-        )
 
     assert isinstance(result, MemorySearchResponse)
-    expert_group = MemoryScope.for_expert("user-1", "expert-1").group_id
-    get_client_mock.assert_awaited_once_with(expert_group)
-    client.search.assert_awaited_once_with(
-        query="private fact",
-        group_ids=[expert_group],
-        num_results=15,
+    expert_scope = MemoryScope.for_expert("user-1", "expert-1")
+    search_facts.assert_awaited_once_with(expert_scope, "private fact", limit=15)
+    recent_episodes.assert_awaited_once_with(expert_scope, 5)
+
+
+@pytest.mark.asyncio
+async def test_renders_facts_and_episodes() -> None:
+    result, *_ = await _search(
+        [_edge("e1", "Alice works on Atlas")], [_episode("talked about Atlas")]
     )
-    assert client.retrieve_episodes.await_args.kwargs["group_ids"] == [expert_group]
+
+    assert isinstance(result, MemorySearchResponse)
+    assert result.facts == [
+        "Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)"
+    ]
+    assert result.recent_episodes == ["[2025-01-01 00:00:00+00:00] talked about Atlas"]
 
 
-class TestFilterEpisodesByScopeTruncation:
-    """extract_episode_body() truncates to 500 chars.  A MemoryEnvelope
-    with a long content field exceeds that limit, producing invalid JSON.
-    _filter_episodes_by_scope then treats it as a plain-text episode
-    (real:global), leaking project-scoped data into global results.
-    """
+@pytest.mark.asyncio
+async def test_returned_facts_are_counted_as_hits() -> None:
+    """memory_search feeds the ratification sweep: a tentative fact the
+    model retrieves here has been used, like one warm context surfaced."""
+    edges = [_edge("e1", "fact one"), _edge("e2", "fact two")]
 
-    def test_long_envelope_filtered_by_scope(self) -> None:
-        envelope = MemoryEnvelope(
-            content="x" * 600,
-            source_kind=SourceKind.user_asserted,
-            scope="project:crm",
-            memory_kind=MemoryKind.fact,
-        )
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
-        )
-        # Requesting real:global scope — this project:crm episode should be excluded
-        results = _filter_episodes_by_scope([ep], "real:global")
-        assert (
-            results == []
-        ), f"project-scoped episode leaked into global results: {results}"
+    _, _, _, record_hit, spawn = await _search(edges, [])
 
-    def test_short_envelope_filtered_correctly(self) -> None:
-        """Short envelopes (under 500 chars) are parsed correctly."""
-        envelope = MemoryEnvelope(
-            content="short note",
-            scope="project:crm",
-        )
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
-        )
-        results = _filter_episodes_by_scope([ep], "real:global")
-        assert results == []
+    record_hit.assert_called_once_with(MemoryScope.for_user("user-1"), ["e1", "e2"])
+    spawn.assert_called_once()
+    assert spawn.call_args.args == ("hit-coroutine",)
 
 
-class TestRedundantFormatting:
-    """_format_episodes is called even when scope filter will overwrite it.
-    Not a correctness bug, but verify the scope path doesn't depend on it.
-    """
+@pytest.mark.asyncio
+async def test_no_facts_no_hit_task() -> None:
+    _, _, _, record_hit, spawn = await _search([], [_episode("just chatting")])
 
-    def test_scope_filter_independent_of_format_episodes(self) -> None:
-        envelope = MemoryEnvelope(content="note", scope="real:global")
-        ep = SimpleNamespace(
-            content=envelope.model_dump_json(),
-            created_at="2025-01-01T00:00:00Z",
-        )
-        from_format = _format_episodes([ep])
-        from_scope = _filter_episodes_by_scope([ep], "real:global")
-        assert len(from_format) == 1
-        assert len(from_scope) == 1
+    record_hit.assert_not_called()
+    spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scope_filter_drops_other_scopes_even_for_long_envelopes() -> None:
+    """A MemoryEnvelope longer than the 500-char display cut is still scoped
+    by its full body, so a project memory cannot leak into a global search."""
+    long_project = MemoryEnvelope(
+        content="x" * 600,
+        source_kind=SourceKind.user_asserted,
+        scope="project:crm",
+        memory_kind=MemoryKind.fact,
+    ).model_dump_json()
+    episodes = [_episode(long_project), _episode("plain conversation")]
+
+    result, *_ = await _search([], episodes, scope="real:global")
+
+    assert isinstance(result, MemorySearchResponse)
+    assert result.recent_episodes == ["[2025-01-01 00:00:00+00:00] plain conversation"]
+
+
+@pytest.mark.asyncio
+async def test_search_failure_is_reported_not_raised() -> None:
+    session = ChatSession.new("user-1", dry_run=False)
+    with (
+        patch(f"{_MODULE}.is_enabled_for_user", AsyncMock(return_value=True)),
+        patch(f"{_MODULE}.search_facts", AsyncMock(side_effect=RuntimeError("down"))),
+        patch(f"{_MODULE}.recent_episodes", AsyncMock(return_value=[])),
+    ):
+        result = await MemorySearchTool()._execute("user-1", session, query="x")
+
+    assert "temporarily unavailable" in result.message
