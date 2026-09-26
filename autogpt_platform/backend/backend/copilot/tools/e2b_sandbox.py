@@ -86,6 +86,7 @@ from e2b import (
 )
 from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
+from redis_lua_py import Key, redis, script
 
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
 from backend.data.redis_client import get_redis_async
@@ -165,23 +166,28 @@ _EXPERT_ID_TTL = 30 * 24 * 3600
 # refreshes it.
 _ACTIVE_TURN_TTL = 6 * 3600 + 15 * 60
 
+
 # Count one turn and (re)arm the key's expiry in one script: an INCR that
 # lands without its EXPIRE would leave a count nothing ever releases, and the
 # box would never pause at turn end.
-_ACQUIRE_TURN_SCRIPT = (
-    'local n = redis.call("incr", KEYS[1]) '
-    'redis.call("expire", KEYS[1], ARGV[1]) '
-    "return n"
-)
+@script
+def _incr_active_turns(key: Key, ttl_seconds: int) -> int:
+    n = redis.incr(key)
+    redis.expire(key, ttl_seconds)
+    return n
+
 
 # Release one turn and report how many are left; the last one out deletes
 # the key.  One script, so a turn that starts between the DECR and the DEL
 # can never have its count wiped.
-_RELEASE_TURN_SCRIPT = (
-    'local n = redis.call("decr", KEYS[1]) '
-    'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
-    "return n"
-)
+@script
+def _decr_active_turns(key: Key) -> int:
+    n = redis.decr(key)
+    if n <= 0:
+        redis.delete(key)
+        return 0
+    return n
+
 
 # One more reconnect attempt before a transient error surfaces: a box that
 # fails once on a blip must not be replaced, whoever owns it.
@@ -563,7 +569,7 @@ async def _acquire_turn(owner: SandboxOwner) -> None:
         return
     redis = await get_redis_async()
     key = _active_turns_key(owner)
-    await redis.eval(_ACQUIRE_TURN_SCRIPT, 1, key, _ACTIVE_TURN_TTL)
+    await _incr_active_turns(redis, key=key, ttl_seconds=_ACTIVE_TURN_TTL)
 
 
 async def count_expert_turn(session_id: str, expert_id: str | None) -> None:
@@ -583,7 +589,7 @@ async def _release_turn(owner: SandboxOwner) -> bool:
     try:
         redis = await get_redis_async()
         key = _active_turns_key(owner)
-        remaining = int(await redis.eval(_RELEASE_TURN_SCRIPT, 1, key))
+        remaining = await _decr_active_turns(redis, key=key)
         if remaining <= 0:
             return True
         logger.info(

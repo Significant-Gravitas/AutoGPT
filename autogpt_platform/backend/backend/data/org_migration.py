@@ -25,26 +25,13 @@ from prisma.errors import UniqueViolationError
 from prisma.models import Organization
 
 from backend.data.db import prisma, transaction
+from backend.data.redis_scripts import delete_if_owner, expire_if_owner
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient
 
 logger = logging.getLogger(__name__)
-
-_MIGRATION_LOCK_RENEW_SCRIPT: LiteralString = """
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-    return redis.call("EXPIRE", KEYS[1], tonumber(ARGV[2]))
-end
-return 0
-"""
-
-_MIGRATION_LOCK_RELEASE_SCRIPT: LiteralString = """
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-    return redis.call("DEL", KEYS[1])
-end
-return 0
-"""
 
 _RenewLock = Callable[[], Awaitable[None]]
 
@@ -988,13 +975,8 @@ async def _renew_migration_lock(
     lock_token: str,
     lock_timeout: int,
 ) -> None:
-    renewed = await redis.execute_command(
-        "EVAL",
-        _MIGRATION_LOCK_RENEW_SCRIPT,
-        1,
-        lock_key,
-        lock_token,
-        str(lock_timeout),
+    renewed = await expire_if_owner(
+        redis, key=lock_key, token=lock_token, seconds=lock_timeout
     )
     if renewed != 1:
         raise RuntimeError("Org migration lost the distributed bootstrap lock")
@@ -1005,13 +987,7 @@ async def _release_migration_lock(
     lock_key: str,
     lock_token: str,
 ) -> bool:
-    released = await redis.execute_command(
-        "EVAL",
-        _MIGRATION_LOCK_RELEASE_SCRIPT,
-        1,
-        lock_key,
-        lock_token,
-    )
+    released = await delete_if_owner(redis, key=lock_key, token=lock_token)
     return released == 1
 
 

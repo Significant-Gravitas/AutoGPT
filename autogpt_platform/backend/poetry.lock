@@ -6655,6 +6655,18 @@ otel = ["opentelemetry-api (>=1.39.1)", "opentelemetry-exporter-otlp-proto-http 
 xxhash = ["xxhash (>=3.6.0,<3.7.0)"]
 
 [[package]]
+name = "redis-lua-py"
+version = "0.10.0"
+description = "Write Redis Lua scripts as real Python functions, not strings."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "redis_lua_py-0.10.0-py3-none-any.whl", hash = "sha256:c4e85dd6fde5d045e294bdf66578aa6869403417561cf56d02e1d6ce75121208"},
+    {file = "redis_lua_py-0.10.0.tar.gz", hash = "sha256:36b0a522c7d4b4a123bd13d895f17c1ffa081e22f6d0c6e073be6c79837bebbb"},
+]
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 description = "JSON Referencing + Python"
@@ -8936,4 +8948,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "3fafab08269ed623ad4df93407e39d5e5aaefd6f6c97a7cfe29a41ea58d77809"
+content-hash = "394fa7186f5eff388480cdfb164753f85b6a1d9233aaad057bf6cb78a59f14a4"

@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 from e2b.api.client.models import TemplateAliasResponse, TemplateBuildStatus
@@ -27,10 +27,22 @@ def _fresh_cache():
     forget_ready_templates()
 
 
+@pytest.fixture(autouse=True)
+def lock_ops():
+    """The owner-checked lock scripts, recorded in call order."""
+    ops = MagicMock()
+    ops.expire_if_owner = AsyncMock(return_value=1)
+    ops.delete_if_owner = AsyncMock(return_value=1)
+    with (
+        patch(f"{_M}.expire_if_owner", ops.expire_if_owner),
+        patch(f"{_M}.delete_if_owner", ops.delete_if_owner),
+    ):
+        yield ops
+
+
 def _redis(lock_acquired: bool, lock_present: bool = True) -> MagicMock:
     redis = MagicMock()
     redis.set = AsyncMock(return_value=lock_acquired)
-    redis.eval = AsyncMock(return_value=1)
     redis.exists = AsyncMock(return_value=lock_present)
     return redis
 
@@ -92,7 +104,7 @@ class TestEnsureTemplate:
         assert f"{DESKTOP_IMAGE.alias}@" in next(iter(e2b_template._ready))
 
     @pytest.mark.asyncio
-    async def test_lock_is_scoped_to_the_team_and_released_by_token(self):
+    async def test_lock_is_scoped_to_the_team_and_released_by_token(self, lock_ops):
         redis = _redis(lock_acquired=True)
         with (
             patch(f"{_M}.get_template_state", _states(*[TemplateState.MISSING] * 4)),
@@ -111,16 +123,15 @@ class TestEnsureTemplate:
         assert redis.set.await_args_list[0].kwargs == {"nx": True, "ex": 300}
         # The TTL is re-asserted with our token right before building, and the
         # release is a compare-and-delete with the same token, never a bare DEL.
-        evals = [c.args for c in redis.eval.await_args_list]
-        assert evals == [
-            (e2b_template._EXTEND_SCRIPT, 1, key_a, token_a, 300),
-            (e2b_template._UNLOCK_SCRIPT, 1, key_a, token_a),
-            (e2b_template._EXTEND_SCRIPT, 1, key_b, token_b, 300),
-            (e2b_template._UNLOCK_SCRIPT, 1, key_b, token_b),
+        assert lock_ops.mock_calls == [
+            call.expire_if_owner(redis, key=key_a, token=token_a, seconds=300),
+            call.delete_if_owner(redis, key=key_a, token=token_a),
+            call.expire_if_owner(redis, key=key_b, token=token_b, seconds=300),
+            call.delete_if_owner(redis, key=key_b, token=token_b),
         ]
 
     @pytest.mark.asyncio
-    async def test_lock_winner_rechecks_before_building(self):
+    async def test_lock_winner_rechecks_before_building(self, lock_ops):
         redis = _redis(lock_acquired=True)
         with (
             patch(
@@ -133,10 +144,10 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock()
             await ensure_template(DESKTOP_IMAGE.alias, _KEY)
         tpl.build.assert_not_awaited()
-        redis.eval.assert_awaited_once()
+        assert lock_ops.mock_calls == [call.delete_if_owner(redis, key=ANY, token=ANY)]
 
     @pytest.mark.asyncio
-    async def test_lock_winner_waits_for_a_build_already_in_flight(self):
+    async def test_lock_winner_waits_for_a_build_already_in_flight(self, lock_ops):
         redis = _redis(lock_acquired=True)
         with (
             patch(
@@ -155,7 +166,7 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock()
             await ensure_template(DESKTOP_IMAGE.alias, _KEY)
         tpl.build.assert_not_awaited()
-        redis.eval.assert_awaited_once()
+        assert lock_ops.mock_calls == [call.delete_if_owner(redis, key=ANY, token=ANY)]
 
     @pytest.mark.asyncio
     async def test_lock_winner_builds_when_the_watched_build_fails(self):
@@ -199,16 +210,12 @@ class TestEnsureTemplate:
         assert key != e2b_template._scoped_key(DESKTOP_IMAGE, _OTHER_KEY)
 
     @pytest.mark.asyncio
-    async def test_lost_lock_is_not_built_on(self):
+    async def test_lost_lock_is_not_built_on(self, lock_ops):
         """A holder whose lock lapsed while it watched a foreign build steps
         back: it becomes a follower of whoever holds the lock now."""
         redis = _redis(lock_acquired=True)
         redis.set = AsyncMock(side_effect=[True, False])
-
-        async def eval_(script, *args):
-            return 0 if script is e2b_template._EXTEND_SCRIPT else 1
-
-        redis.eval = AsyncMock(side_effect=eval_)
+        lock_ops.expire_if_owner.return_value = 0
         with (
             patch(
                 f"{_M}.get_template_state",
@@ -265,7 +272,7 @@ class TestEnsureTemplate:
         assert not e2b_template._ready
 
     @pytest.mark.asyncio
-    async def test_build_failure_releases_the_lock_and_propagates(self):
+    async def test_build_failure_releases_the_lock_and_propagates(self, lock_ops):
         redis = _redis(lock_acquired=True)
         with (
             patch(f"{_M}.get_template_state", _states(*[TemplateState.MISSING] * 2)),
@@ -276,11 +283,13 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock(side_effect=RuntimeError("build failed"))
             with pytest.raises(RuntimeError):
                 await ensure_template(DESKTOP_IMAGE.alias, _KEY)
-        assert redis.eval.await_args.args[0] is e2b_template._UNLOCK_SCRIPT
+        assert lock_ops.mock_calls[-1] == call.delete_if_owner(
+            redis, key=ANY, token=ANY
+        )
         assert not e2b_template._ready
 
     @pytest.mark.asyncio
-    async def test_stalled_build_is_cut_off_under_the_lock_ttl(self):
+    async def test_stalled_build_is_cut_off_under_the_lock_ttl(self, lock_ops):
         redis = _redis(lock_acquired=True)
 
         async def never_finishes(*_args, **_kwargs):
@@ -299,11 +308,13 @@ class TestEnsureTemplate:
         assert (
             e2b_template._BUILD_TIMEOUT_SECONDS < e2b_template._BUILD_LOCK_TTL_SECONDS
         )
-        assert redis.eval.await_args.args[0] is e2b_template._UNLOCK_SCRIPT
+        assert lock_ops.mock_calls[-1] == call.delete_if_owner(
+            redis, key=ANY, token=ANY
+        )
         assert not e2b_template._ready
 
     @pytest.mark.asyncio
-    async def test_follower_waits_for_the_other_builder(self):
+    async def test_follower_waits_for_the_other_builder(self, lock_ops):
         redis = _redis(lock_acquired=False)
         with (
             patch(
@@ -322,7 +333,7 @@ class TestEnsureTemplate:
             tpl.build = AsyncMock()
             await ensure_template(DESKTOP_IMAGE.alias, _KEY)
         tpl.build.assert_not_awaited()
-        redis.eval.assert_not_awaited()
+        assert not lock_ops.mock_calls
         assert st.await_count == 4
         assert len(e2b_template._ready) == 1
 

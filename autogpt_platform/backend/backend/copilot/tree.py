@@ -43,6 +43,7 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
+from redis_lua_py import Key, redis, script
 
 from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
@@ -117,31 +118,39 @@ _CHAT_LEDGER_KEY_PREFIX = "copilot:chat-spend:"
 CHAT_LEDGER_TTL_SECONDS = 30 * 24 * 3600
 _DAILY_CHAT_LEDGER_TTL_SECONDS = 2 * 24 * 3600
 
+
 # All-or-nothing tree creation. ``HSETNX`` per field is not equivalent: it
 # leaves a window where another caller sees some fields and not others, and
 # ``admit`` cannot tell that from a tree that has closed.
-_OPEN_TREE_SCRIPT = """
-if redis.call("EXISTS", KEYS[1]) == 0 then
-    redis.call("HSET", KEYS[1],
-        "ceiling", ARGV[1],
-        "max_nodes", ARGV[2],
-        "nodes", ARGV[3],
-        "spent", 0)
-    redis.call("EXPIRE", KEYS[1], ARGV[4])
-    return 1
-end
-return 0
-"""
+@script
+def _open_tree(
+    key: Key, ceiling: str, max_nodes: str, nodes: str, ttl_seconds: int
+) -> int:
+    if redis.exists(key) == 0:
+        redis.hset(
+            key,
+            "ceiling",
+            ceiling,
+            "max_nodes",
+            max_nodes,
+            "nodes",
+            nodes,
+            "spent",
+            0,
+        )
+        redis.expire(key, ttl_seconds)
+        return 1
+    return 0
+
 
 # ``HEXISTS`` then ``HSETNX`` is two round-trips, and a ledger expiring between
 # them leaves the second recreating the hash with only ``wrapup`` and no TTL —
 # a tree every later ``admit`` reads as closed and nothing ever reaps.
-_CLAIM_WRAPUP_SCRIPT = """
-if redis.call("HEXISTS", KEYS[1], "ceiling") == 0 then
-    return 0
-end
-return redis.call("HSETNX", KEYS[1], "wrapup", "1")
-"""
+@script
+def _claim_wrapup(key: Key) -> int:
+    if redis.hexists(key, "ceiling") == 0:
+        return 0
+    return redis.hsetnx(key, "wrapup", "1")
 
 
 class TreeRefusal(Exception):
@@ -331,17 +340,13 @@ class TreeLedger:
         and stays idempotent: the racing loser finds the key populated and
         changes nothing.
         """
-        await cast(
-            Awaitable[int],
-            self._redis.eval(
-                _OPEN_TREE_SCRIPT,
-                1,
-                self.key(tree_id),
-                str(max(0, ceiling_microdollars)),
-                str(max(1, max_nodes)),
-                str(max(0, initial_nodes)),
-                str(self._ttl),
-            ),
+        await _open_tree(
+            self._redis,
+            key=self.key(tree_id),
+            ceiling=str(max(0, ceiling_microdollars)),
+            max_nodes=str(max(1, max_nodes)),
+            nodes=str(max(0, initial_nodes)),
+            ttl_seconds=self._ttl,
         )
 
     async def admit(self, envelope: TurnEnvelope) -> None:
@@ -392,12 +397,7 @@ class TreeLedger:
         ``ceiling`` check rides in the same script so a tree that never spawned
         — or whose ledger has expired — is not conjured back without a TTL.
         """
-        return bool(
-            await cast(
-                Awaitable[int],
-                self._redis.eval(_CLAIM_WRAPUP_SCRIPT, 1, self.key(tree_id)),
-            )
-        )
+        return bool(await _claim_wrapup(self._redis, key=self.key(tree_id)))
 
     async def snapshot(self, tree_id: str) -> dict[str, int]:
         raw = await cast(

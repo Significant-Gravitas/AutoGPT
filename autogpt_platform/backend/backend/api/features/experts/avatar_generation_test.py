@@ -102,14 +102,14 @@ async def test_job_lookup_is_owner_scoped_and_expired_jobs_fail(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rate_limit_and_unavailable_redis_fail_closed(monkeypatch):
-    redis = AsyncMock()
-    redis.eval.return_value = 120
-    monkeypatch.setattr(avatar_jobs, "get_redis_async", AsyncMock(return_value=redis))
+    reserve = AsyncMock(return_value=120)
+    monkeypatch.setattr(avatar_jobs, "get_redis_async", AsyncMock())
+    monkeypatch.setattr(avatar_jobs, "_reserve", reserve)
     with pytest.raises(HTTPException) as error:
         await avatar_jobs.reserve_generation("owner")
     assert error.value.status_code == 429
     assert error.value.headers == {"Retry-After": "120"}
-    redis.eval.side_effect = ConnectionError()
+    reserve.side_effect = ConnectionError()
     with pytest.raises(HTTPException) as error:
         await avatar_jobs.reserve_generation("owner")
     assert error.value.status_code == 503

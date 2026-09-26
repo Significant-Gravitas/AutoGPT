@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from . import locks
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
@@ -17,10 +18,26 @@ from .locks import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _lock_scripts_run_on_the_mock(monkeypatch):
+    """Route the compare-and-delete / compare-and-extend scripts to the mock."""
+    monkeypatch.setattr(
+        locks,
+        "delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    )
+    monkeypatch.setattr(
+        locks,
+        "expire_if_owner",
+        lambda client, **kwargs: client.expire_if_owner(**kwargs),
+    )
+
+
 def _redis_mock(**overrides) -> AsyncMock:
     redis = AsyncMock()
     redis.set = AsyncMock(return_value=True)
-    redis.eval = AsyncMock(return_value=1)
+    redis.delete_if_owner = AsyncMock(return_value=1)
+    redis.expire_if_owner = AsyncMock(return_value=1)
     redis.delete = AsyncMock(return_value=1)
     for name, value in overrides.items():
         setattr(redis, name, value)
@@ -52,12 +69,11 @@ async def test_dream_lock_stores_uuid_token_and_releases_via_compare_and_delete(
     assert uuid.UUID(token)  # parseable uuid, unique per acquire
     assert kwargs == {"nx": True, "ex": DEFAULT_LOCK_TTL_SECONDS}
     # Release: single-key Lua compare-and-delete on OUR token — never a
-    # blind DEL that could take out a newer pass's lock.
-    redis.eval.assert_awaited_once()
-    eval_args = redis.eval.call_args.args
-    assert eval_args[1] == 1  # single key — routes on Redis Cluster
-    assert eval_args[2] == "dream:inflight:user-a"
-    assert eval_args[3] == token
+    # blind DEL that could take out a newer pass's lock. The lock is the
+    # script's only key, so it routes on Redis Cluster.
+    redis.delete_if_owner.assert_awaited_once_with(
+        key="dream:inflight:user-a", token=token
+    )
     redis.delete.assert_not_awaited()
 
 
@@ -71,7 +87,7 @@ async def test_dream_lock_raises_when_already_held(mocker):
             pytest.fail("should not enter the body when lock is held")
 
     # And critically: we don't try to delete a key that wasn't ours.
-    redis.eval.assert_not_awaited()
+    redis.delete_if_owner.assert_not_awaited()
     redis.delete.assert_not_awaited()
 
 
@@ -86,12 +102,12 @@ async def test_expert_dream_lock_uses_isolated_memory_scope_key(mocker):
     key = redis.set.call_args.args[0]
     assert key.startswith("dream:inflight:expert_")
     assert key != "dream:inflight:user-a"
-    assert redis.eval.call_args.args[2] == key
+    assert redis.delete_if_owner.call_args.kwargs["key"] == key
 
 
 @pytest.mark.asyncio
 async def test_dream_lock_swallows_release_failure(mocker, caplog):
-    redis = _redis_mock(eval=AsyncMock(side_effect=Exception("redis down")))
+    redis = _redis_mock(delete_if_owner=AsyncMock(side_effect=Exception("redis down")))
     _patch_redis(mocker, redis)
 
     # The TTL is the fallback release, so a release failure must not
@@ -106,13 +122,13 @@ async def test_dream_lock_swallows_release_failure(mocker, caplog):
 async def test_release_on_exit_skips_delete_when_token_mismatch(mocker, caplog):
     """A late exit (pass outlived its TTL, key re-acquired by a newer pass)
     must leave the new holder's lock alone — the Lua compare returns 0."""
-    redis = _redis_mock(eval=AsyncMock(return_value=0))
+    redis = _redis_mock(delete_if_owner=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
     async with dream_lock("user-d"):
         pass
 
-    redis.eval.assert_awaited_once()
+    redis.delete_if_owner.assert_awaited_once()
     redis.delete.assert_not_awaited()
     assert "no longer held our token" in caplog.text
 
@@ -133,13 +149,12 @@ async def test_dream_lock_disown_skips_release_and_extends_ttl(mocker):
     # blind SET XX that could overwrite a newer pass's token, and never a
     # plain SET that would resurrect an expired lock.
     redis.set.assert_awaited_once()  # the acquire only
-    redis.eval.assert_awaited_once()  # the extend; disown skips the unlock
-    eval_args = redis.eval.call_args.args
-    assert 'redis.call("expire"' in eval_args[0]
-    assert eval_args[1] == 1  # single key — routes on Redis Cluster
-    assert eval_args[2] == "dream:inflight:user-e"
-    assert eval_args[3] == handle.token
-    assert eval_args[4] == str(BATCH_LOCK_TTL_SECONDS)
+    redis.expire_if_owner.assert_awaited_once_with(
+        key="dream:inflight:user-e",
+        token=handle.token,
+        seconds=BATCH_LOCK_TTL_SECONDS,
+    )
+    redis.delete_if_owner.assert_not_awaited()  # disown skips the unlock
     redis.delete.assert_not_awaited()
 
 
@@ -148,7 +163,7 @@ async def test_extend_warns_when_lock_already_expired(mocker, caplog):
     """The compare-and-extend returns 0 when the key expired — extend must
     surface that (ownership is lost) instead of silently recreating the
     lock."""
-    redis = _redis_mock(eval=AsyncMock(return_value=0))
+    redis = _redis_mock(expire_if_owner=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
     async with dream_lock("user-f") as handle:
@@ -176,18 +191,22 @@ async def test_extend_leaves_lock_reacquired_by_newer_pass_untouched(mocker, cap
             ttls[k] = ex
         return True
 
-    async def fake_eval(script, numkeys, k, *argv):
-        if store.get(k) != argv[0]:
+    async def fake_expire_if_owner(*, key, token, seconds):
+        if store.get(key) != token:
             return 0
-        if 'redis.call("expire"' in script:
-            ttls[k] = int(argv[1])
-            return 1
-        store.pop(k, None)
+        ttls[key] = seconds
+        return 1
+
+    async def fake_delete_if_owner(*, key, token):
+        if store.get(key) != token:
+            return 0
+        store.pop(key, None)
         return 1
 
     redis = _redis_mock(
         set=AsyncMock(side_effect=fake_set),
-        eval=AsyncMock(side_effect=fake_eval),
+        expire_if_owner=AsyncMock(side_effect=fake_expire_if_owner),
+        delete_if_owner=AsyncMock(side_effect=fake_delete_if_owner),
     )
     _patch_redis(mocker, redis)
 
@@ -210,11 +229,9 @@ async def test_release_dream_lock_compare_and_deletes_with_token(mocker):
 
     await release_dream_lock("user-g", "tok-g")
 
-    redis.eval.assert_awaited_once()
-    eval_args = redis.eval.call_args.args
-    assert eval_args[1] == 1
-    assert eval_args[2] == "dream:inflight:user-g"
-    assert eval_args[3] == "tok-g"
+    redis.delete_if_owner.assert_awaited_once_with(
+        key="dream:inflight:user-g", token="tok-g"
+    )
     redis.delete.assert_not_awaited()
 
 
@@ -223,12 +240,12 @@ async def test_release_skips_delete_when_token_mismatch(mocker, caplog):
     """A batch callback landing after the lock expired and was re-acquired
     must not release the new holder's lock — the compare fails and the key
     is left alone."""
-    redis = _redis_mock(eval=AsyncMock(return_value=0))
+    redis = _redis_mock(delete_if_owner=AsyncMock(return_value=0))
     _patch_redis(mocker, redis)
 
     await release_dream_lock("user-h", "stale-token")
 
-    redis.eval.assert_awaited_once()
+    redis.delete_if_owner.assert_awaited_once()
     redis.delete.assert_not_awaited()
     assert "no longer held our token" in caplog.text
 
@@ -242,14 +259,14 @@ async def test_release_without_token_leaves_lock_for_ttl(mocker, caplog):
 
     await release_dream_lock("user-i", None)
 
-    redis.eval.assert_not_awaited()
+    redis.delete_if_owner.assert_not_awaited()
     redis.delete.assert_not_awaited()
     assert "leaving it for the TTL" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_release_dream_lock_swallows_redis_failure(mocker, caplog):
-    redis = _redis_mock(eval=AsyncMock(side_effect=Exception("redis down")))
+    redis = _redis_mock(delete_if_owner=AsyncMock(side_effect=Exception("redis down")))
     _patch_redis(mocker, redis)
 
     await release_dream_lock("user-j", "tok-j")

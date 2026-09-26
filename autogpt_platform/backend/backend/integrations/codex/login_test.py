@@ -10,6 +10,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.codex import login as codex_login
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.login import (
     CodexDeviceLoginState,
@@ -119,24 +120,33 @@ class FakeRedis:
         self.expirations[key] = seconds
         return True
 
-    async def eval(
-        self,
-        script: str,
-        _numkeys: int,
-        key: str,
-        expected: str,
-        *arguments: object,
-    ) -> int:
-        if self.values.get(key) != expected:
+    async def delete_if_owner(self, *, key: str, token: str) -> int:
+        if self.values.get(key) != token:
             return 0
-        if "redis.call('del'" in script:
-            self.values.pop(key, None)
-            self.expirations.pop(key, None)
-            return 1
-        if "redis.call('expire'" in script:
-            self.expirations[key] = int(arguments[0])
-            return 1
-        raise AssertionError("Unexpected Redis script")
+        self.values.pop(key, None)
+        self.expirations.pop(key, None)
+        return 1
+
+    async def expire_if_owner(self, *, key: str, token: str, seconds: int) -> int:
+        if self.values.get(key) != token:
+            return 0
+        self.expirations[key] = seconds
+        return 1
+
+
+@pytest.fixture(autouse=True)
+def _lock_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FakeRedis models the owner-checked scripts; only Redis runs the Lua."""
+    monkeypatch.setattr(
+        codex_login,
+        "delete_if_owner",
+        lambda client, **kwargs: client.delete_if_owner(**kwargs),
+    )
+    monkeypatch.setattr(
+        codex_login,
+        "expire_if_owner",
+        lambda client, **kwargs: client.expire_if_owner(**kwargs),
+    )
 
 
 @pytest.mark.asyncio
@@ -556,6 +566,26 @@ async def test_redis_state_never_contains_device_code_or_verification_url():
     ):
         assert await store.refresh_active("user-123", "login-123")
     assert sorted(redis.expirations.values()) == [30, 1200]
+
+
+@pytest.mark.asyncio
+async def test_a_claim_whose_state_write_fails_releases_the_active_slot():
+    redis = FakeRedis()
+    store = RedisCodexLoginStateStore(ttl_seconds=1200, owner_lease_seconds=30)
+    state = CodexSharedLoginState(user_id="user-123", status="pending")
+
+    with (
+        patch(
+            "backend.integrations.codex.login.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch.object(store, "write", AsyncMock(side_effect=RuntimeError("boom"))),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await store.claim(state, "login-123")
+
+    assert _active_key("user-123") not in redis.values
+    assert _active_key("user-123") not in redis.expirations
 
 
 @pytest.mark.asyncio

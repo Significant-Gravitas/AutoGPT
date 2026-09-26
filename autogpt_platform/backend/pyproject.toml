@@ -108,6 +108,7 @@ sqlparse = ">=0.5.5,<0.7.0"
 pillow = ">=9.1.0,<12"
 pypdfium2 = "^5.8.0"
 tavily-python = ">=0.7.26,<0.9.0"
+redis-lua-py = "^0.10.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -172,6 +173,11 @@ omit = [
     "backend/api/features/onboarding_dump/brain_dump_gate_eval.py",
     "backend/api/features/onboarding_dump/eval_corpus.py",
 ]
+
+[tool.coverage.report]
+# redis-lua-py compiles an @script body to Lua at import and Redis runs it;
+# Python never executes those lines. Their callers are still measured.
+exclude_also = ["^@script$"]
 
 [tool.pytest-watcher]
 now = false
