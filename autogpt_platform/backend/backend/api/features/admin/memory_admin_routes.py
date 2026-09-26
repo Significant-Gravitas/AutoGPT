@@ -122,6 +122,9 @@ class GraphNode(BaseModel):
     type: str | None = None
     name: str | None = None
     summary: str | None = None
+    # Set on the tombstone a hard forget leaves of an episode; its text is
+    # gone and only the stamp is shown.
+    hard_deleted_at: str | None = None
 
 
 class GraphEdge(BaseModel):
@@ -557,8 +560,8 @@ async def _list_facts_impl(
             RETURN e.uuid AS uuid,
                    src.name AS source,
                    tgt.name AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope,
                    e.confidence AS confidence,
@@ -796,6 +799,7 @@ async def _get_graph_impl(
                 RETURN n.uuid AS uuid,
                        n.name AS name,
                        n.summary AS summary,
+                       toString(n.hard_deleted_at) AS hard_deleted_at,
                        labels(n) AS all_labels
                 LIMIT $limit
                 """,
@@ -820,6 +824,7 @@ async def _get_graph_impl(
                         type=custom_type,
                         name=r.get("name"),
                         summary=r.get("summary"),
+                        hard_deleted_at=r.get("hard_deleted_at"),
                     )
                 )
                 if len(nodes) >= node_limit:
@@ -850,8 +855,8 @@ async def _get_graph_impl(
                    type(e) AS label,
                    src.uuid AS source,
                    tgt.uuid AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope
             LIMIT $limit

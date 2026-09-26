@@ -112,7 +112,13 @@ async def _get_overview_impl(
             "RETURN count(e) AS c",
         )
         entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
-        episodes = await _count(driver, "MATCH (n:Episodic) RETURN count(n) AS c")
+        # A hard forget's tombstone is a record that a conversation
+        # happened, not an episode the user still has.
+        episodes = await _count(
+            driver,
+            "MATCH (n:Episodic) WHERE n.hard_deleted_at IS NULL "
+            "RETURN count(n) AS c",
+        )
     finally:
         await driver.close()
     return MemoryScopeOverview(

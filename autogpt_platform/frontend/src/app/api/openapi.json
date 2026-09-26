@@ -23779,6 +23779,10 @@
           "summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Summary"
+          },
+          "hard_deleted_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hard Deleted At"
           }
         },
         "type": "object",

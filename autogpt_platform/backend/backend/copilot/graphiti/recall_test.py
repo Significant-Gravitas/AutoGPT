@@ -2,9 +2,9 @@
 
 The live-graph counterparts are ``recall_integration_test.py`` and
 ``recall_forget_integration_test.py``; these pin the policy itself — which
-facts are live or forgotten, which episodes stay recallable, what the search
-and the episode reads are asked for — against mocks. Rendering is pinned in
-``recall_render_test.py``.
+facts are live or forgotten, which episodes stay recallable and what the fact
+search is asked for — against mocks. The episode reads are pinned in
+``recall_episodes_test.py``, rendering in ``recall_render_test.py``.
 """
 
 from datetime import datetime, timezone
@@ -12,11 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphiti_core.edges import EntityEdge
-from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config import EdgeReranker, SearchResults
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 from graphiti_core.search.search_filters import ComparisonOperator
-from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
 from . import recall
 from .scope import MemoryScope
@@ -32,8 +30,13 @@ def _fact(
     reason: str | None = None,
     expired_at: datetime | None = None,
     invalid_at: datetime | None = None,
+    forgotten_at: str | None = None,
 ) -> EntityEdge:
-    attributes = {"status": status, "expiration_reason": reason}
+    attributes = {
+        "status": status,
+        "expiration_reason": reason,
+        "forgotten_at": forgotten_at,
+    }
     return EntityEdge(
         uuid=uuid,
         group_id=_SCOPE.group_id,
@@ -48,36 +51,16 @@ def _fact(
     )
 
 
-def _episode_record(uuid: str, content: str) -> dict:
-    return {
-        "uuid": uuid,
-        "name": uuid,
-        "group_id": _SCOPE.group_id,
-        "created_at": _NOW.isoformat(),
-        "source": "text",
-        "source_description": "chat",
-        "content": content,
-        "valid_at": _NOW.isoformat(),
-        "entity_edges": [],
-    }
-
-
-def _driver_returning(records: list[dict]) -> AsyncMock:
-    driver = AsyncMock()
-    driver.execute_query.return_value = (records, [], None)
-    return driver
-
-
 class TestLiveFactPredicate:
     def test_cypher_matches_live_statuses_and_unset_expiry(self) -> None:
         assert recall.live_fact_predicate("e") == (
-            "e.expired_at IS NULL"
+            "e.expired_at IS NULL AND e.forgotten_at IS NULL"
             " AND (e.status IS NULL OR e.status IN ['active', 'tentative'])"
         )
 
     def test_cypher_without_tentative(self) -> None:
         assert recall.live_fact_predicate("live", include_tentative=False) == (
-            "live.expired_at IS NULL"
+            "live.expired_at IS NULL AND live.forgotten_at IS NULL"
             " AND (live.status IS NULL OR live.status IN ['active'])"
         )
 
@@ -105,11 +88,18 @@ class TestLiveFactPredicate:
         fact = _fact(status=status, expired_at=expired_at)
         assert recall.is_live(fact, include_tentative=include_tentative) is live
 
+    def test_a_forgotten_fact_is_never_live_whatever_its_status(self) -> None:
+        """Only a forget writes ``forgotten_at``; a later write that set the
+        status back (graphiti's attribute rewrite) cannot make it live."""
+        fact = _fact(status="active", forgotten_at=_NOW.isoformat())
+        assert not recall.is_live(fact)
+
 
 class TestForgottenFactPredicate:
     def test_cypher(self) -> None:
         assert recall.forgotten_fact_predicate("f") == (
-            "(f.status = 'retracted'"
+            "(f.forgotten_at IS NOT NULL"
+            " OR f.status = 'retracted'"
             " OR f.expiration_reason = 'user_signal'"
             " OR (f.expired_at IS NOT NULL AND f.invalid_at IS NULL"
             " AND f.expiration_reason IS NULL))"
@@ -142,6 +132,27 @@ class TestForgottenFactPredicate:
         )
         assert recall.is_forgotten(fact) is forgotten
         assert not (forgotten and recall.is_live(fact)), "a forgotten fact is live"
+
+    @pytest.mark.parametrize(
+        ("status", "reason", "invalid_at"),
+        [
+            ("retracted", "user_signal", None),  # as the forget left it
+            ("superseded", "stale_fact", _NOW),  # a dream write landed over it
+            ("active", None, None),  # graphiti rewrote its attributes
+        ],
+    )
+    def test_the_forget_marker_outlasts_any_other_write(
+        self, status: str, reason: str | None, invalid_at: datetime | None
+    ) -> None:
+        fact = _fact(
+            status=status,
+            reason=reason,
+            expired_at=_NOW,
+            invalid_at=invalid_at,
+            forgotten_at=_NOW.isoformat(),
+        )
+        assert recall.is_forgotten(fact)
+        assert not recall.is_live(fact)
 
 
 class TestRecallableEpisodePredicate:
@@ -192,6 +203,7 @@ class TestSearchFacts:
                 _fact("superseded", status="superseded"),
                 _fact("contradicted", status="contradicted"),
                 _fact("retracted", status="retracted"),
+                _fact("forgotten", forgotten_at=_NOW.isoformat()),
             ]
         )
         with patch.object(
@@ -247,93 +259,3 @@ class TestSearchFacts:
         assert config.edge_config.reranker == EdgeReranker.cross_encoder
         assert config.limit == 3
         assert EDGE_HYBRID_SEARCH_CROSS_ENCODER.limit == recipe_limit
-
-
-class TestRecentEpisodes:
-    @pytest.mark.asyncio
-    async def test_asks_for_recallable_episodes_and_returns_oldest_first(
-        self,
-    ) -> None:
-        driver = _driver_returning(
-            [_episode_record("newest", "b"), _episode_record("older", "a")]
-        )
-        open_driver = MagicMock(return_value=driver)
-        with patch.object(recall, "open_driver", open_driver):
-            episodes = await recall.recent_episodes(_SCOPE, 5)
-
-        open_driver.assert_called_once_with(_SCOPE)
-        query = driver.execute_query.await_args.args[0]
-        kwargs = driver.execute_query.await_args.kwargs
-        assert query.startswith(recall.forgotten_facts_clause())
-        assert recall.recallable_episode_predicate("e") in query
-        assert "ORDER BY e.valid_at DESC" in query
-        assert kwargs["group_id"] == _SCOPE.group_id
-        assert kwargs["limit"] == 5
-        assert kwargs["source"] is None, "recall reads every source"
-        assert [ep.uuid for ep in episodes] == ["older", "newest"]
-        driver.close.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_closes_driver_when_the_read_fails(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = RuntimeError("falkordb down")
-        with patch.object(recall, "open_driver", MagicMock(return_value=driver)):
-            with pytest.raises(RuntimeError):
-                await recall.recent_episodes(_SCOPE, 5)
-
-        driver.close.assert_awaited_once()
-
-
-class TestPreviousEpisodeUuids:
-    @pytest.mark.asyncio
-    async def test_graphitis_own_pick_through_the_policy_oldest_first(
-        self,
-    ) -> None:
-        """graphiti's ``retrieve_episodes`` window (same source, up to the
-        new episode's time, ``RELEVANT_SCHEMA_LIMIT`` newest) with the
-        recallable-episode test added."""
-        driver = _driver_returning(
-            [_episode_record("newest", "b"), _episode_record("older", "a")]
-        )
-
-        uuids = await recall.previous_episode_uuids(
-            driver, _SCOPE.group_id, _NOW, EpisodeType.message
-        )
-
-        assert uuids == ["older", "newest"]
-        query = driver.execute_query.await_args.args[0]
-        assert recall.recallable_episode_predicate("e") in query
-        assert "($source IS NULL OR e.source = $source)" in query
-        assert driver.execute_query.await_args.kwargs == {
-            "group_id": _SCOPE.group_id,
-            "reference_time": _NOW,
-            "source": "message",
-            "limit": RELEVANT_SCHEMA_LIMIT,
-        }
-
-    @pytest.mark.asyncio
-    async def test_a_failed_read_means_no_earlier_episodes_not_graphitis(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        driver = AsyncMock()
-        driver.execute_query.side_effect = RuntimeError("falkordb down")
-
-        uuids = await recall.previous_episode_uuids(
-            driver, _SCOPE.group_id, _NOW, EpisodeType.text
-        )
-
-        assert uuids == [], "None would let graphiti pick, forgotten text included"
-        assert "extracting without earlier episodes" in caplog.text
-
-
-class TestRecordHit:
-    @pytest.mark.asyncio
-    async def test_counts_each_edge_once(self) -> None:
-        record_memory_hit = AsyncMock()
-        with patch.object(recall, "record_memory_hit", record_memory_hit):
-            await recall.record_hit(_SCOPE, ["e1", "e2", "e1"])
-
-        assert [c.args for c in record_memory_hit.await_args_list] == [
-            (_SCOPE, "e1"),
-            (_SCOPE, "e2"),
-        ]

@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.graphiti.recall import legacy_forget_predicate
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT, legacy_forget_predicate
+from backend.copilot.graphiti.recall_hide import (
+    REDACT_EPISODES_QUERY,
+    SCRUB_FACTS_QUERY,
+)
 
 from . import backfill_legacy_forgets as backfill
 
@@ -29,21 +33,37 @@ class TestBackfillGraph:
         assert "SET" not in driver.execute_query.await_args.args[0]
 
     @pytest.mark.asyncio
-    async def test_apply_redacts_episodes_before_restamping_edges(self) -> None:
-        """A restamped edge no longer has the legacy shape, so its episodes
-        must already be redacted by then."""
-        driver = _driver([{"edges": 1, "episodes": 1}], [], [])
+    async def test_apply_hides_like_a_forget_before_restamping_edges(self) -> None:
+        """The forget's own scrub and redaction run on the edges the count
+        found; the restamp goes last, since a restamped edge no longer has
+        the legacy shape and a re-run could not find it again."""
+        driver = _driver(
+            [{"uuids": ["e1", "e2"], "edges": 2, "episodes": 1}], [], [], []
+        )
 
         await backfill.backfill_graph(driver, apply=True)
 
-        count, redact, restamp = driver.execute_query.await_args_list
+        count, scrub, redact, restamp = driver.execute_query.await_args_list
         assert count.args[0] == backfill.COUNT_QUERY
-        assert "SET ep.redacted_at = coalesce(ep.redacted_at, $now)" in redact.args[0]
-        assert set(redact.kwargs) == {"now"}
-        assert "SET e.status = $status, e.expiration_reason = $reason" in (
-            restamp.args[0]
-        )
-        assert restamp.kwargs == {"status": "retracted", "reason": "user_signal"}
+        assert scrub.args[0] == SCRUB_FACTS_QUERY
+        assert scrub.kwargs == {"uuids": ["e1", "e2"], "placeholder": FORGOTTEN_FACT}
+        assert redact.args[0] == REDACT_EPISODES_QUERY
+        assert redact.kwargs["uuids"] == ["e1", "e2"]
+        assert set(redact.kwargs) == {"uuids", "now"}
+        assert restamp.args[0] == backfill.RETRACT_EDGES_QUERY
+        assert restamp.kwargs == {
+            "uuids": ["e1", "e2"],
+            "status": "retracted",
+            "reason": "user_signal",
+        }
+
+    def test_the_restamp_gives_a_legacy_forget_the_forget_marker(self) -> None:
+        """``forgotten_at`` is the old forget's ``expired_at``, and a marker a
+        forget already wrote is kept."""
+        query = backfill.RETRACT_EDGES_QUERY
+        assert "e.forgotten_at = coalesce(e.forgotten_at, e.expired_at)" in query
+        assert "e.status = $status" in query
+        assert "e.expiration_reason = $reason" in query
 
     @pytest.mark.asyncio
     async def test_apply_writes_nothing_where_there_is_nothing_to_restamp(
@@ -55,15 +75,17 @@ class TestBackfillGraph:
 
         assert driver.execute_query.await_count == 1
 
-    def test_every_query_finds_edges_by_the_policys_legacy_clause(self) -> None:
-        for query in (
-            backfill.COUNT_QUERY,
-            backfill.REDACT_EPISODES_QUERY,
-            backfill.RETRACT_EDGES_QUERY,
-        ):
-            assert f"WHERE {legacy_forget_predicate('e')}" in query
+    def test_the_count_finds_edges_by_the_policys_legacy_clause(self) -> None:
+        """The writes touch only the edges it found, and the restamp only
+        those still in the legacy shape."""
+        assert f"WHERE {legacy_forget_predicate('e')}" in backfill.COUNT_QUERY
+        assert "legacy AS uuids" in backfill.COUNT_QUERY
         assert "ep.redacted_at IS NULL" in backfill.COUNT_QUERY
         assert "SET" not in backfill.COUNT_QUERY
+        assert (
+            f"WHERE e.uuid IN $uuids AND {legacy_forget_predicate('e')}"
+            in backfill.RETRACT_EDGES_QUERY
+        )
 
 
 class TestBackfillAllGraphs:

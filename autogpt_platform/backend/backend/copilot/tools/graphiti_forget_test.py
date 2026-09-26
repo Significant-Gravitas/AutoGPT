@@ -17,6 +17,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
+from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
@@ -229,6 +230,7 @@ class TestForgetFailuresAreActionable:
         driver = _mock_driver(
             [{"uuid": "kept"}],  # lookup: only "kept" exists
             [{"uuid": "kept"}],  # retract "kept"
+            [],  # scrub its sentence
             [],  # redact its episodes
         )
         session = ChatSession.new("user-abc", dry_run=False)
@@ -259,6 +261,7 @@ class TestForgetFailuresAreActionable:
         driver.execute_query.side_effect = [
             ([{"uuid": "u1"}], [], None),  # lookup
             ([{"uuid": "u1"}], [], None),  # retract
+            ([], [], None),  # scrub its sentence
             RuntimeError("down"),  # redact its episodes
         ]
         session = ChatSession.new("user-abc", dry_run=False)
@@ -426,17 +429,26 @@ class TestMarkEdgesSuperseded:
 
         assert (deleted, failed) == ([], ["u1"])
         query = driver.execute_query.call_args.args[0]
-        assert "WHERE e.status = $expected_status AND e.expired_at IS NULL" in query
+        assert (
+            "WHERE e.status = $expected_status AND e.expired_at IS NULL"
+            " AND e.forgotten_at IS NULL" in query
+        )
         assert driver.execute_query.call_args.kwargs["expected_status"] == "tentative"
 
     @pytest.mark.asyncio
-    async def test_without_expected_status_the_write_is_unconditional(self) -> None:
+    async def test_without_expected_status_only_a_live_fact_is_written(self) -> None:
+        """The dream's demotions: an edge retired or forgotten since the dream
+        read it is not overwritten, and is reported failed."""
         driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+        driver.execute_query.return_value = ([], None, None)  # forgotten meanwhile
 
-        await mark_edges_superseded(driver, ["u1"], reason="stale_fact")
+        deleted, failed = await mark_edges_superseded(
+            driver, ["u1"], reason="stale_fact"
+        )
 
-        assert "WHERE" not in driver.execute_query.call_args.args[0]
+        assert (deleted, failed) == ([], ["u1"])
+        query = driver.execute_query.call_args.args[0]
+        assert f"WHERE {live_fact_predicate('e')}" in query
         assert "expected_status" not in driver.execute_query.call_args.kwargs
 
 
@@ -467,6 +479,9 @@ class TestInvalidateEntityDirectNeighbors:
         # MUST set status + reason for audit trail
         assert "r.status = 'superseded'" in query
         assert "r.expiration_reason = $reason" in query
+        # MUST leave a retired or forgotten neighbour's audit fields alone
+        assert f"WHERE {live_fact_predicate('r')}" in query
+        assert "forgotten_at =" not in query
 
     @pytest.mark.asyncio
     async def test_returns_distinct_edge_uuids(self) -> None:

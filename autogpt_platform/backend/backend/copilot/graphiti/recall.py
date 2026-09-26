@@ -1,18 +1,23 @@
-"""The recall policy: the one place memory is read back for the assistant.
+"""The recall policy: what memory may be read back, for the assistant, the
+dream and ingestion.
 
 Warm context, ``memory_search``, ``memory_forget_search``, the settings fact
 list, the dream gather and ingestion's extraction context read through this
 module's functions or predicates, and every forget goes through ``retract``
-(``recall_forget.py``), so a fact one path forgot cannot come back through
-another. ``recall_render.py`` writes out what recall returns.
+(``recall_forget.py``); ``graphiti/AGENTS.md`` lists what a forget reaches
+and what it does not. ``recall_render.py`` writes out what recall returns.
 
-A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` is unset and its
-``status`` is ``active`` or ``tentative``; an edge with no ``status`` predates
-the ``MemoryFact`` edge type and counts as ``active``. A forgotten fact
-(``forgotten_fact_predicate``) is never live. An episode is recallable while
-no forget has stamped ``redacted_at`` on it and none of the facts extracted
-from it is forgotten: one forgotten fact hides the whole text, since nothing
-records which sentence it came from. The episode's other facts stay live.
+A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` and
+``forgotten_at`` are unset and its ``status`` is ``active`` or ``tentative``;
+an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
+as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
+a forget stamps ``forgotten_at``, which only a forget writes
+(``recall_forget.py``, or the legacy-forget backfill for older ones), so no
+other writer's status or reason can make it look remembered again. An
+episode is recallable while no forget has stamped ``redacted_at`` on it and
+none of the facts extracted from it is forgotten: one forgotten fact hides
+the whole text, since nothing records which sentence it came from. The
+episode's other facts stay live.
 """
 
 import asyncio
@@ -43,6 +48,10 @@ logger = logging.getLogger(__name__)
 
 # The ``expiration_reason`` a user's forget records (``recall_forget.retract``).
 USER_FORGET_REASON = "user_signal"
+# What a forgotten fact's ``fact`` and ``name`` read once a forget has moved
+# them to ``fact_redacted`` / ``name_redacted`` (kept for audit), so graphiti's
+# own prompts never see the sentence (``recall_hide.py``).
+FORGOTTEN_FACT = "[forgotten]"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
 
@@ -63,7 +72,7 @@ def live_fact_predicate(alias: str = "e", *, include_tentative: bool = True) -> 
     """
     statuses = ", ".join(f"'{s.value}'" for s in _statuses(include_tentative))
     return (
-        f"{alias}.expired_at IS NULL"
+        f"{alias}.expired_at IS NULL AND {alias}.forgotten_at IS NULL"
         f" AND ({alias}.status IS NULL OR {alias}.status IN [{statuses}])"
     )
 
@@ -72,7 +81,8 @@ def is_live(fact: EntityEdge, *, include_tentative: bool = True) -> bool:
     """The live-fact test for an edge graphiti returned."""
     status = fact_status(fact)
     allowed = {s.value for s in _statuses(include_tentative)}
-    return fact.expired_at is None and (status is None or status in allowed)
+    unmarked = fact.expired_at is None and fact.attributes.get("forgotten_at") is None
+    return unmarked and (status is None or status in allowed)
 
 
 def fact_status(fact: EntityEdge) -> str | None:
@@ -84,12 +94,15 @@ def fact_status(fact: EntityEdge) -> str | None:
 def forgotten_fact_predicate(alias: str = "e") -> str:
     """The forgotten-fact test as a Cypher ``WHERE`` fragment on edge ``alias``.
 
-    A user forgot the fact: it is ``retracted``, its ``expiration_reason``
-    is ``USER_FORGET_REASON`` (a dream demotion made on the user's word
-    records that too), or it has the ``legacy_forget_predicate`` shape.
+    A user forgot the fact: a forget stamped ``forgotten_at`` (the marker
+    only a forget writes), or, from before that marker, it is ``retracted``,
+    its ``expiration_reason`` is ``USER_FORGET_REASON`` (a dream demotion made
+    on the user's word records that too), or it has the
+    ``legacy_forget_predicate`` shape.
     """
     return (
-        f"({alias}.status = '{MemoryStatus.retracted.value}'"
+        f"({alias}.forgotten_at IS NOT NULL"
+        f" OR {alias}.status = '{MemoryStatus.retracted.value}'"
         f" OR {alias}.expiration_reason = '{USER_FORGET_REASON}'"
         f" OR ({legacy_forget_predicate(alias)}))"
     )
@@ -114,7 +127,8 @@ def is_forgotten(fact: EntityEdge) -> bool:
     reason = fact.attributes.get("expiration_reason")
     legacy = fact.expired_at is not None and fact.invalid_at is None
     return (
-        fact_status(fact) == MemoryStatus.retracted.value
+        fact.attributes.get("forgotten_at") is not None
+        or fact_status(fact) == MemoryStatus.retracted.value
         or reason == USER_FORGET_REASON
         or (legacy and reason is None)
     )
@@ -208,6 +222,12 @@ async def previous_episode_uuids(
     so ingestion passes this one: the same pick of recallable episodes,
     oldest first. Never raises: on a failed read extraction gets no earlier
     episodes, not graphiti's unfiltered pick, and the write still happens.
+
+    Inherited limitation: on FalkorDB 4.x the indexed ``valid_at <=
+    $reference_time`` range can admit an episode dated just after the
+    cut-off (a direct comparison of the same values says it should not),
+    so, exactly like graphiti's own ``retrieve_episodes``, the newest
+    episode here may postdate ``reference_time``. Not fixed here.
     """
     try:
         records = await _recallable_episodes(

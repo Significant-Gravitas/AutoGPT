@@ -11,7 +11,7 @@ layer (``recall.py``) and the chat tools that report on it.
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class SourceKind(str, Enum):
@@ -125,14 +125,29 @@ class ForgetResult(BaseModel):
     ``failures`` holds one entry per requested uuid that was not, in the
     shape ``memory_forget_confirm`` reports, plus a ``cleanup_error`` for an
     edge whose clean-up failed, which is in ``deleted`` too when its own write
-    landed. The episode and entity lists record the clean-up done.
+    landed. The episode and entity lists record the clean-up done: a hard
+    forget empties an episode nothing else cites into a tombstone rather than
+    deleting it, so the chat session it came from stays known.
     """
 
     deleted: list[str] = Field(default_factory=list)
     failures: list[MemoryForgetFailure] = Field(default_factory=list)
     redacted_episodes: list[str] = Field(default_factory=list)
-    deleted_episodes: list[str] = Field(default_factory=list)
+    tombstoned_episodes: list[str] = Field(default_factory=list)
     deleted_entities: list[str] = Field(default_factory=list)
+
+
+def envelope_provenance(content: str | None) -> str | None:
+    """The ``provenance`` an episode body records when it is a
+    ``MemoryEnvelope`` (``session:<id>#msg:<n>`` for a stored memory)."""
+    try:
+        return _EnvelopeProvenance.model_validate_json(content or "").provenance
+    except ValidationError:
+        return None
+
+
+class _EnvelopeProvenance(BaseModel):
+    provenance: str | None = None
 
 
 class RuleMemory(BaseModel):

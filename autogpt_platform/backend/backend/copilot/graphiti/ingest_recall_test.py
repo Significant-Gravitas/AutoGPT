@@ -1,7 +1,10 @@
 """The ingestion worker hands graphiti's extraction only the earlier episodes
-the recall policy allows, mocked at the graphiti boundary.
+the recall policy allows, and hands its result to ``recall_ingest`` to keep
+every forget, mocked at the graphiti boundary.
 
-The live run is ``ingest_recall_integration_test.py``.
+The live runs are ``ingest_recall_integration_test.py`` and
+``recall_ingest_integration_test.py``; ``recall_ingest_test.py`` pins the
+repair itself.
 """
 
 import asyncio
@@ -12,7 +15,7 @@ import pytest
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
-from . import ingest
+from . import ingest, recall_ingest
 from .recall import is_recallable_episode, recallable_episode_predicate
 
 _NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
@@ -27,7 +30,10 @@ _STORED = [
 
 async def _policy_filtered_store(query: str, **params: object):
     """The graph's answer to a recallable-episodes read, filtered with the
-    predicate's Python twin; any other read would be unfiltered."""
+    predicate's Python twin, or to the forgotten-fact snapshot (none here);
+    any other read would be unfiltered."""
+    if query == recall_ingest._SNAPSHOT_QUERY:
+        return [], [], None
     assert recallable_episode_predicate("e") in query, "an unfiltered episode read"
     rows = [
         {"uuid": episode["uuid"]}
@@ -82,8 +88,8 @@ class TestExtractionContext:
         previous = client.add_episode.await_args.kwargs["previous_episode_uuids"]
         assert previous == ["ep-oldest", "ep-newest"], "oldest first, as graphiti"
         assert "ep-redacted" not in previous
-        read = client.driver.execute_query.await_args
-        assert read is not None
+        read, snapshot = client.driver.execute_query.await_args_list
+        assert snapshot.args == (recall_ingest._SNAPSHOT_QUERY,)
         assert read.kwargs == {
             "group_id": "user_test",
             "reference_time": _NOW,
@@ -104,3 +110,23 @@ class TestExtractionContext:
 
         assert client.add_episode.await_args is not None
         assert client.add_episode.await_args.kwargs["previous_episode_uuids"] == []
+
+    @pytest.mark.asyncio
+    async def test_the_result_goes_through_the_forget_repair(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What graphiti wrote is checked against the snapshot taken before
+        it ran, with the same earlier episodes and extraction instructions."""
+        client = _graphiti_client()
+        keep = AsyncMock()
+        monkeypatch.setattr(ingest, "keep_forgotten", keep)
+
+        await _run_worker_on_one_episode(client, monkeypatch)
+
+        keep.assert_awaited_once_with(
+            client,
+            {},
+            client.add_episode.return_value,
+            ["ep-oldest", "ep-newest"],
+            None,
+        )

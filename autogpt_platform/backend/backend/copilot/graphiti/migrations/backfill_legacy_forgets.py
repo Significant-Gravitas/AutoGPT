@@ -4,11 +4,14 @@ A forget used to set ``expired_at`` on the fact and nothing else, and left
 its episodes as they were. The recall policy still treats that shape as a
 forget (``recall.legacy_forget_predicate``); this script makes those records
 look like today's forgets, so that clause can be dropped once it has run
-everywhere. It stamps ``redacted_at`` on every episode naming such an edge,
-then gives the edge what ``recall_forget.retract`` writes:
-``status='retracted'`` and ``expiration_reason='user_signal'``. Episodes go
-first because a restamped edge no longer has the legacy shape, so a run cut
-short between the two writes could not find its episodes again.
+everywhere. It hides what a forget hides with the forget's own queries
+(``recall_hide.py``): the fact's sentence moves to ``fact_redacted``, the
+endpoint and community summaries are blanked, and every episode naming the
+edge is stamped ``redacted_at``. Then it gives the edge what
+``recall_forget.retract`` writes: ``forgotten_at`` (the old forget's
+``expired_at``), ``status='retracted'`` and ``expiration_reason='user_signal'``.
+The restamp goes last because a restamped edge no longer has the legacy
+shape, so a run cut short before it could not find the edge again.
 
 It walks every memory graph on the FalkorDB server, account (``user_*``) and
 expert (``expert_*``) graphs alike, and is idempotent. Dry run by default: it
@@ -33,7 +36,15 @@ from pydantic import BaseModel
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.memory_model import MemoryStatus
-from backend.copilot.graphiti.recall import USER_FORGET_REASON, legacy_forget_predicate
+from backend.copilot.graphiti.recall import (
+    FORGOTTEN_FACT,
+    USER_FORGET_REASON,
+    legacy_forget_predicate,
+)
+from backend.copilot.graphiti.recall_hide import (
+    REDACT_EPISODES_QUERY,
+    SCRUB_FACTS_QUERY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +59,28 @@ class LegacyForgets(BaseModel):
     episodes: int = 0
 
 
+class _GraphForgets(LegacyForgets):
+    uuids: list[str] = []
+
+
 async def backfill_graph(driver: AutoGPTFalkorDriver, *, apply: bool) -> LegacyForgets:
     """Count one graph's legacy forgets and, with ``apply``, restamp them."""
     result = await driver.execute_query(COUNT_QUERY)
     records = result[0] if result else []
-    found = LegacyForgets.model_validate(records[0]) if records else LegacyForgets()
+    found = _GraphForgets.model_validate(records[0]) if records else _GraphForgets()
     if not apply or not found.edges:
         return found
     await driver.execute_query(
-        REDACT_EPISODES_QUERY, now=datetime.now(timezone.utc).isoformat()
+        SCRUB_FACTS_QUERY, uuids=found.uuids, placeholder=FORGOTTEN_FACT
+    )
+    await driver.execute_query(
+        REDACT_EPISODES_QUERY,
+        uuids=found.uuids,
+        now=datetime.now(timezone.utc).isoformat(),
     )
     await driver.execute_query(
         RETRACT_EDGES_QUERY,
+        uuids=found.uuids,
         status=MemoryStatus.retracted.value,
         reason=USER_FORGET_REASON,
     )
@@ -122,22 +143,17 @@ WITH collect(e.uuid) AS legacy
 OPTIONAL MATCH (ep:Episodic)
 WHERE ep.redacted_at IS NULL
   AND any(x IN coalesce(ep.entity_edges, []) WHERE x IN legacy)
-RETURN size(legacy) AS edges, count(ep) AS episodes
+RETURN legacy AS uuids, size(legacy) AS edges, count(ep) AS episodes
 """
 
-REDACT_EPISODES_QUERY = f"""
-MATCH ()-[e:RELATES_TO]->()
-WHERE {_LEGACY}
-WITH collect(e.uuid) AS legacy
-MATCH (ep:Episodic)
-WHERE any(x IN coalesce(ep.entity_edges, []) WHERE x IN legacy)
-SET ep.redacted_at = coalesce(ep.redacted_at, $now)
-"""
-
+# A legacy forget set ``expired_at`` when the user forgot, so that is when
+# the restamped edge was forgotten.
 RETRACT_EDGES_QUERY = f"""
 MATCH ()-[e:RELATES_TO]->()
-WHERE {_LEGACY}
-SET e.status = $status, e.expiration_reason = $reason
+WHERE e.uuid IN $uuids AND {_LEGACY}
+SET e.forgotten_at = coalesce(e.forgotten_at, e.expired_at),
+    e.status = $status,
+    e.expiration_reason = $reason
 """
 
 

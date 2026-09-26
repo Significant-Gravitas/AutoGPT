@@ -22,6 +22,16 @@ def _envelope(provenance: str) -> str:
     return MemoryEnvelope(content="a fact", provenance=provenance).model_dump_json()
 
 
+def _hidden(name: str, content: str, provenance: str | None = None) -> dict:
+    """A row of the hidden-episodes read."""
+    return {
+        "name": name,
+        "source_description": "",
+        "content": content,
+        "provenance": provenance,
+    }
+
+
 class TestEpisodeSessionIds:
     @pytest.mark.parametrize(
         ("name", "description", "content", "sessions"),
@@ -49,6 +59,13 @@ class TestEpisodeSessionIds:
         assert hidden_sessions.episode_session_ids(name, description, content) == (
             sessions
         )
+
+    def test_a_tombstone_keeps_its_session_in_the_provenance_it_kept(self) -> None:
+        """A hard forget empties a stored memory's envelope but keeps its
+        provenance on the episode, so its session stays hidden."""
+        assert hidden_sessions.episode_session_ids(
+            "my note", "Conversation memory", "", "session:s3#msg:4"
+        ) == {"s3"}
 
     @pytest.mark.asyncio
     async def test_reads_the_session_of_everything_ingestion_writes(self) -> None:
@@ -82,8 +99,9 @@ class TestHiddenSessionIds:
         driver = AsyncMock()
         driver.execute_query.return_value = (
             [
-                {"name": "conversation_s1", "source_description": "", "content": ""},
-                {"name": "a memory", "source_description": "", "content": "text"},
+                _hidden("conversation_s1", ""),
+                _hidden("a memory", "text"),
+                _hidden("a hard-forgotten memory", "", "session:s9#msg:2"),
             ],
             [],
             None,
@@ -91,10 +109,11 @@ class TestHiddenSessionIds:
 
         found = await hidden_sessions.hidden_session_ids(driver, "user_g")
 
-        assert found == {"s1"}
+        assert found == {"s1", "s9"}
         query = driver.execute_query.await_args.args[0]
         assert query.startswith(forgotten_facts_clause())
         assert f"NOT ({recallable_episode_predicate('n')})" in query
+        assert "n.provenance AS provenance" in query
         assert driver.execute_query.await_args.kwargs == {"g": "user_g"}
 
     @pytest.mark.asyncio

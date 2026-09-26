@@ -1,9 +1,13 @@
-"""Forgetting under the recall policy: after ``retract`` no recall path in
-``recall.py`` returns the forgotten facts, nor the episode text they came
-from, while the audit record stays.
+"""Forgetting under the recall policy.
 
-The chat forget tool and the settings page both forget through here, so a
-forget means the same thing wherever it starts.
+After ``retract`` the recall paths in ``recall.py`` return neither the
+forgotten facts nor the episode text they came from, the sentence is gone
+from the fact and the summaries graphiti's own prompts read, and the audit
+record stays; ``graphiti/AGENTS.md`` lists the limits. The chat forget tool
+and the settings page both forget through here, so a forget means the same
+thing wherever it starts. ``forgotten_at``, the policy's marker for a
+forgotten fact, is written here and, for forgets made before it existed, by
+``migrations/backfill_legacy_forgets.py``; nothing else writes it.
 """
 
 import logging
@@ -12,12 +16,9 @@ from typing import Any
 
 from .falkordb_driver import AutoGPTFalkorDriver, open_driver
 from .memory_model import ForgetResult, MemoryForgetFailure, MemoryStatus
-from .recall import (
-    USER_FORGET_REASON,
-    forgotten_facts_clause,
-    recallable_episode_predicate,
-)
-from .recall_orphans import delete_orphans
+from .recall import USER_FORGET_REASON
+from .recall_hide import hide
+from .recall_orphans import purge
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -30,20 +31,19 @@ async def retract(
     hard: bool = False,
     reason: str = USER_FORGET_REASON,
 ) -> ForgetResult:
-    """Forget edges so that no recall path returns them, or their text, again.
+    """Forget edges: recall stops returning them and the text they came from.
 
-    Soft (the default) sets ``status='retracted'`` and ``expiration_reason``,
-    sets ``expired_at`` only if the edge had none (the first retirement time
-    is kept), and leaves ``invalid_at`` alone: a forget retracts our record of
-    a fact, it does not say the world changed (Snodgrass). Every episode that
-    names a forgotten edge is then stamped ``redacted_at``. Edges and
-    episodes stay for audit.
-
-    Hard does the same first, so a failure part-way still leaves the facts
-    forgotten, then deletes the edges and whatever only they referenced.
-
-    A failed redaction or clean-up is a ``cleanup_error`` on each edge it
-    concerned: recall hides the text regardless, and forgetting again is safe.
+    Soft (the default) stamps ``forgotten_at``, sets ``status='retracted'``
+    and ``expiration_reason``, keeps an earlier ``expired_at`` and leaves
+    ``invalid_at`` alone: a forget retracts our record of a fact, it does
+    not say the world changed (Snodgrass). ``recall_hide.hide`` then moves
+    the sentence out of what graphiti reads and redacts every episode citing
+    the fact; edges and episodes stay for audit. Hard does the same first,
+    then empties and deletes what only those edges kept, the edges last
+    (``recall_orphans.purge``), so forgetting again after any failure
+    finishes the job. A failed step after the edge write is a
+    ``cleanup_error`` on each edge it concerned; recall hides the fact and
+    its text regardless.
     """
     requested = list(dict.fromkeys(uuids))
     result = ForgetResult()
@@ -54,13 +54,11 @@ async def retract(
     try:
         found = await _existing_edges(driver, scope, requested, result)
         retracted = await _retract_edges(driver, scope, found, reason, now, result)
-        redacted = await _redact_episodes(driver, scope, retracted, now, result)
+        hidden = await hide(driver, scope, retracted, now, result)
         if not hard:
             result.deleted = retracted
-        elif redacted:
-            # A deleted edge can no longer hide its episodes on the read
-            # side, so nothing is deleted unless the redaction landed.
-            await _hard_delete(driver, scope, retracted, result)
+        elif hidden:
+            await purge(driver, scope, retracted, now, result)
     finally:
         await driver.close()
     return result
@@ -108,102 +106,22 @@ async def _retract_edges(
     now: str,
     result: ForgetResult,
 ) -> list[str]:
-    """Mark each edge retracted; the uuids that were."""
-    matched = await _per_edge(
-        driver,
-        scope,
-        uuids,
-        result,
-        _RETRACT_EDGE_QUERY,
-        now=now,
-        status=MemoryStatus.retracted.value,
-        reason=reason,
-    )
-    return list(matched)
-
-
-async def _redact_episodes(
-    driver: AutoGPTFalkorDriver,
-    scope: MemoryScope,
-    uuids: list[str],
-    now: str,
-    result: ForgetResult,
-) -> bool:
-    """Stamp ``redacted_at`` on each episode naming one of the retracted
-    ``uuids``; False when that write failed."""
-    if not uuids:
-        return True
-    try:
-        rows = _rows(
-            await driver.execute_query(_REDACT_EPISODES_QUERY, uuids=uuids, now=now)
-        )
-    except Exception as exc:
-        logger.warning(
-            f"Edges retracted but episode redaction failed for user "
-            f"{scope.owner_user_id[:12]}",
-            exc_info=True,
-        )
-        result.failures.extend(
-            MemoryForgetFailure.cleanup_error(edge_uuid, exc) for edge_uuid in uuids
-        )
-        return False
-    result.redacted_episodes = [row["uuid"] for row in rows]
-    return True
-
-
-async def _hard_delete(
-    driver: AutoGPTFalkorDriver,
-    scope: MemoryScope,
-    uuids: list[str],
-    result: ForgetResult,
-) -> None:
-    """Delete the retracted edges, then what they alone kept alive."""
-    matched = await _per_edge(driver, scope, uuids, result, _DELETE_EDGE_QUERY)
-    result.deleted = list(matched)
-    endpoints = {
-        row[end]
-        for row in matched.values()
-        for end in ("source_uuid", "target_uuid")
-        if row[end] is not None
-    }
-    try:
-        if result.deleted:
-            await delete_orphans(driver, endpoints, result)
-    except Exception as exc:
-        logger.warning(
-            f"Edges deleted but orphan clean-up failed for user "
-            f"{scope.owner_user_id[:12]}",
-            exc_info=True,
-        )
-        result.failures.extend(
-            MemoryForgetFailure.cleanup_error(edge_uuid, exc)
-            for edge_uuid in result.deleted
-        )
-    deleted = set(result.deleted_episodes)
-    result.redacted_episodes = [
-        episode for episode in result.redacted_episodes if episode not in deleted
-    ]
-
-
-async def _per_edge(
-    driver: AutoGPTFalkorDriver,
-    scope: MemoryScope,
-    uuids: list[str],
-    result: ForgetResult,
-    query: str,
-    **params: str,
-) -> dict[str, dict[str, Any]]:
-    """Run ``query`` once per edge uuid; the first row of each match, by uuid.
+    """Mark each edge forgotten and retracted; the uuids that were.
 
     One query per uuid, so one bad edge cannot hide what happened to the
     others (SECRT-2371); failures are recorded on ``result``.
     """
-    matched: dict[str, dict[str, Any]] = {}
+    retracted: list[str] = []
     for edge_uuid in uuids:
         try:
             rows = _rows(
                 await driver.execute_query(
-                    query, uuid=edge_uuid, group_id=scope.group_id, **params
+                    _RETRACT_EDGE_QUERY,
+                    uuid=edge_uuid,
+                    group_id=scope.group_id,
+                    now=now,
+                    status=MemoryStatus.retracted.value,
+                    reason=reason,
                 )
             )
         except Exception as exc:
@@ -215,10 +133,10 @@ async def _per_edge(
             result.failures.append(MemoryForgetFailure.query_error(edge_uuid, exc))
             continue
         if rows:
-            matched[edge_uuid] = rows[0]
+            retracted.append(edge_uuid)
         else:
             result.failures.append(MemoryForgetFailure.no_match(edge_uuid))
-    return matched
+    return retracted
 
 
 def _rows(
@@ -235,37 +153,15 @@ WHERE e.uuid IN $uuids AND (e.group_id = $group_id OR e.group_id IS NULL)
 RETURN DISTINCT e.uuid AS uuid
 """
 
-# ``coalesce`` keeps the first retirement time on an edge that already had
-# one (a graphiti expiry, a dream demotion or an earlier forget).
+# ``coalesce`` keeps the first forget's ``forgotten_at`` and the first
+# retirement time on an edge that already had one (a graphiti expiry, a
+# dream demotion or an earlier forget), so a repeat is harmless.
 _RETRACT_EDGE_QUERY = """
 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
 WHERE e.group_id = $group_id OR e.group_id IS NULL
-SET e.expired_at = coalesce(e.expired_at, $now),
+SET e.forgotten_at = coalesce(e.forgotten_at, $now),
+    e.expired_at = coalesce(e.expired_at, $now),
     e.status = $status,
     e.expiration_reason = $reason
 RETURN e.uuid AS uuid
-"""
-
-# Every episode naming one of ``$uuids`` that the recall policy now hides,
-# which after the retraction is all of them: the stamp and the read-side test
-# cannot disagree. ``coalesce`` keeps the time of the first redaction.
-_REDACT_EPISODES_QUERY = (
-    forgotten_facts_clause()
-    + f"""
-MATCH (ep:Episodic)
-WHERE any(x IN coalesce(ep.entity_edges, []) WHERE x IN $uuids)
-  AND NOT ({recallable_episode_predicate("ep")})
-SET ep.redacted_at = coalesce(ep.redacted_at, $now)
-RETURN ep.uuid AS uuid
-"""
-)
-
-# ``WITH`` captures the ids before ``DELETE``: FalkorDB cannot read a deleted
-# relationship's properties (FalkorDB #1393).
-_DELETE_EDGE_QUERY = """
-MATCH (source)-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->(target)
-WHERE e.group_id = $group_id OR e.group_id IS NULL
-WITH e, e.uuid AS uuid, source.uuid AS source_uuid, target.uuid AS target_uuid
-DELETE e
-RETURN uuid, source_uuid, target_uuid
 """

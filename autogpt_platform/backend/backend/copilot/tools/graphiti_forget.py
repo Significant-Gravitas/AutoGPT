@@ -5,7 +5,11 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 
 Both steps go through the recall policy (``graphiti/recall.py`` and
 ``graphiti/recall_forget.py``): the candidates are the facts recall would
-return, and a confirmed forget keeps every recall path from returning them.
+return, and a confirmed forget is ``recall_forget.retract``, with the
+guarantees and limits ``graphiti/AGENTS.md`` lists.
+
+The demotion helpers below are the dream's writers. They write only over
+live facts, so a demotion can never overwrite a user's forget.
 """
 
 import logging
@@ -16,7 +20,7 @@ from graphiti_core.edges import EntityEdge
 
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
-from backend.copilot.graphiti.recall import search_facts
+from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
@@ -348,13 +352,12 @@ async def mark_edges_superseded(
     against the per-user FalkorDB database, but when provided the
     Cypher predicate also requires the edge's ``group_id`` to match so
     a future caller holding the wrong driver can't touch another
-    user's edges. ``None`` keeps the unscoped match (current
-    ratification behavior).
+    user's edges. ``None`` keeps the unscoped match.
 
-    ``expected_status`` makes the write conditional on the edge still
-    carrying that status unexpired, so a change made since the caller read
-    it (a user's forget) is not overwritten; an edge that no longer matches
-    is reported failed.
+    The write lands only on a live fact (``recall.live_fact_predicate``), or,
+    with ``expected_status``, on an unexpired, unforgotten edge still in that
+    status, so a forget or other change made since the caller read the edge
+    is never overwritten; an edge that no longer qualifies is reported failed.
 
     Returns ``(succeeded_uuids, failed_uuids)``.
     """
@@ -398,7 +401,10 @@ def _supersede_query(*, scoped: bool, guarded: bool) -> str:
         else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
     )
     guard = (
-        "WHERE e.status = $expected_status AND e.expired_at IS NULL" if guarded else ""
+        "WHERE e.status = $expected_status AND e.expired_at IS NULL"
+        " AND e.forgotten_at IS NULL"
+        if guarded
+        else f"WHERE {live_fact_predicate('e')}"
     )
     return f"""
                 {edge_match}
@@ -416,13 +422,12 @@ async def invalidate_entity_direct_neighbors(
     entity_uuid: str,
     reason: str,
 ) -> list[str]:
-    """Demote every ``:RELATES_TO`` edge directly attached to an entity.
+    """Demote every live ``:RELATES_TO`` edge directly attached to an entity.
 
     **Single-hop only** — does NOT propagate to neighbors-of-neighbors.
     The instinct to write ``[r:RELATES_TO*1..N]`` is exactly the
     runaway-demotion bug we are protecting against (P0.3b in the dream
-    spec). Keep the single-hop discipline; ratification (P0.4) re-promotes
-    good facts that get caught in the cascade.
+    spec). Only live neighbours (``recall.live_fact_predicate``) are touched.
 
     Returns the list of edge UUIDs that were demoted. ``DISTINCT``
     matters: the undirected ``-[r]-`` pattern can yield the same edge
@@ -430,9 +435,10 @@ async def invalidate_entity_direct_neighbors(
     demotion counts reported in ``DreamPassResult`` / the admin UI
     (the ``SET`` itself is idempotent).
     """
-    query = """
-    MATCH (e:Entity {uuid: $entity_uuid, group_id: $group_id})
+    query = f"""
+    MATCH (e:Entity {{uuid: $entity_uuid, group_id: $group_id}})
     MATCH (e)-[r:RELATES_TO]-(other)
+    WHERE {live_fact_predicate("r")}
     SET r.expired_at = $now,
         r.status = 'superseded',
         r.expiration_reason = $reason

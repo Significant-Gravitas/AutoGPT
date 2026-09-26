@@ -1,22 +1,23 @@
 """Unit tests for ``recall_forget.retract`` against a mock driver.
 
 Pin the Cypher each forget mode issues, its order and the per-uuid failure
-reporting; ``recall_forget_integration_test.py`` and
-``recall_integration_test.py`` run the same calls against FalkorDB.
+reporting. What hiding and purging send is pinned in ``recall_hide_test.py``
+and ``recall_orphans_test.py``; ``recall_forget_integration_test.py``,
+``recall_hard_forget_integration_test.py`` and ``recall_integration_test.py``
+run the same calls against FalkorDB.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from . import recall_forget, recall_orphans
+from . import recall_forget, recall_hide, recall_orphans
 from .memory_model import FORGET_NO_MATCH_REASON, MemoryForgetFailureCode
-from .recall import forgotten_facts_clause, recallable_episode_predicate
+from .recall import FORGOTTEN_FACT
 from .scope import MemoryScope
 
 _SCOPE = MemoryScope.for_user("user-abc")
 _CLEANUP = MemoryForgetFailureCode.CLEANUP_ERROR
-_EDGE_ROW = {"uuid": "u1", "source_uuid": "alice", "target_uuid": "atlas"}
 
 
 def _driver(*results) -> AsyncMock:
@@ -40,15 +41,15 @@ def _call(driver: AsyncMock, index: int) -> tuple[str, dict]:
 
 class TestSoftRetract:
     @pytest.mark.asyncio
-    async def test_marks_edge_retracted_and_redacts_its_episodes(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [{"uuid": "ep1"}])
+    async def test_marks_the_edge_forgotten_then_hides_its_text(self) -> None:
+        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [], [{"uuid": "ep1"}])
 
         result = await _retract(driver, ["u1"])
 
         assert result.deleted == ["u1"]
         assert result.failures == []
         assert result.redacted_episodes == ["ep1"]
-        assert driver.execute_query.await_count == 3
+        assert driver.execute_query.await_count == 4
         driver.close.assert_awaited_once()
 
         lookup, lookup_kwargs = _call(driver, 0)
@@ -57,7 +58,8 @@ class TestSoftRetract:
         assert lookup_kwargs == {"uuids": ["u1"], "group_id": _SCOPE.group_id}
 
         write, write_kwargs = _call(driver, 1)
-        assert "SET e.expired_at = coalesce(e.expired_at, $now)," in write
+        assert "SET e.forgotten_at = coalesce(e.forgotten_at, $now)," in write
+        assert "e.expired_at = coalesce(e.expired_at, $now)," in write
         assert "e.status = $status," in write
         assert "e.expiration_reason = $reason" in write
         assert "invalid_at" not in write, "a forget is not a world change"
@@ -67,24 +69,19 @@ class TestSoftRetract:
         assert write_kwargs["status"] == "retracted"
         assert write_kwargs["reason"] == "user_signal"
 
-    @pytest.mark.asyncio
-    async def test_redacts_every_episode_the_policy_now_hides(self) -> None:
-        """Any episode naming a forgotten fact, not only one left with no
-        live fact: the redaction and the read side share one predicate."""
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [{"uuid": "ep1"}])
-
-        await _retract(driver, ["u1"])
-
-        redact, redact_kwargs = _call(driver, 2)
-        assert redact.startswith(forgotten_facts_clause())
-        assert "any(x IN coalesce(ep.entity_edges, []) WHERE x IN $uuids)" in redact
-        assert f"NOT ({recallable_episode_predicate('ep')})" in redact
-        assert "SET ep.redacted_at = coalesce(ep.redacted_at, $now)" in redact
-        assert redact_kwargs == {"uuids": ["u1"], "now": _call(driver, 1)[1]["now"]}
+        now = write_kwargs["now"]
+        assert _call(driver, 2) == (
+            recall_hide.SCRUB_FACTS_QUERY,
+            {"uuids": ["u1"], "placeholder": FORGOTTEN_FACT},
+        )
+        assert _call(driver, 3) == (
+            recall_hide.REDACT_EPISODES_QUERY,
+            {"uuids": ["u1"], "now": now},
+        )
 
     @pytest.mark.asyncio
     async def test_reason_is_recorded(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [])
+        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [], [])
 
         await _retract(driver, ["u1"], reason="settings_page")
 
@@ -132,11 +129,11 @@ class TestSoftRetract:
         assert by_uuid["errored"].code == MemoryForgetFailureCode.QUERY_ERROR
         assert "boom" in by_uuid["errored"].reason
         assert by_uuid["vanished"].code == MemoryForgetFailureCode.NO_MATCH
-        # Nothing was retracted, so no episode is looked at.
+        # Nothing was retracted, so nothing is hidden.
         assert driver.execute_query.await_count == 3
 
     @pytest.mark.asyncio
-    async def test_redaction_failure_is_a_cleanup_error_on_each_edge(self) -> None:
+    async def test_a_failed_hide_is_a_cleanup_error_on_each_edge(self) -> None:
         driver = _driver(
             [{"uuid": "u1"}, {"uuid": "u2"}],
             [{"uuid": "u1"}],
@@ -156,11 +153,11 @@ class TestSoftRetract:
 
     @pytest.mark.asyncio
     async def test_repeated_uuids_are_forgotten_once(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [])
+        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [], [])
 
         result = await _retract(driver, ["u1", "u1"])
 
-        assert result.deleted == ["u1"]
+        assert result.deleted == ["u1"] and result.failures == []
         assert _call(driver, 0)[1]["uuids"] == ["u1"]
 
     @pytest.mark.asyncio
@@ -175,52 +172,36 @@ class TestSoftRetract:
 
 class TestHardRetract:
     @pytest.mark.asyncio
-    async def test_hides_everything_before_it_deletes_anything(self) -> None:
+    async def test_hides_everything_before_it_purges_anything(self) -> None:
         driver = _driver(
             [{"uuid": "u1"}],  # lookup
             [{"uuid": "u1"}],  # retract
+            [],  # scrub
             [{"uuid": "ep1"}, {"uuid": "ep2"}],  # redact
-            [_EDGE_ROW],  # delete the edge
-            [{"uuid": "ep1", "mentioned": ["alice", "carol"]}],  # orphan episodes
-            [],  # drop back-references
-            [{"uuid": "alice"}, {"uuid": "carol"}],  # orphan entities
+            [{"uuid": "ep1", "content": "Alice works on Atlas"}],  # citing
+            [{"uuid": "ep1"}],  # tombstone
+            [{"uuid": "u1", "deleted_entities": ["alice", "carol"]}],  # delete
         )
 
         result = await _retract(driver, ["u1"], hard=True)
 
         assert result.deleted == ["u1"] and result.failures == []
-        assert result.deleted_episodes == ["ep1"]
+        assert result.tombstoned_episodes == ["ep1"]
         assert result.redacted_episodes == ["ep2"], "kept for another edge, hidden"
         assert result.deleted_entities == ["alice", "carol"]
         driver.close.assert_awaited_once()
         queries = [call.args[0] for call in driver.execute_query.await_args_list]
-        assert "e.status = $status" in queries[1]
-        assert "SET ep.redacted_at" in queries[2]
-        assert "DELETE e\n" in queries[3] and "WITH e, e.uuid AS uuid" in queries[3]
-        assert queries[4] == recall_orphans._DELETE_ORPHANED_EPISODES_QUERY
-        assert "SET ep.entity_edges" in queries[5]
-        assert "DETACH DELETE n" in queries[6]
-        assert _call(driver, 3)[1] == {"uuid": "u1", "group_id": _SCOPE.group_id}
-        assert _call(driver, 4)[1] == {"uuids": ["u1"]}
-        assert _call(driver, 5)[1] == {"uuids": ["u1"]}
-        # Endpoints of the deleted edge plus what the deleted episode mentioned.
-        assert _call(driver, 6)[1] == {"uuids": ["alice", "atlas", "carol"]}
-
-    def test_an_episode_goes_only_when_no_remaining_edge_cites_it(self) -> None:
-        """Ownership, whatever the citing edge's status (a retracted edge kept
-        for audit still needs its source), checked in the deleting query."""
-        query = recall_orphans._DELETE_ORPHANED_EPISODES_QUERY
-
-        assert (
-            "WHERE ref.uuid IN ep.entity_edges OR ep.uuid IN coalesce(ref.episodes, [])"
-            in query
-        )
-        assert "WHERE refs = 0" in query
-        assert "status" not in query and "expired_at" not in query
-        assert "DETACH DELETE ep" in query
+        assert "SET e.forgotten_at" in queries[1]
+        assert queries[2:] == [
+            recall_hide.SCRUB_FACTS_QUERY,
+            recall_hide.REDACT_EPISODES_QUERY,
+            recall_orphans._CITING_EPISODES_QUERY,
+            recall_orphans._TOMBSTONE_QUERY,
+            recall_orphans._DELETE_EDGE_QUERY,
+        ]
 
     @pytest.mark.asyncio
-    async def test_redaction_failure_stops_it_before_any_delete(self) -> None:
+    async def test_a_failed_hide_stops_it_before_any_purge(self) -> None:
         driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], RuntimeError("down"))
 
         result = await _retract(driver, ["u1"], hard=True)
@@ -230,29 +211,11 @@ class TestHardRetract:
         assert driver.execute_query.await_count == 3
 
     @pytest.mark.asyncio
-    async def test_clean_up_failure_is_a_cleanup_error_on_each_deleted_edge(
-        self,
-    ) -> None:
-        driver = _driver(
-            [{"uuid": "u1"}],
-            [{"uuid": "u1"}],
-            [{"uuid": "ep1"}],
-            [_EDGE_ROW],
-            RuntimeError("down"),
-        )
-
-        result = await _retract(driver, ["u1"], hard=True)
-
-        assert result.deleted == ["u1"]
-        assert [(f.uuid, f.code) for f in result.failures] == [("u1", _CLEANUP)]
-        assert result.redacted_episodes == ["ep1"], "still hidden"
-
-    @pytest.mark.asyncio
     async def test_unmatched_delete_is_a_no_match(self) -> None:
-        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [], [])
+        driver = _driver([{"uuid": "u1"}], [{"uuid": "u1"}], [], [], [], [], [])
 
         result = await _retract(driver, ["u1"], hard=True)
 
         assert result.deleted == []
         assert [f.code for f in result.failures] == [MemoryForgetFailureCode.NO_MATCH]
-        assert driver.execute_query.await_count == 4
+        assert driver.execute_query.await_count == 7

@@ -4,7 +4,10 @@ A forget hides the fact and the text it came from from every read the
 assistant or a dream makes, while the audit record stays: a hard forget never
 deletes an episode a retained edge still cites. Each case was reproduced
 against the first recall-policy commit by an independent validation; the
-unit siblings (``recall_forget_test.py``, ``recall_test.py``) pin the Cypher.
+unit siblings (``recall_forget_test.py``, ``recall_hide_test.py``,
+``recall_test.py``) pin the Cypher. The hard forget's own cases are in
+``recall_hard_forget_integration_test.py``, the dream's writers in
+``recall_dream_writers_integration_test.py``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -160,7 +163,7 @@ async def test_hard_forget_keeps_an_episode_a_retracted_fact_still_cites(
     result = await retract(scope, [alice], hard=True)
 
     assert result.deleted == [alice] and result.failures == []
-    assert result.deleted_episodes == [], "Bob's retained edge still cites it"
+    assert result.tombstoned_episodes == [], "Bob's retained edge still cites it"
     assert await edge_row(driver, alice) == {}
     retained = await edge_row(driver, bob)
     assert retained["status"] == "retracted"

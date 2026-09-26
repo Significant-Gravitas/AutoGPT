@@ -88,7 +88,12 @@ def _graph(hidden_rows: list[dict] | Exception) -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_the_dream_reads_no_session_a_forget_hid(mocker):
-    forgotten = {"name": "conversation_s-gone", "source_description": "", "content": ""}
+    forgotten = {
+        "name": "conversation_s-gone",
+        "source_description": "",
+        "content": "",
+        "provenance": None,
+    }
     mocker.patch.object(fetch_mod, "open_driver", return_value=_graph([forgotten]))
     chat_store = _chat_store("s-gone", "s-kept")
     mocker.patch.object(fetch_mod, "chat_db", return_value=chat_store)

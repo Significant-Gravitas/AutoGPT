@@ -9,12 +9,16 @@ import asyncio
 import logging
 import weakref
 from datetime import datetime, timezone
+from typing import Any
 
+from graphiti_core import Graphiti
+from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .recall import previous_episode_uuids
+from .recall_ingest import keep_forgotten, snapshot_forgotten
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -357,27 +361,34 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     )
 
 
-async def _add_episode(client, group_id: str, payload: dict):
-    """graphiti's ``add_episode`` with our types and the recall policy's
-    choice of earlier episodes.
+async def _add_episode(
+    client: Graphiti, group_id: str, payload: dict[str, Any]
+) -> AddEpisodeResults:
+    """graphiti's ``add_episode`` with our types, under the recall policy.
 
     The custom entity and edge types keep MemoryEnvelope metadata (status,
     confidence, source_kind, scope, provenance) on ``RELATES_TO`` edges, not
     only inside ``Episodic.content``; this is the single wire-in for every
     caller of the worker. The earlier episodes are the ones graphiti would
     show its extraction prompts, minus those a forget hid: left to pick
-    them itself it would show a forgotten episode again.
+    them itself it would show a forgotten episode again. And graphiti may
+    resolve a new fact into a forgotten one: ``recall_ingest`` puts such an
+    edge back and gives a fact stated again a new live edge.
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]
     )
-    return await client.add_episode(
+    forgotten = await snapshot_forgotten(client.driver)
+    result = await client.add_episode(
         **payload,
         previous_episode_uuids=previous,
         entity_types=ENTITY_TYPES,
         edge_types=EDGE_TYPES,
         edge_type_map=EDGE_TYPE_MAP,
     )
+    instructions = payload.get("custom_extraction_instructions")
+    await keep_forgotten(client, forgotten, result, previous, instructions)
+    return result
 
 
 async def enqueue_conversation_turn(

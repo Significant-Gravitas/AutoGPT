@@ -1,13 +1,15 @@
-"""The recall policy against a live FalkorDB: a forgotten or superseded fact,
-and the episode text it came from, can no longer be recalled.
+"""The recall policy against a live FalkorDB: a forgotten fact and the
+episode text it came from can no longer be recalled; a superseded fact is not
+recalled either, while its episode, which no forget touched, still is.
 
 Facts go in through graphiti's real ``add_episode`` (only the LLM boundary is
 scripted, see ``recall_integration_fixtures.py``) and are read back through
 the same ``recall`` functions warm context, ``memory_search``,
 ``memory_forget_search`` and the settings page use. The unit siblings
 (``recall_test.py``, ``recall_forget_test.py``) pin the Cypher; this file
-proves it does what it says on FalkorDB, and
-``recall_forget_integration_test.py`` holds the forget contract's hard cases.
+proves it does what it says on FalkorDB. The forget contract's hard cases are
+in ``recall_forget_integration_test.py``, ``recall_hard_forget_integration_test.py``
+and ``recall_dream_writers_integration_test.py``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -34,7 +36,7 @@ from backend.copilot.tools.models import MemorySearchResponse
 from . import context
 from .falkordb_driver import open_driver
 from .memory_model import MemoryForgetFailureCode
-from .recall import forgotten_fact_predicate, is_forgotten
+from .recall import FORGOTTEN_FACT, forgotten_fact_predicate, is_forgotten
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -42,9 +44,7 @@ from .recall_integration_fixtures import (
     CAROL,
     Fact,
     capture_spawned_tasks,
-    count,
     edge_row,
-    episode_row,
     ingest_facts,
     patch_recall_boundaries,
     recalled_episodes,
@@ -54,14 +54,16 @@ from .recall_integration_fixtures import (
 from .scope import MemoryScope
 
 _LONG_AGO = "2025-01-01T00:00:00+00:00"
-# (status, expiration_reason, expired_at, invalid_at) -> forgotten?
+# (status, expiration_reason, expired_at, invalid_at, forgotten_at) -> forgotten?
 _EDGE_SHAPES = {
-    ("active", None, None, None): False,
-    ("retracted", "user_signal", _LONG_AGO, None): True,
-    ("superseded", "user_signal", _LONG_AGO, None): True,
-    ("superseded", "stale_fact", _LONG_AGO, None): False,
-    ("active", None, _LONG_AGO, _LONG_AGO): False,
-    ("active", None, _LONG_AGO, None): True,
+    ("active", None, None, None, None): False,
+    ("retracted", "user_signal", _LONG_AGO, None, _LONG_AGO): True,
+    ("retracted", "user_signal", _LONG_AGO, None, None): True,
+    ("superseded", "user_signal", _LONG_AGO, None, None): True,
+    ("superseded", "stale_fact", _LONG_AGO, None, None): False,
+    ("superseded", "stale_fact", _LONG_AGO, _LONG_AGO, _LONG_AGO): True,
+    ("active", None, _LONG_AGO, _LONG_AGO, None): False,
+    ("active", None, _LONG_AGO, None, None): True,
 }
 
 
@@ -103,7 +105,9 @@ async def test_retracted_fact_leaves_recall_and_hides_its_episode(
     assert row["status"] == "retracted"
     assert row["reason"] == "user_signal"
     assert row["expired_at"] is not None
+    assert row["forgotten_at"] is not None
     assert row["invalid_at"] is None, "a forget is not a world change (Snodgrass)"
+    assert (row["fact"], row["fact_redacted"]) == (FORGOTTEN_FACT, ALICE[2])
     assert await recalled_facts(scope) == {bob}
     assert await _settings_view(scope) == (1, {bob})
     # The episode holds Alice's sentence too, so it goes at once; Bob's fact
@@ -168,36 +172,6 @@ async def test_memory_search_records_a_hit_on_what_it_returns(
     await asyncio.gather(*hit_tasks)
 
     assert await get_hit_count(scope, edges[CAROL[2]]) == 1
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_hard_retract_removes_edge_orphaned_episode_and_entities(
-    scope_graph, stub_graphiti_client
-) -> None:
-    driver, scope = scope_graph
-    episode, edges = await ingest_facts(
-        driver, scope, stub_graphiti_client, [ALICE, BOB]
-    )
-    alice, bob = edges[ALICE[2]], edges[BOB[2]]
-
-    first = await retract(scope, [alice], hard=True)
-
-    # Bob's fact keeps the episode, hidden because it holds Alice's sentence,
-    # and the episode's mentions keep every entity it names.
-    assert first.deleted == [alice]
-    assert first.deleted_episodes == [] and first.deleted_entities == []
-    assert first.redacted_episodes == [episode]
-    assert await edge_row(driver, alice) == {}
-    assert (await episode_row(driver, episode))["entity_edges"] == [bob]
-
-    second = await retract(scope, [bob], hard=True)
-
-    assert second.deleted_episodes == [episode]
-    assert len(second.deleted_entities) == 3  # Alice, Bob, Atlas
-    assert await count(driver, "MATCH (n:Episodic) RETURN count(n) AS c") == 0
-    assert await count(driver, "MATCH (n:Entity) RETURN count(n) AS c") == 0
-    assert await count(driver, "MATCH ()-[e]->() RETURN count(e) AS c") == 0
 
 
 @pytest.mark.integration
@@ -277,16 +251,18 @@ async def test_the_forgotten_fact_cypher_and_python_agree(
     ]
     _, edges = await ingest_facts(driver, scope, stub_graphiti_client, facts)
     uuids = [edges[sentence] for _, _, sentence in facts]
-    for edge_uuid, (status, reason, expired, invalid) in zip(uuids, _EDGE_SHAPES):
+    for edge_uuid, shape in zip(uuids, _EDGE_SHAPES):
+        status, reason, expired, invalid, forgotten = shape
         await driver.execute_query(
             "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e.status = $status, "
             "e.expiration_reason = $reason, e.expired_at = $expired, "
-            "e.invalid_at = $invalid",
+            "e.invalid_at = $invalid, e.forgotten_at = $forgotten",
             uuid=edge_uuid,
             status=status,
             reason=reason,
             expired=expired,
             invalid=invalid,
+            forgotten=forgotten,
         )
 
     found = await rows(

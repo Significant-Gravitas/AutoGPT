@@ -11,15 +11,16 @@ An episode names its session in up to three places, all written at
 ingestion: a chat turn is named ``conversation_<session>`` and a derived
 finding ``finding_<session>``, both with a ``source_description`` ending
 ``in session <session>``; a stored memory's envelope has
-``provenance='session:<session>#msg:<n>'``.
+``provenance='session:<session>#msg:<n>'``. A hard forget empties an episode
+into a tombstone but keeps all three (the provenance in its own property,
+since the envelope went with the text), so its session stays excluded.
 """
 
 import logging
 import re
 
-from pydantic import BaseModel, ValidationError
-
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.memory_model import envelope_provenance
 from backend.copilot.graphiti.recall import (
     forgotten_facts_clause,
     recallable_episode_predicate,
@@ -54,33 +55,29 @@ async def hidden_session_ids(
         session
         for row in rows
         for session in episode_session_ids(
-            row["name"], row["source_description"], row["content"]
+            row["name"], row["source_description"], row["content"], row["provenance"]
         )
     }
 
 
 def episode_session_ids(
-    name: str | None, source_description: str | None, content: str | None
+    name: str | None,
+    source_description: str | None,
+    content: str | None,
+    provenance: str | None = None,
 ) -> set[str]:
-    """The chat sessions an episode says it came from (usually one)."""
+    """The chat sessions an episode says it came from (usually one).
+
+    ``provenance`` is what a tombstone kept of its envelope; a live episode
+    has it in ``content`` instead.
+    """
+    kept = provenance or envelope_provenance(content) or ""
     matches = [
         _EPISODE_NAME.search(name or ""),
         _SOURCE_DESCRIPTION.search(source_description or ""),
-        _PROVENANCE.match(_envelope_provenance(content)),
+        _PROVENANCE.match(kept),
     ]
     return {match.group("session") for match in matches if match}
-
-
-def _envelope_provenance(content: str | None) -> str:
-    try:
-        envelope = _EnvelopeProvenance.model_validate_json(content or "")
-    except ValidationError:
-        return ""
-    return envelope.provenance or ""
-
-
-class _EnvelopeProvenance(BaseModel):
-    provenance: str | None = None
 
 
 _HIDDEN_EPISODES_QUERY = (
@@ -89,6 +86,6 @@ _HIDDEN_EPISODES_QUERY = (
 MATCH (n:Episodic {{group_id: $g}})
 WHERE NOT ({recallable_episode_predicate("n")})
 RETURN n.name AS name, n.source_description AS source_description,
-       n.content AS content
+       n.content AS content, n.provenance AS provenance
 """
 )

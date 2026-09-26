@@ -95,6 +95,13 @@ class TestOverview:
         fact_query = driver.execute_query.await_args_list[0].args[0]
         assert live_fact_predicate("e") in fact_query
 
+    def test_episode_count_leaves_out_hard_forget_tombstones(self) -> None:
+        driver = _driver_returning([{"c": 0}], [{"c": 0}], [{"c": 0}])
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            client.get("/memory/overview")
+        episode_query = driver.execute_query.await_args_list[2].args[0]
+        assert "MATCH (n:Episodic) WHERE n.hard_deleted_at IS NULL" in episode_query
+
 
 class TestListFacts:
     def test_maps_rows_to_facts(self) -> None:

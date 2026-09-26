@@ -2,13 +2,16 @@
 
 Facts go in through graphiti's real ``add_episode`` with only the LLM
 boundary scripted (the ``stub_graphiti_client`` fixture), so what the tests
-read back is what production would have written. Not collected by pytest.
+read back is what production would have written; ``ingest_through_the_worker``
+goes one step further out, through the production ingestion worker. Not
+collected by pytest.
 """
 
 import asyncio
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
@@ -17,7 +20,7 @@ from pytest_mock import MockerFixture
 from backend.api.features.memory import routes as memory_routes
 from backend.copilot.tools import graphiti_search
 
-from . import recall
+from . import ingest, recall
 from .falkordb_driver import AutoGPTFalkorDriver
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
@@ -29,6 +32,8 @@ BuildClient = Callable[[AutoGPTFalkorDriver, dict[str, dict]], Graphiti]
 ALICE: Fact = ("Alice", "Atlas", "Alice works on Atlas")
 BOB: Fact = ("Bob", "Atlas", "Bob leads Atlas")
 CAROL: Fact = ("Carol", "Borealis", "Carol owns Borealis")
+
+_INGEST_TIMEOUT_SECONDS = 25.0
 
 
 class FakeRedis:
@@ -113,6 +118,9 @@ def scripted_responses(facts: list[Fact], *, status: str = "active") -> dict[str
         "ExtractedEdges": {"edges": edges},
         "MemoryFact": {"status": status, "scope": "real:global"},
         "EdgeDuplicate": {"duplicate_facts": [], "contradicted_facts": []},
+        # Asked for an entity with no summary and no new fact in the episode
+        # (after a forget blanked it); no answer keeps the summary empty.
+        "SummarizedEntities": {"summaries": []},
     }
 
 
@@ -153,6 +161,52 @@ async def ingest_facts(
     return result.episode.uuid, edges
 
 
+async def ingest_through_the_worker(
+    driver: AutoGPTFalkorDriver,
+    scope: MemoryScope,
+    client: Graphiti,
+    facts: list[Fact],
+    *,
+    session_id: str,
+) -> str:
+    """One chat turn stating ``facts`` through the production worker
+    (``ingest.enqueue_episode``), with ``client`` as the scope's graphiti
+    client. Returns the new episode's uuid.
+
+    The caller cancels the worker afterwards (``stop_ingestion_workers``).
+    """
+    name, description = _episode_labels(facts, session_id)
+    completion = ingest.IngestionCompletion()
+    with patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)):
+        queued = await ingest.enqueue_episode(
+            scope,
+            session_id,
+            name=name,
+            episode_body=". ".join(sentence for _, _, sentence in facts),
+            source_description=description,
+            completion=completion,
+        )
+        assert queued, "the ingestion queue refused the episode"
+        completion.register()
+        done = await ingest.wait_for_ingestion(completion, _INGEST_TIMEOUT_SECONDS)
+        assert done, "the ingestion worker did not finish"
+    found = await rows(
+        driver,
+        "MATCH (ep:Episodic {name: $name}) RETURN ep.uuid AS uuid",
+        name=name,
+    )
+    assert len(found) == 1, "the worker did not write the episode"
+    return found[0]["uuid"]
+
+
+async def stop_ingestion_workers() -> None:
+    """Cancel the per-scope workers a test's ingestion started."""
+    workers = list(ingest._get_loop_state().group_workers.values())
+    for worker in workers:
+        worker.cancel()
+    await asyncio.gather(*workers, return_exceptions=True)
+
+
 def _episode_labels(facts: list[Fact], session_id: str | None) -> tuple[str, str]:
     """``(name, source_description)``, as ingestion writes them for a chat
     turn of ``session_id``."""
@@ -177,7 +231,9 @@ async def edge_row(driver: AutoGPTFalkorDriver, edge_uuid: str) -> dict[str, Any
         MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
         RETURN e.status AS status, e.expired_at AS expired_at,
                e.invalid_at AS invalid_at, e.expiration_reason AS reason,
-               e.episodes AS episodes
+               e.forgotten_at AS forgotten_at, e.episodes AS episodes,
+               e.fact AS fact, e.fact_redacted AS fact_redacted,
+               e.name AS name, e.name_redacted AS name_redacted
         """,
         uuid=edge_uuid,
     )
@@ -191,7 +247,9 @@ async def episode_row(driver: AutoGPTFalkorDriver, episode_uuid: str) -> dict[st
         """
         MATCH (ep:Episodic {uuid: $uuid})
         RETURN ep.content AS content, ep.redacted_at AS redacted_at,
-               ep.entity_edges AS entity_edges
+               ep.entity_edges AS entity_edges, ep.name AS name,
+               ep.hard_deleted_at AS hard_deleted_at,
+               ep.provenance AS provenance
         """,
         uuid=episode_uuid,
     )
@@ -208,3 +266,14 @@ async def recalled_facts(scope: MemoryScope) -> set[str]:
 
 async def recalled_episodes(scope: MemoryScope) -> set[str]:
     return {episode.uuid for episode in await recall.recent_episodes(scope, 5)}
+
+
+async def live_facts(driver: AutoGPTFalkorDriver) -> dict[str, str]:
+    """Every live fact's sentence by edge uuid, under the recall policy."""
+    found = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO]->() "
+        f"WHERE {recall.live_fact_predicate('e')} "
+        "RETURN e.uuid AS uuid, e.fact AS fact",
+    )
+    return {row["uuid"]: row["fact"] for row in found}
