@@ -30,9 +30,12 @@ from backend.copilot.expert_context import (
 from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import ModelMode, resolve_model_route
 from backend.copilot.prompting import (
+    assemble_system_prompt,
+    copilot_role,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_graphiti_supplement,
+    get_role_charter,
     get_sdk_supplement,
     get_team_building_supplement,
 )
@@ -53,6 +56,11 @@ HARNESS_MODULES = ("generation.py", "runner.py", "scorer.py")
 # measured in; turning the flag off afterwards leaves a session this check
 # does not cover, which the baseline records rather than implies.
 DELEGATION_ENABLED = True
+# The role split (expert-task-management) is off in production, so the
+# baseline measures the undifferentiated prompt. Flip it to score the
+# role-first wording against that baseline; it is in the fingerprint, so a
+# flipped run cannot be mistaken for the old one.
+ROLE_SPLIT_ENABLED = False
 
 
 class RoutedModel(BaseModel):
@@ -146,20 +154,31 @@ def chat_system_prompt(expert: Expert | None) -> str:
     ``sdk/service.py``) with the flags such a session has on in production:
     cloud sandbox, hire-experts, memory. ``None`` is plain Otto."""
     suffix = render_expert_identity_suffix(expert) if expert else ""
-    return (
-        CACHEABLE_SYSTEM_PROMPT
-        + get_sdk_supplement(use_e2b=True, expert_session=expert is not None)
-        + (get_delegation_supplement() if DELEGATION_ENABLED else "")
-        + get_expert_oversight_supplement(
+    role = copilot_role(
+        expert.id if expert else None, role_split_enabled=ROLE_SPLIT_ENABLED
+    )
+    return assemble_system_prompt(
+        CACHEABLE_SYSTEM_PROMPT,
+        engine_supplement=get_sdk_supplement(
+            use_e2b=True, expert_session=expert is not None
+        ),
+        delegation_supplement=(
+            get_delegation_supplement(role) if DELEGATION_ENABLED else ""
+        ),
+        oversight_supplement=get_expert_oversight_supplement(
             experts_enabled=DELEGATION_ENABLED,
             expert_id=expert.id if expert else None,
-        )
-        + get_team_building_supplement(
+        ),
+        team_building_supplement=get_team_building_supplement(
             experts_enabled=DELEGATION_ENABLED,
             expert_id=expert.id if expert else None,
-        )
-        + get_graphiti_supplement()
-        + suffix
+        ),
+        chat_platform_supplement="",
+        graphiti_supplement=get_graphiti_supplement(role),
+        role_charter=get_role_charter(role) if ROLE_SPLIT_ENABLED else "",
+        auto_mode_supplement="",
+        builder_session_suffix="",
+        expert_session_suffix=suffix,
     )
 
 
@@ -209,7 +228,11 @@ def fingerprint_parts(
         "autopilot": _sha(chat_system_prompt(None) + user_prefix(None, experts)),
         "rubric": _sha(rubric.model_dump_json()),
         "models": _sha(f"{chat_model}|{judge_model}"),
-        "delegation": _sha(str(DELEGATION_ENABLED)),
+        # Suffix only when the split is on, so turning it off reproduces the
+        # hash of every baseline taken before the split existed.
+        "delegation": _sha(
+            str(DELEGATION_ENABLED) + ("|role-split" if ROLE_SPLIT_ENABLED else "")
+        ),
         "harness": harness_fingerprint(STYLE_DIR / m for m in HARNESS_MODULES),
         **{key: _sha(value) for key, value in sorted(by_name.items())},
     }

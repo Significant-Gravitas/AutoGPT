@@ -7,8 +7,28 @@ handling the distinction between:
 """
 
 from functools import cache
+from typing import Literal
 
 from backend.blocks.desktop._api import DISPLAY
+
+# Which seat this session occupies on the user's team: Otto is the head of
+# staff, an expert session is one hired employee. The role only changes
+# wording in the role-aware supplements — tool availability is gated
+# separately in tools/__init__.py.
+CopilotRole = Literal["autopilot", "expert"]
+
+
+def copilot_role(
+    expert_id: str | None, *, role_split_enabled: bool = True
+) -> CopilotRole:
+    """Which seat this session occupies, or "autopilot" while the split is off.
+
+    Forcing the role rather than skipping the role-aware sections is what
+    keeps a flag-off prompt byte-identical to the pre-split one: every
+    section's "autopilot" text is the text that shipped before it.
+    """
+    return "expert" if expert_id and role_split_enabled else "autopilot"
+
 
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
@@ -731,7 +751,8 @@ decide. Never write `{NO_REPLY}` inside a real reply.
 """
 
 
-def get_delegation_supplement() -> str:
+@cache
+def get_delegation_supplement(role: CopilotRole) -> str:
     """Delegation rules, appended only when the expert-team tools are enabled.
 
     Kept out of ``SHARED_TOOL_NOTES`` — that constant is concatenated
@@ -740,8 +761,15 @@ def get_delegation_supplement() -> str:
     the call site on the same ``experts_enabled`` boolean that feeds
     ``expert_tool_disabled_groups``, the way ``get_graphiti_supplement``
     is gated on its own tool group.
+
+    ``role`` appends the expert-side rules only; the "autopilot" text is
+    what every session gets with the role split off, so a flag-off prompt
+    is byte-identical to the one this branch's base ships.
     """
-    return """
+    return _DELEGATION_RULES + (_EXPERT_DELEGATION_RULES if role == "expert" else "")
+
+
+_DELEGATION_RULES = """
 
 ### Delegating to a teammate
 - When a subtask needs a *teammate's* skills, workflows, or integrations
@@ -778,6 +806,14 @@ def get_delegation_supplement() -> str:
 - A `block` is not a veto you can ignore quietly. Remove the flagged
   lines, or tell the user in your reply that you are overriding the
   objection and why. `insufficient` is not approval either.
+"""
+
+_EXPERT_DELEGATION_RULES = """
+### When the work came from someone else
+- Whoever delegated this to you is reading your reply and can usually
+  answer for the user. Blocked on scope, a choice, or a credential → end
+  your turn with that one question. Never stall silently, never guess
+  past it.
 """
 
 
@@ -829,15 +865,26 @@ the whole chat.
 """
 
 
-def get_graphiti_supplement() -> str:
+@cache
+def get_graphiti_supplement(role: CopilotRole) -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 
     Appended after the SDK/baseline supplement in both execution paths.
     """
-    return """
+    scope = _MEMORY_SCOPE_EXPERT if role == "expert" else _MEMORY_SCOPE_OTTO
+    return _MEMORY_RULES_PREFIX + scope + _MEMORY_RULES_BODY
+
+
+_MEMORY_RULES_PREFIX = """
 
 ## Memory System (Graphiti)
-You have access to persistent temporal memory tools scoped to the assistant running this session. Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions.
+You have access to persistent temporal memory tools scoped to the assistant running this session. """
+
+_MEMORY_SCOPE_OTTO = "Otto uses the user's personal memory; each hired expert uses its own separate memory across that expert's sessions."
+
+_MEMORY_SCOPE_EXPERT = "You are a hired expert with your own private memory spanning all of your sessions with this user — your accumulated professional experience on this team. Otto and the other experts cannot read it, and you cannot read theirs."
+
+_MEMORY_RULES_BODY = """
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
 **You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
@@ -863,3 +910,80 @@ You have access to persistent temporal memory tools scoped to the assistant runn
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
+
+
+_OTTO_HEAD_CHARTER = """
+
+## Your role — head of the user's team
+You are the head of the user's team of experts — a chief of staff, not a
+lone assistant:
+- Break a large goal into parts and route each to the expert whose role,
+  skills, or workflows fit it. Do specialist work yourself only when no
+  expert fits, or the job is quick and general.
+- The user asked you, not the org chart: synthesize what comes back into
+  one answer in your own voice.
+"""
+
+_EXPERT_EMPLOYEE_CHARTER = """
+
+## Operating as a hired expert — how you work
+You are one employee on the user's team, with your own role, memory and
+boundaries — not the whole platform:
+- Own what is yours: drive the work you are given to completion within
+  your role. Your memory and the skills you distill are your professional
+  experience — invest in them as you work.
+- Stay in your lane without dropping work: when part of a job needs a
+  teammate's skills, workflows, or integrations, don't improvise it.
+  `delegate_to_expert` when you need their answer to finish;
+  `handoff_to_expert` when the rest of the job is theirs. Asking a
+  colleague is normal work, not failure.
+- Finish loudly: close with a summary written for the person who asked,
+  and record durable facts in memory so the next task starts smarter.
+"""
+
+
+def get_role_charter(role: CopilotRole) -> str:
+    """Operating rules for this session's seat on the team.
+
+    The gap this fills: Otto has no framing saying it heads a team rather
+    than working alone, and an expert has none saying it is one employee
+    who should pass work on rather than improvise.
+    """
+    return _EXPERT_EMPLOYEE_CHARTER if role == "expert" else _OTTO_HEAD_CHARTER
+
+
+def assemble_system_prompt(
+    base_system_prompt: str,
+    *,
+    engine_supplement: str,
+    delegation_supplement: str,
+    oversight_supplement: str,
+    team_building_supplement: str,
+    chat_platform_supplement: str,
+    graphiti_supplement: str,
+    role_charter: str,
+    auto_mode_supplement: str,
+    builder_session_suffix: str,
+    expert_session_suffix: str,
+) -> str:
+    """Single source of truth for system-prompt section order.
+
+    Both engines and the SDK building-mode restart call this instead of
+    concatenating by hand, so the order cannot drift between them. Static
+    shared sections come first to keep the cacheable prefix long; the
+    per-expert ``<expert_identity>`` suffix stays last so the Soul takes
+    precedence over everything above it.
+    """
+    return (
+        base_system_prompt
+        + engine_supplement
+        + delegation_supplement
+        + oversight_supplement
+        + team_building_supplement
+        + chat_platform_supplement
+        + graphiti_supplement
+        + role_charter
+        + auto_mode_supplement
+        + builder_session_suffix
+        + expert_session_suffix
+    )

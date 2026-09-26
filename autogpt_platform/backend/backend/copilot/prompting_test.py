@@ -140,7 +140,7 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 class TestGraphitiMemoryScope:
     def test_supplement_describes_assistant_scoped_memory(self):
-        result = prompting.get_graphiti_supplement()
+        result = prompting.get_graphiti_supplement("autopilot")
 
         assert "scoped to the assistant running this session" in result
         assert "Otto uses the user's personal memory" in result
@@ -182,7 +182,7 @@ class TestTeamBuildingSupplement:
         )
 
     def test_delegation_supplement_no_longer_carries_hiring_rules(self):
-        result = prompting.get_delegation_supplement()
+        result = prompting.get_delegation_supplement("autopilot")
 
         assert "Delegating to a teammate" in result
         assert "Building the team" not in result
@@ -292,6 +292,141 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestCopilotRole:
+    """The seat a session occupies, and the switch that suppresses it."""
+
+    def test_an_expert_session_is_an_expert(self):
+        assert prompting.copilot_role("expert-a") == "expert"
+
+    def test_a_plain_session_is_autopilot(self):
+        assert prompting.copilot_role(None) == "autopilot"
+
+    def test_the_split_off_forces_autopilot_even_for_an_expert(self):
+        # Forcing the role (rather than skipping the role-aware sections)
+        # is what makes a flag-off prompt identical to the pre-split one.
+        assert (
+            prompting.copilot_role("expert-a", role_split_enabled=False) == "autopilot"
+        )
+
+
+class TestRoleSplitLeavesNoTraceWhenOff:
+    """With expert-task-management off every session — expert or not — gets
+    the text that shipped before the split, so the flag can be turned off
+    (or deleted) without changing a single prompt."""
+
+    def _sections(self, expert_id, *, role_split_enabled):
+        role = prompting.copilot_role(expert_id, role_split_enabled=role_split_enabled)
+        return (
+            prompting.get_delegation_supplement(role),
+            prompting.get_graphiti_supplement(role),
+            prompting.get_role_charter(role) if role_split_enabled else "",
+        )
+
+    def test_an_expert_session_reads_exactly_like_autopilot(self):
+        assert self._sections("expert-a", role_split_enabled=False) == self._sections(
+            None, role_split_enabled=False
+        )
+
+    def test_the_split_on_does_change_an_expert_session(self):
+        # The mirror of the test above: without this, a gate that never
+        # fires would pass the equality check for the wrong reason.
+        assert self._sections("expert-a", role_split_enabled=True) != self._sections(
+            None, role_split_enabled=True
+        )
+
+    def test_autopilot_text_is_the_same_on_both_sides_of_the_flag(self):
+        assert prompting.get_delegation_supplement(
+            "autopilot"
+        ) == prompting.get_delegation_supplement(
+            prompting.copilot_role(None, role_split_enabled=False)
+        )
+
+
+class TestRoleCharter:
+    """Otto is told it heads the team; an expert is told it is one member.
+    Neither charter may name a tool the other's session cannot call."""
+
+    def test_autopilot_charter_is_head_of_the_team(self):
+        charter = prompting.get_role_charter("autopilot")
+        assert "head of the user's team" in charter
+        assert "Operating as a hired expert" not in charter
+
+    def test_expert_charter_is_employee_rules(self):
+        charter = prompting.get_role_charter("expert")
+        assert "Operating as a hired expert" in charter
+        assert "delegate_to_expert" in charter
+        assert "handoff_to_expert" in charter
+
+    def test_no_charter_tells_an_expert_to_hire(self):
+        # hire_expert / raise_expert are expert_admin tools, refused in an
+        # expert session; get_team_building_supplement already owns that
+        # rule for Otto, so neither charter may restate it.
+        for role in ("autopilot", "expert"):
+            charter = prompting.get_role_charter(role)
+            assert "hire_expert" not in charter
+            assert "raise_expert" not in charter
+
+
+class TestExpertDelegationRules:
+    def test_only_an_expert_is_told_who_is_reading(self):
+        expert = prompting.get_delegation_supplement("expert")
+        autopilot = prompting.get_delegation_supplement("autopilot")
+        assert "When the work came from someone else" in expert
+        assert "When the work came from someone else" not in autopilot
+        # The expert text is additive: the shared delegation rules survive.
+        assert expert.startswith(autopilot)
+
+    def test_an_expert_is_told_its_memory_is_private(self):
+        memory = prompting.get_graphiti_supplement("expert")
+        assert "Otto and the other experts cannot read it" in memory
+        assert "Otto uses the user's personal memory" not in memory
+
+
+class TestAssembleSystemPrompt:
+    """One ordering for both engines and the building-mode restart."""
+
+    def _assemble(self, **overrides):
+        sections = dict(
+            engine_supplement="ENGINE",
+            delegation_supplement="DELEGATION",
+            oversight_supplement="OVERSIGHT",
+            team_building_supplement="TEAMBUILD",
+            chat_platform_supplement="PLATFORM",
+            graphiti_supplement="MEMORY",
+            role_charter="CHARTER",
+            auto_mode_supplement="AUTOMODE",
+            builder_session_suffix="BUILDER",
+            expert_session_suffix="IDENTITY",
+        )
+        sections.update(overrides)
+        return prompting.assemble_system_prompt("BASE", **sections)
+
+    def test_static_sections_precede_the_per_session_suffixes(self):
+        prompt = self._assemble()
+        order = [
+            "BASE",
+            "ENGINE",
+            "DELEGATION",
+            "OVERSIGHT",
+            "TEAMBUILD",
+            "PLATFORM",
+            "MEMORY",
+            "CHARTER",
+            "AUTOMODE",
+            "BUILDER",
+            "IDENTITY",
+        ]
+        assert [prompt.index(part) for part in order] == sorted(
+            prompt.index(part) for part in order
+        )
+
+    def test_dropping_the_charter_reproduces_the_pre_split_order(self):
+        # The order this PR inherited, with the charter's slot empty.
+        assert self._assemble(role_charter="") == (
+            "BASEENGINEDELEGATIONOVERSIGHTTEAMBUILDPLATFORMMEMORYAUTOMODEBUILDERIDENTITY"
+        )
 
 
 class TestMathGuidance:

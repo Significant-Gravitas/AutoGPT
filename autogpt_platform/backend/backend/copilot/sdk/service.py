@@ -124,8 +124,11 @@ from ..permissions import (
 )
 from ..prompting import (
     approval_mode_supplement,
+    assemble_system_prompt,
+    copilot_role,
     get_chat_platform_supplement,
     get_delegation_supplement,
+    get_role_charter,
     get_expert_oversight_supplement,
     get_team_building_supplement,
     get_graphiti_supplement,
@@ -1720,6 +1723,7 @@ async def _apply_building_mode_restart(
     oversight_supplement: str,
     team_building_supplement: str,
     graphiti_supplement: str,
+    role_charter: str,
     auto_mode_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1755,22 +1759,26 @@ async def _apply_building_mode_restart(
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
-    # Same supplement order as the main assembly. The delegation and
-    # chat-reading tools stay registered across a restart (registration happens
-    # once, before it), so dropping their disclosure rules here would leave the
-    # model able to delegate, or read a teammate's chats, silently for the rest
-    # of the turn.
-    system_prompt = (
-        base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
-        + delegation_supplement
-        + oversight_supplement
-        + team_building_supplement
-        + get_chat_platform_supplement(session.metadata.source_platform)
-        + graphiti_supplement
-        + auto_mode_supplement
-        + building_suffix
-        + expert_session_suffix
+    # The delegation and chat-reading tools stay registered across a restart
+    # (registration happens once, before it), so dropping their disclosure
+    # rules here would leave the model able to delegate, or read a teammate's
+    # chats, silently for the rest of the turn.
+    system_prompt = assemble_system_prompt(
+        base_system_prompt,
+        engine_supplement=get_sdk_supplement(
+            use_e2b=use_e2b, expert_session=bool(session.expert_id)
+        ),
+        delegation_supplement=delegation_supplement,
+        oversight_supplement=oversight_supplement,
+        team_building_supplement=team_building_supplement,
+        chat_platform_supplement=get_chat_platform_supplement(
+            session.metadata.source_platform
+        ),
+        graphiti_supplement=graphiti_supplement,
+        role_charter=role_charter,
+        auto_mode_supplement=auto_mode_supplement,
+        builder_session_suffix=building_suffix,
+        expert_session_suffix=expert_session_suffix,
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -4889,7 +4897,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
-        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         auto_mode_supplement = approval_mode_supplement(
             await active_mode(user_id, session)
         )
@@ -4901,7 +4908,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         experts_enabled = bool(user_id) and await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
         )
-        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        # The role split is a child gate on top of it.  With it off every
+        # session is prompted as Otto is today, which is what makes the
+        # flag-off system prompt byte-identical to the pre-split one.
+        role_split_enabled = (
+            experts_enabled
+            and user_id is not None
+            and await is_feature_enabled(
+                Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+            )
+        )
+        role = copilot_role(session.expert_id, role_split_enabled=role_split_enabled)
+        graphiti_supplement = get_graphiti_supplement(role) if graphiti_enabled else ""
+        delegation_supplement = (
+            get_delegation_supplement(role) if experts_enabled else ""
+        )
+        role_charter = get_role_charter(role) if role_split_enabled else ""
         oversight_supplement = get_expert_oversight_supplement(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
@@ -4926,19 +4948,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # calls into a gate that asks about *this* turn.
         session.clear_inflight_tool_calls()
         session.guide_in_system_prompt = bool(builder_session_suffix)
-        system_prompt = (
-            base_system_prompt
-            + get_sdk_supplement(
+        system_prompt = assemble_system_prompt(
+            base_system_prompt,
+            engine_supplement=get_sdk_supplement(
                 use_e2b=use_e2b, expert_session=bool(session.expert_id)
-            )
-            + delegation_supplement
-            + oversight_supplement
-            + team_building_supplement
-            + chat_platform_supplement
-            + graphiti_supplement
-            + auto_mode_supplement
-            + builder_session_suffix
-            + expert_session_suffix
+            ),
+            delegation_supplement=delegation_supplement,
+            oversight_supplement=oversight_supplement,
+            team_building_supplement=team_building_supplement,
+            chat_platform_supplement=chat_platform_supplement,
+            graphiti_supplement=graphiti_supplement,
+            role_charter=role_charter,
+            auto_mode_supplement=auto_mode_supplement,
+            builder_session_suffix=builder_session_suffix,
+            expert_session_suffix=expert_session_suffix,
         )
 
         transcript_content = _restore.transcript_content
@@ -5760,6 +5783,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     delegation_supplement=delegation_supplement,
                     oversight_supplement=oversight_supplement,
                     team_building_supplement=team_building_supplement,
+                    role_charter=role_charter,
                     graphiti_supplement=graphiti_supplement,
                     auto_mode_supplement=auto_mode_supplement,
                     use_e2b=use_e2b,
