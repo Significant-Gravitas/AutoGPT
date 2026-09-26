@@ -1,237 +1,149 @@
-"""What ingestion does so graphiti's ``add_episode`` cannot undo a forget.
+"""How ingestion repairs what graphiti's ``add_episode`` does to a forget
+(``graphiti/AGENTS.md`` lists what stays out of reach).
 
-graphiti resolves each new fact against every edge between the same
-entities, forgotten ones included, and offers any edge as a contradiction
-candidate. Resolving into a forgotten edge appends the new episode to it
-(and, on its LLM path, rewrites its attributes, dropping the forget's audit
-fields); a contradiction stamps its ``invalid_at``. Either way the new
-episode then cites a forgotten edge and is hidden with it, and a fact the
-user states again never becomes live.
+graphiti works from what it read when the episode started. It resolves each
+new fact against every edge between the same entities, forgotten ones
+included: its model can call the fact a duplicate of a forgotten edge (the
+episode is appended to it and its attributes rewritten, the forget's fields
+with them) or say it contradicts one (``invalid_at`` is stamped). And it
+saves the edges and entities it read (``SET r = edge``, ``SET n = node``),
+so a forget that landed while it ran is overwritten by the older copy.
 
-So ingestion snapshots every forgotten edge before ``add_episode`` and hands
-the snapshot back here afterwards: each forgotten edge graphiti changed is
-put back exactly, the new episode stops citing it, and a fact stated again
-gets a new live edge, built from what graphiti's own edge extraction reads
-out of the episode. Neither step ever fails the write: a failed read or
-repair is logged, and the episode stays as graphiti wrote it.
+So ``ingest._add_episode`` snapshots every forgotten edge before
+``add_episode`` and calls ``keep_forgotten`` after it, which also reads the
+forget stash (``recall_stash.py``, forgets from any process), decides what to
+repair (``recall_ingest_plan.py``) and does it here:
+
+- a forget that landed while the episode ran is applied again as a whole
+  (``recall_forget.forget_edges``); a hard one whose edge stays gone still
+  has its endpoints scrubbed;
+- a forgotten edge graphiti changed is put back (``recall_restore.py``);
+- whether the episode's statement is covered by the forget depends on when
+  it was said: said before the forget, it is one of the forgotten fact's
+  sources and is hidden with it, and an edge graphiti made from it that says
+  the forgotten sentence again is forgotten too; said after, it states the
+  fact again, is taken off the forgotten edge and gets a new live edge
+  (``recall_restate.py``);
+- an episode that only cites a forgotten edge as contradicted stops citing it.
+
+None of it ever fails the write: every failure is logged, and a restore that
+failed twice is left in the stash for the next ingestion or forget.
 """
 
 import logging
+from collections.abc import Awaitable
 from datetime import datetime, timezone
-from typing import Any
 
 from graphiti_core import Graphiti
 from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodicNode
-from graphiti_core.utils.maintenance.edge_operations import extract_edges
-from pydantic import BaseModel
 
-from .recall import forgotten_fact_predicate
-from .types import EDGE_TYPE_MAP, EDGE_TYPES, MemoryFact
+from .memory_model import ForgetResult
+from .recall_forget import forget_edges
+from .recall_hide import Hiding, hide, scrub_entities
+from .recall_ingest_plan import IngestRun, Plan, Reapply, make_plan
+from .recall_restate import restate
+from .recall_restore import ForgottenEdge, restore
+from .recall_stash import read_forgets
 
 logger = logging.getLogger(__name__)
-
-# Every field a forget, the audit views or recall read off a forgotten edge.
-_FIELDS = (
-    *MemoryFact.model_fields,
-    "forgotten_at",
-    "fact",
-    "fact_redacted",
-    "name",
-    "name_redacted",
-    "expired_at",
-    "invalid_at",
-    "valid_at",
-    "episodes",
-)
-# A fact stated again starts live, like any fact graphiti extracts.
-_LIVE_ATTRIBUTES = MemoryFact().model_dump(mode="json", exclude_none=True)
-
-
-class ForgottenEdge(BaseModel):
-    uuid: str
-    source: str
-    target: str
-    fields: dict[str, Any]
-
-
-async def snapshot_forgotten(driver: GraphDriver) -> dict[str, ForgottenEdge]:
-    """Every forgotten fact as it stands before an ``add_episode``."""
-    try:
-        rows = _rows(await driver.execute_query(_SNAPSHOT_QUERY))
-    except Exception:
-        logger.warning("Forgotten-fact snapshot failed; not guarded", exc_info=True)
-        return {}
-    return {row["uuid"]: _edge(row) for row in rows}
 
 
 async def keep_forgotten(
     client: Graphiti,
+    run: IngestRun,
     before: dict[str, ForgottenEdge],
     result: AddEpisodeResults,
-    previous: list[str],
-    instructions: str | None,
 ) -> None:
-    """Put back each forgotten edge ``add_episode`` changed, and give each
-    fact it resolved into one a new live edge the new episode cites."""
-    if not before:
+    """Keep every forget through the ``add_episode`` that produced
+    ``result`` (see the module docstring)."""
+    stashed = await read_forgets(run.group_id)
+    if not before and not stashed:
         return
     try:
-        absorbed = await _put_back(client.driver, before, result.episode.uuid)
-        new_edges = (
-            await _restate(client, absorbed, result, previous, instructions)
-            if absorbed
-            else []
-        )
-        await _repoint(client.driver, result.episode, list(before), new_edges)
+        plan = await make_plan(client.driver, run, before, stashed, result)
     except Exception:
-        logger.warning(
-            "Repairing forgotten facts after ingestion failed", exc_info=True
-        )
+        logger.warning("Reading forgotten facts after ingestion failed", exc_info=True)
         return
-    result.edges = [e for e in result.edges if e.uuid not in before] + new_edges
+    await carry_out(client, run, plan, result)
 
 
-async def _put_back(
-    driver: GraphDriver, before: dict[str, ForgottenEdge], episode_uuid: str
-) -> list[ForgottenEdge]:
-    """Restore every forgotten edge ``add_episode`` changed; returns those it
-    had merged the new episode into."""
-    rows = _rows(await driver.execute_query(_READ_QUERY, uuids=list(before)))
-    after = {row["uuid"]: _edge(row) for row in rows}
-    changed = [edge for edge in before.values() if after.get(edge.uuid) != edge]
-    for edge in changed:
-        await driver.execute_query(_RESTORE_QUERY, uuid=edge.uuid, fields=edge.fields)
-    return [
-        edge
-        for edge in changed
-        if edge.uuid in after
-        and episode_uuid in (after[edge.uuid].fields.get("episodes") or [])
-    ]
+async def carry_out(
+    client: Graphiti, run: IngestRun, plan: Plan, result: AddEpisodeResults
+) -> None:
+    """Each step on its own, so one failing leaves the others done."""
+    driver = client.driver
+    new_edges = await _restate(client, run, plan, result)
+    await _step(_repoint(driver, result.episode, plan.unlink, new_edges))
+    for spec in plan.restores:
+        await restore(driver, run.group_id, spec)
+    now = datetime.now(timezone.utc).isoformat()
+    covered = Hiding(
+        uuids=[spec.uuid for spec in plan.covered],
+        recovered=[
+            [spec.uuid, spec.audit["fact_redacted"], spec.audit["name_redacted"]]
+            for spec in plan.covered
+        ],
+    )
+    await _step(hide(driver, run.group_id, covered, now, ForgetResult()))
+    if plan.scrub:
+        await _step(scrub_entities(driver, [], plan.scrub))
+    for (hard, reason), uuids in _grouped(plan.reapply).items():
+        await forget_edges(driver, run.group_id, uuids, hard=hard, reason=reason)
+    result.edges = [
+        edge for edge in result.edges if edge.uuid not in plan.forgotten
+    ] + new_edges
+
+
+def _grouped(entries: list[Reapply]) -> dict[tuple[bool, str], list[str]]:
+    grouped: dict[tuple[bool, str], list[str]] = {}
+    for entry in entries:
+        grouped.setdefault((entry.hard, entry.reason), []).append(entry.uuid)
+    return grouped
+
+
+async def _restate(
+    client: Graphiti, run: IngestRun, plan: Plan, result: AddEpisodeResults
+) -> list[EntityEdge]:
+    if not plan.merged:
+        return []
+    merged = {(spec.source or "", spec.target or "") for spec in plan.merged}
+    try:
+        return await restate(client, result, merged, run.previous, run.instructions)
+    except Exception:
+        logger.warning("Restating facts taught again failed", exc_info=True)
+        return []
 
 
 async def _repoint(
     driver: GraphDriver,
     episode: EpisodicNode,
-    forgotten: list[str],
-    new_edges: list[EntityEdge],
+    unlink: list[str],
+    added: list[EntityEdge],
 ) -> None:
-    """Point the new episode at its new live edges and away from any
-    forgotten one, which would otherwise hide it."""
-    if not new_edges and not set(forgotten) & set(episode.entity_edges):
+    """Point the episode at its new live edges and away from the forgotten
+    ones that would otherwise hide it."""
+    if not unlink and not added:
         return
     await driver.execute_query(
         _REPOINT_QUERY,
         uuid=episode.uuid,
-        forgotten=forgotten,
-        added=[edge.uuid for edge in new_edges],
+        unlink=unlink,
+        added=[edge.uuid for edge in added],
     )
 
 
-async def _restate(
-    client: Graphiti,
-    absorbed: list[ForgottenEdge],
-    result: AddEpisodeResults,
-    previous: list[str],
-    instructions: str | None,
-) -> list[EntityEdge]:
-    """A new live edge for each forgotten fact the episode stated again, its
-    sentence from graphiti's own extraction of the episode."""
-    episode = result.episode
-    context = (
-        await EpisodicNode.get_by_uuids(client.driver, previous) if previous else []
-    )
-    extracted = await extract_edges(
-        client.clients,
-        episode,
-        result.nodes,
-        context,
-        EDGE_TYPE_MAP,
-        episode.group_id,
-        EDGE_TYPES,
-        instructions,
-    )
-    new_edges: list[EntityEdge] = []
-    for edge in absorbed:
-        stated = next(
-            (
-                x
-                for x in extracted
-                if (x.source_node_uuid, x.target_node_uuid)
-                == (edge.source, edge.target)
-            ),
-            None,
-        )
-        if stated is None:
-            logger.warning(f"No sentence re-extracted for forgotten fact {edge.uuid}")
-            continue
-        new_edges.append(await _live_edge(client, episode, stated))
-    return new_edges
+async def _step(work: Awaitable[object]) -> None:
+    try:
+        await work
+    except Exception:
+        logger.warning("A forget repair step failed after ingestion", exc_info=True)
 
-
-async def _live_edge(
-    client: Graphiti, episode: EpisodicNode, stated: EntityEdge
-) -> EntityEdge:
-    edge = EntityEdge(
-        group_id=episode.group_id,
-        source_node_uuid=stated.source_node_uuid,
-        target_node_uuid=stated.target_node_uuid,
-        created_at=datetime.now(timezone.utc),
-        name=stated.name,
-        fact=stated.fact,
-        episodes=[episode.uuid],
-        valid_at=episode.valid_at,
-        attributes=dict(_LIVE_ATTRIBUTES),
-    )
-    await edge.generate_embedding(client.embedder)
-    await edge.save(client.driver)
-    return edge
-
-
-def _edge(row: dict[str, Any]) -> ForgottenEdge:
-    return ForgottenEdge(
-        uuid=row["uuid"],
-        source=row["source"],
-        target=row["target"],
-        fields={field: row[field] for field in _FIELDS},
-    )
-
-
-def _rows(
-    result: tuple[list[dict[str, Any]], list[str], None] | None,
-) -> list[dict[str, Any]]:
-    return result[0] if result else []
-
-
-_RETURN = "e.uuid AS uuid, source.uuid AS source, target.uuid AS target, " + ", ".join(
-    f"e.{field} AS {field}" for field in _FIELDS
-)
-
-_SNAPSHOT_QUERY = f"""
-MATCH (source)-[e:RELATES_TO]->(target)
-WHERE {forgotten_fact_predicate("e")}
-RETURN {_RETURN}
-"""
-
-# By uuid, not by the forgotten test: graphiti's attribute rewrite can strip
-# the markers that test reads.
-_READ_QUERY = f"""
-MATCH (source)-[e:RELATES_TO]->(target)
-WHERE e.uuid IN $uuids
-RETURN {_RETURN}
-"""
-
-# ``+=`` sets every snapshot field back and leaves the embedding alone; a
-# null in the snapshot removes a property graphiti added.
-_RESTORE_QUERY = """
-MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
-SET e += $fields
-"""
 
 _REPOINT_QUERY = """
 MATCH (ep:Episodic {uuid: $uuid})
 SET ep.entity_edges =
-    [x IN coalesce(ep.entity_edges, []) WHERE NOT x IN $forgotten] + $added
+    [x IN coalesce(ep.entity_edges, []) WHERE NOT x IN $unlink] + $added
 """

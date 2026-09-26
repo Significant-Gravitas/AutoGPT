@@ -17,16 +17,16 @@ left with no fact and no mention.
 import logging
 from typing import Any
 
-from .falkordb_driver import AutoGPTFalkorDriver
+from graphiti_core.driver.driver import GraphDriver
+
 from .memory_model import ForgetResult, MemoryForgetFailure, envelope_provenance
-from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
 
 async def purge(
-    driver: AutoGPTFalkorDriver,
-    scope: MemoryScope,
+    driver: GraphDriver,
+    group_id: str,
     uuids: list[str],
     now: str,
     result: ForgetResult,
@@ -37,19 +37,17 @@ async def purge(
     try:
         result.tombstoned_episodes = await _tombstone(driver, uuids, now)
     except Exception as exc:
-        _report(scope, uuids, exc, result)
+        _report(group_id, uuids, exc, result)
         return
     for edge_uuid in uuids:
-        await _delete_edge(driver, scope, edge_uuid, result)
+        await _delete_edge(driver, group_id, edge_uuid, result)
     tombstoned = set(result.tombstoned_episodes)
     result.redacted_episodes = [
         episode for episode in result.redacted_episodes if episode not in tombstoned
     ]
 
 
-async def _tombstone(
-    driver: AutoGPTFalkorDriver, uuids: list[str], now: str
-) -> list[str]:
+async def _tombstone(driver: GraphDriver, uuids: list[str], now: str) -> list[str]:
     """Empty every episode nothing outside ``uuids`` cites, keeping the
     envelope provenance its text carried (parsed here, not in Cypher)."""
     citing = _rows(await driver.execute_query(_CITING_EPISODES_QUERY, uuids=uuids))
@@ -67,19 +65,19 @@ async def _tombstone(
 
 
 async def _delete_edge(
-    driver: AutoGPTFalkorDriver,
-    scope: MemoryScope,
+    driver: GraphDriver,
+    group_id: str,
     edge_uuid: str,
     result: ForgetResult,
 ) -> None:
     try:
         rows = _rows(
             await driver.execute_query(
-                _DELETE_EDGE_QUERY, uuid=edge_uuid, group_id=scope.group_id
+                _DELETE_EDGE_QUERY, uuid=edge_uuid, group_id=group_id
             )
         )
     except Exception as exc:
-        _report(scope, [edge_uuid], exc, result)
+        _report(group_id, [edge_uuid], exc, result)
         return
     if not rows:
         result.failures.append(MemoryForgetFailure.no_match(edge_uuid))
@@ -89,11 +87,11 @@ async def _delete_edge(
 
 
 def _report(
-    scope: MemoryScope, uuids: list[str], exc: Exception, result: ForgetResult
+    group_id: str, uuids: list[str], exc: Exception, result: ForgetResult
 ) -> None:
     logger.warning(
-        f"Edges retracted and hidden but hard deletion failed for user "
-        f"{scope.owner_user_id[:12]}",
+        f"Edges retracted and hidden but hard deletion failed in graph "
+        f"{group_id[:20]}",
         exc_info=True,
     )
     result.failures.extend(
@@ -101,9 +99,7 @@ def _report(
     )
 
 
-def _rows(
-    result: tuple[list[dict[str, Any]], list[str], None] | None,
-) -> list[dict[str, Any]]:
+def _rows(result: Any) -> list[dict[str, Any]]:
     return result[0] if result else []
 
 

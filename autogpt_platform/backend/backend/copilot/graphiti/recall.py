@@ -11,8 +11,8 @@ A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` and
 ``forgotten_at`` are unset and its ``status`` is ``active`` or ``tentative``;
 an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
 as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
-a forget stamps ``forgotten_at``, which only a forget writes
-(``recall_forget.py``, or the legacy-forget backfill for older ones), so no
+a forget stamps ``forgotten_at``, which only a forget writes (``recall_forget.py``,
+the legacy-forget backfill, or ``recall_ingest.py`` writing one back), so no
 other writer's status or reason can make it look remembered again. An
 episode is recallable while no forget has stamped ``redacted_at`` on it and
 none of the facts extracted from it is forgotten: one forgotten fact hides
@@ -94,8 +94,8 @@ def fact_status(fact: EntityEdge) -> str | None:
 def forgotten_fact_predicate(alias: str = "e") -> str:
     """The forgotten-fact test as a Cypher ``WHERE`` fragment on edge ``alias``.
 
-    A user forgot the fact: a forget stamped ``forgotten_at`` (the marker
-    only a forget writes), or, from before that marker, it is ``retracted``,
+    A user forgot the fact: a forget stamped ``forgotten_at`` (a marker that
+    originates only in a forget), or, from before that marker, it is ``retracted``,
     its ``expiration_reason`` is ``USER_FORGET_REASON`` (a dream demotion made
     on the user's word records that too), or it has the
     ``legacy_forget_predicate`` shape.

@@ -6,11 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.graphiti.recall import FORGOTTEN_FACT, legacy_forget_predicate
-from backend.copilot.graphiti.recall_hide import (
-    REDACT_EPISODES_QUERY,
-    SCRUB_FACTS_QUERY,
-)
+from backend.copilot.graphiti.recall import legacy_forget_predicate
+from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, Hiding
 
 from . import backfill_legacy_forgets as backfill
 
@@ -37,16 +34,15 @@ class TestBackfillGraph:
         """The forget's own scrub and redaction run on the edges the count
         found; the restamp goes last, since a restamped edge no longer has
         the legacy shape and a re-run could not find it again."""
-        driver = _driver(
-            [{"uuids": ["e1", "e2"], "edges": 2, "episodes": 1}], [], [], []
-        )
+        driver = _driver([{"uuids": ["e1", "e2"], "edges": 2, "episodes": 1}], [], [])
+        scrub = AsyncMock()
 
-        await backfill.backfill_graph(driver, apply=True)
+        with patch.object(backfill, "scrub", scrub):
+            await backfill.backfill_graph(driver, apply=True)
 
-        count, scrub, redact, restamp = driver.execute_query.await_args_list
+        scrub.assert_awaited_once_with(driver, Hiding(uuids=["e1", "e2"]))
+        count, redact, restamp = driver.execute_query.await_args_list
         assert count.args[0] == backfill.COUNT_QUERY
-        assert scrub.args[0] == SCRUB_FACTS_QUERY
-        assert scrub.kwargs == {"uuids": ["e1", "e2"], "placeholder": FORGOTTEN_FACT}
         assert redact.args[0] == REDACT_EPISODES_QUERY
         assert redact.kwargs["uuids"] == ["e1", "e2"]
         assert set(redact.kwargs) == {"uuids", "now"}

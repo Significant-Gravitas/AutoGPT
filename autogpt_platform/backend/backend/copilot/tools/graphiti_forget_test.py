@@ -12,12 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from graphiti_core.edges import EntityEdge
 
+from backend.copilot.graphiti import recall_stash
 from backend.copilot.graphiti.memory_model import (
     ForgetResult,
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
 from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
@@ -25,7 +27,6 @@ from backend.copilot.tools.graphiti_forget import (
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
-    _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
@@ -41,31 +42,22 @@ async def _enabled(_user_id: str) -> bool:
     return True
 
 
+@pytest.fixture(autouse=True)
+def forget_stash(mocker) -> FakeRedis:
+    """The real ``retract`` stashes each forget; keep that in memory."""
+    redis = FakeRedis()
+    mocker.patch.object(
+        recall_stash, "get_redis_async", mocker.AsyncMock(return_value=redis)
+    )
+    return redis
+
+
 def _mock_driver(*results) -> AsyncMock:
     """A FalkorDB driver whose queries return ``results`` in order, for
     driving the real ``retract`` from the confirm tool."""
     driver = AsyncMock()
     driver.execute_query.side_effect = [(r, [], None) for r in results]
     return driver
-
-
-class TestSoftDeleteOverReportsSuccess:
-    """_soft_delete_edges always appends UUID to deleted list even when
-    the Cypher MATCH found no edge (query succeeds but matches nothing).
-    """
-
-    @pytest.mark.asyncio
-    async def test_reports_failure_when_no_edge_matched(self) -> None:
-        driver = AsyncMock()
-        # execute_query returns empty result set — no edge matched
-        driver.execute_query.return_value = ([], None, None)
-
-        deleted, failed = await _soft_delete_edges(
-            driver, ["nonexistent-uuid"], "test-user"
-        )
-        # Should NOT report success when nothing was actually updated
-        assert deleted == [], f"over-reported success: {deleted}"
-        assert failed == ["nonexistent-uuid"]
 
 
 class TestExpertMemoryScope:
@@ -170,24 +162,6 @@ class TestForgetConfirmModes:
         assert "temporarily unavailable" in response.message
 
 
-class TestSoftDeleteNoMatchReportsFailure:
-    """When the query returns empty records (no edge with that UUID exists
-    in the database), _soft_delete_edges should report it as failed.
-    """
-
-    @pytest.mark.asyncio
-    async def test_soft_delete_handles_non_relates_to_edge(self) -> None:
-        driver = AsyncMock()
-        # Simulate: RELATES_TO match returns nothing (edge is MENTIONS type)
-        driver.execute_query.return_value = ([], None, None)
-
-        deleted, failed = await _soft_delete_edges(
-            driver, ["mentions-edge-uuid"], "test-user"
-        )
-        # With the bug, this reports success even though nothing was updated
-        assert "mentions-edge-uuid" not in deleted
-
-
 class TestForgetFailuresAreActionable:
     """SECRT-2371: soft delete must not fail silently. Every failure — whether
     the query errored or matched nothing — has to carry a per-UUID reason so
@@ -231,6 +205,7 @@ class TestForgetFailuresAreActionable:
             [{"uuid": "kept"}],  # lookup: only "kept" exists
             [{"uuid": "kept"}],  # retract "kept"
             [],  # scrub its sentence
+            [],  # find the entities to scrub (none)
             [],  # redact its episodes
         )
         session = ChatSession.new("user-abc", dry_run=False)
@@ -262,6 +237,7 @@ class TestForgetFailuresAreActionable:
             ([{"uuid": "u1"}], [], None),  # lookup
             ([{"uuid": "u1"}], [], None),  # retract
             ([], [], None),  # scrub its sentence
+            ([], [], None),  # find the entities to scrub (none)
             RuntimeError("down"),  # redact its episodes
         ]
         session = ChatSession.new("user-abc", dry_run=False)
@@ -314,25 +290,6 @@ class TestBuildConfirmMessage:
         assert message.count("uuid-") == _MAX_FAILURE_DETAIL
         # Bounded regardless of batch size — cannot grow with the input.
         assert len(message) < _MAX_FAILURE_DETAIL * 300
-
-
-class TestSoftDeleteContradictionPath:
-    """`_soft_delete_edges` is reserved for the contradiction detector
-    and MUST still set both expired_at AND invalid_at."""
-
-    @pytest.mark.asyncio
-    async def test_soft_delete_sets_both_timestamps(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
-
-        await _soft_delete_edges(driver, ["u1"], "test-user")
-
-        query = driver.execute_query.call_args.args[0]
-        assert "e.invalid_at = $now" in query
-        assert "e.expired_at = $now" in query
-        # ``now`` parameter is bound from Python (FalkorDB doesn't
-        # implement Cypher's no-arg ``datetime()``).
-        assert "now" in driver.execute_query.call_args.kwargs
 
 
 class TestMarkEdgesSuperseded:

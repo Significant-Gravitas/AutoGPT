@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.recall import (
     forgotten_facts_clause,
+    live_fact_predicate,
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
@@ -206,14 +207,13 @@ async def _fetch_active_facts(
     group_id: str,
     limit: int,
 ) -> list[FactRow]:
-    # Active facts only: tentative, superseded, contradicted and retracted
-    # (user-forgotten) edges all fail the status test.
+    # Active facts only, by recall's own live test: tentative, superseded,
+    # contradicted, retracted and forgotten edges all fail it.
     try:
         result = await driver.execute_query(
-            """
-            MATCH (src:Entity)-[e:RELATES_TO {group_id: $g}]->(tgt:Entity)
-            WHERE (e.status IS NULL OR e.status = 'active')
-              AND (e.expired_at IS NULL)
+            f"""
+            MATCH (src:Entity)-[e:RELATES_TO {{group_id: $g}}]->(tgt:Entity)
+            WHERE {live_fact_predicate("e", include_tentative=False)}
             RETURN e.uuid AS uuid,
                    src.name AS source,
                    tgt.name AS target,

@@ -50,6 +50,7 @@ from .scope import MemoryScope
 
 _STEPS = {
     "scrub": recall_hide.SCRUB_FACTS_QUERY,
+    "entity-scrub": recall_hide._SCRUB_ENTITIES_QUERY,
     "redaction": recall_hide.REDACT_EPISODES_QUERY,
     "citing-read": recall_orphans._CITING_EPISODES_QUERY,
     "tombstone": recall_orphans._TOMBSTONE_QUERY,

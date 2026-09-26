@@ -231,8 +231,7 @@ class MemoryForgetConfirmTool(BaseTool):
             )
 
         # A soft forget is a *system* retraction, not a world change: the
-        # edge keeps its ``invalid_at`` (``_soft_delete_edges``, which sets
-        # it, is reserved for the contradiction detector). See ``retract``.
+        # edge keeps its ``invalid_at``. See ``retract``.
         try:
             result = await retract(memory_scope, uuids, hard=hard_delete)
         except Exception:
@@ -287,48 +286,6 @@ def _candidate(edge: EntityEdge) -> dict[str, str]:
         "valid_from": valid_from,
         "valid_to": valid_to,
     }
-
-
-async def _soft_delete_edges(
-    driver, uuids: list[str], user_id: str
-) -> tuple[list[str], list[str]]:
-    """Bi-temporal invalidation — mark edges as both expired AND invalid.
-
-    Reserved for the *contradiction detector*: when new evidence proves
-    a fact ceased being true in the world, set ``invalid_at`` (valid time)
-    in addition to ``expired_at`` (transaction time). User-initiated
-    forget goes through ``recall_forget.retract`` instead; conflating the
-    two breaks the bi-temporal model (audit §6.13).
-
-    Matches RELATES_TO, MENTIONS, HAS_MEMBER edges.
-    """
-    deleted = []
-    failed = []
-    for uuid in uuids:
-        try:
-            records, _, _ = await driver.execute_query(
-                """
-                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
-                SET e.invalid_at = $now,
-                    e.expired_at = $now
-                RETURN e.uuid AS uuid
-                """,
-                uuid=uuid,
-                now=_now_iso(),
-            )
-            if records:
-                deleted.append(uuid)
-            else:
-                failed.append(uuid)
-        except Exception:
-            logger.warning(
-                "Failed to soft-delete edge %s for user %s",
-                uuid,
-                user_id[:12],
-                exc_info=True,
-            )
-            failed.append(uuid)
-    return deleted, failed
 
 
 async def mark_edges_superseded(

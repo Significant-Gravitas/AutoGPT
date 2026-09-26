@@ -20,7 +20,6 @@ runaway-demotion footgun.
 import pytest
 
 from backend.copilot.tools.graphiti_forget import (
-    _soft_delete_edges,
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
@@ -43,21 +42,6 @@ async def _select_edge(driver, uuid: str) -> dict | None:
 
 # The user-forget retraction (``expired_at`` + ``status='retracted'``,
 # never ``invalid_at``) is pinned live in ``recall_integration_test.py``.
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_soft_delete_edges_sets_both(seeded_graph) -> None:
-    """Contradiction-detector path keeps the original both-timestamps behavior."""
-    driver, group_id = seeded_graph
-
-    deleted, _ = await _soft_delete_edges(driver, ["e1"], "test-user")
-    assert deleted == ["e1"]
-
-    row = await _select_edge(driver, "e1")
-    assert row is not None
-    assert row["expired_at"] is not None
-    assert row["invalid_at"] is not None
 
 
 @pytest.mark.integration

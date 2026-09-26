@@ -4,10 +4,11 @@ A forget used to set ``expired_at`` on the fact and nothing else, and left
 its episodes as they were. The recall policy still treats that shape as a
 forget (``recall.legacy_forget_predicate``); this script makes those records
 look like today's forgets, so that clause can be dropped once it has run
-everywhere. It hides what a forget hides with the forget's own queries
+everywhere. It hides what a forget hides with the forget's own code
 (``recall_hide.py``): the fact's sentence moves to ``fact_redacted``, the
-endpoint and community summaries are blanked, and every episode naming the
-edge is stamped ``redacted_at``. Then it gives the edge what
+summaries and attributes of the entities it joins or its episodes mention
+are cleared, and so are their communities' summaries, and every episode
+naming the edge is stamped ``redacted_at``. Then it gives the edge what
 ``recall_forget.retract`` writes: ``forgotten_at`` (the old forget's
 ``expired_at``), ``status='retracted'`` and ``expiration_reason='user_signal'``.
 The restamp goes last because a restamped edge no longer has the legacy
@@ -36,15 +37,8 @@ from pydantic import BaseModel
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.memory_model import MemoryStatus
-from backend.copilot.graphiti.recall import (
-    FORGOTTEN_FACT,
-    USER_FORGET_REASON,
-    legacy_forget_predicate,
-)
-from backend.copilot.graphiti.recall_hide import (
-    REDACT_EPISODES_QUERY,
-    SCRUB_FACTS_QUERY,
-)
+from backend.copilot.graphiti.recall import USER_FORGET_REASON, legacy_forget_predicate
+from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, Hiding, scrub
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +64,7 @@ async def backfill_graph(driver: AutoGPTFalkorDriver, *, apply: bool) -> LegacyF
     found = _GraphForgets.model_validate(records[0]) if records else _GraphForgets()
     if not apply or not found.edges:
         return found
-    await driver.execute_query(
-        SCRUB_FACTS_QUERY, uuids=found.uuids, placeholder=FORGOTTEN_FACT
-    )
+    await scrub(driver, Hiding(uuids=found.uuids))
     await driver.execute_query(
         REDACT_EPISODES_QUERY,
         uuids=found.uuids,

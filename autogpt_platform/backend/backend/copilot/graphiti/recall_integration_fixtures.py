@@ -8,6 +8,7 @@ collected by pytest.
 """
 
 import asyncio
+import json
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -22,6 +23,7 @@ from backend.copilot.tools import graphiti_search
 
 from . import ingest, recall
 from .falkordb_driver import AutoGPTFalkorDriver
+from .recall_fake_redis import FakeRedis
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -34,29 +36,6 @@ BOB: Fact = ("Bob", "Atlas", "Bob leads Atlas")
 CAROL: Fact = ("Carol", "Borealis", "Carol owns Borealis")
 
 _INGEST_TIMEOUT_SECONDS = 25.0
-
-
-class FakeRedis:
-    """Honours SET NX like Redis, so ``record_memory_hit`` counts correctly."""
-
-    def __init__(self) -> None:
-        self.values: dict[str, int] = {}
-
-    async def get(self, key: str) -> bytes | None:
-        return str(self.values[key]).encode() if key in self.values else None
-
-    async def set(self, key: str, value: int, **kwargs: object) -> bool:
-        if kwargs.get("nx") and key in self.values:
-            return False
-        self.values[key] = int(value)
-        return True
-
-    async def incr(self, key: str) -> int:
-        self.values[key] = self.values.get(key, 0) + 1
-        return self.values[key]
-
-    async def expire(self, key: str, ttl_seconds: int) -> bool:
-        return True
 
 
 def patch_recall_boundaries(
@@ -168,10 +147,11 @@ async def ingest_through_the_worker(
     facts: list[Fact],
     *,
     session_id: str,
+    body: str | None = None,
 ) -> str:
-    """One chat turn stating ``facts`` through the production worker
-    (``ingest.enqueue_episode``), with ``client`` as the scope's graphiti
-    client. Returns the new episode's uuid.
+    """One chat turn stating ``facts`` (its text ``body`` when given) through
+    the production worker (``ingest.enqueue_episode``), with ``client`` as
+    the scope's graphiti client. Returns the new episode's uuid.
 
     The caller cancels the worker afterwards (``stop_ingestion_workers``).
     """
@@ -182,7 +162,7 @@ async def ingest_through_the_worker(
             scope,
             session_id,
             name=name,
-            episode_body=". ".join(sentence for _, _, sentence in facts),
+            episode_body=body or ". ".join(sentence for _, _, sentence in facts),
             source_description=description,
             completion=completion,
         )
@@ -266,6 +246,29 @@ async def recalled_facts(scope: MemoryScope) -> set[str]:
 
 async def recalled_episodes(scope: MemoryScope) -> set[str]:
     return {episode.uuid for episode in await recall.recent_episodes(scope, 5)}
+
+
+async def sentence_properties(driver: AutoGPTFalkorDriver, sentence: str) -> set[str]:
+    """Every node and edge property anywhere in the graph that holds
+    ``sentence``, as ``Label.property``."""
+    nodes = await rows(
+        driver, "MATCH (n) RETURN labels(n) AS labels, properties(n) AS properties"
+    )
+    edges = await rows(
+        driver,
+        "MATCH ()-[e]->() RETURN [type(e)] AS labels, properties(e) AS properties",
+    )
+    return {
+        f"{_kind(row['labels'])}.{key}"
+        for row in nodes + edges
+        for key, value in row["properties"].items()
+        if sentence in json.dumps(value, default=str)
+    }
+
+
+def _kind(labels: list[str]) -> str:
+    known = [label for label in ("Episodic", "Entity", "Community") if label in labels]
+    return (known or labels)[0]
 
 
 async def live_facts(driver: AutoGPTFalkorDriver) -> dict[str, str]:

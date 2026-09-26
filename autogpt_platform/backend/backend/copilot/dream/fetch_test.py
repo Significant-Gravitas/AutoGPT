@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.graphiti.recall import (
     forgotten_facts_clause,
+    live_fact_predicate,
     recallable_episode_predicate,
 )
 from backend.copilot.graphiti.scope import MemoryScope
@@ -54,6 +55,19 @@ async def test_episode_gather_reads_only_recallable_episodes():
     query = driver.execute_query.await_args.args[0]
     assert query.startswith(forgotten_facts_clause())
     assert f"WHERE {recallable_episode_predicate('n')}" in query
+
+
+@pytest.mark.asyncio
+async def test_fact_gather_reads_live_facts_by_recalls_own_test():
+    """A forgotten fact (``forgotten_at`` set) never reaches the dream, even
+    one some writer left unexpired."""
+    driver = AsyncMock()
+    driver.execute_query.return_value = ([], [], None)
+
+    await fetch_mod._fetch_active_facts(driver, "user_g", 50)
+
+    query = driver.execute_query.await_args.args[0]
+    assert f"WHERE {live_fact_predicate('e', include_tentative=False)}" in query
 
 
 def _chat_store(*session_ids: str) -> SimpleNamespace:

@@ -18,7 +18,8 @@ from graphiti_core.nodes import EpisodeType
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .recall import previous_episode_uuids
-from .recall_ingest import keep_forgotten, snapshot_forgotten
+from .recall_ingest import keep_forgotten
+from .recall_ingest_plan import IngestRun, snapshot_forgotten
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -371,12 +372,19 @@ async def _add_episode(
     only inside ``Episodic.content``; this is the single wire-in for every
     caller of the worker. The earlier episodes are the ones graphiti would
     show its extraction prompts, minus those a forget hid: left to pick
-    them itself it would show a forgotten episode again. And graphiti may
-    resolve a new fact into a forgotten one: ``recall_ingest`` puts such an
-    edge back and gives a fact stated again a new live edge.
+    them itself it would show a forgotten episode again. And graphiti can
+    undo a forget, one made before the episode or while it ran:
+    ``recall_ingest.keep_forgotten`` repairs that afterwards.
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]
+    )
+    run = IngestRun(
+        group_id=group_id,
+        started_at=datetime.now(timezone.utc),
+        reference_time=payload["reference_time"],
+        previous=previous,
+        instructions=payload.get("custom_extraction_instructions"),
     )
     forgotten = await snapshot_forgotten(client.driver)
     result = await client.add_episode(
@@ -386,8 +394,7 @@ async def _add_episode(
         edge_types=EDGE_TYPES,
         edge_type_map=EDGE_TYPE_MAP,
     )
-    instructions = payload.get("custom_extraction_instructions")
-    await keep_forgotten(client, forgotten, result, previous, instructions)
+    await keep_forgotten(client, run, forgotten, result)
     return result
 
 

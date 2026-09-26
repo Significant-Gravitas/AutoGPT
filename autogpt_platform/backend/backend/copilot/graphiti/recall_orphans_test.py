@@ -48,7 +48,7 @@ class TestPurge:
         )
         result = ForgetResult(redacted_episodes=["ep-chat", "ep-memory", "ep-kept"])
 
-        await recall_orphans.purge(driver, _SCOPE, ["u1", "u2"], _NOW, result)
+        await recall_orphans.purge(driver, _SCOPE.group_id, ["u1", "u2"], _NOW, result)
 
         assert result.deleted == ["u1", "u2"] and result.failures == []
         assert result.tombstoned_episodes == ["ep-chat", "ep-memory"]
@@ -82,7 +82,7 @@ class TestPurge:
         driver = _driver(*results)
         result = ForgetResult()
 
-        await recall_orphans.purge(driver, _SCOPE, ["u1", "u2"], _NOW, result)
+        await recall_orphans.purge(driver, _SCOPE.group_id, ["u1", "u2"], _NOW, result)
 
         assert result.deleted == []
         assert [(f.uuid, f.code) for f in result.failures] == [
@@ -97,7 +97,7 @@ class TestPurge:
         driver = _driver([], [], _deleted("u1"), RuntimeError("down"))
         result = ForgetResult()
 
-        await recall_orphans.purge(driver, _SCOPE, ["u1", "u2"], _NOW, result)
+        await recall_orphans.purge(driver, _SCOPE.group_id, ["u1", "u2"], _NOW, result)
 
         assert result.deleted == ["u1"]
         assert [(f.uuid, f.code) for f in result.failures] == [("u2", _CLEANUP)]
@@ -107,7 +107,7 @@ class TestPurge:
         driver = _driver([], [], [])
         result = ForgetResult()
 
-        await recall_orphans.purge(driver, _SCOPE, ["u1"], _NOW, result)
+        await recall_orphans.purge(driver, _SCOPE.group_id, ["u1"], _NOW, result)
 
         assert result.deleted == []
         assert [f.code for f in result.failures] == [MemoryForgetFailureCode.NO_MATCH]

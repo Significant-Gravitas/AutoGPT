@@ -17,7 +17,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .client import derive_memory_group_id, derive_memory_scope_key
 
 RedisKeyFamily = Literal[
-    "dream_lock", "last_completed", "hits", "rebuild_lock", "registration"
+    "dream_lock",
+    "last_completed",
+    "hits",
+    "rebuild_lock",
+    "registration",
+    "forget_stash",
 ]
 
 # One in-flight dream per scope (dream/locks.py).
@@ -29,6 +34,15 @@ LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
 HIT_TRACKER_KEY_PREFIX = "mem:hits"
 # One community rebuild per graph (graphiti/communities.py).
 REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
+# What each recent forget set on the graph, for an ingestion that was running
+# when it landed (graphiti/recall_stash.py).
+FORGET_STASH_KEY_PREFIX = "graphiti:forget_stash:"
+
+
+def forget_stash_key(group_id: str) -> str:
+    """The forget stash of graph ``group_id``. Keyed on the graph, not the
+    scope: the ingestion worker that reads it knows only the graph."""
+    return f"{FORGET_STASH_KEY_PREFIX}{group_id}"
 
 
 class MemoryScope(BaseModel):
@@ -89,8 +103,8 @@ class MemoryScope(BaseModel):
         before this class existed.
 
         Most families key on ``scope_key`` (the raw user id for the account,
-        the group id for an expert). Two do not, and keep their layouts:
-        ``rebuild_lock`` keys on ``group_id``, and ``registration`` keys on
+        the group id for an expert). Three do not: ``rebuild_lock`` and
+        ``forget_stash`` key on ``group_id``, and ``registration`` keys on
         the owner's user id even for an expert scope, because the dream
         crons are registered per user. ``hits`` needs the counted
         ``edge_uuid``; ``registration`` needs the cron's marker prefix (see
@@ -107,6 +121,8 @@ class MemoryScope(BaseModel):
                 return f"{HIT_TRACKER_KEY_PREFIX}:{self.scope_key}:{edge_uuid}"
             case "rebuild_lock":
                 return f"{REBUILD_LOCK_KEY_PREFIX}{self.group_id}"
+            case "forget_stash":
+                return forget_stash_key(self.group_id)
             case "registration":
                 if registration_prefix is None:
                     raise ValueError("the registration key needs a prefix")

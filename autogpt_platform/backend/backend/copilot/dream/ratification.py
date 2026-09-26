@@ -308,12 +308,14 @@ async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> 
     The one promotion write, for the hit hook and the nightly sweep alike.
     The guard makes a repeat hit on an active edge a no-op (its first
     ``ratified_at`` stays) and keeps a forget that lands between the sweep's
-    listing and this write: a retracted edge is never made active again.
+    listing and this write: a retracted or forgotten edge is never made
+    active again.
     ``now`` comes from Python: FalkorDB has no no-arg ``datetime()``.
     """
     query = """
     MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
     WHERE e.status = 'tentative' AND e.expired_at IS NULL
+      AND e.forgotten_at IS NULL
     SET e.status = 'active', e.ratified_at = $now
     RETURN e.uuid AS uuid
     """

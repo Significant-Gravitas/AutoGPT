@@ -196,6 +196,7 @@ async def test_sweep_promotion_keeps_a_forget_that_landed_after_the_listing(
         if "ratified_at" in call.args[0]
     ]
     assert "WHERE e.status = 'tentative' AND e.expired_at IS NULL" in promote.args[0]
+    assert "AND e.forgotten_at IS NULL" in promote.args[0]
     stub_mark_superseded.assert_not_awaited()
 
 

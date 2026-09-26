@@ -15,7 +15,7 @@ import pytest
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
-from . import ingest, recall_ingest
+from . import ingest, recall_ingest_plan
 from .recall import is_recallable_episode, recallable_episode_predicate
 
 _NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
@@ -32,7 +32,7 @@ async def _policy_filtered_store(query: str, **params: object):
     """The graph's answer to a recallable-episodes read, filtered with the
     predicate's Python twin, or to the forgotten-fact snapshot (none here);
     any other read would be unfiltered."""
-    if query == recall_ingest._SNAPSHOT_QUERY:
+    if query == recall_ingest_plan._SNAPSHOT_QUERY:
         return [], [], None
     assert recallable_episode_predicate("e") in query, "an unfiltered episode read"
     rows = [
@@ -89,7 +89,7 @@ class TestExtractionContext:
         assert previous == ["ep-oldest", "ep-newest"], "oldest first, as graphiti"
         assert "ep-redacted" not in previous
         read, snapshot = client.driver.execute_query.await_args_list
-        assert snapshot.args == (recall_ingest._SNAPSHOT_QUERY,)
+        assert snapshot.args == (recall_ingest_plan._SNAPSHOT_QUERY,)
         assert read.kwargs == {
             "group_id": "user_test",
             "reference_time": _NOW,
@@ -116,17 +116,20 @@ class TestExtractionContext:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """What graphiti wrote is checked against the snapshot taken before
-        it ran, with the same earlier episodes and extraction instructions."""
+        it ran, with the same earlier episodes and extraction instructions,
+        and with when the episode was said and when its ingestion began."""
         client = _graphiti_client()
         keep = AsyncMock()
         monkeypatch.setattr(ingest, "keep_forgotten", keep)
+        before = datetime.now(timezone.utc)
 
         await _run_worker_on_one_episode(client, monkeypatch)
 
-        keep.assert_awaited_once_with(
-            client,
-            {},
-            client.add_episode.return_value,
-            ["ep-oldest", "ep-newest"],
-            None,
-        )
+        keep.assert_awaited_once()
+        assert keep.await_args is not None
+        passed, run, snapshot, result = keep.await_args.args
+        assert (passed, snapshot) == (client, {})
+        assert result is client.add_episode.return_value
+        assert (run.group_id, run.reference_time) == ("user_test", _NOW)
+        assert (run.previous, run.instructions) == (["ep-oldest", "ep-newest"], None)
+        assert run.started_at >= before, "stamped before add_episode ran"

@@ -47,9 +47,11 @@ from graphiti_core.llm_client.config import ModelSize
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel
 
+from . import recall_stash
 from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .recall_fake_redis import FakeRedis
 from .scope import MemoryScope
 
 
@@ -132,6 +134,17 @@ def stub_graphiti_client():
         )
 
     return _build
+
+
+@pytest.fixture(autouse=True)
+def forget_stash(mocker) -> FakeRedis:
+    """Every test's own in-memory Redis for the forget stash, so no test
+    reaches for a real one; a test that wants Redis itself patches again."""
+    redis = FakeRedis()
+    mocker.patch.object(
+        recall_stash, "get_redis_async", mocker.AsyncMock(return_value=redis)
+    )
+    return redis
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
