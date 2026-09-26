@@ -569,6 +569,26 @@ async def test_redis_state_never_contains_device_code_or_verification_url():
 
 
 @pytest.mark.asyncio
+async def test_a_claim_whose_state_write_fails_releases_the_active_slot():
+    redis = FakeRedis()
+    store = RedisCodexLoginStateStore(ttl_seconds=1200, owner_lease_seconds=30)
+    state = CodexSharedLoginState(user_id="user-123", status="pending")
+
+    with (
+        patch(
+            "backend.integrations.codex.login.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch.object(store, "write", AsyncMock(side_effect=RuntimeError("boom"))),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await store.claim(state, "login-123")
+
+    assert _active_key("user-123") not in redis.values
+    assert _active_key("user-123") not in redis.expirations
+
+
+@pytest.mark.asyncio
 async def test_stale_login_cannot_release_or_refresh_replacement_owner():
     user_id = "user-123"
     redis = FakeRedis()

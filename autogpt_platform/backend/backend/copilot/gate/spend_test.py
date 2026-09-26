@@ -42,7 +42,11 @@ from backend.copilot.tree import (
     derive_child_envelope,
     root_envelope,
 )
-from backend.copilot.tree_test import BrokenRedis, FakeRedis
+from backend.copilot.tree_test import (
+    BrokenRedis,
+    FakeRedis,
+    route_ledger_scripts_to_fake,
+)
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
@@ -83,6 +87,11 @@ def _session(mode: AutopilotMode = "auto", origin="interactive") -> ChatSession:
         metadata=ChatSessionMetadata(origin=origin, autopilot_mode=mode),
         messages=[],
     )
+
+
+@pytest.fixture(autouse=True)
+def _ledger_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    route_ledger_scripts_to_fake(monkeypatch)
 
 
 @pytest.fixture
@@ -515,7 +524,7 @@ async def test_an_unreachable_chat_ledger_refuses_the_paid_read(gate):
 
 async def test_a_chat_ledger_that_will_not_open_refuses_the_paid_read(gate, redis):
     """Kills: reading a ledger that is still missing as "under the ceiling"."""
-    redis.eval = AsyncMock(return_value=0)
+    redis.open_tree = AsyncMock(return_value=0)
     with (
         patch.object(
             tree, "resolve_chat_ceiling_microdollars", AsyncMock(return_value=0)

@@ -93,14 +93,20 @@ class FakeRedis:
         return 1
 
 
-@pytest.fixture(autouse=True)
-def _ledger_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+def route_ledger_scripts_to_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Send the ledger's scripts to the fake's emulations. Every suite that
+    drives a ``TreeLedger`` on ``FakeRedis`` calls this from its own fixture."""
     monkeypatch.setattr(
         tree, "_open_tree", lambda client, **kwargs: client.open_tree(**kwargs)
     )
     monkeypatch.setattr(
         tree, "_claim_wrapup", lambda client, **kwargs: client.claim_wrapup(**kwargs)
     )
+
+
+@pytest.fixture(autouse=True)
+def _ledger_scripts_run_on_the_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    route_ledger_scripts_to_fake(monkeypatch)
 
 
 class _FakePipeline:

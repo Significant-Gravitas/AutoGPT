@@ -6,11 +6,13 @@ incr/expire/rpush/ltrim/llen, and the helpers' Lua scripts, one method each.
 """
 
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
-from backend.data import redis_helpers
+from backend.data import redis_client, redis_helpers
 from backend.data.redis_helpers import (
+    SlotAdmission,
     as_str,
     capped_rpush,
     capped_rpush_if_hash_field,
@@ -18,7 +20,9 @@ from backend.data.redis_helpers import (
     hash_compare_and_set,
     incr_with_ttl,
     incr_with_ttl_sync,
+    try_acquire_concurrency_slot,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 # ── Fake Redis + pipeline ──────────────────────────────────────────────
 
@@ -452,3 +456,45 @@ class TestAsStr:
         assert as_str("x") == "x"
         assert as_str(b"x") == "x"
         assert as_str(None) is None
+
+
+# ── Concurrency slots, on the live cluster ────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="local redis cluster not reachable",
+)
+async def test_concurrency_slot_admits_refreshes_rejects_and_sweeps():
+    """Runs the real script, so a slot missing from the pool (ZSCORE hands
+    Lua ``false``, not ``nil``) is admitted against capacity rather than
+    taken for a refresh."""
+    client = await redis_client.connect_async()
+    pool = f"test:concurrency-slot:{{{uuid4()}}}"
+
+    async def acquire(slot: str, score: float, stale_before: float = 0):
+        return await try_acquire_concurrency_slot(
+            client,
+            pool_key=pool,
+            slot_id=slot,
+            score=score,
+            capacity=2,
+            stale_before_score=stale_before,
+            ttl_seconds=60,
+        )
+
+    try:
+        assert await acquire("a", 10) is SlotAdmission.ADMITTED
+        assert await acquire("a", 11) is SlotAdmission.REFRESHED
+        assert await client.zscore(pool, "a") == 11
+        assert await acquire("b", 12) is SlotAdmission.ADMITTED
+        assert await acquire("c", 13) is SlotAdmission.REJECTED
+        assert await client.zscore(pool, "c") is None
+        # "a" (score 11) goes stale, which frees a seat for "c".
+        assert await acquire("c", 14, stale_before=11) is SlotAdmission.ADMITTED
+        assert set(await client.zrange(pool, 0, -1)) == {"b", "c"}
+        assert 0 < await client.ttl(pool) <= 60
+    finally:
+        await client.delete(pool)
+        await client.aclose()
