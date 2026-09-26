@@ -22331,6 +22331,12 @@
             "maxItems": 150,
             "title": "Skills"
           },
+          "remove": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 150,
+            "title": "Remove"
+          },
           "marketplace_listing_ids": {
             "items": { "type": "string" },
             "type": "array",
@@ -22339,9 +22345,8 @@
           }
         },
         "type": "object",
-        "required": ["skills"],
         "title": "ExpertSkillsUpdate",
-        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+        "description": "Skills to attach to an expert and skills to remove from it. Names new\nto the expert must be library skills (default or uploaded); names already\non the expert are kept as-is so marketplace skills survive a round-trip.\n\nOnly names listed in ``remove`` are removed. A skill the expert carries\nthat appears in neither list is left alone, so a client holding a stale\nlist can never delete a skill it has not seen (the expert can distil new\nones at any time)."
       },
       "ExpertSoulUpdate": {
         "properties": {

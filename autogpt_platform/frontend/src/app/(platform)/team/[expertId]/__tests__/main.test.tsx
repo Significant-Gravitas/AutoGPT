@@ -27,6 +27,7 @@ import {
   getGetV1ListExecutionSchedulesForAUserMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSkillsUpdate } from "@/app/api/__generated__/models/expertSkillsUpdate";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   getGetV2GetSessionMockHandler200,
@@ -684,7 +685,7 @@ describe("ExpertDetailPage", () => {
 
   test("lists the expert's skills with library details and adds one", async () => {
     const user = userEvent.setup();
-    const puts: string[][] = [];
+    const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
       getGetExpertMockHandler(() => ({ ...maria, skills })),
@@ -697,9 +698,12 @@ describe("ExpertDetailPage", () => {
         { name: "Deep Research", description: "Research anything thoroughly" },
       ]),
       getUpdateExpertSkillsMockHandler200(async ({ request }) => {
-        const body = (await request.json()) as { skills: string[] };
-        puts.push(body.skills);
-        skills = body.skills;
+        const body = (await request.json()) as ExpertSkillsUpdate;
+        puts.push(body);
+        skills = [
+          ...skills.filter((name) => !body.remove?.includes(name)),
+          ...(body.skills ?? []),
+        ];
         return { ...maria, skills };
       }),
     );
@@ -719,7 +723,7 @@ describe("ExpertDetailPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
-      expect(puts).toEqual([["Content strategy", "Deep Research"]]);
+      expect(puts).toEqual([{ skills: ["Deep Research"] }]);
     });
     expect(await within(list).findByText("Deep Research")).toBeDefined();
   });
@@ -809,15 +813,18 @@ describe("ExpertDetailPage", () => {
 
   test("removes a skill from the expert", async () => {
     const user = userEvent.setup();
-    const puts: string[][] = [];
+    const puts: ExpertSkillsUpdate[] = [];
     let skills = ["Content strategy"];
     server.use(
       getGetExpertMockHandler(() => ({ ...maria, skills })),
       getListCopilotSkillsMockHandler200([]),
       getUpdateExpertSkillsMockHandler200(async ({ request }) => {
-        const body = (await request.json()) as { skills: string[] };
-        puts.push(body.skills);
-        skills = body.skills;
+        const body = (await request.json()) as ExpertSkillsUpdate;
+        puts.push(body);
+        skills = [
+          ...skills.filter((name) => !body.remove?.includes(name)),
+          ...(body.skills ?? []),
+        ];
         return { ...maria, skills };
       }),
     );
@@ -829,7 +836,7 @@ describe("ExpertDetailPage", () => {
     );
 
     await waitFor(() => {
-      expect(puts).toEqual([[]]);
+      expect(puts).toEqual([{ remove: ["Content strategy"] }]);
     });
     expect(await screen.findByText(/No skills yet/)).toBeDefined();
   });
