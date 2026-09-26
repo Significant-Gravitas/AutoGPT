@@ -16,7 +16,7 @@ MAX_WAIT_SECONDS = 2 * 60 * 60
 # every listing that wants more than a handful of rows must page explicitly.
 PAGE_SIZE = 100
 
-# Throttled/5xx responses are retried, but only a few times with short
+# Throttled/5xx read responses are retried, but only a few times with short
 # back-off: the wait loops enforce their own wall-clock deadline and an
 # open-ended retry would silently outlive it.
 RETRY_MAX_ATTEMPTS = 4
@@ -102,15 +102,8 @@ class ConductorClient:
     """
 
     def __init__(self, credentials: APIKeyCredentials):
-        self.requests = Requests(
-            trusted_origins=[CONDUCTOR_API_URL],
-            raise_for_status=False,
-            extra_headers={
-                "Authorization": f"Bearer {credentials.api_key.get_secret_value()}"
-            },
-            retry_max_attempts=RETRY_MAX_ATTEMPTS,
-            retry_max_wait=RETRY_MAX_WAIT_SECONDS,
-        )
+        self.requests = _requests(credentials, RETRY_MAX_ATTEMPTS)
+        self.mutation_requests = _requests(credentials, 1)
 
     async def _call(
         self,
@@ -127,7 +120,8 @@ class ConductorClient:
                 continue
             values = value if isinstance(value, list) else [value]
             query.extend((key, _query_value(v)) for v in values)
-        response = await self.requests.request(
+        requests = self.requests if method == "GET" else self.mutation_requests
+        response = await requests.request(
             method, url, json=json_body, params=query or None
         )
         if not response.ok:
@@ -311,6 +305,18 @@ class ConductorClient:
 
     async def get_message(self, message_id: str) -> dict[str, Any]:
         return await self._call("GET", f"{API_V0}/messages/{message_id}")
+
+
+def _requests(credentials: APIKeyCredentials, attempts: int) -> Requests:
+    return Requests(
+        trusted_origins=[CONDUCTOR_API_URL],
+        raise_for_status=False,
+        extra_headers={
+            "Authorization": f"Bearer {credentials.api_key.get_secret_value()}"
+        },
+        retry_max_attempts=attempts,
+        retry_max_wait=RETRY_MAX_WAIT_SECONDS,
+    )
 
 
 def _query_value(value: Any) -> Any:

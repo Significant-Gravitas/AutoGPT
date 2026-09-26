@@ -83,6 +83,7 @@ def client_with(response: FakeResponse) -> tuple[ConductorClient, mock.AsyncMock
     client = ConductorClient(TEST_CREDENTIALS)
     request = mock.AsyncMock(return_value=response)
     client.requests.request = request
+    client.mutation_requests.request = request
     return client, request
 
 

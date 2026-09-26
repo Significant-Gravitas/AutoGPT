@@ -8,7 +8,6 @@ read/list blocks in ``test_listing_blocks.py``.
 """
 
 from typing import Any
-from unittest import mock
 
 import pytest
 
@@ -245,9 +244,6 @@ async def test_manage_workspace_rename_requires_a_name():
 
 @pytest.mark.asyncio
 async def test_manage_workspace_clears_section_with_null():
-    client = ConductorClient(TEST_CREDENTIALS)
-    client.requests.request = mock.AsyncMock(
-        return_value=FakeResponse(200, {"ok": True})
-    )
+    client, request = client_with(FakeResponse(200, {"ok": True}))
     await client.set_workspace_section("ws_1", None)
-    assert client.requests.request.call_args.kwargs["json"] == {"sectionId": None}
+    assert request.call_args.kwargs["json"] == {"sectionId": None}
