@@ -1732,6 +1732,30 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Sanitize BEFORE empty-guard and clear_pending so tags-only input
+    # cannot clear a Home card or proceed with an empty prompt. Only the
+    # server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
+    # Reject tags-only / whitespace-only user turns before clearing pending
+    # or running identity (empty_prompt).
+    if is_user_message and message is not None and not message.strip():
+        yield StreamError(
+            errorText="Message cannot be empty.",
+            code="empty_prompt",
+        )
+        return
+
+    # Clear Home "Needs You" *before* identity guards. Org/team mismatch and
+    # other ExpertSessionUnavailableError paths raise inside
+    # build_expert_identity_suffix; clearing after that left cards stuck
+    # forever (#14118). Unconditional on the append result: the HTTP path
+    # pre-saves the user message, so the append is a no-op dedup there.
+    # Uses the sanitized message so tags-only never clears.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -1751,17 +1775,7 @@ async def stream_chat_completion_baseline(
         session.messages, log_prefix=f"[Baseline] [{session_id[:12]}]"
     )
 
-    # Strip any user-injected <user_context> tags on every turn.
-    # Only the server-injected prefix on the first message is trusted.
-    if message:
-        message = strip_user_context_tags(message)
-
-    # A reply is the only thing that clears a Home "Needs You" question.
-    # Unconditional on the append result: the HTTP path pre-saves the user
-    # message, so the append is a no-op dedup there.
-    if is_user_message and message and message.strip():
-        await clear_pending_question(session)
-
+    # message was already sanitized at turn entry above.
     if maybe_append_user_message(session, message, is_user_message, message_metadata):
         if is_user_message:
             track_user_message(

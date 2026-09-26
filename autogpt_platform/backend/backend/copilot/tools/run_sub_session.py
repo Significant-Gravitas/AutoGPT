@@ -34,6 +34,7 @@ from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import (
     ChatSession,
+    clear_pending_question,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
@@ -206,6 +207,9 @@ class RunSubSessionTool(BaseTool):
             # — the staffing guard is where an unknown origin fails closed
             # instead. Same call as `blocks/autopilot.py` on resume.
             if owned.metadata.origin == "interactive":
+                # Resume cannot answer this interactive session's Home card
+                # via this path; clear so it does not stick forever (#14118).
+                await clear_pending_question(owned)
                 return ErrorResponse(
                     message=(
                         f"sub_autopilot_session_id {sub_session_param} was "
