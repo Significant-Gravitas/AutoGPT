@@ -198,7 +198,7 @@ async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
 
 
 # ---------------------------------------------------------------------------
-# Redis markers — a cache of the registry, one per scope and cron
+# Redis markers — diagnostic stamps, one per scope and cron; nothing reads them
 # ---------------------------------------------------------------------------
 
 
@@ -217,7 +217,7 @@ async def test_write_registration_marker_stores_the_timezone_per_scope(
 
 @pytest.mark.asyncio
 async def test_a_hung_redis_never_holds_up_a_marker_write(monkeypatch):
-    """The marker is a cache written inline by hires and resumes; the Redis
+    """The marker is a diagnostic stamp written inline by hires and resumes; the Redis
     client's connect retries must not hold those up."""
 
     async def never_connects():

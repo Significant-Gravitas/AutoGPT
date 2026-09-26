@@ -1451,7 +1451,8 @@ model ExpertPod {
 // nightly dream and weekly community-rebuild crons serve. It is the source of
 // truth for "is this scope scheduled" (copilot/dream/registry.py): whether its
 // crons may run, the timezone they were registered in, and their APScheduler
-// job ids. The Redis registration markers are only a cache of it.
+// job ids. The Redis registration markers are diagnostic only;
+// nothing reads them.
 model MemoryScopeSchedule {
   // MemoryScope.scope_key: the raw user id for the account, expert_<sha256>
   // for an expert. Also the suffix of both job ids.
@@ -1487,7 +1488,8 @@ model MemoryScopeSchedule {
 
 // ACTIVE: the crons are registered and run. PAUSED: the expert is archived or
 // its schedules are paused; the crons are removed until it resumes. WIPED: the
-// scope's memory was erased; the crons are removed until it is resumed.
+// scope's memory was erased; the crons are removed and no registry operation
+// reactivates the scope (the wipe work decides what brings one back).
 enum MemoryScopeScheduleState {
   ACTIVE
   PAUSED
