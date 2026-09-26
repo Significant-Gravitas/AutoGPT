@@ -176,6 +176,7 @@ from backend.data.user import (
     get_user_integrations,
     get_user_notification_preference,
     get_user_subscription_tier,
+    heal_orphaned_auth_identities,
     release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
@@ -356,6 +357,8 @@ class DatabaseManager(AppService):
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
+    # Exposed for the scheduler's auth-identity invariant monitor.
+    heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -682,6 +685,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_block_error_stats = _(d.get_block_error_stats)
     # Execution accuracy monitoring
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    # Auth identity invariant monitoring
+    heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
@@ -772,6 +777,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
+    heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials

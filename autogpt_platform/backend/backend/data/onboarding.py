@@ -56,13 +56,58 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     onboardingAgentExecutionId: Optional[str] = None
 
 
-async def get_user_onboarding(user_id: str):
+async def get_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating nothing.
+
+    A user with no row yet gets an unsaved all-defaults one. Creating it here
+    instead would need a ``User`` row to hang the FK off, and a valid session
+    can outrun that row: the auth provider issues one as soon as the auth
+    identity exists, while the platform row is created by a separate write
+    that can lag or fail. This read runs on every page load, so for those
+    accounts the FK violation was a 500 on each one until something healed the
+    row -- and a read path has no business writing on every page load anyway.
+
+    Callers that persist need the row to exist; they use
+    ``ensure_user_onboarding``.
+    """
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding or _default_user_onboarding(user_id)
+
+
+async def ensure_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating the row if it is missing.
+
+    For write paths, which follow up with an ``update`` that has nothing to
+    target otherwise. Unlike the read above this does require a provisioned
+    ``User``, which is correct: there is no onboarding progress to record for
+    an account the platform does not have.
+    """
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {},
         },
+    )
+
+
+def _default_user_onboarding(user_id: str) -> UserOnboarding:
+    """An unsaved row mirroring the column defaults in ``schema.prisma``.
+
+    ``id``/``createdAt`` are placeholders: the API model this is serialized
+    through exposes neither, so they never reach a client.
+    """
+    return UserOnboarding(
+        id="",
+        createdAt=datetime.now(timezone.utc),
+        completedSteps=[],
+        walletShown=False,
+        notified=[],
+        rewardedFor=[],
+        integrations=[],
+        agentRuns=0,
+        consecutiveRunDays=0,
+        userId=user_id,
     )
 
 
@@ -175,7 +220,7 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
     Completes the specified onboarding step for the user if not already completed.
     """
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     if step not in onboarding.completedSteps:
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
@@ -329,7 +374,7 @@ async def increment_onboarding_runs(user_id: str):
     Increment a user's run counters and trigger any onboarding milestones.
     """
     user_timezone = await _get_user_timezone(user_id)
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     new_run_count = onboarding.agentRuns + 1
     last_run_at, consecutive_run_days = _calculate_consecutive_run_days(
         onboarding.lastRunAt, onboarding.consecutiveRunDays, user_timezone

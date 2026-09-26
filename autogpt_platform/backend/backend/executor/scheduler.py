@@ -52,6 +52,7 @@ from backend.monitoring import (
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
+    report_orphaned_auth_identities,
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
@@ -2033,6 +2034,18 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Auth identity <-> platform User invariant. Heals any auth
+            # identity that has no platform User row and pages when it had to.
+            self.scheduler.add_job(
+                report_orphaned_auth_identities,
+                id="report_orphaned_auth_identities",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,
+                seconds=config.auth_identity_orphan_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Cloud Storage Cleanup - configurable interval
             self.scheduler.add_job(
                 cleanup_expired_files,
@@ -2672,6 +2685,11 @@ class Scheduler(AppService):
     @expose
     def execute_report_block_error_rates(self):
         return report_block_error_rates()
+
+    @expose
+    def execute_report_orphaned_auth_identities(self):
+        """Manually trigger the auth-identity invariant check and heal."""
+        return report_orphaned_auth_identities()
 
     @expose
     def execute_cleanup_expired_files(self):

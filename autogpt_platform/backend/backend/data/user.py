@@ -24,7 +24,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.db import prisma
+from backend.data.db import prisma, query_raw_with_schema
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -267,6 +267,105 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
         email=user.email,
         created_at=user.createdAt,
     )
+
+
+class OrphanedAuthIdentity(BaseModel):
+    """An auth identity (Better Auth user) with no platform ``User`` row."""
+
+    id: str
+    email: str
+    name: Optional[str] = None
+    createdAt: datetime
+    # Set when a *different* platform User already owns this email, which the
+    # unique index on ``User.email`` turns into an unprovisionable account.
+    email_owner_id: Optional[str] = None
+
+    @property
+    def has_email_collision(self) -> bool:
+        return self.email_owner_id is not None and self.email_owner_id != self.id
+
+
+class OrphanedAuthIdentityReport(BaseModel):
+    healed: list[str] = []
+    collided: list[OrphanedAuthIdentity] = []
+    failed: list[str] = []
+
+    @property
+    def is_clean(self) -> bool:
+        return not (self.healed or self.collided or self.failed)
+
+
+async def find_orphaned_auth_identities(
+    older_than: datetime, limit: int = 100
+) -> list[OrphanedAuthIdentity]:
+    """Auth identities created before *older_than* that have no ``User`` row.
+
+    Every auth identity must have a platform row with the same id: the auth
+    hook writes it at sign-up, the client's ``POST /auth/user`` writes it after
+    sign-in, and every authenticated request self-heals it. An identity that
+    still has none after the grace window is therefore an invariant breach
+    worth both healing and reporting.
+    """
+    rows = await query_raw_with_schema(
+        # The owner lookup is case-insensitive on purpose: the auth migration
+        # copied emails as stored, so a migrated identity can differ from its
+        # platform row only by case, and missing that owner would heal a
+        # duplicate account. It is a scalar subquery rather than a join so an
+        # identity yields exactly one row even when several platform rows
+        # carry case-variants of its email -- a join would return the identity
+        # once per variant and let duplicates eat into the batch limit.
+        'SELECT a.id, a.email, a.name, a."createdAt", '
+        '(SELECT owner.id FROM {schema_prefix}"User" owner '
+        "WHERE LOWER(owner.email) = LOWER(a.email) "
+        'ORDER BY owner."createdAt" ASC LIMIT 1) AS email_owner_id '
+        'FROM {schema_prefix}"UserAuthIdentity" a '
+        'LEFT JOIN {schema_prefix}"User" u ON u.id = a.id '
+        'WHERE u.id IS NULL AND a."createdAt" < $1::timestamptz '
+        'ORDER BY a."createdAt" ASC '
+        "LIMIT $2::int",
+        older_than.isoformat(),
+        limit,
+    )
+    return [OrphanedAuthIdentity(**row) for row in rows]
+
+
+async def heal_orphaned_auth_identities(
+    grace_secs: int = 300, limit: int = 100
+) -> OrphanedAuthIdentityReport:
+    """Provision a platform ``User`` for every orphaned auth identity.
+
+    Runs the same provisioning as ``POST /auth/user`` (User + marketplace
+    Profile + personal org) from the identity's own email, so a healed account
+    is indistinguishable from one that signed up cleanly. Identities younger
+    than *grace_secs* are left alone: their sign-up is still in flight.
+
+    An identity whose email is already owned by a different platform User
+    (compared case-insensitively) is reported, not healed -- the unique index
+    makes it unprovisionable, and guessing which account the person meant is
+    not this function's call.
+    """
+    older_than = datetime.now(timezone.utc) - timedelta(seconds=grace_secs)
+    report = OrphanedAuthIdentityReport()
+    for identity in await find_orphaned_auth_identities(older_than, limit):
+        if identity.has_email_collision:
+            report.collided.append(identity)
+            continue
+        try:
+            await get_or_create_user_with_status(
+                {
+                    "sub": identity.id,
+                    "email": identity.email,
+                    "user_metadata": {"name": identity.name},
+                }
+            )
+        except Exception:
+            logger.error(
+                f"Failed to heal orphaned auth identity {identity.id}", exc_info=True
+            )
+            report.failed.append(identity.id)
+            continue
+        report.healed.append(identity.id)
+    return report
 
 
 @cache_user_lookup
