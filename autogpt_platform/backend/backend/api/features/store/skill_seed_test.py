@@ -1,9 +1,12 @@
 """Tests for the catalog loader: a skill is a directory with a SKILL.md and
 the files beside it, and a broken one fails the seed rather than the install."""
 
+import io
 import pathlib
 import tarfile
+from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from backend.api.features.store.skill_model import skill_title
@@ -12,6 +15,7 @@ from backend.api.features.store.skill_seed import (
     STARTER_SKILLS,
     CatalogEntry,
     _attribution_value,
+    _download_catalog,
     _extract_catalog_archive,
     _load,
     _load_starter,
@@ -234,6 +238,61 @@ def test_a_malformed_catalog_fails_before_anything_is_written(
 
     with pytest.raises(ValueError, match=message):
         load_catalog(tmp_path)
+
+
+def _catalog_tarball() -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        content = b"skills: []\n"
+        member = tarfile.TarInfo("owner-repo-abc123/catalog.yml")
+        member.size = len(content)
+        tar.addfile(member, io.BytesIO(content))
+    return buffer.getvalue()
+
+
+def _mock_github(mocker, status: int, content: bytes = b"") -> Mock:
+    request = httpx.Request("GET", "https://api.github.com/repos/o/r/tarball/main")
+    return mocker.patch(
+        "backend.api.features.store.skill_seed.httpx.get",
+        return_value=httpx.Response(status, content=content, request=request),
+    )
+
+
+@pytest.fixture
+def no_catalog_token(monkeypatch):
+    for name in ("SKILLS_CATALOG_TOKEN", "GITHUB_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_the_public_catalog_downloads_without_a_token(
+    mocker, no_catalog_token, tmp_path
+):
+    get = _mock_github(mocker, 200, _catalog_tarball())
+
+    root = _download_catalog(tmp_path)
+
+    assert (root / "catalog.yml").read_text() == "skills: []\n"
+    assert "Authorization" not in get.call_args.kwargs["headers"]
+
+
+def test_a_catalog_token_is_sent_when_set(
+    mocker, no_catalog_token, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("SKILLS_CATALOG_TOKEN", "ghp_test")
+    get = _mock_github(mocker, 200, _catalog_tarball())
+
+    _download_catalog(tmp_path)
+
+    assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer ghp_test"
+
+
+def test_a_refused_anonymous_download_says_how_to_fix_it(
+    mocker, no_catalog_token, tmp_path
+):
+    _mock_github(mocker, 404)
+
+    with pytest.raises(RuntimeError, match="may be private.*SKILLS_CATALOG_TOKEN"):
+        _download_catalog(tmp_path)
 
 
 def test_archive_fallback_extracts_checked_files(mocker, monkeypatch, tmp_path):
