@@ -335,7 +335,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Firecrawl Search](block-integrations/firecrawl/search.md#firecrawl-search) | Firecrawl searches the web for the given query |
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
-| [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Google Maps Search](block-integrations/search.md#google-maps-search) | Search Google Maps for businesses and other places that match a text query |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
