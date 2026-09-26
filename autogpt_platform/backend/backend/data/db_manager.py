@@ -44,6 +44,7 @@ from backend.api.features.search.embeddings import (
     get_embedding_stats,
 )
 from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.store import skill_db as marketplace_skill_db
 from backend.api.features.store.db import (
     get_agent,
     get_available_graph,
@@ -584,6 +585,14 @@ class DatabaseManager(AppService):
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
 
+    # ============ Marketplace skills ============ #
+    # The copy reconcile in copilot.tools.skills runs in Prisma-less
+    # processes; it compares copies against these and fetches packages to
+    # fast-forward or merge them.
+    get_active_versions = _(marketplace_skill_db.get_active_versions)
+    get_version_packages = _(marketplace_skill_db.get_version_packages)
+    find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -875,6 +884,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
+
+    # ============ Marketplace skills ============ #
+    get_active_versions = d.get_active_versions
+    get_version_packages = d.get_version_packages
+    find_version_by_hash = d.find_version_by_hash
 
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share

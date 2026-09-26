@@ -16,6 +16,7 @@ main() {
   ensure_valkey_cluster
   verify_rabbitmq_user
   migrate_database
+  publish_skills_catalog
   configure_frontend_database_role
   publish_readiness
   log "bootstrap complete"
@@ -122,6 +123,27 @@ migrate_database() {
     cd "${AUTOGPT_BACKEND_DIR}"
     prisma migrate deploy
   )
+}
+
+# The marketplace skills and the expert roster come from the public skills
+# catalog, published the way a deploy does it right after the migrations.
+# Idempotent, so a boot that changes nothing is a no-op. Best-effort: an
+# offline box (no GitHub, no SKILLS_CATALOG_PATH checkout) boots without the
+# catalog rather than not at all, and installed copies catch up lazily.
+publish_skills_catalog() {
+  if [[ "${AUTOGPT_PUBLISH_SKILLS:-1}" != "1" ]]; then
+    log "skills catalog publish disabled (AUTOGPT_PUBLISH_SKILLS=${AUTOGPT_PUBLISH_SKILLS})"
+    return 0
+  fi
+  log "publishing the skills catalog"
+  if (
+    cd "${AUTOGPT_BACKEND_DIR}"
+    timeout 600 publish-skills-catalog --skip-missing-preloads
+  ); then
+    log "skills catalog published"
+  else
+    log "WARNING: skills catalog publish failed (see above); continuing without it. Re-run with: publish-skills-catalog --skip-missing-preloads"
+  fi
 }
 
 query_scalar() {
