@@ -169,7 +169,10 @@ async def _write(pass_id: str, step: str, build: Callable[[], DreamPassUpdate]) 
         )
         return
     if not written:
-        logger.warning(f"Dream pass {pass_id}: no open record to write {step} to")
+        # Expected, not a fault: the row is closed (a late or repeated
+        # delivery, which the transition rules refuse by design) or was
+        # never inserted (that failure was logged when it happened).
+        logger.debug("Dream pass %s: no open record to write %s to", pass_id, step)
 
 
 async def _bounded(call: Awaitable[_T]) -> _T:

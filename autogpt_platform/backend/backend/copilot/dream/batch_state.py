@@ -81,6 +81,20 @@ async def read_state(pass_id: str) -> dict[str, dict[str, Any]]:
     return out
 
 
+async def read_state_or_none(pass_id: str) -> dict[str, dict[str, Any]] | None:
+    """The pass's state, or ``None`` when it cannot be read, for a caller
+    that only reports on the pass (the usage its record carries) and must
+    go on without it."""
+    try:
+        return await read_state(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its batch state for the record",
+            exc_info=True,
+        )
+        return None
+
+
 async def write_phase_to_state(
     *, pass_id: str, phase: DreamPhase, row: BatchResultRow
 ) -> None:
@@ -137,9 +151,12 @@ async def claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "err
     """Atomically claim the per-pass apply gate.
 
     Returns ``"claimed"`` when this delivery is the first to run
-    ``apply_operations`` for the pass, ``"duplicate"`` on a repeated
-    delivery whose writes already landed, and ``"error"`` when Redis is
-    unavailable and we cannot tell which of the two we are.
+    ``apply_operations`` for the pass, ``"duplicate"`` when an earlier
+    delivery already claimed the gate, and ``"error"`` when Redis is
+    unavailable and we cannot tell which of the two we are. A duplicate
+    proves only that earlier claim, not that its writes landed: a delivery
+    that died between its claim and the end of apply leaves the gate
+    claimed and its writes partial.
 
     The BatchExecutor claims each finished batch atomically before it
     dispatches it (``BatchExecutor._claim_dispatch``), so the same result

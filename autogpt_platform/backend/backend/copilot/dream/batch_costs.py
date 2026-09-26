@@ -10,7 +10,7 @@ from typing import Any
 from backend.copilot.inference.context import InferenceContext, InferenceScope
 from backend.copilot.inference.routing import anthropic_batch_route
 
-from .batch_state import claim_costs_logged_gate, read_state
+from .batch_state import claim_costs_logged_gate, read_state_or_none
 from .billing import record_phase_cost
 from .phase_jobs import PHASE_TIERS, phase_job
 from .schemas import DreamPassUsage, DreamPhase
@@ -32,10 +32,11 @@ async def log_all_phase_costs(
     Idempotent via a Redis SETNX gate keyed on ``pass_id``: a pass logs its
     costs from whichever terminal path it takes, success or failure, and a
     repeated delivery of a finished batch must not charge it twice. The gate
-    is set BEFORE the loop so a partial failure mid-loop still leaves the
-    user charged for whatever phases landed (matches the documented
-    "partial pass charges for completed phases" semantic in
-    ``dream/billing.py``).
+    is claimed once, before the loop, and never released, so each phase is
+    charged at most once: a phase whose charge fails is logged and stays
+    uncharged, because no later delivery gets past the gate to retry it,
+    while the other landed phases are still charged. A partial failure
+    under-charges the pass rather than risk charging a phase twice.
 
     Each phase is recorded through ``billing.record_phase_cost`` like a
     sync phase, attributed to the pass's expert, and priced from its
@@ -71,22 +72,19 @@ async def recorded_usage(
 ) -> DreamPassUsage | None:
     """What the pass's landed phases used, read off its Redis state; ``None``
     when the state cannot be read."""
-    try:
-        state = await read_state(pass_id)
-    except Exception:
-        logger.warning(
-            f"Dream pass {pass_id}: could not read its batch state for the record",
-            exc_info=True,
-        )
-        return None
-    return landed_usage(state, phase_models, pass_id)
+    return landed_usage(await read_state_or_none(pass_id), phase_models, pass_id)
 
 
 def landed_usage(
-    state: dict[str, dict[str, Any]], phase_models: dict[str, str], pass_id: str
+    state: dict[str, dict[str, Any]] | None,
+    phase_models: dict[str, str],
+    pass_id: str,
 ) -> DreamPassUsage | None:
-    """What the pass's landed phases used, for its record. A state row that
-    will not price costs the record its usage, never the pass its outcome."""
+    """What the pass's landed phases used, for its record; ``None``
+    (unknown) when its state could not be read. A state row that will not
+    price costs the record its usage, never the pass its outcome."""
+    if state is None:
+        return None
     try:
         return batch_pass_usage(state, phase_models)
     except Exception:

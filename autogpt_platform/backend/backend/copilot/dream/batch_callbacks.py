@@ -117,7 +117,7 @@ async def _dead_end(bp: BatchPass, error: str) -> None:
     would otherwise sit queued/submitted until its TTL) and, when the pass
     is known, its record with what its landed phases used; then release
     the disowned lock so the user isn't locked out until the 24h TTL."""
-    await mark_job_errored(bp.job_id, error)
+    await mark_job_errored(bp.job_id, error, dead_end=True)
     if bp.pass_id:
         usage = await recorded_usage(bp.pass_id, bp.phase_models)
         await record_batch_failed(bp.pass_id, error, usage)
@@ -173,7 +173,7 @@ async def _fail_after_crash(bp: BatchPass, error: str) -> None:
     try:
         await fail_pass(bp, error)
     except Exception:
-        logger.exception("Dream batch fail_pass also failed for pass=%s", bp.pass_id)
+        logger.exception("Dream batch _fail_pass also failed for pass=%s", bp.pass_id)
         try:
             await release_lock(bp)
         except Exception:
@@ -395,8 +395,8 @@ async def _terminal_ops(
 async def _finish_duplicate(
     bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
 ) -> None:
-    """A repeated delivery whose writes already landed: skip apply, and keep
-    the first delivery's results.
+    """A repeated delivery: an earlier one claimed the apply gate, so skip
+    apply and keep the first delivery's results.
 
     Normally the first delivery closed the admin JobStatus row. If it died
     between apply and ``mark_complete``, the row is stuck in 'submitted' and

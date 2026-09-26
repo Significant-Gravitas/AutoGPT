@@ -25,7 +25,9 @@ keep working without dream-specific code paths.
 
 Failure semantics mirror the chat path: a partial pass still charges
 for the phases that completed before the error, because we already
-paid the provider for those tokens.
+paid the provider for those tokens. A charge that itself fails raises
+:class:`PhaseChargeError` carrying the phase's priced usage, so the pass
+still reports what the provider billed.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ from typing import Literal
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.inference.context import InferenceContext, InferenceUsage
-from backend.copilot.inference.record import record
+from backend.copilot.inference.record import price, record
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -45,6 +47,16 @@ from backend.copilot.rate_limit import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class PhaseChargeError(Exception):
+    """Charging a phase the provider already billed failed. Carries the
+    phase's usage, priced, so the caller still reports what was billed; the
+    message is the charge's own, and the charge's error is the cause."""
+
+    def __init__(self, usage: InferenceUsage, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.usage = usage
 
 
 DreamBudgetSkipReason = Literal[
@@ -131,13 +143,22 @@ async def record_phase_cost(
     Returns *usage* as priced. No row and no charge for a phase with
     neither tokens nor a cost; tokens without a cost (a model with no
     catalog price) still log but don't charge the rate-limit counter.
+
+    The price is read before the charge. Charging can fail after the
+    provider has billed the call (the rate-limit counters, the trial-cost
+    ledger, the cost log); that raises ``PhaseChargeError`` carrying the
+    priced usage, never swallowed and never retried here.
     """
-    return await record(
-        ctx,
-        usage,
-        block_name=f"copilot:dream:{ctx.job.phase}",
-        metadata={
-            "dream_pass_id": ctx.job.correlation_id,
-            "dream_phase": ctx.job.phase,
-        },
-    )
+    priced = price(usage, ctx.route)
+    try:
+        return await record(
+            ctx,
+            usage,
+            block_name=f"copilot:dream:{ctx.job.phase}",
+            metadata={
+                "dream_pass_id": ctx.job.correlation_id,
+                "dream_phase": ctx.job.phase,
+            },
+        )
+    except Exception as exc:
+        raise PhaseChargeError(priced, exc) from exc

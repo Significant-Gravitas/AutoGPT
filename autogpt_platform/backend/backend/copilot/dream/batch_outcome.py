@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.graphiti.scope import MemoryScope
 
 from .batch_costs import landed_usage, log_all_phase_costs
-from .batch_state import best_effort_cleanup, read_state
+from .batch_state import best_effort_cleanup, read_state_or_none
 from .batch_submit import read_lock_token
 from .locks import release_dream_lock
 from .schemas import (
@@ -62,9 +62,14 @@ class BatchPass(BaseModel):
 
 
 async def fail_pass(bp: BatchPass, error: str) -> None:
-    """Mark JobStatus errored, record usage for any phases that already
-    landed, close the pass's record, then release the lock and clean up
-    per-pass state.
+    """Close the pass errored: its admin job and its record first, then
+    charge the phases that landed, release the lock and clean up per-pass
+    state. Each step is best-effort on its own, so one that fails never
+    stops the ones after it.
+
+    The record carries the usage of the phases that landed, read off the
+    pass's state; a state that cannot be read leaves that usage unknown
+    rather than the record open.
 
     We incurred the provider tokens for completed phases regardless of
     whether the whole pass landed, so they're recorded against the
@@ -74,18 +79,12 @@ async def fail_pass(bp: BatchPass, error: str) -> None:
     """
     logger.warning("Dream batch pass=%s failed: %s", bp.pass_id, error)
     await mark_job_errored(bp.job_id, error)
-    state = await read_state(bp.pass_id)
-    if state:
-        await log_all_phase_costs(
-            user_id=bp.user_id,
-            expert_id=bp.expert_id,
-            pass_id=bp.pass_id,
-            state=state,
-            phase_models=bp.phase_models,
-        )
+    state = await read_state_or_none(bp.pass_id)
     await record_batch_failed(
         bp.pass_id, error, landed_usage(state, bp.phase_models, bp.pass_id)
     )
+    if state:
+        await _charge_landed_phases(bp, state)
     # Release the dream lock the batch path disowned to this callback.
     await release_lock(bp)
     await best_effort_cleanup(bp.pass_id)
@@ -152,9 +151,10 @@ async def finalize_stuck_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
         )
 
 
-async def mark_job_errored(job_id: str, error: str) -> None:
+async def mark_job_errored(job_id: str, error: str, *, dead_end: bool = False) -> None:
     """Close the admin job row errored. Best-effort: status write failures
-    are logged, never raised."""
+    are logged, never raised; a *dead_end* (a payload no phase handler can
+    take) logs under its own message."""
     if not job_id:
         return
     try:
@@ -162,7 +162,26 @@ async def mark_job_errored(job_id: str, error: str) -> None:
 
         await mark_errored(kind="dream_pass", job_id=job_id, error=error)
     except Exception:
-        logger.exception("Failed to mark dream pass job %s errored", job_id[:12])
+        if dead_end:
+            logger.exception("Failed to mark dead-end job %s errored", job_id[:12])
+        else:
+            logger.exception("Failed to mark dream pass job %s errored", job_id)
+
+
+async def _charge_landed_phases(
+    bp: BatchPass, state: dict[str, dict[str, Any]]
+) -> None:
+    """Charge the phases that landed; a failure is logged, never raised."""
+    try:
+        await log_all_phase_costs(
+            user_id=bp.user_id,
+            expert_id=bp.expert_id,
+            pass_id=bp.pass_id,
+            state=state,
+            phase_models=bp.phase_models,
+        )
+    except Exception:
+        logger.exception("Dream batch cost log failed for pass=%s", bp.pass_id)
 
 
 async def release_lock(bp: BatchPass) -> None:

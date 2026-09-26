@@ -14,12 +14,14 @@ results land.
 
 Every pass, on either route, gets a durable ``DreamPass`` row
 (``store.py``): inserted at the start, advanced after each step, and
-closed with how the pass ended before its lock is released.
+closed with how the pass ended, a write attempted before the pass releases
+its lock. Like every record write it is best-effort: one that fails or
+times out leaves the row open behind a free lock until a reaper closes it.
 
 The orchestrator never raises out — every failure becomes a
-``DreamPassResult`` with ``error`` set and the usage of every phase
-billed before it, so the admin trigger always gets a structured
-response back.
+``DreamPassResult`` with ``error`` set and, on the sync route, the usage
+of every phase billed before it (a phase whose charge failed included),
+so the admin trigger always gets a structured response back.
 """
 
 from __future__ import annotations
@@ -45,7 +47,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
-from .billing import check_dream_budget, record_phase_cost
+from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
 from .clamp import clamp_operations
 from .fetch import (
     DreamInput,
@@ -469,9 +471,13 @@ async def _run_locked(
     status_id: str | None,
 ) -> DreamPassResult:
     """The pass while it holds its scope's lock. Never raises: an unexpected
-    error becomes a failure carrying the usage the pass has run up. The
-    outcome is recorded here, before the lock is released, so a free lock
-    never has an open row of its pass behind it."""
+    error becomes a failure carrying the usage the pass has run up.
+
+    The outcome write is attempted here, inside the lock, so the next pass
+    to take the lock normally finds this one's row closed. It is best-effort
+    like every record write: one that fails or times out is dropped and the
+    lock is released anyway, so a free lock can still have an open row
+    (APPLYING, say) behind it until a reaper closes it."""
     try:
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
@@ -609,12 +615,17 @@ async def _phase(
 ) -> _Output:
     """One phase's output. A phase with no usable answer ends the pass
     (``_PassEnded``) with the usage billed so far, the failed attempt's
-    included when its answer came back."""
+    included when its answer came back. A phase whose charge failed
+    (``PhaseChargeError``) joins that usage too, then its error ends the
+    pass as a crash does."""
     try:
         output, usage = await call
     except InferenceError as exc:
         run.phases = _billed_phases(run.phases, phase, exc)
         raise _PassEnded(run.failure(f"{phase}: {exc}")) from exc
+    except PhaseChargeError as exc:
+        run.phases.append(phase_usage(phase, exc.usage))
+        raise
     run.phases.append(usage)
     await record_phase_output(run.pass_id, phase, output)
     return output

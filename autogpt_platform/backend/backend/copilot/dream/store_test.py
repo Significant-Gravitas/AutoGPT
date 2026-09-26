@@ -390,13 +390,16 @@ class TestAFailedWriteNeverFailsThePass:
         db.update_dream_pass.assert_not_awaited()
         assert "could not record the consolidate output" in caplog.text
 
-    async def test_a_row_that_is_missing_or_closed_is_logged(self, db, caplog):
+    async def test_a_row_that_is_missing_or_closed_is_logged_at_debug(self, db, caplog):
+        """A closed row refusing a late or repeated write is expected, so a
+        normal duplicate delivery raises no warning."""
         db.update_dream_pass.return_value = False
 
-        with caplog.at_level(logging.WARNING, logger=store.logger.name):
-            await store.record_next_batch("p1", "sanitize", "b")
+        with caplog.at_level(logging.DEBUG, logger=store.logger.name):
+            await store.record_batch_failed("p1", "boom", None)
 
-        assert "no open record" in caplog.text
+        [record] = [r for r in caplog.records if "no open record" in r.getMessage()]
+        assert record.levelno == logging.DEBUG
 
 
 class TestReadSide:

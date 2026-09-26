@@ -20,8 +20,11 @@ from prisma.enums import (
     DreamPassTrigger,
 )
 
+from backend.copilot.dream import job_status
 from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
 from backend.copilot.dream.batch_state import write_phase_to_state
+from backend.copilot.dream.batch_submit import persist_input_bundle
+from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.pass_record import dream_pass_result_from_row
 from backend.copilot.dream.schemas import (
     DreamOperations,
@@ -1464,6 +1467,58 @@ class TestDreamPassRecord:
         assert row["error"] == error
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
         assert order == ["record ERRORED", "lock released"]
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_state_still_closes_the_row_errored(
+        self, fake_dream_db, fake_dream_redis, monkeypatch
+    ):
+        """Only reading the pass's Redis state fails; the database and the
+        rest of Redis are healthy. The crash it causes still closes the row
+        ERRORED, its usage unknown, errors the admin job and releases the
+        lock."""
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+            lock_token="tok-u1",
+        )
+        lock_key = MemoryScope.for_user("u1").redis_key("dream_lock")
+        fake_dream_redis.store[lock_key] = "tok-u1"
+        await job_status.write_initial_status(
+            kind="dream_pass", job_id="j1", user_id="u1"
+        )
+        _seed_submitted_pass(fake_dream_db)
+        hgetall = fake_dream_redis.hgetall
+
+        async def state_unreadable(name):
+            if name.startswith("dream:batch:state:"):
+                raise ConnectionError("scripted Redis state outage")
+            return await hgetall(name)
+
+        monkeypatch.setattr(fake_dream_redis, "hgetall", state_unreadable)
+        submit_phase = AsyncMock()
+
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT)],
+            )
+
+        submit_phase.assert_not_awaited()
+        row = fake_dream_db.rows["p1"]
+        assert row["status"] is DreamPassStatus.ERRORED
+        assert row["error"] == "consolidate: handler crashed"
+        assert row.get("usage") is None
+        status = await job_status.read_status(kind="dream_pass", job_id="j1")
+        assert status is not None and status.state == "errored"
+        assert lock_key not in fake_dream_redis.store
 
     @pytest.mark.asyncio
     async def test_applying_is_recorded_before_the_apply_gate_is_claimed(

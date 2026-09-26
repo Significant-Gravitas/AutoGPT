@@ -22,6 +22,8 @@ from prisma.enums import (
     DreamPassTrigger,
 )
 
+from backend.copilot import rate_limit as rate_limit_mod
+from backend.copilot import token_tracking as token_tracking_mod
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import (
@@ -30,6 +32,7 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.inference.trace import TracedCall
+from backend.copilot.rate_limit import SubscriptionTier
 from backend.data.dream_pass_models import DreamPassDraft
 from backend.executor.batch_executor import PendingEntry
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
@@ -2321,20 +2324,21 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
     assert "usage" not in fake_dream_db.rows[result.pass_id]
 
 
+# What the provider billed for each phase answer these tests script.
+_BILLED = InferenceUsage(
+    model="claude-sonnet-5",
+    input_tokens=100,
+    output_tokens=20,
+    cost_usd=0.001,
+    cost_source="provider",
+    payer="platform_allowance",
+)
+
+
 def _billed(value) -> StructuredCompletion:
     """A phase answer the provider billed 100 input + 20 output tokens and
     $0.001 for."""
-    return StructuredCompletion(
-        value=value,
-        usage=InferenceUsage(
-            model="claude-sonnet-5",
-            input_tokens=100,
-            output_tokens=20,
-            cost_usd=0.001,
-            cost_source="provider",
-            payer="platform_allowance",
-        ),
-    )
+    return StructuredCompletion(value=value, usage=_BILLED)
 
 
 def _three_billed_phases(mocker) -> None:
@@ -2382,6 +2386,114 @@ async def test_a_failure_after_the_phases_keeps_all_three_phases_usage(
         60,
     )
     assert result.usage.total_cost_usd == pytest.approx(0.003)
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["usage"] == result.usage
+
+
+_PHASES = ("consolidate", "recombine", "sanitize")
+
+
+def _answers_until(phase: str, answer: str) -> list[StructuredCompletion | Exception]:
+    """The provider's billed answers up to and including *phase*'s, which
+    parses or, for ``failed_parse``, comes back billed but unparseable."""
+    outputs = [
+        ConsolidationOutput(facts=[]),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="ok"),
+    ]
+    answers: list[StructuredCompletion | Exception] = [
+        _billed(output) for output in outputs[: _PHASES.index(phase) + 1]
+    ]
+    if answer == "failed_parse":
+        answers[-1] = InferenceError("answer did not parse", usage=_BILLED)
+    return answers
+
+
+def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
+    """Charge through the real accounting chain, failing *phase*'s charge:
+    at the trial-cost ledger (``trial_cost``) or at the cost log, after the
+    spend counters were charged (``cost_log``). Returns the step every
+    phase's charge reaches, to count the charges."""
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
+    )
+    mocker.patch.object(token_tracking_mod, "get_current_envelope", return_value=None)
+    if failure == "cost_log":
+
+        def cost_log(entry) -> None:
+            if entry.block_name == f"copilot:dream:{phase}":
+                raise RuntimeError("cost log scheduling failed after the charge")
+
+        mocker.patch.object(token_tracking_mod, "_schedule_cost_log", cost_log)
+        return mocker.patch.object(token_tracking_mod, "record_cost_usage", AsyncMock())
+    ledger = AsyncMock(
+        side_effect=[None] * _PHASES.index(phase)
+        + [ConnectionError("trial cost database unavailable")]
+    )
+    mocker.patch.object(token_tracking_mod, "_schedule_cost_log")
+    mocker.patch.object(
+        rate_limit_mod, "record_attributed_trial_cost", AsyncMock(return_value=False)
+    )
+    mocker.patch.object(
+        rate_limit_mod,
+        "_fetch_user_tier",
+        AsyncMock(return_value=SubscriptionTier.TRIAL),
+    )
+    mocker.patch.object(
+        rate_limit_mod,
+        "credit_db",
+        return_value=MagicMock(record_subscription_trial_cost=ledger),
+    )
+    mocker.patch.object(
+        rate_limit_mod, "get_redis_async", AsyncMock(return_value=MagicMock())
+    )
+    mocker.patch.object(rate_limit_mod, "_incr_counter_atomic", AsyncMock())
+    return ledger
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize(
+    "answer, failure, error",
+    [
+        ("parsed", "trial_cost", "trial cost database unavailable"),
+        ("failed_parse", "trial_cost", "trial cost database unavailable"),
+        ("parsed", "cost_log", "cost log scheduling failed after the charge"),
+    ],
+    ids=["trial_cost", "failed_parse_trial_cost", "cost_log"],
+)
+async def test_a_charge_that_fails_keeps_every_billed_phases_usage(
+    mocker, fake_dream_db, phase, answer, failure, error
+):
+    """The provider answered, and billed, every phase up to *phase*; then
+    charging *phase* fails in the accounting chain. The pass fails on that
+    error without charging anything twice, and its result and its record
+    carry the usage of every billed phase, *phase*'s included."""
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(side_effect=_answers_until(phase, answer)),
+    )
+    charges = _fail_the_charge(mocker, phase, failure)
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    billed = _PHASES.index(phase) + 1
+    assert result.error == error
+    assert charges.await_count == billed
+    apply_mock.assert_not_awaited()
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == list(_PHASES[:billed])
+    assert (result.usage.total_input_tokens, result.usage.total_output_tokens) == (
+        100 * billed,
+        20 * billed,
+    )
+    assert result.usage.total_cost_usd == pytest.approx(0.001 * billed)
     row = fake_dream_db.rows[result.pass_id]
     assert row["status"] is DreamPassStatus.ERRORED
     assert row["usage"] == result.usage
