@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.graphiti.memory_model import MemoryEnvelope, MemoryKind, SourceKind
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_search import (
     MemorySearchTool,
@@ -34,10 +35,6 @@ async def test_expert_session_searches_only_expert_memory_group() -> None:
             return_value=True,
         ),
         patch(
-            "backend.copilot.tools.graphiti_search.derive_memory_group_id",
-            return_value="expert_private_group",
-        ) as derive_mock,
-        patch(
             "backend.copilot.tools.graphiti_search.get_graphiti_client",
             new_callable=AsyncMock,
             return_value=client,
@@ -50,16 +47,14 @@ async def test_expert_session_searches_only_expert_memory_group() -> None:
         )
 
     assert isinstance(result, MemorySearchResponse)
-    derive_mock.assert_called_once_with("user-1", "expert-1")
-    get_client_mock.assert_awaited_once_with("expert_private_group")
+    expert_group = MemoryScope.for_expert("user-1", "expert-1").group_id
+    get_client_mock.assert_awaited_once_with(expert_group)
     client.search.assert_awaited_once_with(
         query="private fact",
-        group_ids=["expert_private_group"],
+        group_ids=[expert_group],
         num_results=15,
     )
-    assert client.retrieve_episodes.await_args.kwargs["group_ids"] == [
-        "expert_private_group"
-    ]
+    assert client.retrieve_episodes.await_args.kwargs["group_ids"] == [expert_group]
 
 
 class TestFilterEpisodesByScopeTruncation:

@@ -55,6 +55,7 @@ from typing import Any, Awaitable, Callable
 
 from pydantic.dataclasses import dataclass
 
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,14 @@ async def _resolve_user_timezone(user_id: str) -> str | None:
         return None
 
 
+def _registration_key(user_id: str, key_prefix: str) -> str:
+    # Keyed on the owning user whichever memory scope triggered the write:
+    # the dream-system crons are registered per user.
+    return MemoryScope.for_user(user_id).redis_key(
+        "registration", registration_prefix=key_prefix
+    )
+
+
 async def _read_registration_tz(user_id: str, key_prefix: str) -> str | None:
     """Read the timezone the cron was last registered with.
 
@@ -224,7 +233,7 @@ async def _read_registration_tz(user_id: str, key_prefix: str) -> str | None:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        key = f"{key_prefix}:{user_id}"
+        key = _registration_key(user_id, key_prefix)
         stored = await redis.get(key)
         if stored is None:
             return None
@@ -254,7 +263,7 @@ async def _write_registration_tz(
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        key = f"{key_prefix}:{user_id}"
+        key = _registration_key(user_id, key_prefix)
         await redis.set(key, current_tz, ex=REGISTRATION_TTL_SECONDS)
     except Exception:
         logger.debug(
@@ -280,7 +289,7 @@ async def clear_registration_marker(user_id: str, key_prefix: str) -> None:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        await redis.delete(f"{key_prefix}:{user_id}")
+        await redis.delete(_registration_key(user_id, key_prefix))
     except Exception:
         logger.warning(
             "Redis delete failed for %s:%s; marker will expire via TTL",

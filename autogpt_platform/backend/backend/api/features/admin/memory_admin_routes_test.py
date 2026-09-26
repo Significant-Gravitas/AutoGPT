@@ -39,6 +39,12 @@ def _driver_returning(*query_results) -> AsyncMock:
     return driver
 
 
+def _opened_group(open_driver: MagicMock) -> str:
+    """Group of the one scope the route opened a driver on."""
+    open_driver.assert_called_once()
+    return open_driver.call_args.args[0].group_id
+
+
 def _expert(
     expert_id: str,
 ) -> Expert:
@@ -72,7 +78,7 @@ class TestOverview:
             [{"c": 153}],  # mentions
             [{"c": 30}],  # communities
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/overview")
         assert resp.status_code == 200
         body = resp.json()
@@ -90,7 +96,7 @@ class TestOverview:
         driver = _driver_returning(
             [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/me/overview")
         assert resp.status_code == 200
         body = resp.json()
@@ -108,7 +114,7 @@ class TestOverview:
             "Invalid graph operation on empty key"
         )
         driver.close = AsyncMock()
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/overview")
         assert resp.status_code == 200
         body = resp.json()
@@ -125,7 +131,7 @@ class TestOverview:
         # client convert it to a 500 — we want to assert the exact type
         # propagated past _count.
         bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             with pytest.raises(ResponseError, match="MATHC"):
                 bare_client.get("/admin/memory/abc/overview")
         # Driver must still be closed even when the query blows up.
@@ -138,7 +144,7 @@ class TestOverview:
         driver.execute_query.side_effect = TypeError("bad query param")
         driver.close = AsyncMock()
         bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             with pytest.raises(TypeError, match="bad query param"):
                 bare_client.get("/admin/memory/abc/overview")
         driver.close.assert_awaited_once()
@@ -148,10 +154,10 @@ class TestExpertMemoryScope:
     def test_invalid_autopilot_scope_is_400_before_driver(self) -> None:
         with (
             patch(
-                f"{_MOCK_MODULE}.derive_memory_group_id",
+                f"{_MOCK_MODULE}.MemoryScope.for_user",
                 side_effect=ValueError("invalid memory owner"),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
         ):
             resp = client.get("/admin/memory/abc/overview")
 
@@ -167,10 +173,10 @@ class TestExpertMemoryScope:
                 new=AsyncMock(return_value=_expert(expert_id)),
             ),
             patch(
-                f"{_MOCK_MODULE}.derive_memory_group_id",
+                f"{_MOCK_MODULE}.MemoryScope.for_expert",
                 side_effect=ValueError("invalid expert memory scope"),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
 
@@ -189,7 +195,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert(expert_id)),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/overview")
 
@@ -197,7 +203,7 @@ class TestExpertMemoryScope:
         assert resp.json()["expert_id"] == expert_id
         assert resp.json()["group_id"] == expected_group
         get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
-        open_driver.assert_called_once_with(expected_group)
+        assert _opened_group(open_driver) == expected_group
 
     def test_owned_expert_graph_uses_expert_group(self) -> None:
         expert_id = "expert-owned"
@@ -208,14 +214,14 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert(expert_id)),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
 
         assert resp.status_code == 200
         assert resp.json()["expert_id"] == expert_id
         assert resp.json()["group_id"] == expected_group
-        open_driver.assert_called_once_with(expected_group)
+        assert _opened_group(open_driver) == expected_group
 
     @pytest.mark.parametrize(
         "endpoint", ["overview", "graph", "entities", "facts", "communities"]
@@ -227,7 +233,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=None),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
 
@@ -246,13 +252,13 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert(expert_id)),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
 
         assert resp.status_code == 200
         get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
-        open_driver.assert_called_once_with(expected_group)
+        assert _opened_group(open_driver) == expected_group
 
     @pytest.mark.parametrize("endpoint", ["entities", "facts", "communities"])
     def test_list_without_expert_id_remains_autopilot(self, endpoint: str) -> None:
@@ -262,13 +268,13 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/{endpoint}")
 
         assert resp.status_code == 200
         get_expert.assert_not_awaited()
-        open_driver.assert_called_once_with("user_abc")
+        assert _opened_group(open_driver) == "user_abc"
 
     @pytest.mark.parametrize(
         "endpoint", ["overview", "graph", "entities", "facts", "communities"]
@@ -282,7 +288,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
 
@@ -307,7 +313,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(
                 f"/admin/memory/abc/{endpoint}", params={"expert_id": "expert-owned"}
@@ -317,7 +323,7 @@ class TestExpertMemoryScope:
         assert resp.json()["expert_id"] is None
         assert resp.json()["group_id"] == "user_abc"
         get_expert.assert_not_awaited()
-        open_driver.assert_called_once_with("user_abc")
+        assert _opened_group(open_driver) == "user_abc"
 
     @pytest.mark.parametrize("endpoint", ["overview", "graph"])
     def test_raw_group_id_query_cannot_select_memory_scope(self, endpoint: str) -> None:
@@ -333,7 +339,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver) as open_driver,
         ):
             resp = client.get(
                 f"/admin/memory/abc/{endpoint}",
@@ -344,7 +350,7 @@ class TestExpertMemoryScope:
         assert resp.json()["expert_id"] is None
         assert resp.json()["group_id"] == "user_abc"
         get_expert.assert_not_awaited()
-        open_driver.assert_called_once_with("user_abc")
+        assert _opened_group(open_driver) == "user_abc"
 
     @pytest.mark.parametrize("endpoint", ["overview", "graph"])
     def test_max_length_expert_id_reaches_owned_scope_lookup(
@@ -363,7 +369,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert(expert_id)),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
 
@@ -380,7 +386,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=None),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
@@ -402,7 +408,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=None),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get(
@@ -418,10 +424,10 @@ class TestExpertMemoryScope:
     def test_failed_cross_user_autopilot_scope_is_audited(self, mock_jwt_admin) -> None:
         with (
             patch(
-                f"{_MOCK_MODULE}.derive_memory_group_id",
+                f"{_MOCK_MODULE}.MemoryScope.for_user",
                 side_effect=ValueError("invalid memory owner"),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get("/admin/memory/abc/overview")
@@ -446,7 +452,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(),
             ) as get_expert,
-            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.open_driver") as open_driver,
         ):
             resp = client.get(f"/admin/memory/abc/experts/expert-owned/{endpoint}")
 
@@ -465,7 +471,7 @@ class TestExpertMemoryScope:
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert(expert_id)),
             ),
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
@@ -484,7 +490,7 @@ class TestExpertMemoryScope:
             [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
         )
         with (
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get("/admin/memory/abc/overview")
@@ -504,7 +510,7 @@ class TestListEntities:
                 {"uuid": "e2", "name": "Atlas", "summary": None},
             ]
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/entities?limit=10")
         assert resp.status_code == 200
         items = resp.json()["items"]
@@ -515,7 +521,7 @@ class TestListEntities:
     def test_cross_user_audit_includes_autopilot_group(self, mock_jwt_admin) -> None:
         driver = _driver_returning([])
         with (
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
             patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
         ):
             resp = client.get("/admin/memory/abc/entities")
@@ -553,7 +559,7 @@ class TestListFacts:
                 }
             ]
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/facts")
         assert resp.status_code == 200
         # No status filter applied → query shouldn't include WHERE on status
@@ -563,7 +569,7 @@ class TestListFacts:
 
     def test_status_filter_passed_to_cypher(self) -> None:
         driver = _driver_returning([])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get(
                 "/admin/memory/abc/facts?status=superseded&scope=project:atlas"
             )
@@ -595,7 +601,7 @@ class TestListCommunities:
                 },
             ]
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/communities?limit=10")
         assert resp.status_code == 200
         items = resp.json()["items"]
@@ -609,7 +615,7 @@ class TestGraph:
         driver = AsyncMock()
         driver.execute_query.side_effect = ResponseError("no such graph")
         driver.close = AsyncMock()
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/admin/memory/abc/graph")
         assert resp.status_code == 200
         body = resp.json()
@@ -623,7 +629,7 @@ class TestGraph:
         driver.execute_query.side_effect = ResponseError("syntax error near 'MATHC'")
         driver.close = AsyncMock()
         bare_client = fastapi.testclient.TestClient(app, raise_server_exceptions=True)
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             with pytest.raises(ResponseError, match="MATHC"):
                 bare_client.get("/admin/memory/abc/graph")
         driver.close.assert_awaited_once()

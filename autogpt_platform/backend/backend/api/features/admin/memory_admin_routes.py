@@ -34,9 +34,8 @@ from backend.copilot.dream.job_status import (
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -187,14 +186,12 @@ def _resolve_user_id(user_id: str, caller_id: str) -> str:
     return caller_id if user_id == "me" else user_id
 
 
-async def _resolve_memory_scope(
-    user_id: str, expert_id: str | None
-) -> tuple[str, str | None]:
-    """Derive an owned memory group without trusting client group identifiers."""
+async def _resolve_memory_scope(user_id: str, expert_id: str | None) -> MemoryScope:
+    """Derive an owned memory scope without trusting client group identifiers."""
 
     if expert_id is None:
         try:
-            return derive_memory_group_id(user_id), None
+            return MemoryScope.for_user(user_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
@@ -203,7 +200,7 @@ async def _resolve_memory_scope(
         raise HTTPException(status_code=404, detail="Expert not found")
 
     try:
-        return derive_memory_group_id(user_id, expert.id), expert.id
+        return MemoryScope.for_expert(user_id, expert.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -248,11 +245,14 @@ async def _resolve_and_audit_memory_scope(
     caller_id: str,
     target_id: str,
     jwt_payload: dict,
-    expert_id: str | None = None,
-) -> tuple[str, str | None]:
-    """Resolve an authorized scope while auditing successful and failed attempts."""
+    expert_id: str | None,
+) -> MemoryScope:
+    """Resolve an authorized scope while auditing successful and failed attempts.
+
+    ``expert_id`` is required so an account-only caller says so explicitly
+    instead of landing in the account graph by omission."""
     try:
-        group_id, resolved_expert_id = await _resolve_memory_scope(target_id, expert_id)
+        memory_scope = await _resolve_memory_scope(target_id, expert_id)
     except Exception:
         _audit_cross_user_access(
             request=request,
@@ -268,10 +268,10 @@ async def _resolve_and_audit_memory_scope(
         caller_id=caller_id,
         target_id=target_id,
         jwt_payload=jwt_payload,
-        expert_id=resolved_expert_id,
-        group_id=group_id,
+        expert_id=memory_scope.expert_id,
+        group_id=memory_scope.group_id,
     )
-    return group_id, resolved_expert_id
+    return memory_scope
 
 
 async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> None:
@@ -290,29 +290,6 @@ async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> N
             kind,
             job_id[:12],
         )
-
-
-def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
-    """Read-only driver — bypasses the full Graphiti client construction.
-
-    The visualizer's read paths only need Cypher; we avoid the
-    ~1s LLM-client + cross-encoder setup cost for what should be
-    snappy dashboard calls.
-
-    ``build_indices=False`` suppresses graphiti-core's per-init
-    fire-and-forget indexing task. For a user whose graph the admin
-    is inspecting, the indices are already in place from the
-    long-lived chat-write client; firing the index-creation task per
-    short-lived admin request creates a race with the route's own
-    queries and produces "Buffer is closed" log spam.
-    """
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        build_indices=False,
-    )
 
 
 _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
@@ -370,15 +347,16 @@ async def _get_memory_overview_impl(
     expert_id: str | None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
         expert_id=expert_id,
     )
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
         episodes = await _count(driver, "MATCH (n:Episodic) RETURN count(n) AS c")
@@ -394,7 +372,7 @@ async def _get_memory_overview_impl(
 
     return MemoryOverview(
         user_id=target,
-        expert_id=resolved_expert_id,
+        expert_id=memory_scope.expert_id,
         group_id=group_id,
         entities=entities,
         episodes=episodes,
@@ -452,15 +430,16 @@ async def _list_entities_impl(
     limit: int,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, _ = await _resolve_and_audit_memory_scope(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
         expert_id=expert_id,
     )
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         result = await driver.execute_query(
             """
@@ -545,13 +524,14 @@ async def _list_facts_impl(
     scope: str | None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, _ = await _resolve_and_audit_memory_scope(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
         expert_id=expert_id,
     )
+    group_id = memory_scope.group_id
 
     # Build optional filters
     where_clauses = ["e.group_id = $g"]
@@ -564,7 +544,7 @@ async def _list_facts_impl(
         params["scope"] = scope
     where = " AND ".join(where_clauses)
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         result = await driver.execute_query(
             f"""
@@ -676,15 +656,16 @@ async def _list_communities_impl(
     limit: int,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, _ = await _resolve_and_audit_memory_scope(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
         expert_id=expert_id,
     )
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         # Graphiti stores membership as (Community)-[HAS_MEMBER]->(Entity); match
         # in that direction so member_count and the size sort are correct.
@@ -778,13 +759,14 @@ async def _get_graph_impl(
     include_communities: bool,
 ) -> GraphResponse:
     target = _resolve_user_id(user_id, caller_id)
-    group_id, resolved_expert_id = await _resolve_and_audit_memory_scope(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
         expert_id=expert_id,
     )
+    group_id = memory_scope.group_id
 
     # Build the labels-of-interest list for the node queries — one
     # Cypher per label so the label can travel through the result row
@@ -795,7 +777,7 @@ async def _get_graph_impl(
     if include_communities:
         labels.append("Community")
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
     truncated = False
@@ -908,7 +890,7 @@ async def _get_graph_impl(
 
     return GraphResponse(
         user_id=target,
-        expert_id=resolved_expert_id,
+        expert_id=memory_scope.expert_id,
         group_id=group_id,
         nodes=nodes,
         edges=edges,
@@ -1039,6 +1021,7 @@ async def trigger_dream_pass(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())
@@ -1120,6 +1103,7 @@ async def trigger_ratification_pass(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     try:
@@ -1163,6 +1147,7 @@ async def trigger_nightly_batch(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())
@@ -1257,6 +1242,7 @@ async def rebuild_communities(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())

@@ -4,6 +4,7 @@ import pytest
 
 from . import falkordb_driver as fdb
 from .falkordb_driver import AutoGPTFalkorDriver
+from .scope import MemoryScope
 
 
 class _FakeResult:
@@ -466,6 +467,18 @@ def test_clone_returns_subclass_with_indices_disabled() -> None:
     assert isinstance(cloned, AutoGPTFalkorDriver)
     assert cloned._build_indices_at_init is False
     assert driver.clone("user_a") is driver
+
+
+def test_open_driver_targets_the_scope_graph_without_building_indices() -> None:
+    """The factory opens the scope's own graph and keeps the default that a
+    bare construction never creates one."""
+    scope = MemoryScope.for_expert("user-1", "expert-1")
+    with patch.object(fdb, "AutoGPTFalkorDriver") as driver_cls:
+        assert fdb.open_driver(scope) is driver_cls.return_value
+
+    kwargs = driver_cls.call_args.kwargs
+    assert kwargs["database"] == scope.group_id
+    assert kwargs["build_indices"] is False
 
 
 @pytest.mark.asyncio

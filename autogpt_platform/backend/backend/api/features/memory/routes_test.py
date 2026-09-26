@@ -68,7 +68,7 @@ def _expert(expert_id: str = _EXPERT_ID) -> Expert:
 class TestOverview:
     def test_returns_scope_counts(self) -> None:
         driver = _driver_returning([{"c": 12}], [{"c": 34}], [{"c": 5}])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/memory/overview")
         assert resp.status_code == 200
         body = resp.json()
@@ -85,7 +85,7 @@ class TestOverview:
 
     def test_fact_count_only_counts_live_edges(self) -> None:
         driver = _driver_returning([{"c": 0}], [{"c": 0}], [{"c": 0}])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             client.get("/memory/overview")
         fact_query = driver.execute_query.await_args_list[0].args[0]
         assert "expired_at IS NULL" in fact_query
@@ -105,7 +105,7 @@ class TestListFacts:
                 }
             ]
         )
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/memory/facts?limit=5")
         assert resp.status_code == 200
         body = resp.json()
@@ -120,7 +120,7 @@ class TestListFacts:
         driver = AsyncMock()
         driver.execute_query.side_effect = ResponseError("no such graph")
         driver.close = AsyncMock()
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.get("/memory/facts")
         assert resp.status_code == 200
         assert resp.json()["items"] == []
@@ -129,12 +129,12 @@ class TestListFacts:
         driver = _driver_returning([])
         opened: list[str] = []
 
-        def open_driver(group_id: str):
-            opened.append(group_id)
+        def open_driver(scope):
+            opened.append(scope.group_id)
             return driver
 
         with (
-            patch(f"{_MOCK_MODULE}._open_driver", side_effect=open_driver),
+            patch(f"{_MOCK_MODULE}.open_driver", side_effect=open_driver),
             patch(
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert()),
@@ -160,7 +160,7 @@ class TestListFacts:
 class TestForgetFact:
     def test_retracts_matching_edge(self) -> None:
         driver = _driver_returning([{"uuid": "edge-1"}])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 200
         assert resp.json() == {"uuid": "edge-1", "forgotten": True}
@@ -171,7 +171,7 @@ class TestForgetFact:
 
     def test_no_match_is_404(self) -> None:
         driver = _driver_returning([])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.delete("/memory/facts/edge-unknown")
         assert resp.status_code == 404
 
@@ -179,7 +179,7 @@ class TestForgetFact:
 class TestEraseScope:
     def test_erases_all_nodes(self) -> None:
         driver = _driver_returning([{"c": 214}], [])
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.delete("/memory")
         assert resp.status_code == 200
         body = resp.json()
@@ -192,7 +192,7 @@ class TestEraseScope:
         driver = AsyncMock()
         driver.execute_query.side_effect = ResponseError("no such graph")
         driver.close = AsyncMock()
-        with patch(f"{_MOCK_MODULE}._open_driver", return_value=driver):
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
             resp = client.delete("/memory")
         assert resp.status_code == 200
         assert resp.json()["deleted_nodes"] == 0
@@ -201,7 +201,7 @@ class TestEraseScope:
     def test_expert_erase_resolves_ownership(self, test_user_id) -> None:
         driver = _driver_returning([{"c": 3}], [])
         with (
-            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.open_driver", return_value=driver),
             patch(
                 f"{_MOCK_MODULE}.experts_db.get_expert",
                 new=AsyncMock(return_value=_expert()),

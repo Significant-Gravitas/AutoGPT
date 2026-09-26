@@ -23,13 +23,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
+from backend.copilot.graphiti.scope import HIT_TRACKER_KEY_PREFIX, MemoryScope
 from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 
 from .ratification_hits import (
-    HIT_TRACKER_KEY_PREFIX,
     RATIFICATION_GRACE_PERIOD,
     get_hit_count,
     parse_created_at,
@@ -85,7 +83,7 @@ async def run_ratification_pass(
     result = RatificationResult(user_id=user_id, started_at=started_at)
 
     try:
-        group_id = derive_memory_group_id(user_id, expert_id)
+        scope = MemoryScope.build(user_id, expert_id)
     except ValueError as exc:
         result.error = f"invalid_user_id: {exc}"
         result.completed_at = datetime.now(timezone.utc)
@@ -94,15 +92,7 @@ async def run_ratification_pass(
         )
         return result
 
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices live with the chat-write client; skip the
-        # background-task race that produces "Buffer is closed" spam.
-        build_indices=False,
-    )
+    driver = open_driver(scope)
     try:
         try:
             tentatives = await _list_tentative_edges(driver)
@@ -129,9 +119,7 @@ async def run_ratification_pass(
         for edge in tentatives:
             try:
                 await _process_edge(
-                    user_id=user_id,
-                    expert_id=expert_id,
-                    group_id=group_id,
+                    scope=scope,
                     driver=driver,
                     edge=edge,
                     now=now,
@@ -171,9 +159,7 @@ async def run_ratification_pass(
 
 async def _process_edge(
     *,
-    user_id: str,
-    expert_id: str | None,
-    group_id: str,
+    scope: MemoryScope,
     driver: AutoGPTFalkorDriver,
     edge: dict[str, Any],
     now: datetime,
@@ -191,7 +177,7 @@ async def _process_edge(
         result.per_edge_errors.append("missing_uuid")
         return
 
-    hits = await _get_hit_count(user_id, edge_uuid, expert_id)
+    hits = await _get_hit_count(scope, edge_uuid)
 
     if hits >= 1:
         promoted = await _promote_edge(driver, edge_uuid)
@@ -214,8 +200,8 @@ async def _process_edge(
         [edge_uuid],
         reason="unratified",
         new_status="superseded",
-        user_id=user_id,
-        group_id=group_id,
+        user_id=scope.owner_user_id,
+        group_id=scope.group_id,
     )
     if succeeded:
         result.superseded_count += 1
@@ -264,19 +250,14 @@ async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     return bool(records)
 
 
-async def try_ratify_on_hit(
-    user_id: str,
-    edge_uuids: list[str],
-    *,
-    expert_id: str | None = None,
-) -> int:
+async def try_ratify_on_hit(scope: MemoryScope, edge_uuids: list[str]) -> int:
     """Record warm-context hits and promote any tentative edges inline.
 
     Called from warm-context retrieval (``graphiti/context.py``) once
     per turn with the list of edge uuids that landed in the user's
     context. For each uuid we:
 
-      1. Bump the ``mem:hits:{user_id}:{edge_uuid}`` Redis counter
+      1. Bump the ``mem:hits:{scope_key}:{edge_uuid}`` Redis counter
          (so the nightly ratification sweep also sees the hit and
          agrees on promotion if Cypher fails here).
       2. Issue a targeted Cypher ``SET status='active'`` filtered by
@@ -296,35 +277,20 @@ async def try_ratify_on_hit(
     """
     if not edge_uuids:
         return 0
-    if not user_id:
-        return 0
 
+    user_id = scope.owner_user_id
     # Step 1: bump hit counters (Redis, best-effort, swallows errors).
     # Done before the Cypher promotion so the counter survives even
     # when the promotion path fails.
     for uuid in edge_uuids:
-        await record_memory_hit(user_id, uuid, expert_id)
+        await record_memory_hit(scope, uuid)
 
     # Step 2: targeted Cypher promotion. We open our own driver here
     # because callers are warm-context retrieval call sites that have
     # a higher-level graphiti client but no raw driver — and we want
     # the brief write-lock semantics to be local to this function.
-    try:
-        group_id = derive_memory_group_id(user_id, expert_id)
-    except ValueError as exc:
-        logger.debug("try_ratify_on_hit: invalid user_id %s: %s", user_id[:12], exc)
-        return 0
-
     promoted_count = 0
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices live with the chat-write client; skip the
-        # background-task race that produces "Buffer is closed" spam.
-        build_indices=False,
-    )
+    driver = open_driver(scope)
     try:
         for uuid in edge_uuids:
             try:
@@ -374,7 +340,5 @@ async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> 
 
 # Local indirection so tests can mock ``_get_hit_count`` on this module
 # rather than the helper module (matches the poison-pill test pattern).
-async def _get_hit_count(
-    user_id: str, edge_uuid: str, expert_id: str | None = None
-) -> int:
-    return await get_hit_count(user_id, edge_uuid, expert_id)
+async def _get_hit_count(scope: MemoryScope, edge_uuid: str) -> int:
+    return await get_hit_count(scope, edge_uuid)

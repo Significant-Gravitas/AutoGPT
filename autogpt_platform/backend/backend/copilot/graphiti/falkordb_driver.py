@@ -12,6 +12,7 @@ from graphiti_core.helpers import validate_group_ids
 from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
+from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -344,3 +345,22 @@ class AutoGPTFalkorDriver(FalkorDriver):
             return ""
 
         return fulltext_query
+
+
+def open_driver(
+    scope: MemoryScope, *, build_indices: bool = False
+) -> AutoGPTFalkorDriver:
+    """Open a Cypher driver on ``scope``'s graph; the caller must close it.
+
+    The one place scope-level code constructs a driver. ``build_indices``
+    stays False unless the caller is about to write — see
+    ``AutoGPTFalkorDriver`` for why a bare construction must never create a
+    graph.
+    """
+    return AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=scope.group_id,
+        build_indices=build_indices,
+    )

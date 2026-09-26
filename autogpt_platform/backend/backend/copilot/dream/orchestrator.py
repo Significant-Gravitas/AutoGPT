@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
@@ -152,7 +152,7 @@ MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
 # outlives the 14-day episode window; an expired or missing marker just
 # means one extra full pass (fail-open). The batch path does NOT stamp
 # this marker yet — batch users simply never benefit from the skip.
-LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
+# The key is ``MemoryScope.redis_key("last_completed")``.
 LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
 
 
@@ -636,14 +636,7 @@ def _aggregate_usage(
     )
 
 
-def _last_completed_key(user_id: str, expert_id: str | None = None) -> str:
-    scope_id = derive_memory_scope_key(user_id, expert_id)
-    return f"{LAST_COMPLETED_KEY_PREFIX}{scope_id}"
-
-
-async def _read_last_completed_marker(
-    user_id: str, expert_id: str | None = None
-) -> datetime | None:
+async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
     """When the user's last dream pass completed, or ``None``.
 
     Best-effort: a Redis error or an unparseable value fails open
@@ -654,9 +647,10 @@ async def _read_last_completed_marker(
     # in tests that mock redis.
     from backend.data.redis_client import get_redis_async
 
+    user_id = scope.owner_user_id
     try:
         redis = await get_redis_async()
-        raw = await redis.get(_last_completed_key(user_id, expert_id))
+        raw = await redis.get(scope.redis_key("last_completed"))
     except Exception:
         logger.warning(
             "Failed to read dream last-completed marker for user %s — "
@@ -680,9 +674,7 @@ async def _read_last_completed_marker(
     return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
 
 
-async def _stamp_last_completed_marker(
-    user_id: str, as_of: datetime, expert_id: str | None = None
-) -> None:
+async def _stamp_last_completed_marker(scope: MemoryScope, as_of: datetime) -> None:
     """Record the upper bound of the episode window the pass consolidated.
 
     ``as_of`` must be the gather snapshot time (``DreamInput.window_end``),
@@ -699,14 +691,14 @@ async def _stamp_last_completed_marker(
     try:
         redis = await get_redis_async()
         await redis.set(
-            _last_completed_key(user_id, expert_id),
+            scope.redis_key("last_completed"),
             as_of.isoformat(),
             ex=LAST_COMPLETED_TTL_SECONDS,
         )
     except Exception:
         logger.warning(
             "Failed to stamp dream last-completed marker for user %s",
-            user_id[:12],
+            scope.owner_user_id[:12],
             exc_info=True,
         )
 
@@ -735,7 +727,7 @@ def _has_new_episodes_since(episodes: list[EpisodeRow], marker: datetime) -> boo
 async def _execute_dream_pass_async(
     user_id: str,
     *,
-    expert_id: str | None = None,
+    expert_id: str | None,
     config: ChatConfig | None = None,
     status_id: str | None = None,
 ) -> DreamPassResult:
@@ -768,7 +760,8 @@ async def _execute_dream_pass_async(
 
     ttl = DEFAULT_LOCK_TTL_SECONDS
     try:
-        lock_context = dream_lock(user_id, ttl_seconds=ttl, expert_id=expert_id)
+        scope = MemoryScope.build(user_id, expert_id)
+        lock_context = dream_lock(scope, ttl_seconds=ttl)
         async with lock_context as dream_lock_handle:
             # Pre-flight billing check. Runs inside the lock so a
             # paywalled user doesn't burn the slot for an eligible
@@ -795,7 +788,7 @@ async def _execute_dream_pass_async(
                     skip_reason=budget_skip or "insufficient_credits",
                 )
 
-            input_bundle = await gather_dream_input(user_id, expert_id=expert_id)
+            input_bundle = await gather_dream_input(scope)
 
             if not input_bundle.episodes and not input_bundle.facts:
                 # Nothing to consolidate — early-return as skipped so the
@@ -824,9 +817,7 @@ async def _execute_dream_pass_async(
             # silent no_new_activity skip would neuter it for up to the
             # marker's 35-day TTL.
             last_completed = (
-                await _read_last_completed_marker(user_id, expert_id)
-                if status_id is None
-                else None
+                await _read_last_completed_marker(scope) if status_id is None else None
             )
             if last_completed is not None and not _has_new_episodes_since(
                 input_bundle.episodes, last_completed
@@ -961,10 +952,9 @@ async def _execute_dream_pass_async(
                 known_fact_uuids=input_bundle.known_fact_uuids,
             )
             apply_stats = await apply_operations(
-                user_id,
+                scope,
                 pass_id,
                 ops,
-                expert_id=expert_id,
                 known_fact_uuids=input_bundle.known_fact_uuids,
                 lock_handle=dream_lock_handle,
             )
@@ -974,9 +964,7 @@ async def _execute_dream_pass_async(
             # mid-pass still count as new next time. Sync path only: batch
             # apply runs hours later in batch_callbacks, which doesn't
             # stamp yet.
-            await _stamp_last_completed_marker(
-                user_id, input_bundle.window_end, expert_id
-            )
+            await _stamp_last_completed_marker(scope, input_bundle.window_end)
 
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")

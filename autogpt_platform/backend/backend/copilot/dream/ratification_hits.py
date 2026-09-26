@@ -1,8 +1,8 @@
 """Redis hit tracker for tentative MemoryFact edges.
 
-Owns the ``mem:hits:{user_id}:{edge_uuid}`` key shape and the
-INCR/read paths the ratification pass consults. Kept in its own
-module so ``ratification.py`` stays focused on the pass logic and
+Owns the INCR/read paths the ratification pass consults on the
+per-scope hit counters (``MemoryScope.redis_key("hits")``). Kept in its
+own module so ``ratification.py`` stays focused on the pass logic and
 fits the file-length budget.
 
 Wiring note: warm-context retrieval (``graphiti/context.py``) fires
@@ -19,7 +19,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.copilot.graphiti.scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +28,8 @@ logger = logging.getLogger(__name__)
 # get several sessions worth of opportunities to retrieve the memory.
 RATIFICATION_GRACE_PERIOD = timedelta(days=30)
 
-# Redis key prefix for warm-context hit tracking. One key per
-# (user, edge) so we can INCR without contention and let TTL clean up
-# automatically. Format: ``mem:hits:{user_id}:{edge_uuid}``.
-HIT_TRACKER_KEY_PREFIX = "mem:hits"
 
-
-async def record_memory_hit(
-    user_id: str, edge_uuid: str, expert_id: str | None = None
-) -> None:
+async def record_memory_hit(scope: MemoryScope, edge_uuid: str) -> None:
     """INCR the Redis hit counter for one tentative edge.
 
     Called from any code path that surfaces a tentative edge to the
@@ -53,7 +46,7 @@ async def record_memory_hit(
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        key = hit_key(user_id, edge_uuid, expert_id)
+        key = scope.redis_key("hits", edge_uuid=edge_uuid)
         ttl_seconds = int(RATIFICATION_GRACE_PERIOD.total_seconds())
         # SET with NX + EX seeds the key with TTL, then INCR (which
         # never touches TTL), then EXPIRE so every hit refreshes the
@@ -65,21 +58,19 @@ async def record_memory_hit(
     except Exception:
         logger.debug(
             "record_memory_hit failed for user %s edge %s",
-            user_id[:12],
+            scope.owner_user_id[:12],
             edge_uuid,
             exc_info=True,
         )
 
 
-async def get_hit_count(
-    user_id: str, edge_uuid: str, expert_id: str | None = None
-) -> int:
+async def get_hit_count(scope: MemoryScope, edge_uuid: str) -> int:
     """Read the Redis hit counter for one edge. Missing key → 0."""
     try:
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        raw = await redis.get(hit_key(user_id, edge_uuid, expert_id))
+        raw = await redis.get(scope.redis_key("hits", edge_uuid=edge_uuid))
         if raw is None:
             return 0
         if isinstance(raw, bytes):
@@ -90,16 +81,11 @@ async def get_hit_count(
         # until the grace period elapses; we never falsely promote.
         logger.debug(
             "hit-count read failed for user %s edge %s",
-            user_id[:12],
+            scope.owner_user_id[:12],
             edge_uuid,
             exc_info=True,
         )
         return 0
-
-
-def hit_key(user_id: str, edge_uuid: str, expert_id: str | None = None) -> str:
-    scope_id = derive_memory_scope_key(user_id, expert_id)
-    return f"{HIT_TRACKER_KEY_PREFIX}:{scope_id}:{edge_uuid}"
 
 
 def parse_created_at(value: Any) -> datetime | None:
