@@ -2532,8 +2532,9 @@ def _ends(mocker, ending: str) -> None:
 async def test_the_outcome_is_recorded_before_the_lock_is_released(
     mocker, fake_dream_db, fake_dream_redis, ending, status
 ):
-    """A later pass that finds the scope's lock free never finds this pass's
-    record still open."""
+    """With a healthy store the outcome is persisted before the lock is
+    released. A dropped outcome write can still leave an open row behind a
+    free lock (see ``_run_locked``); that case is the reaper's."""
     mocker.patch(
         "backend.data.redis_client.get_redis_async",
         AsyncMock(return_value=fake_dream_redis),

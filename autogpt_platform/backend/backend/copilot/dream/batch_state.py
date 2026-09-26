@@ -190,7 +190,9 @@ async def claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "err
 async def claim_costs_logged_gate(pass_id: str) -> bool:
     """Atomically claim the per-pass cost-charge gate. Returns True
     when this caller won the race (first time costs_logged is set);
-    False when a prior caller already charged this pass.
+    False when an earlier caller already claimed it, which does not
+    prove the pass was charged: that caller's accounting may have
+    failed part-way, or Redis may have failed this claim.
 
     Modelled on ``rate_limit._maybe_reconcile_stripe_tier`` — Redis
     SETNX with a long TTL is the established convention for "do this

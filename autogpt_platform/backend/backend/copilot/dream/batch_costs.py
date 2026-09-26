@@ -32,11 +32,14 @@ async def log_all_phase_costs(
     Idempotent via a Redis SETNX gate keyed on ``pass_id``: a pass logs its
     costs from whichever terminal path it takes, success or failure, and a
     repeated delivery of a finished batch must not charge it twice. The gate
-    is claimed once, before the loop, and never released, so each phase is
-    charged at most once: a phase whose charge fails is logged and stays
-    uncharged, because no later delivery gets past the gate to retry it,
-    while the other landed phases are still charged. A partial failure
-    under-charges the pass rather than risk charging a phase twice.
+    is claimed once, before the loop, and never released, so each phase
+    gets at most one accounting attempt while the gate is retained.
+    Accounting is not transactional: the trial ledger and the weekly
+    counter can succeed before the cost-log write raises, so a failed
+    attempt may leave partial side effects, and it is not retried because
+    no later delivery gets past the gate; the other landed phases are
+    still charged. A partial failure under-accounts the pass rather than
+    risk a second attempt for a phase.
 
     Each phase is recorded through ``billing.record_phase_cost`` like a
     sync phase, attributed to the pass's expert, and priced from its
