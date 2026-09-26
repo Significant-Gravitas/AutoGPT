@@ -75,6 +75,11 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    is_hosted_link_credential,
+    revocation_handler,
+)
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
@@ -1076,6 +1081,14 @@ async def delete_credentials(
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
+        elif provider == ProviderName.STRIPE_LINK and is_hosted_link_credential(creds):
+            # Issued by the confidential client, which alone can revoke it. If
+            # that client has since been unconfigured nothing here can end the
+            # grant: the local delete stands, and the customer can revoke it
+            # from their Link account.
+            if not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
+                return CredentialsDeletionResponse(revoked=False)
+            handler = revocation_handler()
         elif (
             device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
         ) is not None:
@@ -1776,19 +1789,7 @@ def _get_provider_oauth_handler(
 
     if key not in HANDLERS_BY_NAME:
         if key in DEVICE_HANDLERS_BY_NAME:
-            # A device-code provider is a public client with no client secret,
-            # so there is no authorization-code flow to start. Point the caller
-            # at the device-auth endpoint rather than reporting "does not
-            # support OAuth". The detail is shown to end users verbatim.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Provider '{key}' connects with a device code, not an "
-                    "OAuth redirect. Connect it through the device-code flow "
-                    f"instead (API: POST /api/integrations/{key}"
-                    "/device-auth/initiate)."
-                ),
-            )
+            raise _device_code_only(key)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",
@@ -1843,6 +1844,23 @@ def _get_provider_oauth_handler(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
+
+
+def _device_code_only(key: str) -> HTTPException:
+    # A device-code provider with no registered confidential client (Stripe
+    # Link without its STRIPE_LINK_* settings) has no authorization-code flow
+    # to start. Point the caller at the device-auth
+    # endpoint rather than reporting "does not support OAuth" or "not
+    # configured". The detail is shown to end users verbatim.
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"Provider '{key}' connects with a device code, not an "
+            "OAuth redirect. Connect it through the device-code flow "
+            f"instead (API: POST /api/integrations/{key}"
+            "/device-auth/initiate)."
+        ),
     )
 
 
