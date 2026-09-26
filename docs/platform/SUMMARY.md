@@ -23,6 +23,7 @@
 * [AutoGPT Platform Installer](installer.md)
 * [Run AutoGPT in One Docker Container (Experimental)](single-container.md)
 * [Advanced Setup](advanced_setup.md)
+* [Deployment Environment Variables](deployment-environment-variables.md)
 
 ## Tutorials
 
