@@ -15,17 +15,21 @@ from backend.api.features.store.skill_model import (
 from backend.copilot.tools import skills as skills_module
 from backend.copilot.tools.skills import (
     _RECONCILE_WRITE_BUDGET,
+    MAX_PACKAGE_FILES,
     SKILL_ORIGIN_MARKETPLACE,
     SKILL_ORIGIN_USER,
     UPDATE_AVAILABLE,
     UPDATE_MERGED,
     UPDATE_RETIRED,
     SkillBaseline,
+    SkillChangedError,
     SkillFile,
+    SkillWrite,
     build_skills_update_notice,
     list_user_skills,
     render_skills_index,
     store_user_skill,
+    store_user_skills,
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.skill_package import package_tree_sha256
@@ -43,9 +47,17 @@ def _package(
     body: str,
     files: dict[str, bytes] | None = None,
 ) -> SkillVersionPackage:
+    return _package_text(slug, version_id, _skill_md(slug, body), files)
+
+
+def _package_text(
+    slug: str,
+    version_id: str,
+    text: str,
+    files: dict[str, bytes] | None = None,
+) -> SkillVersionPackage:
     """*version_id* is "v<n>"; the id stored is unique per slug, as real
     version rows are, so several skills can share a version number."""
-    text = _skill_md(slug, body)
     siblings = [
         SkillFile(relative_path=path, content=content)
         for path, content in sorted((files or {}).items())
@@ -381,10 +393,14 @@ def test_the_index_names_each_update_state():
 async def test_the_next_turn_is_told_which_bodies_changed():
     fake = _FakeWorkspaceManager()
     v1 = _package("cold-email", "v1", "# Cold\n")
-    with _patch_skills_path(fake), patch.object(
-        skills_module, "_consume_updated", AsyncMock(return_value=["cold-email"])
-    ), patch.object(
-        skills_module, "is_skills_feature_enabled", AsyncMock(return_value=True)
+    with (
+        _patch_skills_path(fake),
+        patch.object(
+            skills_module, "_consume_updated", AsyncMock(return_value=["cold-email"])
+        ),
+        patch.object(
+            skills_module, "is_skills_feature_enabled", AsyncMock(return_value=True)
+        ),
     ):
         await _install(v1)
         prior = [
@@ -411,3 +427,167 @@ async def test_an_owner_skill_is_never_touched_by_the_reconcile():
     assert skill.update is None
     assert fake.files["/skills/cold-email/SKILL.md"].decode().endswith("# Mine\n")
     patched.skill_db.get_active_versions.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_copy_from_before_baselines_is_matched_to_its_version_and_moved():
+    """A pre-catalog install rendered its SKILL.md from the row's fields, so
+    its bytes never equal the catalog's. The publisher hashed that rendering
+    onto the old version; a copy that still hashes to it is unedited, and
+    takes the update like any other."""
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n", {"references/a.md": b"a\n"})
+    v2 = _package(
+        "cold-email", "v2", "# Cold, from the catalog\n", {"references/a.md": b"a2\n"}
+    )
+    with _patch_skills_path(fake) as patched:
+        await store_user_skill(
+            USER,
+            name="cold-email",
+            description="",
+            body="",
+            files=list(v1.files),
+            origin=SKILL_ORIGIN_MARKETPLACE,
+            skill_markdown=v1.skill_markdown,
+        )
+        _marketplace(patched, v1, v2)
+        patched.skill_db.find_version_by_hash = AsyncMock(
+            side_effect=lambda listing_id, sha: (
+                v1.version_id
+                if (listing_id, sha) == (v1.listing_id, v1.package_sha256)
+                else None
+            )
+        )
+        [skill] = await list_user_skills(USER)
+
+    assert fake.files["/skills/cold-email/SKILL.md"] == v2.skill_markdown.encode()
+    assert fake.files["/skills/cold-email/references/a.md"] == b"a2\n"
+    assert skill.baseline == _baseline(v2)
+    assert skill.update is None
+
+
+@pytest.mark.asyncio
+async def test_a_copy_that_cannot_take_a_version_is_not_tried_again_for_it():
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n")
+    v2 = _package("cold-email", "v2", "# Cold v2\n")
+    noted: dict[str, str] = {}
+
+    async def read(user_id, expert_id):
+        return dict(noted)
+
+    async def write(user_id, expert_id, entries):
+        noted.update(entries)
+
+    with (
+        _patch_skills_path(fake) as patched,
+        patch.object(skills_module, "_read_update_backoff", read),
+        patch.object(skills_module, "_set_update_backoff", write),
+    ):
+        await _install(v1)
+        _marketplace(patched, v1, v2)
+        # The update cannot be fetched: nothing to fast-forward to.
+        patched.skill_db.get_version_packages = AsyncMock(return_value={})
+        [first] = await list_user_skills(USER)
+        [second] = await list_user_skills(USER)
+
+    assert (first.update, second.update) == (UPDATE_AVAILABLE, UPDATE_AVAILABLE)
+    assert noted == {"cold-email": v2.version_id}
+    patched.skill_db.get_version_packages.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_attempts_spend_the_turns_budget_too():
+    fake = _FakeWorkspaceManager()
+    count = _RECONCILE_WRITE_BUDGET + 2
+    olds = [_package(f"skill-{i}", "v1", f"# {i}\n") for i in range(count)]
+    news = [_package(f"skill-{i}", "v2", f"# {i} v2\n") for i in range(count)]
+    with _patch_skills_path(fake) as patched:
+        for old in olds:
+            await _install(old)
+        _marketplace(patched, *news)
+        patched.skill_db.get_version_packages = AsyncMock(return_value={})
+        skills = await list_user_skills(USER)
+
+    assert all(s.update == UPDATE_AVAILABLE for s in skills)
+    assert patched.skill_db.get_version_packages.call_count == _RECONCILE_WRITE_BUDGET
+
+
+@pytest.mark.asyncio
+async def test_a_write_decided_on_a_copy_that_has_since_changed_is_refused():
+    """The reconcile decides outside the write lock; the write itself checks
+    the folder still hashes to what the decision saw, or an edit landed in
+    between would be put back and a file just added would be pruned."""
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n", {"references/a.md": b"a\n"})
+    v2 = _package("cold-email", "v2", "# Cold v2\n", {"references/a.md": b"a2\n"})
+    with _patch_skills_path(fake):
+        await _install(v1)
+        [outcome] = await store_user_skills(
+            USER,
+            [
+                SkillWrite(
+                    name="cold-email",
+                    description="",
+                    body="",
+                    skill_markdown=v2.skill_markdown,
+                    files=list(v2.files),
+                    baseline=_baseline(v2),
+                    expected_package_sha256="not-what-the-folder-hashes-to",
+                )
+            ],
+            origin=SKILL_ORIGIN_MARKETPLACE,
+        )
+
+    assert isinstance(outcome, SkillChangedError)
+    assert fake.files["/skills/cold-email/SKILL.md"] == v1.skill_markdown.encode()
+    assert fake.files["/skills/cold-email/references/a.md"] == b"a\n"
+
+
+@pytest.mark.asyncio
+async def test_a_copy_over_the_files_cap_is_left_alone():
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n")
+    v2 = _package("cold-email", "v2", "# Cold v2\n")
+    with _patch_skills_path(fake) as patched:
+        await _install(v1)
+        for i in range(MAX_PACKAGE_FILES + 1):
+            fake.files[f"/skills/cold-email/references/{i}.md"] = b"by hand\n"
+        _marketplace(patched, v1, v2)
+        [skill] = await list_user_skills(USER)
+
+    assert skill.update == UPDATE_AVAILABLE
+    assert fake.files["/skills/cold-email/SKILL.md"] == v1.skill_markdown.encode()
+    by_hand = [p for p in fake.files if p.startswith("/skills/cold-email/references/")]
+    assert len(by_hand) == MAX_PACKAGE_FILES + 1
+
+
+@pytest.mark.asyncio
+async def test_a_catalog_frontmatter_change_reaches_a_copy_the_owner_edited():
+    """An owner's edit re-renders the frontmatter; merged line by line, the
+    catalog's new description would collide with that and be lost."""
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n\nintro\n")
+    v2 = _package_text(
+        "cold-email",
+        "v2",
+        "---\nname: cold-email\ndescription: A better description\n---\n\n"
+        "# Cold\n\nintro\n",
+    )
+    with _patch_skills_path(fake) as patched:
+        await _install(v1)
+        await store_user_skill(
+            USER,
+            name="cold-email",
+            description="cold-email description",
+            body="# Cold\n\nintro\nmy addition\n",
+        )
+        _marketplace(patched, v1, v2)
+        [skill] = await list_user_skills(USER)
+
+    text = fake.files["/skills/cold-email/SKILL.md"].decode()
+    assert "description: A better description" in text
+    assert "intro\nmy addition" in text
+    assert skill.description == "A better description"
+    assert skill.update == UPDATE_MERGED
+    assert skill.baseline is not None and skill.baseline.merge_conflicts == ()

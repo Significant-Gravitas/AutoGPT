@@ -23,6 +23,10 @@ from pydantic import BaseModel, ConfigDict
 SKILL_MD = "SKILL.md"
 
 _NEWLINE = "\n"
+# Above this many lines on any side the line alignment is not worth its CPU
+# (quadratic at worst, and it runs where every chat session on the process
+# waits): the file counts as a conflict and the user's copy stays as it is.
+MAX_MERGE_LINES = 5_000
 
 
 def file_sha256(content: bytes) -> str:
@@ -99,6 +103,8 @@ def merge_text(base: str, ours: str, theirs: str) -> MergedText:
     base_lines = base.split(_NEWLINE)
     our_lines = ours.split(_NEWLINE)
     their_lines = theirs.split(_NEWLINE)
+    if max(len(base_lines), len(our_lines), len(their_lines)) > MAX_MERGE_LINES:
+        return MergedText(text=ours, conflicted=True)
     out: list[str] = []
     conflicted = False
     for chunk in _diff3_chunks(base_lines, our_lines, their_lines):

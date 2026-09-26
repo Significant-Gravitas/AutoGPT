@@ -591,6 +591,7 @@ class DatabaseManager(AppService):
     # fast-forward or merge them.
     get_active_versions = _(marketplace_skill_db.get_active_versions)
     get_version_packages = _(marketplace_skill_db.get_version_packages)
+    find_version_by_hash = _(marketplace_skill_db.find_version_by_hash)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -887,6 +888,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Marketplace skills ============ #
     get_active_versions = d.get_active_versions
     get_version_packages = d.get_version_packages
+    find_version_by_hash = d.find_version_by_hash
 
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share

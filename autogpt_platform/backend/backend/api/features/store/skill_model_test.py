@@ -1,8 +1,11 @@
-"""Tests for the display title a listing shows on the marketplace."""
+"""Tests for the display title a listing shows on the marketplace, and for
+the package model that crosses the DB manager RPC."""
 
 import pytest
 
-from backend.api.features.store.skill_model import skill_title
+from backend.api.features.store.skill_model import SkillVersionPackage, skill_title
+from backend.copilot.tools.skills import SkillFile
+from backend.util.json import dumps, loads
 
 
 @pytest.mark.parametrize(
@@ -45,3 +48,34 @@ def test_a_body_that_does_not_open_with_a_heading_falls_back_to_the_slug(name, b
 
 def test_a_nameless_listing_keeps_its_name_rather_than_rendering_empty():
     assert skill_title("", "") == ""
+
+
+def test_a_package_with_binary_files_survives_the_rpc_encoding():
+    """The copilot executor gets packages over the DB manager RPC as JSON,
+    the way FastAPI encodes a response and the client validates it back; a
+    font or an image in a package has to come back byte for byte."""
+    png = b"\x89PNG\r\n\x1a\n\xff\x00"
+    package = SkillVersionPackage(
+        version_id="v1",
+        listing_id="l1",
+        slug="demo",
+        version=1,
+        package_sha256=None,
+        skill_markdown="---\nname: demo\ndescription: d\n---\n",
+        files=[
+            SkillFile(relative_path="assets/logo.png", content=png),
+            SkillFile(
+                relative_path="scripts/run.sh",
+                content=b"#!/bin/sh\n",
+                is_executable=True,
+            ),
+        ],
+    )
+
+    back = SkillVersionPackage.model_validate(loads(dumps({"v1": package}))["v1"])
+
+    assert [(f.relative_path, f.content, f.is_executable) for f in back.files] == [
+        ("assets/logo.png", png, False),
+        ("scripts/run.sh", b"#!/bin/sh\n", True),
+    ]
+    assert back.model_dump() == package.model_dump()

@@ -7,6 +7,7 @@ takes once installed, so the two can never drift. ``name`` is that slug again,
 never a display string: the title on the card is :func:`skill_title`.
 """
 
+import base64
 import datetime
 import re
 
@@ -139,6 +140,39 @@ class SkillVersionPackage(pydantic.BaseModel):
     required_providers: list[str] = []
     # SHA-256s an earlier install already scanned clean; skips the rescan.
     scanned_checksums: list[str] = []
+
+    # The copilot executor has no database connection, so a package reaches
+    # it over the DB manager RPC as JSON, and JSON has no bytes: the default
+    # encoding tries UTF-8 and a font, a PNG or a spreadsheet in a package
+    # fails it. Base64 carries any file, and only over the wire.
+    @pydantic.field_serializer("files", when_used="json")
+    def _files_over_the_wire(self, files: list[SkillFile]) -> list[dict[str, object]]:
+        return [
+            {
+                "relative_path": entry.relative_path,
+                "content_b64": base64.b64encode(entry.content).decode("ascii"),
+                "is_executable": entry.is_executable,
+            }
+            for entry in files
+        ]
+
+    @pydantic.field_validator("files", mode="before")
+    @classmethod
+    def _files_from_the_wire(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [
+            (
+                SkillFile(
+                    relative_path=str(item["relative_path"]),
+                    content=base64.b64decode(item["content_b64"]),
+                    is_executable=bool(item.get("is_executable", False)),
+                )
+                if isinstance(item, dict) and "content_b64" in item
+                else item
+            )
+            for item in value
+        ]
 
 
 def legacy_skill_markdown(version: prisma.models.SkillListingVersion, slug: str) -> str:

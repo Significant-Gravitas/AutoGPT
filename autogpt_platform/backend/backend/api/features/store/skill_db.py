@@ -208,6 +208,32 @@ async def get_version_packages(
     return packages
 
 
+async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | None:
+    """The id of the listing's version whose package hashes to
+    *package_sha256*, any version, not only the active one.
+
+    A copy installed before baselines were recorded is matched through
+    this: its files still hash to the version it came from when nobody
+    edited it, which proves it unedited and names what to fast-forward from.
+    A version with no stored hash is hashed as its installs rendered it.
+    The newest match wins when two versions hash alike.
+    """
+    rows = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"skillListingId": listing_id},
+        include={"Files": True, "SkillListing": True},
+        order={"version": "desc"},
+    )
+    for row in rows:
+        if row.SkillListing is None:
+            continue
+        digest = row.packageSha256 or skill_model.legacy_package_sha256(
+            row, row.SkillListing.slug
+        )
+        if digest == package_sha256:
+            return row.id
+    return None
+
+
 async def get_marketplace_skills(
     *,
     category: str | None = None,
