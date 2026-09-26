@@ -147,18 +147,18 @@ class ConductorSendMessageBlock(Block):
             ) from e
 
         message_id = str(sent.get("messageId") or "")
+        if not message_id:
+            raise BlockExecutionError(
+                message="Conductor returned no messageId for the sent prompt",
+                block_name=self.name,
+                block_id=self.id,
+            )
         yield "message_id", message_id
         yield "state", str(sent.get("state") or "")
         yield "deep_link", str(sent.get("deepLink") or "")
 
         if not input_data.wait_for_reply:
             return
-        if not message_id:
-            raise BlockExecutionError(
-                message="Cannot wait for the agent: Conductor returned no messageId",
-                block_name=self.name,
-                block_id=self.id,
-            )
         try:
             waited = await self._wait(
                 credentials,
