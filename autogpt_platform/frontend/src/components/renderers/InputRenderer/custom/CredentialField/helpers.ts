@@ -123,6 +123,7 @@ export const providerIcons: Partial<Record<string, IconSvgElement>> = {
   replicate: LockKeyIcon,
   reddit: LockKeyIcon,
   fal: LockKeyIcon,
+  wavespeed: LockKeyIcon,
   revid: LockKeyIcon,
   twitter: TwitterIcon,
   unreal_speech: LockKeyIcon,
