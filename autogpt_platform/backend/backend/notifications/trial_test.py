@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -167,6 +168,17 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
     else:
         release.assert_not_awaited()
     assert track.call_count == int(outcome == "sent")
+    if outcome == "sent":
+        assert track.call_args.args[0] == "subscription_trial_started"
+
+
+def test_every_trial_notice_kind_keeps_its_event_name():
+    """The names used to be built as f"subscription_trial_{kind}"; the lookup
+    must cover every kind and send exactly those strings."""
+    kinds = get_args(notices.TrialNoticeKind)
+    assert set(notices.TRIAL_NOTICE_EVENTS) == set(kinds)
+    for kind in kinds:
+        assert notices.TRIAL_NOTICE_EVENTS[kind].value == f"subscription_trial_{kind}"
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):

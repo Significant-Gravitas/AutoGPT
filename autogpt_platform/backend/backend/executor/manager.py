@@ -81,6 +81,7 @@ from backend.util.file import clean_exec_files
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
+from backend.util.posthog_events import PostHogEvent
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
     continuous_retry,
@@ -1134,7 +1135,7 @@ class ExecutionProcessor:
             if run_event is not None:
                 emit_funnel_event(
                     graph_exec.user_id,
-                    "expert_run_completed",
+                    PostHogEvent.EXPERT_RUN_COMPLETED,
                     run_event,
                     f"expert_run_completed:{graph_exec.graph_exec_id}",
                 )
