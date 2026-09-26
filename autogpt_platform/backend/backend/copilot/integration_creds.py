@@ -390,8 +390,9 @@ def swap_placeholder(provider: str, credential_id: str) -> str:
 
 # ``git`` does not read GH_TOKEN; ``gh`` does.  This helper, set through git's
 # environment-variable config rather than a file in the box, answers git's
-# credential request for github.com with GH_TOKEN, so a push over HTTPS sends
-# it as HTTP Basic, which the proxy swaps.  It only ever sees the placeholder.
+# credential request for github.com and gist.github.com with GH_TOKEN, so a
+# push over HTTPS sends it as HTTP Basic, which the proxy swaps.  It only ever
+# sees the placeholder.
 _GITHUB_CREDENTIAL_HELPER = (
     '!f() { test "$1" = get || return 0; '
     'echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
@@ -400,12 +401,13 @@ _GITHUB_CREDENTIAL_HELPER = (
 
 def git_credential_helper_env() -> dict[str, str]:
     """Git config, as environment variables, that answers git's credential
-    request for github.com with ``$GH_TOKEN``."""
-    return {
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "credential.https://github.com.helper",
-        "GIT_CONFIG_VALUE_0": _GITHUB_CREDENTIAL_HELPER,
-    }
+    request for github.com and gist.github.com with ``$GH_TOKEN``."""
+    hosts = ("github.com", "gist.github.com")
+    env = {"GIT_CONFIG_COUNT": str(len(hosts))}
+    for i, host in enumerate(hosts):
+        env[f"GIT_CONFIG_KEY_{i}"] = f"credential.https://{host}.helper"
+        env[f"GIT_CONFIG_VALUE_{i}"] = _GITHUB_CREDENTIAL_HELPER
+    return env
 
 
 async def placeholder_grants(

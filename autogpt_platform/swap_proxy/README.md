@@ -22,7 +22,16 @@ users at once.
    address space; an allowed address is pinned so the check and the connect
    agree. (`swap_proxy/egress.py`)
 3. **Open it or not?** Only hosts some credential is bound to are intercepted.
-   Everything else is passed through as opaque bytes, never decrypted.
+   Everything else is passed through as opaque bytes, never decrypted. A
+   provider binds two kinds of host (`SUPPORTED_PROVIDERS` in
+   `backend/copilot/providers.py`): `swap_hosts`, which take its token, and
+   `content_hosts`, which serve back what was stored with it and never need
+   the token (for GitHub, the rest of `*.githubusercontent.com`: objects,
+   gists' raw files, LFS media; `raw.githubusercontent.com` and
+   `gist.github.com` do take the token, for private raw files and git over
+   HTTPS to a gist, so they are swap hosts). Both are intercepted and
+   scrubbed; only a `swap_hosts` one is ever sent a value, because the
+   credential the backend returns names only those as the hosts it may go to.
 4. **Swap.** A placeholder in the `Authorization` header becomes the owner's
    value: `Bearer` and `token` (curl, `gh`) and HTTP Basic, which is what git
    sends, also for a token in the remote URL (git and curl turn URL userinfo
@@ -261,8 +270,12 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 ## Not here yet
 
-- Per-user bindings and more providers: the binding table is
-  `SUPPORTED_PROVIDERS[...]["swap_hosts"]` in the backend, GitHub only.
+- More providers: the binding table is `SUPPORTED_PROVIDERS` in the backend
+  (`swap_hosts`, `content_hosts`), GitHub only. A provider is added there with
+  its variables and its hosts; one that takes its key outside the
+  `Authorization` header also needs `swap_anywhere`, which nothing sets.
+- Path scoping: a credential can carry `allowed_paths`, but the table sets
+  none, so binding is by host.
 - Time-limited grants and the approval step that spark-vm has.
 - E2B tunnels TCP only: DNS and QUIC leave a box without passing through here.
 
@@ -281,7 +294,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   stored at a provider and served back so encoded; one stored there by other
   means (by the user, say) is not caught.
 - A text response over 5 MiB from a bound host is refused, not delivered, for a
-  box that gets swaps.
+  box that gets swaps. That includes content hosts: a text file over 5 MiB
+  fetched from `raw.githubusercontent.com` (served as `text/plain`) does not
+  reach such a box; cloning the repository still works, since git's packs are
+  binary. Lifting this needs a scrub that works on a stream, not a held body.
 - A compressed text response from a bound host that decodes to more than
   20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
   several at once), is refused for a box that gets swaps; a request body like
@@ -301,9 +317,12 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   tell bound hosts from others: a swapping box's TLS connections are then
   opened whatever their host, and the same refusals apply to all of them until
   the backend first answers.
-- Only bound hosts are scrubbed. A value stored at a provider and served back
-  from a host that is not bound (a raw-content domain, say) passes through
-  unread. The name is the box's to
+- Only bound hosts are scrubbed: a provider's `swap_hosts` and the
+  `content_hosts` it serves stored data back from. A value served from any
+  other host passes through unread: a mirror, a CDN the provider does not
+  declare, a third party the value was copied to, or an archive
+  (`codeload.github.com` is not bound, as it serves only binary archives,
+  which are never scrubbed wherever they come from). The name is the box's to
   choose: TLS to a provider's address under an SNI that is not bound, or plain
   http with such a `Host`, is the same case. For a box that gets swaps, TLS
   with no SNI at all and plain http to a bare address are refused

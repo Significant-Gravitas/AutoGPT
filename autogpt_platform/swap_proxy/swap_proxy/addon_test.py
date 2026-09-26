@@ -873,3 +873,35 @@ async def test_a_websocket_upgrade_is_not_refused():
     flow.live = True
     await addon_for(flow).response(flow)
     assert flow.error is None
+
+
+# ------------------------------------------------------------ content hosts
+
+CONTENT_HOST = "objects.githubusercontent.com"
+
+
+class ContentHostSource(Source):
+    """The backend's table with a content host: opened and scrubbed like a
+    bound host, while the credential it returns may go only to *HOST*."""
+
+    async def bound_names(self, host):
+        return {"github"} if host in (HOST, CONTENT_HOST) else set()
+
+
+async def test_a_content_host_is_scrubbed_and_never_sent_the_value(caplog):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow, source=ContentHostSource())
+    flow.request.host = flow.server_conn.sni = CONTENT_HOST
+    flow.request.headers["host"] = CONTENT_HOST
+    flow.request.headers["authorization"] = "token hsurr:github"
+    flow.response.headers["content-type"] = "text/plain"
+    flow.response.text = f"stored earlier: {TOKEN}"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+        await addon.responseheaders(flow)
+        await addon.response(flow)
+    assert flow.request.headers["authorization"] == "token hsurr:github"
+    assert flow.response.text == "stored earlier: hsurr:github"
+    assert audit(caplog) == [("refused", "hsurr:github"), ("scrubbed", None)]
