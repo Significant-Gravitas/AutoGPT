@@ -245,9 +245,12 @@ async def _resolve_and_audit_memory_scope(
     caller_id: str,
     target_id: str,
     jwt_payload: dict,
-    expert_id: str | None = None,
+    expert_id: str | None,
 ) -> MemoryScope:
-    """Resolve an authorized scope while auditing successful and failed attempts."""
+    """Resolve an authorized scope while auditing successful and failed attempts.
+
+    ``expert_id`` is required so an account-only caller says so explicitly
+    instead of landing in the account graph by omission."""
     try:
         memory_scope = await _resolve_memory_scope(target_id, expert_id)
     except Exception:
@@ -1018,6 +1021,7 @@ async def trigger_dream_pass(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())
@@ -1099,6 +1103,7 @@ async def trigger_ratification_pass(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     try:
@@ -1142,6 +1147,7 @@ async def trigger_nightly_batch(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())
@@ -1236,6 +1242,7 @@ async def rebuild_communities(
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
 
     job_id = str(_uuid.uuid4())
