@@ -1,0 +1,7 @@
+{
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "rules": {}
+}
