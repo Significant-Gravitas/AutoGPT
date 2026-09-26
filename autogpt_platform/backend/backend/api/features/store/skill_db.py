@@ -215,19 +215,24 @@ async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | No
     A copy installed before baselines were recorded is matched through
     this: its files still hash to the version it came from when nobody
     edited it, which proves it unedited and names what to fast-forward from.
-    A version with no stored hash is hashed as its installs rendered it.
-    The newest match wins when two versions hash alike.
+    A version with no stored hash is hashed as its installs rendered it,
+    from its files' recorded hashes, never their bytes. The newest match
+    wins when two versions hash alike.
     """
     rows = await prisma.models.SkillListingVersion.prisma().find_many(
         where={"skillListingId": listing_id},
-        include={"Files": True, "SkillListing": True},
+        include={"SkillListing": True},
         order={"version": "desc"},
+    )
+    file_hashes = await _file_hashes(
+        [row.id for row in rows if row.packageSha256 is None]
     )
     for row in rows:
         if row.SkillListing is None:
             continue
-        digest = row.packageSha256 or skill_model.legacy_package_sha256(
-            row, row.SkillListing.slug
+        digest = row.packageSha256 or skill_model.package_sha256_of(
+            skill_model.legacy_skill_markdown(row, row.SkillListing.slug),
+            file_hashes.get(row.id, []),
         )
         if digest == package_sha256:
             return row.id

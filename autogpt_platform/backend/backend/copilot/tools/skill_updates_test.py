@@ -497,6 +497,36 @@ async def test_a_copy_that_cannot_take_a_version_is_not_tried_again_for_it():
 
 
 @pytest.mark.asyncio
+async def test_a_newer_publish_retries_a_copy_in_backoff_at_once():
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n")
+    v2 = _package("cold-email", "v2", "# Cold v2\n")
+    v3 = _package("cold-email", "v3", "# Cold v3\n")
+    # The copy could not take v2 on an earlier turn; v3 has since been published.
+    noted = {"cold-email": v2.version_id}
+
+    async def read(user_id, expert_id):
+        return dict(noted)
+
+    async def write(user_id, expert_id, entries):
+        noted.update(entries)
+
+    with (
+        _patch_skills_path(fake) as patched,
+        patch.object(skills_module, "_read_update_backoff", read),
+        patch.object(skills_module, "_set_update_backoff", write),
+    ):
+        await _install(v1)
+        _marketplace(patched, v1, v3)
+        [skill] = await list_user_skills(USER)
+
+    assert skill.baseline == _baseline(v3)
+    assert skill.update is None
+    assert fake.files["/skills/cold-email/SKILL.md"] == v3.skill_markdown.encode()
+    patched.skill_db.get_version_packages.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_failed_attempts_spend_the_turns_budget_too():
     fake = _FakeWorkspaceManager()
     count = _RECONCILE_WRITE_BUDGET + 2
