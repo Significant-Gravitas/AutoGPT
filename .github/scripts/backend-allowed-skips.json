@@ -135,6 +135,7 @@
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_blocked_url[http://169.254.169.254/]",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_missing_url",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_returns_response",
+    "backend.copilot.tools.sandbox_test.test_sandbox_cannot_read_another_sandboxes_command_line",
     "test.test_data_creator.test_main_function_runs_without_errors"
   ],
   "python_versions": {
