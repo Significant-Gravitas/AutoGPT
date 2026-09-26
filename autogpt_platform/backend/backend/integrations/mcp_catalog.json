@@ -853,6 +853,31 @@
     }
   },
   {
+    "name": "mcp_paypal",
+    "display_name": "PayPal",
+    "description": "Manage PayPal invoices, orders, payments, subscriptions, and disputes through natural language.",
+    "mcp_server": {
+      "documentation_url": "https://developer.paypal.com/ai-tools/mcp-server",
+      "setup_instructions": "Sign in with your PayPal account, or use a client ID and secret from the PayPal Developer Dashboard to generate a bearer access token. Existing account permissions apply. Choose Sandbox for testing or Production for live data.",
+      "connection_mode": "custom",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "server_url_options": [
+        {
+          "label": "Production",
+          "url": "https://mcp.paypal.com/mcp"
+        },
+        {
+          "label": "Sandbox",
+          "url": "https://mcp.sandbox.paypal.com/mcp"
+        }
+      ],
+      "icon_id": "paypal"
+    }
+  },
+  {
     "name": "mcp_plain",
     "display_name": "Plain",
     "description": "Manage support threads, replies, customers, labels, and Help Center content.",
