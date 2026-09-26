@@ -529,13 +529,15 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-24: $0.14/$0.42 per 1M,
-                # cache read $0.01/1M (drifted again since the prior fix).
+                # Live OpenRouter rate as of 2026-09-25: $0.14/$0.42 per 1M,
+                # cache read $0.0042/1M. OpenRouter reprices this route
+                # continuously (by design); this is the latest snapshot
+                # at PR time, re-checked immediately before merge.
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=21.0,
                     output_credits_per_1m=63.0,
-                    cache_read_credits_per_1m=1.5,
+                    cache_read_credits_per_1m=0.63,
                 ),
             ),
             CatalogModel(
@@ -795,10 +797,12 @@ def _build_catalog() -> CatalogPayload:
                 creator="mistral-ai",
                 context_window=262144,
                 price_tier=2,
+                # Live OpenRouter rate as of 2026-09-25: $0.50/$1.50 per 1M
+                # (dropped from $2.00/$6.00; verified via check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=300.0,
-                    output_credits_per_1m=900.0,
+                    input_credits_per_1m=75.0,
+                    output_credits_per_1m=225.0,
                 ),
             ),
             CatalogModel(
@@ -884,13 +888,19 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=3,
                 supports_tools=True,
                 supports_reasoning=True,
-                # Moonshot's premium tier — $3.00/$15.00 per Mtok on
-                # OpenRouter (repriced from $1.70/$8.50; verified live
-                # 2026-09-22), credit rates at the standard 1.5x margin.
+                # Moonshot's premium tier — re-checked live 2026-09-25:
+                # the $0.8845/$10.5346 rate this entry was briefly moved to
+                # was itself a same-day snapshot that had already drifted;
+                # OpenRouter's default route is back to $3.00/$15.00 per
+                # Mtok (verified via check_openrouter_prices.py), so this
+                # reverts to the pinned $3/$15 rate. Cache read is now
+                # live at $0.30/1M (previously unset) so that's authored
+                # here for the first time.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
                     output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=45.0,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
                 ),

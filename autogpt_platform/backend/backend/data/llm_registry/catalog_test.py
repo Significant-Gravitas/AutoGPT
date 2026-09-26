@@ -142,14 +142,15 @@ def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
     and per-1M token rates — must match its authored catalog entry.
 
-    Pin updated for a live OpenRouter reprice ($1.70/$8.50 -> $3.00/$15.00
-    per Mtok, verified 2026-09-22)."""
+    Re-checked live against OpenRouter on 2026-09-25: still $3.00/$15.00
+    per Mtok, no drift. Cache read is newly authored at $0.30/1M (was
+    previously unpublished/unset)."""
     k3 = LLMModel("moonshotai/kimi-k3")
     assert MODEL_COST[k3] == 9
     assert TOKEN_COST[k3].model_dump() == {
         "input": 450.0,
         "output": 2250.0,
-        "cache_read": 0.0,
+        "cache_read": 45.0,
         "cache_creation": 0.0,
     }
 
@@ -395,14 +396,15 @@ def test_qwen3_8_flash_bills_at_authored_rates():
 
 def test_deepseek_v4_1_flash_bills_at_authored_rates():
     """DeepSeek V4.1 Flash (OpenRouter live rate $0.14/$0.42 per 1M,
-    $0.01/1M cached input as of 2026-09-24) — flat tier and per-1M
-    projections must match the authored catalog entry."""
+    $0.0042/1M cached input as of 2026-09-25 — this route reprices
+    continuously by design) — flat tier and per-1M projections must
+    match the authored catalog entry."""
     flash = LLMModel("deepseek/deepseek-v4.1-flash")
     assert MODEL_COST[flash] == 1
     assert TOKEN_COST[flash].model_dump() == {
         "input": 21.0,
         "output": 63.0,
-        "cache_read": 1.5,
+        "cache_read": 0.63,
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 384000
