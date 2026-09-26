@@ -957,22 +957,46 @@ class TestGetUserIdSelfHeal:
         assert ensure.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_retries_while_the_row_is_still_missing(self, mocker: MockerFixture):
-        """Only a confirmed row is remembered: a declined or failed heal must
-        be attempted again on the next request, or the account stays broken
-        for the life of the process."""
+    async def test_retries_a_failed_heal_after_the_backoff(self, mocker: MockerFixture):
+        """A declined or failed heal is retried, so the account does not stay
+        broken for the life of the process -- but only after a short backoff.
+        Retrying on every request would re-run the heal, and re-emit its
+        Sentry error, ~20 times per page load for an account nothing can
+        provision."""
+        from autogpt_libs.auth import dependencies
+
         self._stub_backend(mocker)
         ensure = mocker.patch(
             "autogpt_libs.auth.dependencies._ensure_platform_user",
             new_callable=AsyncMock,
             side_effect=[False, True, True],
         )
+        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
         payload = {"sub": "user-1", "role": "user", "email": "a@b.c"}
 
-        for _ in range(3):
-            await get_user_id(self._request(), payload)
+        clock.return_value = 1_000.0
+        await get_user_id(self._request(), payload)  # fails -> backoff
+        await get_user_id(self._request(), payload)  # within backoff: no retry
+        assert ensure.await_count == 1
 
+        clock.return_value = 1_000.0 + dependencies._FAILED_HEAL_BACKOFF_SECS
+        await get_user_id(self._request(), payload)  # backoff over: retry, succeeds
+        await get_user_id(self._request(), payload)  # now cached as confirmed
         assert ensure.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_failed_heal_is_backed_off_much_shorter_than_a_confirmed_one(
+        self, mocker: MockerFixture
+    ):
+        """The backoff must not be the confirmation TTL: an account that could
+        not be healed has to be tried again well before 15 minutes pass."""
+        from autogpt_libs.auth import dependencies
+
+        assert (
+            dependencies._FAILED_HEAL_BACKOFF_SECS
+            < dependencies._PROVISIONED_USER_TTL_SECS
+        )
+        assert dependencies._FAILED_HEAL_BACKOFF_SECS <= 60
 
     @pytest.mark.asyncio
     async def test_skips_without_a_database_connection(self, mocker: MockerFixture):
@@ -1031,6 +1055,22 @@ class TestGetUserIdSelfHeal:
         )
 
         logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_raising_heal_is_also_backed_off(self, mocker: MockerFixture):
+        self._stub_backend(mocker)
+        mocker.patch("autogpt_libs.auth.dependencies.logger")
+        ensure = mocker.patch(
+            "autogpt_libs.auth.dependencies._ensure_platform_user",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db down"),
+        )
+        payload = {"sub": "user-1", "email": "a@b.c"}
+
+        await get_user_id(self._request(), payload)
+        await get_user_id(self._request(), payload)
+
+        ensure.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_impersonation_heals_the_admin_not_the_target(

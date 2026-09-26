@@ -27,18 +27,30 @@ IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 
 logger = logging.getLogger(__name__)
 
-# User ids whose platform ``User`` row this process has confirmed, so the
-# self-heal in ``get_user_id`` costs one indexed read per (process, user, TTL)
-# instead of one per request. Bounded LRU of id -> monotonic expiry. Nothing
+# User ids the self-heal in ``get_user_id`` has recently settled, so it costs
+# one indexed read per (process, user, TTL) instead of one per request.
+# Bounded LRU of id -> monotonic expiry.
+#
+# A confirmed row is remembered for ``_PROVISIONED_USER_TTL_SECS``: nothing
 # deletes a ``User`` row today, but the TTL keeps that an observation rather
-# than a load-bearing assumption: if a deletion path ever appears, a stale
-# entry can hide a missing row for at most ``_PROVISIONED_USER_TTL_SECS``.
+# than a load-bearing assumption -- if a deletion path ever appears, a stale
+# entry can hide a missing row for at most that long.
+#
+# A heal that could not provision is remembered for the much shorter
+# ``_FAILED_HEAL_BACKOFF_SECS``. Without that, an account nothing can
+# provision (its email already belongs to a different platform User) would
+# re-run the heal, and re-emit its Sentry error, on every one of the ~20
+# requests a page load fans out -- the per-request storm the org-scoped heal
+# was deliberately shaped to avoid. The backoff keeps healing best-effort
+# while bounding a permanently broken account to one attempt per minute.
 _PROVISIONED_USER_IDS: "OrderedDict[str, float]" = OrderedDict()
 _PROVISIONED_USER_IDS_MAX = 10_000
 _PROVISIONED_USER_TTL_SECS = 15 * 60
+_FAILED_HEAL_BACKOFF_SECS = 60
 
 
-def _is_provisioned_recently(user_id: str) -> bool:
+def _is_heal_settled(user_id: str) -> bool:
+    """True while a recent heal outcome for *user_id* is still fresh."""
     expires_at = _PROVISIONED_USER_IDS.get(user_id)
     if expires_at is None:
         return False
@@ -48,8 +60,8 @@ def _is_provisioned_recently(user_id: str) -> bool:
     return True
 
 
-def _remember_provisioned(user_id: str) -> None:
-    _PROVISIONED_USER_IDS[user_id] = time.monotonic() + _PROVISIONED_USER_TTL_SECS
+def _remember_heal(user_id: str, ttl: float) -> None:
+    _PROVISIONED_USER_IDS[user_id] = time.monotonic() + ttl
     _PROVISIONED_USER_IDS.move_to_end(user_id)
     while len(_PROVISIONED_USER_IDS) > _PROVISIONED_USER_IDS_MAX:
         _PROVISIONED_USER_IDS.popitem(last=False)
@@ -70,7 +82,7 @@ async def _heal_platform_user(jwt_payload: dict) -> None:
     tests exercise this dependency with no connection at all.
     """
     user_id = jwt_payload.get("sub")
-    if not user_id or _is_provisioned_recently(user_id):
+    if not user_id or _is_heal_settled(user_id):
         return
 
     try:
@@ -85,9 +97,11 @@ async def _heal_platform_user(jwt_payload: dict) -> None:
     except Exception:
         # A heal must never turn a request that would have worked into a 500.
         logger.warning(f"Platform user self-heal failed for {user_id}", exc_info=True)
-        return
-    if provisioned:
-        _remember_provisioned(user_id)
+        provisioned = False
+    _remember_heal(
+        user_id,
+        _PROVISIONED_USER_TTL_SECS if provisioned else _FAILED_HEAL_BACKOFF_SECS,
+    )
 
 
 def get_optional_user_id(

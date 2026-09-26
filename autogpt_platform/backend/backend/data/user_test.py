@@ -834,3 +834,25 @@ class TestFindOrphanedAuthIdentities:
         assert "JOIN" not in sql.split("AS email_owner_id")[0]
         assert older_than == cutoff.isoformat()
         assert limit == 7
+
+    @pytest.mark.asyncio
+    async def test_maps_a_foreign_email_owner_to_a_collision(self):
+        # The SQL aliases the owning platform User's id as email_owner_id; the
+        # model must read that back as a collision when it is someone else.
+        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        rows = [
+            {
+                "id": "auth-new",
+                "email": "Taken@Example.com",
+                "name": "Someone",
+                "createdAt": cutoff,
+                "email_owner_id": "user-old",
+            }
+        ]
+        with patch.object(
+            user_module, "query_raw_with_schema", AsyncMock(return_value=rows)
+        ):
+            found = await user_module.find_orphaned_auth_identities(cutoff)
+
+        assert found[0].email_owner_id == "user-old"
+        assert found[0].has_email_collision is True
