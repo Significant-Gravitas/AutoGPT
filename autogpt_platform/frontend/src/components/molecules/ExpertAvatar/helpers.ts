@@ -1,22 +1,25 @@
 import catalog from "./catalog.json";
 
-export const EXPERT_AVATARS = catalog.avatars;
-export const EXPERT_AVATAR_COLORS = catalog.colors;
-type BuiltinAvatar = {
-  id: string;
-  name: string;
-  url: string;
-  color_id: string;
-  previous_url: string;
-  previous_urls: readonly string[];
-  primary_category: string;
-  variants: Partial<Record<string, { url: string; hex: string }>>;
-};
+/** The managed Clay & Rock library: one identity per built-in Expert plus
+ *  Otto and the General fallback, each served from a versioned
+ *  `/autogpt-characters` path. `catalog.json` is the same file the backend
+ *  ships (`avatar_catalog.json`); a test keeps the two copies identical. */
+export const MANAGED_IDENTITIES = catalog.identities;
+export const EXPERT_PALETTE = catalog.palette;
+/** The warm-stone General fallback: where a custom Expert starts and where
+ *  an unknown legacy default lands. Never Otto, never someone else's face. */
+export const DEFAULT_EXPERT_AVATAR_URL = catalog.default_url;
+const MANAGED_LOGICAL_SIZES = [24, 32, 40, 48, 64, 96, 128, 256, 512];
 
-export const BUILTIN_EXPERT_AVATARS: readonly BuiltinAvatar[] =
-  catalog.identities;
-export const DEFAULT_EXPERT_AVATAR_URL = "/experts/clay/v1/content.png";
+type ManagedIdentity = (typeof catalog.identities)[number];
+export type VisualCategory = keyof typeof catalog.palette;
 
+const MANAGED_URL =
+  /^(\/autogpt-characters\/v[\d.]+)\/([a-z0-9-]+)\/neutral\/\d+\.(?:webp|png)$/;
+
+/** Stored defaults that no longer ship (Notion SVGs, the retired clay sheets)
+ *  resolve to the identity they stood for; uploads, generated images and
+ *  current managed URLs pass through unchanged. */
 export function resolveExpertAvatarUrl(url: string | null | undefined): string {
   if (!url) return DEFAULT_EXPERT_AVATAR_URL;
   const legacy: Record<string, string> = catalog.legacy;
@@ -27,41 +30,52 @@ export function resolveExpertAvatarUrl(url: string | null | undefined): string {
   return url;
 }
 
-export function resolveCategoryAvatarUrl(
+export function getManagedIdentity(
   url: string | null | undefined,
-  category?: string | null,
-): string {
-  const resolved = resolveExpertAvatarUrl(url);
-  const identity = BUILTIN_EXPERT_AVATARS.find(
-    (avatar) =>
-      avatar.url === resolved ||
-      avatar.previous_urls?.includes(resolved) ||
-      Object.values(avatar.variants).some(
-        (variant) => variant?.url === resolved,
-      ),
+): ManagedIdentity | null {
+  const match = MANAGED_URL.exec(resolveExpertAvatarUrl(url));
+  if (!match) return null;
+  return (
+    MANAGED_IDENTITIES.find(
+      (identity) => identity.base_url === match[1] && identity.id === match[2],
+    ) ?? null
   );
-  if (!identity) return resolved;
-  if (category)
-    return identity.variants[category.toLowerCase()]?.url ?? identity.url;
-  return identity.previous_urls.includes(resolved) ? identity.url : resolved;
 }
 
-import manifest from "../../../../public/autogpt-characters/manifest.json";
+export function getManagedAvatar(
+  avatarUrl: string | null | undefined,
+  size: number,
+) {
+  const identity = getManagedIdentity(avatarUrl);
+  if (!identity) return null;
+  const pixels = MANAGED_LOGICAL_SIZES.find((value) => value >= size) ?? 512;
+  return {
+    assetID: identity.id,
+    base: `${identity.base_url}/${identity.id}/neutral`,
+    pixels,
+    pngMaxPixels: identity.png_max_pixels,
+    identity,
+  };
+}
 
-export function getManagedAvatar(avatarUrl: string | null, size: number) {
-  for (const [assetID, identity] of Object.entries(manifest.identities)) {
-    if (
-      !Object.values(identity.files).some(
-        (file) => `/${file.path.replace(/^public\//, "")}` === avatarUrl,
-      )
-    )
-      continue;
-    const pixels = manifest.logicalSizes.find((value) => value >= size) ?? 512;
-    return {
-      assetID,
-      base: `${manifest.baseUrl}/${assetID}/neutral`,
-      pixels,
-    };
+export function isVisualCategory(value: string): value is VisualCategory {
+  return value in EXPERT_PALETTE;
+}
+
+/** The palette family that colors the surfaces around an Expert. A managed
+ *  identity carries its own family, so a filter or a category edit never
+ *  changes it; a custom appearance takes the first stored category, and no
+ *  category at all means the General warm stone. */
+export function getExpertVisualCategory(
+  avatarUrl: string | null | undefined,
+  categories?: readonly string[] | null,
+): VisualCategory {
+  const identity = getManagedIdentity(avatarUrl);
+  if (identity && identity.visual_category !== "general") {
+    return identity.visual_category as VisualCategory;
   }
-  return null;
+  const stored = categories
+    ?.map((category) => category.toLowerCase())
+    .find((category) => isVisualCategory(category) && category !== "otto");
+  return (stored as VisualCategory | undefined) ?? "general";
 }

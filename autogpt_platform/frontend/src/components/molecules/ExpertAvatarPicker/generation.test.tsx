@@ -5,12 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 
-// The hook polls on a real 2s interval, and the test drives ten selects
+// The hook polls on a real 2s interval, and the test drives six selects
 // before it, so the default 5s budget is not enough on a loaded CI runner.
 const POLLING_TEST_TIMEOUT = 20000;
 
 test(
-  "sends shape and expression choices, then polls until the preview is ready",
+  "sends the head, base, tilt, cream and expression choices, then polls until the preview is ready",
   async () => {
     const onPick = vi.fn();
     const requests: unknown[] = [];
@@ -37,29 +37,18 @@ test(
       }),
     );
     render(<ExpertAvatarPicker name="Nova" color={null} onPick={onPick} />);
-    await userEvent.click(screen.getByRole("button", { name: "Charcoal" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Shape" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Head" }));
     await userEvent.click(screen.getByRole("option", { name: "Bean" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
     await userEvent.click(screen.getByRole("option", { name: "Finance" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Shade" }));
-    await userEvent.click(screen.getByRole("option", { name: "Dark" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Base" }));
     await userEvent.click(screen.getByRole("option", { name: "Wide" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Tilt" }));
     await userEvent.click(screen.getByRole("option", { name: "Left" }));
     await userEvent.click(
-      screen.getByRole("combobox", { name: "Accent shape" }),
+      screen.getByRole("combobox", { name: "Cream section" }),
     );
-    await userEvent.click(screen.getByRole("option", { name: "Patch" }));
-    await userEvent.click(
-      screen.getByRole("combobox", { name: "Accent placement" }),
-    );
-    await userEvent.click(screen.getByRole("option", { name: "Head" }));
-    await userEvent.click(
-      screen.getByRole("combobox", { name: "Accents per part" }),
-    );
-    await userEvent.click(screen.getByRole("option", { name: "Three" }));
+    await userEvent.click(screen.getByRole("option", { name: "Wrap" }));
     await userEvent.click(screen.getByRole("combobox", { name: "Expression" }));
     await userEvent.click(screen.getByRole("option", { name: "Focused" }));
     await userEvent.click(
@@ -70,13 +59,10 @@ test(
     expect(requests).toEqual([
       {
         category: "finance",
-        shade: "dark",
         shape: "bean",
         base: "wide",
         tilt: "left",
-        inlay: "patch",
-        accent_placement: "head",
-        accent_count: "three",
+        inlay: "wrap",
         expression: "focused",
       },
     ]);
@@ -94,7 +80,7 @@ test(
     );
     expect(onPick).toHaveBeenCalledWith(
       "https://cdn.test/focused.png",
-      "green-300",
+      "amber-300",
     );
   },
   POLLING_TEST_TIMEOUT,

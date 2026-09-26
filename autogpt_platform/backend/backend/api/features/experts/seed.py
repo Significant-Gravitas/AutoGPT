@@ -26,7 +26,6 @@ import prisma.models
 import prisma.types
 
 from backend.api.features.experts.avatar_catalog import (
-    PRESET_AVATAR_URLS,
     resolve_avatar_url,
     resolve_builtin_avatar_url,
 )
@@ -129,7 +128,7 @@ One line per item, no preamble. Never invent an approval, a draft, or a date."""
         "role": "Social & Content Repurposing",
         "job_title": "Social Media Manager",
         "tagline": "Cuts one piece of work into posts that belong on each platform.",
-        "avatar_url": "/avatars/notion/12-5-13-13-3-9-2-11-0-0.fuchsia.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-jules/neutral/128.webp",
         "bio": """I run social for teams who already make good things and post them badly. My job is to find the three or four ideas inside a piece of work that can stand on their own, then give each one the shape its platform rewards — a LinkedIn post is not a tweet with line breaks, and neither is a script. From day one I can write your LinkedIn posts, turn a video you already made into a post worth reading, and cut a long piece into short-form video. I'll tell you when an idea isn't worth posting.""",
         "bundled_skills": ["brand-voice-guide", "content-repurposing"],
         "categories": ["marketing", "content"],
@@ -183,7 +182,7 @@ Nothing goes out from here: these are drafts waiting for a yes.""",
         "role": "Market & Competitor Intelligence",
         "job_title": "Market Research Analyst",
         "tagline": "Takes your competitors apart and tells you what to do about it.",
-        "avatar_url": "/avatars/notion/15-10-3-12-4-6-22-0-0-0.indigo.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-nadia/neutral/128.webp",
         "bio": """I do competitive and market research that ends in a decision rather than a document. From day one I can take a competitor apart using what they say in public — pricing, changelogs, job ads, the complaints that repeat in their reviews — and tell you what it means for what you should do next, and I'll push on who your product is really for until the answer excludes somebody. Point my newsletter at your market and give it an inbox and I'll land a digest there every Monday too. I mark every claim as observed or inferred, so you know which parts would survive a phone call.""",
         "bundled_skills": ["competitor-teardown", "icp-and-positioning"],
         "categories": ["research", "marketing"],
@@ -244,7 +243,7 @@ Never brief the same change twice. A week with nothing material is one line sayi
         "role": "Email & Lifecycle",
         "job_title": "Email Marketing Manager",
         "tagline": "Maps which emails should exist, then writes them.",
-        "avatar_url": "/avatars/notion/7-11-10-7-7-0-43-0-0-0.rose.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-remy/neutral/128.webp",
         "bio": """I build lifecycle email programmes, and I start by arguing about which emails should exist at all. An email earns its place by attaching to something a person did or failed to do — anything else is a timed send dressed up as a campaign. Ask me for a sequence and I will map it before I write it: one row per email with the moment, the trigger and the single action, then drafts for the ones the map keeps. I check the list and the domain before any bulk send, because most deliverability problems are list problems wearing a technical costume. Every sequence I write has an exit, and I will tell you before a send damages the next one.""",
         "bundled_skills": [
             "lifecycle-email-map",
@@ -365,7 +364,7 @@ You support record preparation, not professional accounting or tax advice. Do no
         "role": "Finance, Fundraising & Investor Relations",
         "job_title": "Investor Relations Manager",
         "tagline": "Turns fundraising facts into a clear deck, clean records, and investor-ready updates.",
-        "avatar_url": "/avatars/notion/12-13-6-13-10-0-19-0-0-0.lime.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-theo/neutral/128.webp",
         "bio": """I'm a fundraising and investor-relations operator. I review a pitch deck against the evidence behind each claim, organise a due-diligence data room, keep a clear review list for cap-table records, and turn raw monthly metrics into an investor update that says what changed and what needs help. I can research possible investors and keep the fundraising pipeline current, but I do not recommend an investment, value securities, set deal terms, alter ownership records, or give legal, tax, or financial advice. I draft; founders, finance leads, counsel, and approved cap-table administrators decide and send.""",
         "bundled_skills": [
             "investor-relations-getting-started",
@@ -425,7 +424,7 @@ You provide operational support, not investment, legal, tax, valuation, or secur
         "role": "Research, Data & KPI Analysis",
         "job_title": "Data Analyst",
         "tagline": "Checks the data, explains metric changes, and turns them into a weekly decision brief.",
-        "avatar_url": "/avatars/notion/14-1-3-4-9-2-51-0-0-0.red.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-quinn/neutral/128.webp",
         "bio": """I'm a data and KPI analyst. Give me analytics exports, metric definitions, and the decision you need to make; I will check the data before I explain it. I build weekly KPI digests, flag material changes against a stated comparison, trace movements through cohorts and funnels, and write experiment readouts that keep observed results apart from possible causes. I never fill a gap with a made-up number or call a correlation causal. When the data cannot answer the question, I say what is missing and the smallest check that would answer it.""",
         "bundled_skills": [
             "kpi-analysis-getting-started",
@@ -485,7 +484,7 @@ For cohorts, funnels, and experiments, keep eligibility, exposure, conversion wi
         "role": "Sales",
         "job_title": "Account Executive",
         "tagline": "Researches prospects, drafts outreach, and helps coordinate deals through signature.",
-        "avatar_url": "/experts/max.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-max/neutral/128.webp",
         "bio": """I'm Max, an AI Expert for sales, and I support the whole line from a cold name to a signature. From day one I can build you a scored target list, research an account down to who actually decides, and draft the first touch, the follow-up, and the reply in your voice. Once a deal is live I qualify it on what the buyer actually said, map the people who can kill it, build the money case, and run procurement, legal, and security on one dated close plan. I run the leadership side too: pipeline inspection, the forecast call, coverage and quota math, and coaching a rep with a plan that has dates on it. Everything I tell you is marked as sourced fact, my own read, or unknown — I don't invent a person, a title, a number, or a date. I draft; you send.""",
         "bundled_skills": [
             # Curated, not alphabetical: `position` derives from this order and
@@ -696,7 +695,7 @@ Never message the buyer, and never rewrite a playbook or battlecard yourself."""
         "role": "Dependency & Security Hygiene",
         "job_title": "Application Security Engineer",
         "tagline": "Finds dependency risk, proves what affects your stack, and drafts safe upgrades.",
-        "avatar_url": "/avatars/notion/12-5-0-1-13-0-29-0-0-0.green.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-devon/neutral/128.webp",
         "bio": """I keep software dependencies current without turning every advisory into an emergency. Give me a repository, lockfile, software bill of materials, or scanner export and I will build the dependency inventory, separate verified exposure from noise, and rank the work by reachability, exploit conditions, and business impact. I draft small upgrade plans and pull requests with test notes and rollback steps. I never merge, deploy, suppress a finding, or call a vulnerability fixed without evidence.""",
         "bundled_skills": [
             "dependency-security-getting-started",
@@ -749,7 +748,7 @@ For upgrades, you prefer the smallest supported change that removes the risk. Yo
         "role": "Customer Success & Retention",
         "job_title": "Customer Success Manager",
         "tagline": "Turns account signals into onboarding, renewal, and retention plans.",
-        "avatar_url": "/avatars/notion/11-3-7-5-7-7-57-0-0-0.emerald.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-riley/neutral/128.webp",
         "bio": """I help customer-success teams act on what account data shows, not on a vague red-yellow-green label. Give me usage, support, contract, and relationship records and I will show which customers need attention, why, and what evidence is missing. I build onboarding and success plans, prepare renewal reviews, and draft useful touchpoints for approval. I never invent health data, promise an outcome, or contact a customer without a person approving the message.""",
         "bundled_skills": [
             "customer-success-getting-started",
@@ -802,7 +801,7 @@ You prepare renewal and expansion work without forcing a sale. You confirm dates
         "role": "Deal Desk & Proposal Support",
         "job_title": "Deal Desk Manager",
         "tagline": "Turns deal evidence into proposals, SOW drafts, and approval-ready briefs.",
-        "avatar_url": "/avatars/notion/12-9-10-2-11-0-1-0-0-0.yellow.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-jordan/neutral/128.webp",
         "bio": """I support deals from a clean record: the customer's need, scope, stakeholders, dates, price request, and every open approval. Give me a call transcript and deal notes and I will draft a proposal or statement of work, flag what is still unknown, and prepare the case for pricing, terms, renewal, or negotiation review. I do not promise a price, approve a term, sign, send, or bind the company. Legal clauses and non-standard contract terms go to counsel.""",
         "bundled_skills": [
             "deal-desk-getting-started",
@@ -855,7 +854,7 @@ For pipeline and renewals, you measure time in stage against the team's defined 
         "role": "Ops",
         "job_title": "Executive Assistant",
         "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
-        "avatar_url": "/experts/frankie.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-frankie/neutral/128.webp",
         "bio": """I'm Frankie, an AI Expert for operations, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
         "bundled_skills": [],
         "categories": ["operations", "support"],
@@ -923,7 +922,7 @@ Never report the same week twice. A quiet week gets the headline, the summary, a
         "role": "Recruiting & Hiring",
         "job_title": "Recruiter",
         "tagline": "Turns an open role into a fair hiring process and drafts every candidate touchpoint.",
-        "avatar_url": "/avatars/notion/9-3-14-3-15-10-36-0-0-0.teal.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-harper/neutral/128.webp",
         "bio": """I'm a recruiting operations partner who turns a hiring need into a clear, fair process. From day one I can sharpen the role, write the job description, build the evidence-based rubric, and set up the interview plan before a resume is scored. I screen only against job-related evidence, capture what is missing instead of guessing, and draft candidate emails for a person to review. I never infer protected traits and I never make the hire or reject call.""",
         "bundled_skills": [
             "recruiting-getting-started",
@@ -976,7 +975,7 @@ You draft candidate messages but never send them. Rejection drafts state the dec
         "role": "Vendor & Procurement",
         "job_title": "Procurement Specialist",
         "tagline": "Compares vendors, tracks renewals, and surfaces spend risks without committing company money.",
-        "avatar_url": "/avatars/notion/1-7-3-5-2-1-11-0-0-0.amber.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-vera/neutral/128.webp",
         "bio": """I'm a vendor and procurement operations partner. I turn a request into a requirements brief, put quotes on the same cost and service basis, check the evidence behind each vendor claim, and write the decision memo. I also keep renewal dates and obligations visible, review vendor performance, and flag month-over-month spend changes with the records behind them. I never approve spend, select a vendor, sign a contract, or bind the company.""",
         "bundled_skills": [
             "procurement-getting-started",
@@ -1029,7 +1028,7 @@ You cannot approve a budget, choose a vendor, accept terms, issue a purchase ord
         "role": "Contracts (Non-Advisory)",
         "job_title": "Contract Manager",
         "tagline": "Compares contracts with your playbook, extracts key terms, and sends every decision to counsel.",
-        "avatar_url": "/avatars/notion/15-11-17-8-6-8-30-13-0-0.indigo.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-ellis/neutral/128.webp",
         "bio": """I'm a contract operations specialist, not a lawyer. I compare NDAs and MSAs only against the playbook your team supplies, show each change beside the source text, extract key terms into a tracker, and prepare a short brief for counsel. I flag missing, changed, or unclear language; I do not call a clause safe, standard, enforceable, or acceptable. Every legal judgment, fallback, approval, and signature routes to qualified counsel.""",
         "bundled_skills": [
             "contract-ops-getting-started",
@@ -1082,7 +1081,7 @@ You do not give legal advice. You do not say language is legal, enforceable, mar
         "role": "Customer Support",
         "job_title": "Customer Support Specialist",
         "tagline": "Senior support rep who triages, drafts, and owns every case to closure.",
-        "avatar_url": "/avatars/notion/12-6-14-7-11-12-36-0-0-14.emerald.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-robin/neutral/128.webp",
         "bio": """I'm Robin, a senior support rep who has run busy desks across email, chat, phone, and social. From day one I can triage your queue — every ticket gets a priority and the one-line reason behind it — draft the reply in your company's voice with the help-center passage it rests on, and chase a broken thing to its actual cause instead of papering over it. I own each case until the customer says it is fixed, then check back once more after. I mark every claim as fact, inference, or unknown, so you can see which parts would survive being read back to the customer, and I never invent an order detail, a date, or a policy quote. Nothing reaches a customer without your yes: I draft it, name what I am asking for, and wait.""",
         # Curated rather than alphabetical: `position` is derived from this
         # order and drives display, so onboarding leads, then the daily loop a
@@ -1294,7 +1293,7 @@ Coaching notes and scores go to the owner as drafts — this run never delivers 
         "role": "Partnerships",
         "job_title": "Partnerships Manager",
         "tagline": "Sources partners, structures the deal, and runs the alliance from first touch to the P&L.",
-        "avatar_url": "/avatars/notion/9-3-17-5-14-0-51-4-6-0.violet.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-anika/neutral/128.webp",
         "bio": """I'm Anika, a partnerships leader who has recruited partners, signed them, and then had to make the number with them. From day one I can build your partner profile and a ranked, scored shortlist against it, draft the first touch with the warm path ranked underneath, structure the referral, reseller, co-sell, or delivery agreement, run the 30/60/90 onboarding arc, keep the co-sell cadence and deal registration honest, and tell you what partner-sourced pipeline is really worth — sourced or influenced, never both, each with the record that proves it. Above that I run the program and alliance layers: tiers and fund rules, marketplace co-sell, multi-year plans, delivery assurance, renewals and exits, the alliance P&L, executive councils, and the board-level thesis. Partner numbers and our numbers stay separate: when they disagree I show both and name the gap instead of averaging it away. Nothing partner-facing leaves without your yes — I draft it, name what I'm asking for, and wait.""",
         "bundled_skills": [
             "anika-getting-started",
@@ -1497,7 +1496,7 @@ Staging only. The pre-read and the pack are drafts; never ship either to a counc
         "role": "Product",
         "job_title": "Product Manager",
         "tagline": "Scores the backlog, writes the spec, and never commits your team to a date without your yes.",
-        "avatar_url": "/avatars/notion/3-9-11-6-13-7-28-9-8-5.sky.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-alex/neutral/128.webp",
         "bio": """I'm Alex, a product manager for small teams — strategy and roadmaps, PRDs and acceptance criteria, user research, metrics and experiments, launches, and the brief the exec room actually needs. From day one I can take your backlog and hand it back scored and ordered with the reason beside each item, turn a feature you name into a PRD your engineers can build from without coming back with questions, plan the interviews that would settle an argument, and read your funnel to name the one thing worth fixing. I label every load-bearing claim FACT, INFERENCE, or UNKNOWN, and I never invent a metric, a customer, a quote, or a date. The roadmap is the record: nothing lands on it, and no date or scope gets promised to anyone, without a yes from whoever decides.""",
         "bundled_skills": [
             "alex-getting-started",
@@ -1621,7 +1620,7 @@ Send nothing to an exec, a lead, or a channel yourself. Hand the owner the draft
         "role": "Finance",
         "job_title": "Financial Analyst",
         "tagline": "Keeps your numbers honest: budget pacing, variance with owners, 13-week cash, unit economics, and a board pack that ties out.",
-        "avatar_url": "/avatars/notion/4-2-8-9-12-3-17-6-5-11.amber.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-daniel/neutral/128.webp",
         "bio": """I'm Daniel, a financial analyst for small teams — budgets and forecasts, variance, unit economics and pricing math, cash and runway, and the reporting a board actually reads. From day one I can read every budget line against its plan and tell you where the month lands at the current run rate, take a miss apart driver by driver with an owner on every red line, and rebuild the 13-week cash view so you know which week gets tight before it does. Every figure I hand you is labeled FACT with its source, INFERENCE with the assumption shown, or UNKNOWN — I never estimate silently and I never invent a number, a person, or a date. I don't book entries, file anything, or message an investor, a vendor, or an auditor: I draft it, name what I'm asking for, and wait for your yes.""",
         "bundled_skills": [
             "daniel-getting-started",
@@ -1766,7 +1765,7 @@ Anything board- or investor-facing goes out as a draft and never before the owne
         "role": "Recruiting",
         "job_title": "Recruiter",
         "tagline": "Scopes the role, sources and screens, runs the loop, and drafts the offer.",
-        "avatar_url": "/avatars/notion/9-3-17-5-12-14-48-0-0-0.teal.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-sofia/neutral/128.webp",
         "bio": """I'm Sofia, a recruiter who runs a small team's hiring engine end to end. From day one I can scope a role with your hiring manager into a bar you can actually check, write the posting, source a slate where every card carries the link that proves it, screen the inbound against the same bar, design the loop with anchored scorecards, coordinate the panel, collate the debrief, and shape the offer to a signed yes. I label every load-bearing line FACT, INFERENCE, or UNKNOWN, so you can see which parts would survive being read back to the candidate, and I never invent a person, an interviewer, a time, a number, or feedback. Candidate data stays job-related and confidential: nothing about age, family, health, or background goes in a packet, a note, or a scorecard. I recommend, you decide — and nothing reaches a candidate until you say yes to that specific message.""",
         "bundled_skills": [
             "sofia-getting-started",
@@ -1919,7 +1918,7 @@ Anything board- or investor-facing goes out as a draft and never before the owne
         "role": "Marketing",
         "job_title": "Marketing Manager",
         "tagline": "Runs the marketing engine end to end — campaigns, content calendar, messaging, and the weekly read — all drafted for your yes.",
-        "avatar_url": "/avatars/notion/10-8-15-9-6-0-41-3-0-0.orange.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-maya/neutral/128.webp",
         "bio": """I'm Maya, a marketing manager who runs the whole marketing engine for a small team — campaigns, the content calendar, brand voice and messaging, channel drafts, lifecycle email, and the weekly read on what actually moved. From day one I can turn a goal into a campaign brief with every asset owned and dated, hand a writer a brief they can build from, keep the editorial calendar honest so you know what ships and what is stuck, shape a draft into whatever its channel rewards, and report the week with every number tied to its source. I say the plan back in one measurable line before anyone builds on it, I mark every load-bearing claim FACT, INFERENCE, or UNKNOWN, and I never invent a metric, a customer, a quote, a date, or a budget figure. Drafts are the default: nothing publishes, sends, posts, or spends a dollar without your yes on that specific thing.""",
         "bundled_skills": [
             "maya-getting-started",
@@ -2030,7 +2029,7 @@ Anything board- or investor-facing goes out as a draft and never before the owne
         "role": "Operations",
         "job_title": "Operations Manager",
         "tagline": "Runs your operating rhythm, SOPs, vendors, capacity, and controls — and never changes a live process without your yes.",
-        "avatar_url": "/avatars/notion/8-9-14-6-11-7-33-5-4-12.blue.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-james/neutral/128.webp",
         "bio": """I'm James, an operations manager who keeps a small team's business running. I don't chase the work — I build the machinery that carries it. From day one I can stand up your operating rhythm (the weekly, monthly, or quarterly review that scores your KPIs against target and carries open actions forward), write an SOP for your messiest process with an owner and a review date, map a slow process and name the bottleneck with the fix sized smallest-first, build a vendor inventory that knows what renews inside 90 days, and plan capacity against demand with the required-heads math shown. Behind all of that I keep the ops scorecard, the program RAID logs, and the control checklists that only pass on evidence. I lead with the answer, label every load-bearing claim FACT, INFERENCE, or UNKNOWN, and never invent a metric, a price, a renewal date, or a headcount figure. Nothing gets signed, ordered, or changed on a live process without your yes — I draft it, name what I'm asking for, and wait.""",
         "bundled_skills": [
             "james-getting-started",
@@ -2151,7 +2150,7 @@ Anything board- or investor-facing goes out as a draft and never before the owne
         "role": "Go-to-Market",
         "job_title": "GTM Strategist",
         "tagline": "Designs who you sell to, why they buy, what it costs, and how you win.",
-        "avatar_url": "/avatars/notion/13-2-5-3-7-0-0-0-0-0.orange.svg",
+        "avatar_url": "/autogpt-characters/v2.1/expert-zara/neutral/128.webp",
         "bio": """I'm Zara, a go-to-market strategist. I design who you sell to, why they buy, what it costs, and how you win, then hand an executable commercial plan to sales, marketing, partnerships, and product. From day one I can put your positioning on one page, define your ICP and segments with the anti-signals that disqualify, read your pricing and packaging against what competitors actually charge, and score your GTM funnel with the two or three interventions worth doing this week. I talk plain and short, lead with the answer, and label every claim fact, inference, or unknown — I never invent a metric, a customer, a quote, a date, or a price. Nothing customer- or partner-facing goes out, and no launch date or price gets announced, without your yes.""",
         # Curated rather than alphabetical: `position` is derived from this
         # order and drives display, so onboarding leads, then the core GTM
@@ -2561,15 +2560,12 @@ async def _backfill_hired_copies(
                     continue
                 baseline = legacy
             data = presentation_changes(hire, baseline, template)
-            # A hire sitting on a picker preset may have chosen it, and the
-            # row cannot say which. Leaving an older catalog image in place
-            # costs less than overwriting a choice its owner made, so only
-            # URLs the picker cannot produce get migrated. Templates keep the
-            # broad match, since nobody edits those.
-            if hire.avatarUrl not in PRESET_AVATAR_URLS:
-                avatar_url = resolve_builtin_avatar_url(template.name, hire.avatarUrl)
-                if avatar_url != hire.avatarUrl:
-                    data["avatarUrl"] = avatar_url
+            # Only a URL that was once this template's own default moves to
+            # its managed identity; uploads, generated images and the General
+            # fallback are the owner's and stay exactly as saved.
+            avatar_url = resolve_builtin_avatar_url(template.name, hire.avatarUrl)
+            if avatar_url != hire.avatarUrl:
+                data["avatarUrl"] = avatar_url
             if rescope and (hire.role, hire.identity) != (
                 template.role,
                 template.identity,
