@@ -12,7 +12,7 @@ backs every other copilot turn, so the delegated work:
 - speaks and acts as the target expert (``<expert_identity>`` is rebuilt from
   the target's Soul by the normal per-turn path),
 - reads and writes the *target's* memory namespace
-  (:func:`derive_memory_group_id` keys on the session's ``expert_id``),
+  (the session's ``expert_id`` selects its ``MemoryScope``),
 - attributes the agent runs it starts to the *target's* weekly budget (only
   graph executions accrue weekly spend; the delegated conversation's own LLM
   cost does not), which is why a paused/archived teammate is refused here,

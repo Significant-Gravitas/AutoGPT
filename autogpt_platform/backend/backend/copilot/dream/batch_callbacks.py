@@ -41,6 +41,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
+from backend.copilot.graphiti.scope import MemoryScope
+
 from .batch_submit import (
     PHASE_RESPONSE_MODELS,
     delete_input_bundle,
@@ -242,9 +244,7 @@ async def _best_effort_cleanup(pass_id: str) -> None:
         )
 
 
-async def _release_lock(
-    user_id: str, pass_id: str, expert_id: str | None = None
-) -> None:
+async def _release_lock(user_id: str, pass_id: str, expert_id: str | None) -> None:
     """Release the disowned dream lock with the ownership token persisted
     alongside the input bundle. Must run before ``delete_input_bundle`` —
     the token rides on that key. A missing token (bundle TTL'd out,
@@ -265,7 +265,16 @@ async def _release_lock(
                 "leaving the lock to its TTL",
                 pass_id,
             )
-    await release_dream_lock(user_id, token, expert_id)
+    try:
+        scope = MemoryScope.build(user_id, expert_id)
+    except ValueError:
+        logger.warning(
+            "Invalid memory scope for disowned dream lock of user %s — "
+            "leaving it for the TTL to clear",
+            user_id[:12],
+        )
+        return
+    await release_dream_lock(scope, token)
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +412,7 @@ async def _handle_phase_result(
     *,
     rows: list[BatchResultRow],
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -498,7 +507,7 @@ async def _handle_phase_result(
 async def _chain_next_phase(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -633,7 +642,7 @@ async def _claim_apply_gate(pass_id: str) -> Literal["claimed", "duplicate", "er
 async def _finalize_complete(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     input_bundle: DreamInput,
     pass_id: str,
     job_id: str,
@@ -749,10 +758,9 @@ async def _finalize_complete(
         # every other user's pending batch. See
         # ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``.
         apply_stats = await apply_operations(
-            user_id,
+            MemoryScope.build(user_id, expert_id),
             pass_id,
             ops,
-            expert_id=expert_id,
             known_fact_uuids=input_bundle.known_fact_uuids,
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
         )
@@ -842,7 +850,7 @@ async def _finalize_complete(
 async def _fail_pass(
     *,
     user_id: str,
-    expert_id: str | None = None,
+    expert_id: str | None,
     pass_id: str,
     job_id: str,
     phase_models: dict[str, str],

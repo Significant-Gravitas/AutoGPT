@@ -24,9 +24,7 @@ import uuid as uuidlib
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
-from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.ingest import (
     IngestionCompletion,
     enqueue_episode,
@@ -38,6 +36,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
@@ -160,14 +159,12 @@ def _edge_metadata(envelope: MemoryEnvelope) -> dict:
 
 
 async def _write_consolidated_fact(
-    user_id: str,
+    scope: MemoryScope,
     pass_id: str,
     counter: int,
     fact: ConsolidatedFact,
     session_id: str,
     completion: IngestionCompletion,
-    *,
-    expert_id: str | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=fact.content,
@@ -179,7 +176,7 @@ async def _write_consolidated_fact(
         provenance=_provenance(pass_id, "consolidate"),
     )
     return await enqueue_episode(
-        user_id=user_id,
+        scope,
         session_id=session_id,
         name=_episode_name(pass_id, "consolidate", counter),
         episode_body=envelope.model_dump_json(),
@@ -190,19 +187,16 @@ async def _write_consolidated_fact(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        expert_id=expert_id,
     )
 
 
 async def _write_proposed_finding(
-    user_id: str,
+    scope: MemoryScope,
     pass_id: str,
     counter: int,
     finding: ProposedFinding,
     session_id: str,
     completion: IngestionCompletion,
-    *,
-    expert_id: str | None = None,
 ) -> bool:
     envelope = MemoryEnvelope(
         content=finding.content,
@@ -219,7 +213,7 @@ async def _write_proposed_finding(
     if finding.source_fact_uuids:
         description_parts.append(f"src_facts={','.join(finding.source_fact_uuids[:5])}")
     return await enqueue_episode(
-        user_id=user_id,
+        scope,
         session_id=session_id,
         name=_episode_name(pass_id, "recombine", counter),
         episode_body=envelope.model_dump_json(),
@@ -227,7 +221,6 @@ async def _write_proposed_finding(
         is_json=True,
         edge_metadata=_edge_metadata(envelope),
         completion=completion,
-        expert_id=expert_id,
     )
 
 
@@ -299,8 +292,7 @@ async def _filter_demotions_to_known_facts(
 
 
 async def _apply_demotions(
-    user_id: str,
-    group_id: str,
+    scope: MemoryScope,
     demotions: list[DreamDemotion],
 ) -> tuple[int, int, list[DemotionSummary]]:
     """Run mark_edges_superseded once per (reason, new_status) bucket.
@@ -317,15 +309,7 @@ async def _apply_demotions(
     for d in demotions:
         buckets.setdefault((d.new_status, d.reason), []).append(d.edge_uuid)
 
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices live with the chat-write client; skip the per-driver
-        # indexing race ("Buffer is closed" spam).
-        build_indices=False,
-    )
+    driver = open_driver(scope)
     succeeded = 0
     failed = 0
     succeeded_uuids: set[str] = set()
@@ -336,12 +320,12 @@ async def _apply_demotions(
                 uuids,
                 reason=reason,
                 new_status=new_status,  # type: ignore[arg-type]
-                user_id=user_id,
+                user_id=scope.owner_user_id,
                 # Defense-in-depth: the driver is already opened against
                 # the per-user database, but the group_id predicate keeps
                 # a future wrong-driver caller from touching another
                 # user's edges.
-                group_id=group_id,
+                group_id=scope.group_id,
             )
             succeeded += len(ok)
             failed += len(bad)
@@ -362,7 +346,7 @@ async def _apply_demotions(
 
 
 async def _apply_entity_invalidations(
-    group_id: str,
+    scope: MemoryScope,
     invalidations: list[EntityInvalidation],
 ) -> tuple[int, list[EntityInvalidationSummary]]:
     """Single-hop demotion of every :RELATES_TO around each invalidated entity.
@@ -373,22 +357,14 @@ async def _apply_entity_invalidations(
     """
     if not invalidations:
         return 0, []
-    driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        # Indices live with the chat-write client; skip the per-driver
-        # indexing race ("Buffer is closed" spam).
-        build_indices=False,
-    )
+    driver = open_driver(scope)
     total = 0
     summaries: list[EntityInvalidationSummary] = []
     try:
         for inv in invalidations:
             uuids = await invalidate_entity_direct_neighbors(
                 driver,
-                group_id=group_id,
+                group_id=scope.group_id,
                 entity_uuid=inv.entity_uuid,
                 reason=inv.reason,
             )
@@ -405,9 +381,7 @@ async def _apply_entity_invalidations(
     return total, summaries
 
 
-async def _create_dream_session(
-    user_id: str, pass_id: str, expert_id: str | None = None
-) -> str:
+async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
     """Create the dream-kind ChatSession shell and return its id.
 
     Written up front (before the memory ops) because the fact/proposal
@@ -428,6 +402,7 @@ async def _create_dream_session(
     from backend.copilot.model import ChatSessionMetadata
     from backend.data.db_accessors import chat_db
 
+    user_id = scope.owner_user_id
     # Dream passes run per-user with no request context; the user's
     # default (personal) org is the correct tenant for their dreams.
     try:
@@ -456,7 +431,7 @@ async def _create_dream_session(
         organization_id=org_id,
         team_id=team_id,
         metadata=metadata,
-        expert_id=expert_id,
+        expert_id=scope.expert_id,
     )
     # ``create_chat_session`` takes no title; set it via the dedicated
     # accessor so the session doesn't render as "(untitled)" in the chat
@@ -553,11 +528,10 @@ async def _drain_ingestion(
 
 
 async def apply_operations(
-    user_id: str,
+    scope: MemoryScope,
     pass_id: str,
     ops: DreamOperations,
     *,
-    expert_id: str | None = None,
     known_fact_uuids: set[str] | None = None,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
@@ -613,6 +587,7 @@ async def apply_operations(
     try direct Prisma, hit "All connection attempts failed" while
     the engine is still booting).
     """
+    user_id = scope.owner_user_id
     if not (ops.writes or ops.proposals or ops.demotions or ops.entity_invalidations):
         # Empty pass — nothing landed in memory, so don't manufacture a
         # user-visible artifact for it. Creating the session shell +
@@ -636,15 +611,11 @@ async def apply_operations(
             "snapshot": DreamOperationsSnapshot(),
         }
 
-    group_id = derive_memory_group_id(user_id, expert_id)
-
     # Phase A — create the session shell up front so the MemoryEnvelope
     # provenance can reference its id. The user-facing narrative summary
     # is written AFTER the ops (see below), so a partway failure leaves an
     # empty dream rather than a 'completed' narrative with no memory.
-    session_id = await _create_dream_session(
-        user_id=user_id, pass_id=pass_id, expert_id=expert_id
-    )
+    session_id = await _create_dream_session(scope, pass_id)
 
     # Tracks completion of only the episodes THIS pass enqueues, so the
     # drain below waits on the dream's own writes and not on unrelated
@@ -656,13 +627,12 @@ async def apply_operations(
     write_summaries: list[WriteSummary] = []
     for i, fact in enumerate(ops.writes):
         if await _write_consolidated_fact(
-            user_id,
+            scope,
             pass_id,
             i,
             fact,
             session_id=session_id,
             completion=completion,
-            expert_id=expert_id,
         ):
             completion.register()
             written += 1
@@ -680,13 +650,12 @@ async def apply_operations(
     proposal_summaries: list[WriteSummary] = []
     for i, prop in enumerate(ops.proposals):
         if await _write_proposed_finding(
-            user_id,
+            scope,
             pass_id,
             i,
             prop,
             session_id=session_id,
             completion=completion,
-            expert_id=expert_id,
         ):
             completion.register()
             proposed += 1
@@ -746,7 +715,7 @@ async def apply_operations(
         pass_id, ops.demotions, known_fact_uuids
     )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
-        user_id, group_id, demotions
+        scope, demotions
     )
     # Entity invalidation single-hop demotes every edge around the
     # entity — the most destructive op in the pass — so it stays behind
@@ -757,7 +726,7 @@ async def apply_operations(
         Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
     ):
         entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-            group_id, ops.entity_invalidations
+            scope, ops.entity_invalidations
         )
     else:
         entity_edges_demoted, entity_summaries = 0, []

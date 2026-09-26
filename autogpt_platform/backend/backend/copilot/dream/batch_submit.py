@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor.batch_executor import (
     INITIAL_POLL_DELAY_SECONDS,
     PendingEntry,
@@ -334,7 +335,7 @@ async def persist_input_bundle(
     payload = _input_bundle_to_dict(input_bundle)
     if lock_token is None:
         lock_token = await read_dream_lock_token(
-            input_bundle.user_id, input_bundle.expert_id
+            MemoryScope.build(input_bundle.user_id, input_bundle.expert_id)
         )
     if lock_token is not None:
         payload["lock_token"] = lock_token

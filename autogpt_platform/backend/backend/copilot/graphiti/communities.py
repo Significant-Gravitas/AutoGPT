@@ -39,11 +39,11 @@ from backend.data.redis_client import get_redis_async
 
 from .client import (
     close_graphiti_client,
-    derive_memory_group_id,
     get_graphiti_client,
     make_flex_graphiti_client,
 )
 from .config import graphiti_config
+from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
@@ -240,18 +240,13 @@ async def _activity_since_last_rebuild(
 # (``SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS`` = 1800s; every caller wraps
 # the rebuild in ``run_async(..., timeout=...)``), so the lock cannot expire
 # mid-rebuild and no lease-renewal watchdog is needed — the TTL is purely a
-# crash backstop.
-_REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
+# crash backstop. The key is ``MemoryScope.redis_key("rebuild_lock")``.
 _REBUILD_LOCK_TTL_SECONDS = 1800 + 120
 
 _REBUILD_UNLOCK_SCRIPT = (
     "if redis.call('get', KEYS[1]) == ARGV[1] then "
     "return redis.call('del', KEYS[1]) else return 0 end"
 )
-
-
-def _rebuild_lock_key(group_id: str) -> str:
-    return f"{_REBUILD_LOCK_KEY_PREFIX}{group_id}"
 
 
 async def _release_rebuild_lock(redis, key: str, token: str) -> None:
@@ -306,11 +301,12 @@ async def rebuild_communities_for_user(
     }
 
     try:
-        group_id = derive_memory_group_id(user_id, expert_id)
+        scope = MemoryScope.build(user_id, expert_id)
     except ValueError as exc:
         result["error"] = f"invalid_user_id: {exc}"
         logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])
         return result
+    group_id = scope.group_id
 
     # When the flex flag is on we build a one-shot Graphiti client whose
     # LLM calls run on OpenAI's flex tier (~50% discount, best-effort
@@ -334,7 +330,7 @@ async def rebuild_communities_for_user(
     # concurrent rebuild short-circuits instead of racing the DETACH DELETE
     # below. A contended acquire rides the existing ``skipped`` contract.
     redis = await get_redis_async()
-    lock_key = _rebuild_lock_key(group_id)
+    lock_key = scope.redis_key("rebuild_lock")
     lock_token = uuid4().hex
     if not await redis.set(lock_key, lock_token, nx=True, ex=_REBUILD_LOCK_TTL_SECONDS):
         result["skipped"] = True

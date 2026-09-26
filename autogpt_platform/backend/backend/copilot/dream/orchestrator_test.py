@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
 from . import orchestrator as orchestrator_mod
@@ -191,8 +192,9 @@ async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
     result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
 
     assert result.skipped is True
-    assert lock_calls[0][1]["expert_id"] == "expert-1"
-    gather.assert_awaited_once_with("u", expert_id="expert-1")
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    assert lock_calls[0][0][0] == expert_scope
+    gather.assert_awaited_once_with(expert_scope)
 
 
 @pytest.mark.asyncio
@@ -221,10 +223,11 @@ async def test_expert_scope_reaches_marker_and_apply_on_nonempty_pass(mocker):
 
     assert result.skipped is False
     assert result.error is None
-    gather.assert_awaited_once_with("u", expert_id="expert-1")
-    read_marker.assert_awaited_once_with("u", "expert-1")
-    assert apply_mock.await_args.kwargs["expert_id"] == "expert-1"
-    stamp_marker.assert_awaited_once_with("u", input_bundle.window_end, "expert-1")
+    expert_scope = MemoryScope.for_expert("u", "expert-1")
+    gather.assert_awaited_once_with(expert_scope)
+    read_marker.assert_awaited_once_with(expert_scope)
+    assert apply_mock.await_args.args[0] == expert_scope
+    stamp_marker.assert_awaited_once_with(expert_scope, input_bundle.window_end)
 
 
 @pytest.mark.asyncio
@@ -566,11 +569,10 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id,
+        scope,
         pass_id,
         ops,
         *,
-        expert_id=None,
         known_fact_uuids=None,
         lock_handle=None,
     ):
@@ -635,11 +637,10 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id,
+        scope,
         pass_id,
         ops,
         *,
-        expert_id=None,
         known_fact_uuids=None,
         lock_handle=None,
     ):
@@ -753,11 +754,10 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id,
+        scope,
         pass_id,
         ops,
         *,
-        expert_id=None,
         known_fact_uuids=None,
         lock_handle=None,
     ):
@@ -852,7 +852,7 @@ async def test_lock_held_returns_skipped_lock_held(mocker):
 
     @asynccontextmanager
     async def busy_lock(*args, **kwargs):
-        raise DreamLockHeld(args[0] if args else "?")
+        raise DreamLockHeld(args[0].owner_user_id if args else "?")
         yield  # pragma: no cover
 
     mocker.patch.object(orchestrator_mod, "dream_lock", busy_lock)
