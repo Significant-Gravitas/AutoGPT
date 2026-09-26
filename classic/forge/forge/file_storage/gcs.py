@@ -173,7 +173,9 @@ class GCSFileStorage(FileStorage):
         folder_names = set()
 
         # List objects with the specified prefix and delimiter
-        for blob in self._bucket.list_blobs(prefix=path):
+        for blob in self._bucket.list_blobs(
+            prefix=f"{path}/" if path != Path(".") else None
+        ):
             # Remove path prefix and the object name (last part)
             folder = Path(blob.name).relative_to(path).parent
             if not folder or folder == Path("."):
