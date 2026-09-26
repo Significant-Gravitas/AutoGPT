@@ -10,7 +10,7 @@ Start a new agent session (chat) in an existing Conductor workspace, optionally 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block polls the session status until idle or errored (bounded by `timeout_seconds`) and returns the new transcript messages and their joined agent text in `reply`.
+The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it polls the session status (bounded by `timeout_seconds`), correlates the transcript rows with the prompt's turn, and returns them in `messages` with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -40,6 +40,7 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 | reply | Text the agent produced in response | str |
 | messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |
+| truncated | True when the turn produced more messages than are kept; messages holds the newest ones and reply may be incomplete | bool |
 | error_message | Session error, if any | str |
 
 ### Possible use case

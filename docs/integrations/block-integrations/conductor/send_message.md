@@ -10,7 +10,7 @@ Send a prompt to a Conductor agent session and, by default, wait for the agent t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the receipt (`message_id`, `state` queued or sent, `deep_link`). With `wait_for_reply` (the default) it then polls `GET /v0/sessions/{id}/status` every `poll_interval_seconds` until the agent is idle or errored, or `timeout_seconds` elapses (`timed_out` is set and whatever has arrived so far is returned), then lists the messages after the prompt. `reply` joins the text of the agent's messages; `messages` has the raw transcript entries. The block's own execution cap is two hours, so `timeout_seconds` is limited to that.
+The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the receipt (`message_id`, `state` queued or sent, `deep_link`). With `wait_for_reply` (the default) it then polls `GET /v0/sessions/{id}/status` every `poll_interval_seconds` and reads the transcript rows that arrived since the previous poll. The receipt ID is the prompt's `content.id` in the transcript (not a row ID, so it cannot be used as a cursor); the block finds that row, follows its `turnId`, and finishes when the session reports `error`, or `idle` after at least one agent event of that turn has been recorded, so a session that is still idle because the prompt has not started yet is not mistaken for a finished one. `reply` joins the visible agent text of the turn (Claude `assistant` text, completed Codex `agentMessage` items); `messages` has the raw rows of the turn, newest kept when a turn exceeds 1000 rows (`truncated` is set). Sleeps and requests are capped by `timeout_seconds`; when it elapses `timed_out` is set and whatever arrived so far is returned. The block's own execution cap is two hours, so `timeout_seconds` is limited to that.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,6 +35,7 @@ The block posts `{message}` to `POST /v0/sessions/{id}/messages` and returns the
 | reply | Text the agent produced in response | str |
 | messages | Raw transcript messages after the prompt | List[Dict[str, Any]] |
 | timed_out | True when the wait ended before the agent went idle | bool |
+| truncated | True when the turn produced more messages than are kept; messages holds the newest ones and reply may be incomplete | bool |
 | error_message | Session error, if any | str |
 
 ### Possible use case

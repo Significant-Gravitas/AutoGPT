@@ -11,6 +11,17 @@ API_V0 = f"{CONDUCTOR_API_URL}/v0"
 # `timeout_seconds` input is bounded below this.
 MAX_WAIT_SECONDS = 2 * 60 * 60
 
+# The API serves at most this many rows per list request (larger `limit`
+# values are clamped server-side) and defaults to a much smaller page, so
+# every listing that wants more than a handful of rows must page explicitly.
+PAGE_SIZE = 100
+
+# Throttled/5xx responses are retried, but only a few times with short
+# back-off: the wait loops enforce their own wall-clock deadline and an
+# open-ended retry would silently outlive it.
+RETRY_MAX_ATTEMPTS = 4
+RETRY_MAX_WAIT_SECONDS = 10.0
+
 
 class ConductorAgent(str, Enum):
     CLAUDE = "claude"
@@ -97,6 +108,8 @@ class ConductorClient:
             extra_headers={
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}"
             },
+            retry_max_attempts=RETRY_MAX_ATTEMPTS,
+            retry_max_wait=RETRY_MAX_WAIT_SECONDS,
         )
 
     async def _call(
@@ -192,12 +205,20 @@ class ConductorClient:
         return await self._call("GET", f"{API_V0}/workspaces/{workspace_id}/status")
 
     async def workspace_sessions(
-        self, workspace_id: str, include_archived: bool
+        self,
+        workspace_id: str,
+        include_archived: bool,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         return await self._call(
             "GET",
             f"{API_V0}/workspaces/{workspace_id}/sessions",
-            params={"includeArchived": include_archived},
+            params={
+                "includeArchived": include_archived,
+                "limit": limit,
+                "offset": offset,
+            },
         )
 
     async def rename_workspace(self, workspace_id: str, name: str) -> dict[str, Any]:
@@ -269,6 +290,11 @@ class ConductorClient:
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, Any]:
+        """One page of a session's transcript, oldest first.
+
+        `after` is an exclusive row-id cursor and cannot be combined with
+        `offset`. Pages are clamped to PAGE_SIZE rows server-side.
+        """
         return await self._call(
             "GET",
             f"{API_V0}/sessions/{session_id}/messages",

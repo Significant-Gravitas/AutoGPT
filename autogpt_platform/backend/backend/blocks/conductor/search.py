@@ -23,10 +23,18 @@ class ConductorSearchTranscriptsBlock(Block):
             description="Conductor API key from app.conductor.build/users/api-keys"
         )
         query: str = SchemaField(
-            description="Read-only SQL over the transcripts of the workspaces you "
-            "can access, e.g. SELECT * FROM messages WHERE content LIKE '%bug%' "
-            "LIMIT 20",
-            placeholder="SELECT ... LIMIT 20",
+            description="A single read-only SELECT over session_transcripts_view, "
+            "the only queryable view (one row per session of the workspaces you "
+            "can access). Columns: session_id, workspace_id, transcript (plain "
+            "text of the conversation), session_title, agent_type, model, "
+            "workspace_name, workspace_state, repo_url, session_created_at, "
+            "transcript_updated_at, workspace_created_at, workspace_creator_id, "
+            "workspace_creator_name. At most 500 rows are returned, so add a "
+            "LIMIT. Example: SELECT session_id, session_title, workspace_name "
+            "FROM session_transcripts_view WHERE transcript ILIKE '%database "
+            "migration%' ORDER BY transcript_updated_at DESC LIMIT 20",
+            placeholder="SELECT session_id, session_title FROM "
+            "session_transcripts_view WHERE transcript ILIKE '%...%' LIMIT 20",
         )
 
     class Output(BlockSchemaOutput):

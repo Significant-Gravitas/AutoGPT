@@ -93,6 +93,10 @@ class ConductorCreateSessionBlock(Block):
         timed_out: bool = SchemaField(
             description="True when the wait ended before the agent went idle"
         )
+        truncated: bool = SchemaField(
+            description="True when the turn produced more messages than are "
+            "kept; messages holds the newest ones and reply may be incomplete"
+        )
         error_message: str = SchemaField(description="Session error, if any")
 
     def __init__(self):
@@ -130,6 +134,7 @@ class ConductorCreateSessionBlock(Block):
                 ("reply", "All tests pass now."),
                 ("messages", lambda m: len(m) == 1),
                 ("timed_out", False),
+                ("truncated", False),
                 ("error_message", ""),
             ],
             test_mock={
@@ -219,4 +224,5 @@ class ConductorCreateSessionBlock(Block):
         yield "reply", waited["reply"]
         yield "messages", waited["messages"]
         yield "timed_out", waited["timed_out"]
+        yield "truncated", bool(waited.get("truncated", False))
         yield "error_message", waited["error_message"]

@@ -113,6 +113,10 @@ class ConductorCreateWorkspaceBlock(Block):
         timed_out: bool = SchemaField(
             description="True when the wait ended before the agent went idle"
         )
+        truncated: bool = SchemaField(
+            description="True when the turn produced more messages than are "
+            "kept; messages holds the newest ones and reply may be incomplete"
+        )
         error_message: str = SchemaField(description="Session error, if any")
 
     def __init__(self):
@@ -152,6 +156,7 @@ class ConductorCreateWorkspaceBlock(Block):
                 ("reply", "Done, the fix is on branch fix-login."),
                 ("messages", lambda m: len(m) == 1),
                 ("timed_out", False),
+                ("truncated", False),
                 ("error_message", ""),
             ],
             test_mock={
@@ -170,13 +175,30 @@ class ConductorCreateWorkspaceBlock(Block):
                     "error_message": "",
                     "messages": [
                         {
-                            "id": "msg_2",
-                            "type": "assistant",
-                            "content": "Done, the fix is on branch fix-login.",
+                            "id": "row_2",
+                            "type": "agent",
+                            "content": {
+                                "type": "agent",
+                                "rawPayload": {
+                                    "type": "assistant",
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "Done, the fix is on "
+                                                "branch fix-login.",
+                                            }
+                                        ],
+                                    },
+                                },
+                                "turnId": "msg_1",
+                            },
                         }
                     ],
                     "reply": "Done, the fix is on branch fix-login.",
                     "timed_out": False,
+                    "truncated": False,
                 },
             },
         )
@@ -269,4 +291,5 @@ class ConductorCreateWorkspaceBlock(Block):
         yield "reply", waited["reply"]
         yield "messages", waited["messages"]
         yield "timed_out", waited["timed_out"]
+        yield "truncated", bool(waited.get("truncated", False))
         yield "error_message", waited["error_message"]
