@@ -282,3 +282,16 @@ def bot_installs_db():
         bot_installs_db = get_database_manager_async_client()
 
     return bot_installs_db
+
+
+def dream_db():
+    if db.is_connected():
+        from backend.data import dream_pass as _dream_db
+
+        dream_db = _dream_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        dream_db = get_database_manager_async_client()
+
+    return dream_db

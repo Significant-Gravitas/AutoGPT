@@ -12,10 +12,25 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+)
 
-from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
-from backend.copilot.dream.schemas import IngestionDrainStatus
+from backend.copilot.dream.batch_callbacks import (
+    _write_phase_to_state,
+    handle_dream_batch_result,
+)
+from backend.copilot.dream.schemas import (
+    DreamOperations,
+    DreamOperationsSnapshot,
+    IngestionDrainStatus,
+)
+from backend.copilot.dream.store import dream_pass_result_from_row
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.dream_pass import DreamPassDraft
 from backend.executor.batch_executor import PendingEntry
 from backend.util.llm.providers import BatchResultRow
 
@@ -1248,3 +1263,216 @@ class TestLockTokenWiring:
         await self._dispatch_sanitize()
 
         assert string_store["dream:inflight:u1"] == "tok-newer-pass"
+
+
+def _seed_submitted_pass(fake_dream_db, pass_id: str = "p1") -> None:
+    """The row as the orchestrator leaves it once consolidate is submitted."""
+    fake_dream_db.seed(
+        DreamPassDraft(
+            id=pass_id,
+            user_id="u1",
+            scope_key="u1",
+            route=DreamPassRoute.ANTHROPIC_BATCH,
+            trigger=DreamPassTrigger.CRON,
+            status=DreamPassStatus.SUBMITTED,
+            phase=DreamPassPhase.CONSOLIDATE,
+            started_at=datetime.now(timezone.utc),
+        )
+    )
+
+
+class TestDreamPassRecord:
+    """Each callback advances the pass's durable row: the phase that landed
+    and its output, the next batch, the apply, and the end with what the
+    landed phases used."""
+
+    @pytest.mark.asyncio
+    async def test_the_batch_chain_records_every_step(self, fake_redis, fake_dream_db):
+        _, _, string_store = fake_redis
+        string_store["dream:inflight:u1"] = "tok-u1"
+        await _persist_autopilot_bundle()
+        _seed_submitted_pass(fake_dream_db)
+        submit_phase = AsyncMock(
+            side_effect=[
+                MagicMock(provider_batch_id="msgbatch_recombine"),
+                MagicMock(provider_batch_id="msgbatch_sanitize"),
+            ]
+        )
+        apply = AsyncMock(
+            return_value={
+                "session_id": "s1",
+                "consolidated_count": 2,
+                "proposal_count": 1,
+                "demotion_count": 0,
+                "entity_invalidation_count": 0,
+                "ingestion_drain_status": IngestionDrainStatus.skipped,
+                "snapshot": DreamOperationsSnapshot(),
+            }
+        )
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
+        ), patch(
+            "backend.copilot.dream.job_status.update_status_phase", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.apply.apply_operations", apply
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", AsyncMock()
+        ), patch(
+            "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            for phase, content in (
+                ("consolidate", _CONSOLIDATE_CONTENT),
+                ("recombine", _RECOMBINE_CONTENT),
+                ("sanitize", _SANITIZE_CONTENT),
+            ):
+                await handle_dream_batch_result(
+                    _entry(phase=phase),
+                    [_row(custom_id=f"p1:{phase}", content=content)],
+                )
+
+        assert fake_dream_db.phases("p1") == [
+            DreamPassPhase.RECOMBINE,
+            DreamPassPhase.SANITIZE,
+            DreamPassPhase.APPLY,
+            DreamPassPhase.DONE,
+        ]
+        assert fake_dream_db.statuses("p1") == [
+            DreamPassStatus.APPLYING,
+            DreamPassStatus.COMPLETE,
+        ]
+        assert [
+            update.provider_batch_id
+            for _, update in fake_dream_db.writes
+            if update.provider_batch_id
+        ] == ["msgbatch_recombine", "msgbatch_sanitize"]
+        row = fake_dream_db.rows["p1"]
+        assert list(row["phase_outputs"]) == ["consolidate", "recombine", "sanitize"]
+        assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
+        applied = row["operations"]["applied"]
+        assert (applied.consolidated_count, applied.dream_session_id) == (2, "s1")
+        # Each landed phase priced on its own model at the batch discount,
+        # as its cost row is: 10 input + 20 output tokens per ``_row``.
+        usage = row["usage"]
+        assert [p.model for p in usage.phases] == [
+            "claude-sonnet-5",
+            "claude-opus-5-5",
+            "claude-sonnet-5",
+        ]
+        sonnet_5_cost = (10 * 2.0 + 20 * 10.0) / 1_000_000 / 2
+        opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
+        assert usage.total_cost_usd == pytest.approx(2 * sonnet_5_cost + opus_5_5_cost)
+        assert usage.discount_applied == 0.5
+        # What the eval driver reads back: a batch pass's result with usage.
+        result = dream_pass_result_from_row(fake_dream_db.record("p1"))
+        assert result.execution_path == "anthropic_batch"
+        assert result.usage == usage
+        assert (result.consolidated_count, result.proposal_count) == (2, 1)
+        assert result.ingestion_drain_status is IngestionDrainStatus.skipped
+
+    @pytest.mark.asyncio
+    async def test_a_failed_phase_closes_the_row_with_the_landed_usage(
+        self, fake_redis, fake_dream_db
+    ):
+        await _persist_autopilot_bundle()
+        _seed_submitted_pass(fake_dream_db)
+        await _write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        with patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="recombine"),
+                [_row(custom_id="p1:recombine", content="", error="provider down")],
+            )
+
+        assert fake_dream_db.statuses("p1") == [DreamPassStatus.ERRORED]
+        row = fake_dream_db.rows["p1"]
+        assert row["error"] == "recombine: provider down"
+        # The errored phase used nothing billable; consolidate did.
+        assert [p.phase for p in row["usage"].phases] == ["consolidate"]
+        assert row["completed_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_an_apply_crash_closes_the_row_errored_after_applying(
+        self, fake_redis, fake_dream_db
+    ):
+        await _persist_autopilot_bundle()
+        _seed_submitted_pass(fake_dream_db)
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(side_effect=RuntimeError("FalkorDB unreachable")),
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.record_phase_cost", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        assert fake_dream_db.statuses("p1") == [
+            DreamPassStatus.APPLYING,
+            DreamPassStatus.ERRORED,
+        ]
+        row = fake_dream_db.rows["p1"]
+        assert row["error"] == "apply: RuntimeError: FalkorDB unreachable"
+        assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_phase_closes_the_row_errored(
+        self, fake_redis, fake_dream_db
+    ):
+        _seed_submitted_pass(fake_dream_db)
+        entry = _entry(phase="consolidate")
+        entry.payload = {"user_id": "u1", "pass_id": "p1", "phase": "daydream"}
+
+        with patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", AsyncMock()
+        ):
+            await handle_dream_batch_result(entry, [])
+
+        assert fake_dream_db.statuses("p1") == [DreamPassStatus.ERRORED]
+        assert fake_dream_db.rows["p1"]["error"] == "unknown batch phase 'daydream'"
+
+    @pytest.mark.asyncio
+    async def test_a_store_outage_never_fails_a_batch_pass(
+        self, fake_redis, fake_dream_db
+    ):
+        await _persist_autopilot_bundle()
+        _seed_submitted_pass(fake_dream_db)
+        fake_dream_db.fail = True
+        mark_complete = AsyncMock()
+        mark_errored = AsyncMock()
+        release_lock = AsyncMock()
+        with patch(
+            "backend.copilot.dream.apply.apply_operations",
+            AsyncMock(return_value={"consolidated_count": 0}),
+        ), patch(
+            "backend.copilot.dream.job_status.mark_complete", mark_complete
+        ), patch(
+            "backend.copilot.dream.job_status.mark_errored", mark_errored
+        ), patch(
+            "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="sanitize"),
+                [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)],
+            )
+
+        mark_complete.assert_awaited_once()
+        mark_errored.assert_not_awaited()
+        release_lock.assert_awaited_once()
+        assert fake_dream_db.writes == []

@@ -1569,6 +1569,62 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/dream/{pass_id}/record": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Dream Pass Record",
+        "description": "Read one dream pass's durable record, on either route.\n\nThe job status above is a Redis row that lapses after six hours and, for\na batch pass, carries no usage; the record outlives the pass and holds\nwhat its phases used. 404 for a pass that does not exist or belongs to\nanother user, alike.",
+        "operationId": "getV2GetDreamPassRecord",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The dream pass id",
+              "title": "Pass Id"
+            },
+            "description": "The dream pass id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DreamPassRecordResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/entities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -19632,6 +19688,49 @@
         "title": "ConnectionTier",
         "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nOn a ChatGPT connection it is the model the catalog pins for that cell,\nread straight from the registry -- no lease, no call to the account.\nWhat a lease would add is confirmation that this particular account still\nadvertises it; the router checks that when the turn runs and falls back\nif not, so the name here is the routed model rather than a guarantee.\n``None`` only when the catalog pins nothing for the cell."
       },
+      "ConsolidatedFact": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Canonical statement of the consolidated fact."
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "Memory scope namespace, e.g. 'real:global' or 'project:foo'.",
+            "default": "real:global"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Phase 1 model's confidence in the consolidated statement."
+          },
+          "source_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Episode Uuids",
+            "description": "UUIDs of the :Episodic nodes the fact was consolidated from."
+          }
+        },
+        "type": "object",
+        "required": ["content", "confidence"],
+        "title": "ConsolidatedFact",
+        "description": "A cluster of related facts merged into a single canonical statement.\n\nPhase 1 output. Provenance always points back to the source episodes\nso apply.py can record where the consolidation came from."
+      },
+      "ConsolidationOutput": {
+        "properties": {
+          "facts": {
+            "items": { "$ref": "#/components/schemas/ConsolidatedFact" },
+            "type": "array",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "title": "ConsolidationOutput"
+      },
       "ContentType": {
         "type": "string",
         "enum": [
@@ -20959,6 +21058,81 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "DreamDemotion": {
+        "properties": {
+          "edge_uuid": {
+            "type": "string",
+            "title": "Edge Uuid",
+            "description": "UUID of the :RELATES_TO edge to demote."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Short reason recorded on the edge. Examples: 'stale_fact', 'contradicted_by:{uuid}', 'entity_invalidated:{uuid}', 'user_signal', 'unratified', 'web_contradicted:{url}'."
+          },
+          "new_status": {
+            "type": "string",
+            "enum": ["superseded", "contradicted"],
+            "title": "New Status",
+            "default": "superseded"
+          }
+        },
+        "type": "object",
+        "required": ["edge_uuid", "reason"],
+        "title": "DreamDemotion",
+        "description": "Demote an existing :RELATES_TO edge.\n\nSets ``expired_at`` and ``status``; ``invalid_at`` is reserved for\ncontradiction-detector world-changes per Snodgrass bi-temporal\nsemantics (see ``dream/p0-spec.md`` §4 and the audit at §6.13)."
+      },
+      "DreamInput": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "group_id": { "type": "string", "title": "Group Id" },
+          "window_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Start"
+          },
+          "window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window End"
+          },
+          "episodes": {
+            "items": { "$ref": "#/components/schemas/EpisodeRow" },
+            "type": "array",
+            "title": "Episodes"
+          },
+          "facts": {
+            "items": { "$ref": "#/components/schemas/FactRow" },
+            "type": "array",
+            "title": "Facts"
+          },
+          "recent_sessions": {
+            "items": { "$ref": "#/components/schemas/SessionRow" },
+            "type": "array",
+            "title": "Recent Sessions"
+          },
+          "known_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "uniqueItems": true,
+            "title": "Known Fact Uuids"
+          },
+          "known_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "uniqueItems": true,
+            "title": "Known Episode Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "group_id", "window_start", "window_end"],
+        "title": "DreamInput",
+        "description": "The whole gather-step bundle handed to the phase 1 prompt."
+      },
       "DreamJobStatus": {
         "properties": {
           "job_id": { "type": "string", "title": "Job Id" },
@@ -21022,6 +21196,41 @@
         "title": "DreamJobStatus",
         "description": "JobStatus envelope for ``kind=\"dream_pass\"``."
       },
+      "DreamOperations": {
+        "properties": {
+          "writes": {
+            "items": { "$ref": "#/components/schemas/ConsolidatedFact" },
+            "type": "array",
+            "title": "Writes",
+            "description": "Phase 1 consolidated facts that survived the sanitizer."
+          },
+          "proposals": {
+            "items": { "$ref": "#/components/schemas/ProposedFinding" },
+            "type": "array",
+            "title": "Proposals",
+            "description": "Phase 2 proposals that survived the sanitizer."
+          },
+          "demotions": {
+            "items": { "$ref": "#/components/schemas/DreamDemotion" },
+            "type": "array",
+            "title": "Demotions"
+          },
+          "entity_invalidations": {
+            "items": { "$ref": "#/components/schemas/EntityInvalidation" },
+            "type": "array",
+            "title": "Entity Invalidations"
+          },
+          "summary_for_user": {
+            "type": "string",
+            "title": "Summary For User",
+            "description": "Short narrative for the dream-kind ChatSession body.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "DreamOperations",
+        "description": "Phase 3 output — what apply.py writes back to the world.\n\nGuardrails enforced by phase 3's prompt and double-checked in\napply.py:\n  * ≤ ``max_demotions_per_pass`` demotions per pass (runaway-demotion\n    mitigation per spec §3 / TODO P0.3b).\n  * Scope match enforced — proposals cannot cross scopes.\n  * Empty ``writes`` and ``proposals`` is fine; a pass can be no-op."
+      },
       "DreamOperationsSnapshot": {
         "properties": {
           "writes": {
@@ -21050,6 +21259,232 @@
         "type": "object",
         "title": "DreamOperationsSnapshot",
         "description": "Detailed per-operation rollup of a single dream pass.\n\nShape used by three downstream consumers:\n  1. The admin memory-visualizer UI (renders the per-edge detail).\n  2. AgentProbe eval scorers (read via ``rawExchangeKey``).\n  3. The future chat-stream ``dream.operations`` SSE event (P6 + P9\n     daydreaming, see ``dream/TODO.md``).\n\nKept additive on ``DreamPassResult`` so adding fields here doesn't\nbump the count-only top-level columns existing clients rely on."
+      },
+      "DreamPassApplied": {
+        "properties": {
+          "consolidated_count": {
+            "type": "integer",
+            "title": "Consolidated Count",
+            "default": 0
+          },
+          "proposal_count": {
+            "type": "integer",
+            "title": "Proposal Count",
+            "default": 0
+          },
+          "demotion_count": {
+            "type": "integer",
+            "title": "Demotion Count",
+            "default": 0
+          },
+          "entity_invalidation_count": {
+            "type": "integer",
+            "title": "Entity Invalidation Count",
+            "default": 0
+          },
+          "summary_for_user": {
+            "type": "string",
+            "title": "Summary For User",
+            "default": ""
+          },
+          "dream_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Session Id"
+          },
+          "ingestion_drain_status": {
+            "$ref": "#/components/schemas/IngestionDrainStatus",
+            "default": "drained"
+          },
+          "snapshot": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamOperationsSnapshot" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "DreamPassApplied",
+        "description": "What apply reported: the counts and narrative a ``DreamPassResult``\ncarries, and the per-operation snapshot."
+      },
+      "DreamPassOperations": {
+        "properties": {
+          "planned": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamOperations" },
+              { "type": "null" }
+            ]
+          },
+          "applied": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassApplied" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "DreamPassOperations",
+        "description": "The clamped operations apply was handed, then what it reported."
+      },
+      "DreamPassPhase": {
+        "type": "string",
+        "enum": [
+          "GATHER",
+          "CONSOLIDATE",
+          "RECOMBINE",
+          "SANITIZE",
+          "APPLY",
+          "DONE"
+        ],
+        "title": "DreamPassPhase"
+      },
+      "DreamPassRecord": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "scope_key": { "type": "string", "title": "Scope Key" },
+          "route": { "$ref": "#/components/schemas/DreamPassRoute" },
+          "trigger": { "$ref": "#/components/schemas/DreamPassTrigger" },
+          "phase": { "$ref": "#/components/schemas/DreamPassPhase" },
+          "status": { "$ref": "#/components/schemas/DreamPassStatus" },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "cancel_generation": {
+            "type": "integer",
+            "title": "Cancel Generation"
+          },
+          "provider_batch_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider Batch Id"
+          },
+          "lease_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lease Token"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Lease Expires At"
+          },
+          "input_bundle": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamInput" },
+              { "type": "null" }
+            ]
+          },
+          "phase_outputs": { "$ref": "#/components/schemas/DreamPhaseOutputs" },
+          "operations": { "$ref": "#/components/schemas/DreamPassOperations" },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamPassUsage" },
+              { "type": "null" }
+            ]
+          },
+          "window_start": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Window Start"
+          },
+          "window_end": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Window End"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "applied_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Applied At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "expert_id",
+          "scope_key",
+          "route",
+          "trigger",
+          "phase",
+          "status",
+          "skip_reason",
+          "cancel_generation",
+          "provider_batch_id",
+          "lease_token",
+          "lease_expires_at",
+          "input_bundle",
+          "phase_outputs",
+          "operations",
+          "usage",
+          "window_start",
+          "window_end",
+          "error",
+          "created_at",
+          "started_at",
+          "submitted_at",
+          "applied_at",
+          "completed_at",
+          "updated_at"
+        ],
+        "title": "DreamPassRecord",
+        "description": "One ``DreamPass`` row."
+      },
+      "DreamPassRecordResponse": {
+        "properties": {
+          "record": { "$ref": "#/components/schemas/DreamPassRecord" },
+          "result": { "$ref": "#/components/schemas/DreamPassResult" }
+        },
+        "type": "object",
+        "required": ["record", "result"],
+        "title": "DreamPassRecordResponse",
+        "description": "One dream pass's durable record, and the ``DreamPassResult`` read off\nit: what the eval driver scores, with usage for batch passes too."
       },
       "DreamPassResult": {
         "properties": {
@@ -21143,6 +21578,31 @@
         "title": "DreamPassResult",
         "description": "Return value of ``execute_dream_pass`` and the admin API.\n\nMirrors ``RebuildResponse`` from the community-rebuild endpoint so\nthe admin frontend can render both with the same toast logic."
       },
+      "DreamPassRoute": {
+        "type": "string",
+        "enum": ["SYNC", "ANTHROPIC_BATCH"],
+        "title": "DreamPassRoute"
+      },
+      "DreamPassStatus": {
+        "type": "string",
+        "enum": [
+          "QUEUED",
+          "RUNNING",
+          "SUBMITTED",
+          "APPLYING",
+          "COMPLETE",
+          "ERRORED",
+          "CANCELLED",
+          "EXPIRED",
+          "SKIPPED"
+        ],
+        "title": "DreamPassStatus"
+      },
+      "DreamPassTrigger": {
+        "type": "string",
+        "enum": ["CRON", "ADMIN", "EVAL"],
+        "title": "DreamPassTrigger"
+      },
       "DreamPassUsage": {
         "properties": {
           "phases": {
@@ -21183,6 +21643,31 @@
         "type": "object",
         "title": "DreamPassUsage",
         "description": "Aggregate usage across all phases of one dream pass.\n\nSurfaced on ``DreamPassResult.usage`` so eval / admin UI / billing\ncan read tokens + cost without recomputing. Written to\n``PlatformCostLog`` from apply.py with ``provider='dream_pass'``;\ncharged against the user's rate-limit window via\n``persist_and_record_usage`` so dream-pass spend rolls into the\nsame daily/weekly subscription tier budget as chat-execution\noverage."
+      },
+      "DreamPhaseOutputs": {
+        "properties": {
+          "consolidate": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ConsolidationOutput" },
+              { "type": "null" }
+            ]
+          },
+          "recombine": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RecombinationOutput" },
+              { "type": "null" }
+            ]
+          },
+          "sanitize": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DreamOperations" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "DreamPhaseOutputs",
+        "description": "Each phase's validated output, as the next phase and apply read it."
       },
       "DumpStatusResponse": {
         "properties": {
@@ -21228,6 +21713,16 @@
         "title": "EnableShareRequest",
         "description": "Whether to auto-link every ``run_agent`` execution in this chat.\n\nWhen true, the backend creates ``ChatLinkedShare`` rows for every\nexisting agent run AND auto-links any new runs that land while the\nshare is active.  When false, only the chat messages are shared\n(cards in the viewer render in their \"execution not shared\" state)."
       },
+      "EntityInvalidation": {
+        "properties": {
+          "entity_uuid": { "type": "string", "title": "Entity Uuid" },
+          "reason": { "type": "string", "title": "Reason" }
+        },
+        "type": "object",
+        "required": ["entity_uuid", "reason"],
+        "title": "EntityInvalidation",
+        "description": "Demote every :RELATES_TO edge directly attached to an entity.\n\nSingle-hop only — apply.py calls ``invalidate_entity_direct_neighbors``\nwhich clamps to ``[r:RELATES_TO]-(other)``; never expands to\nneighbors-of-neighbors."
+      },
       "EntityInvalidationSummary": {
         "properties": {
           "entity_uuid": { "type": "string", "title": "Entity Uuid" },
@@ -21268,6 +21763,41 @@
         "type": "object",
         "required": ["uuid", "name"],
         "title": "EntitySummary"
+      },
+      "EpisodeRow": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          },
+          "source_description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Description"
+          },
+          "valid_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Valid At"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid",
+          "name",
+          "content",
+          "source_description",
+          "valid_at",
+          "created_at"
+        ],
+        "title": "EpisodeRow"
       },
       "EraseMemoryResponse": {
         "properties": {
@@ -22635,6 +23165,56 @@
         "type": "object",
         "required": ["user_id", "items"],
         "title": "FactListResponse"
+      },
+      "FactRow": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source"
+          },
+          "target": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          },
+          "confidence": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Confidence"
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid",
+          "source",
+          "target",
+          "name",
+          "fact",
+          "scope",
+          "confidence",
+          "status",
+          "created_at"
+        ],
+        "title": "FactRow"
       },
       "FactSummary": {
         "properties": {
@@ -25921,6 +26501,19 @@
         "title": "MemoryForgetFailureCode",
         "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },
+      "MemoryKind": {
+        "type": "string",
+        "enum": [
+          "fact",
+          "preference",
+          "rule",
+          "finding",
+          "plan",
+          "event",
+          "procedure"
+        ],
+        "title": "MemoryKind"
+      },
       "MemoryOverview": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -27761,6 +28354,52 @@
         "title": "ProfileDetails",
         "description": "Marketplace user profile (including read-only fields)"
       },
+      "ProposedFinding": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The proposed finding."
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "Memory scope.",
+            "default": "real:global"
+          },
+          "memory_kind": {
+            "$ref": "#/components/schemas/MemoryKind",
+            "description": "Envelope kind — finding | rule | preference | plan.",
+            "default": "finding"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Phase 2 model's self-rated confidence."
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale",
+            "description": "Why the dream pass proposes this — recorded for audit."
+          },
+          "source_episode_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Episode Uuids"
+          },
+          "source_fact_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Fact Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["content", "confidence", "rationale"],
+        "title": "ProposedFinding",
+        "description": "A novel connection or weak-link discovery from phase 2.\n\nAll proposals land as ``status=tentative`` in apply.py and ride the\nP-0.4 ratification loop. The ``rationale`` is recorded as part of\nthe episode body so a reviewer (or future audit) can see *why* the\ndream pass proposed the finding."
+      },
       "Provider": {
         "properties": {
           "name": {
@@ -28304,6 +28943,17 @@
         "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
+      },
+      "RecombinationOutput": {
+        "properties": {
+          "proposals": {
+            "items": { "$ref": "#/components/schemas/ProposedFinding" },
+            "type": "array",
+            "title": "Proposals"
+          }
+        },
+        "type": "object",
+        "title": "RecombinationOutput"
       },
       "RecommendedExpert": {
         "properties": {
@@ -29241,6 +29891,26 @@
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
+      },
+      "SessionRow": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "body": { "type": "string", "title": "Body" }
+        },
+        "type": "object",
+        "required": ["session_id", "title", "created_at", "body"],
+        "title": "SessionRow"
       },
       "SessionSummaryResponse": {
         "properties": {

@@ -31,6 +31,10 @@ naturally falls off the radar. Two SETNX gates (7-day TTL) keep the
 side effects at-most-once across batch re-dispatch:
 ``dream:applied:{pass_id}`` for the memory writes and
 ``dream:batch:costs_logged:{pass_id}`` for billing.
+
+Beside the Redis state, each callback advances the pass's durable
+``DreamPass`` row (``store.py``): the phase that landed and its output,
+the next batch, the apply, and the end with what the landed phases used.
 """
 
 from __future__ import annotations
@@ -46,7 +50,6 @@ from backend.copilot.inference.context import (
     InferenceContext,
     InferenceError,
     InferenceScope,
-    InferenceUsage,
 )
 from backend.copilot.inference.routing import anthropic_batch_route
 
@@ -64,9 +67,19 @@ from .phase_jobs import PHASE_TIERS, phase_job
 from .schemas import (
     DreamOperations,
     DreamOperationsSnapshot,
+    DreamPassResult,
+    DreamPassUsage,
     DreamPhase,
     IngestionDrainStatus,
 )
+from .store import (
+    record_applying,
+    record_batch_complete,
+    record_batch_failed,
+    record_next_batch,
+    record_phase_output,
+)
+from .usage import batch_pass_usage, landed_phase_usage
 
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
@@ -193,7 +206,6 @@ async def _finalize_stuck_duplicate(
         return
     try:
         from .job_status import mark_complete, read_status
-        from .schemas import DreamPassResult
 
         existing = await read_status(kind="dream_pass", job_id=job_id)
         if existing is None or existing.state in ("complete", "errored"):
@@ -330,6 +342,7 @@ async def handle_dream_batch_result(
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
         await _mark_job_errored_best_effort(job_id, f"unknown batch phase {phase!r}")
+        await record_batch_failed(pass_id, f"unknown batch phase {phase!r}", None)
         await _release_lock(user_id, pass_id, expert_id)
         return
 
@@ -470,7 +483,7 @@ async def _handle_phase_result(
     # (and read back by the next phase) is the JSON alone.
     try:
         payload = parse_json_with_prose_fallback(row.content)
-        PHASE_RESPONSE_MODELS[phase].model_validate(payload)
+        output = PHASE_RESPONSE_MODELS[phase].model_validate(payload)
     except (InferenceError, ValidationError) as exc:
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
@@ -486,6 +499,7 @@ async def _handle_phase_result(
     await _write_phase_to_state(
         pass_id=pass_id, phase=phase, row=row.with_content(json.dumps(payload))
     )
+    await record_phase_output(pass_id, phase, output)
 
     next_phase = NEXT_PHASE[phase]
     if next_phase is not None:
@@ -594,6 +608,7 @@ async def _chain_next_phase(
                 next_phase,
                 pass_id,
             )
+    await record_next_batch(pass_id, submission.provider_batch_id)
 
 
 def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
@@ -608,6 +623,9 @@ def _content_for(state: dict[str, dict[str, Any]], phase: str) -> str | None:
 # Terminal handlers
 # ---------------------------------------------------------------------------
 
+
+# What ``apply.apply_operations`` reports.
+_ApplyStats = dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]
 
 _APPLIED_GATE_PREFIX = "dream:applied"
 # 7 days — same window as the costs_logged gate; no realistic
@@ -762,9 +780,8 @@ async def _finalize_complete(
         await _best_effort_cleanup(pass_id)
         return
 
-    apply_stats: dict[
-        str, int | str | IngestionDrainStatus | DreamOperationsSnapshot
-    ] = {}
+    await record_applying(pass_id, ops)
+    apply_stats: _ApplyStats = {}
     try:
         # Thread the demotion allowlist from the already-validated bundle.
         #
@@ -807,64 +824,129 @@ async def _finalize_complete(
         phase_models=phase_models,
     )
 
-    if job_id:
-        try:
-            from .job_status import mark_complete
-            from .schemas import DreamPassResult
-
-            raw_snapshot = apply_stats.get("snapshot")
-            snapshot: DreamOperationsSnapshot | None = None
-            if isinstance(raw_snapshot, DreamOperationsSnapshot):
-                snapshot = raw_snapshot
-            elif isinstance(raw_snapshot, dict):
-                snapshot = DreamOperationsSnapshot.model_validate(raw_snapshot)
-
-            # ``apply_stats`` values are typed as a union that includes
-            # ``DreamOperationsSnapshot``; narrow each count to a plain
-            # ``int`` (with a 0 default) before threading it into the
-            # Pydantic result so pyright doesn't flag the int() cast.
-            def _count(key: str) -> int:
-                value = apply_stats.get(key)
-                if isinstance(value, (int, str)):
-                    try:
-                        return int(value)
-                    except (TypeError, ValueError):
-                        return 0
-                return 0
-
-            raw_session_id = apply_stats.get("session_id")
-            session_id = raw_session_id if isinstance(raw_session_id, str) else None
-
-            # The batch path skips the drain by design, so apply reports
-            # ``skipped`` whenever the pass enqueued writes (``drained`` only
-            # for an empty pass). Read it via the shared, fail-closed helper
-            # rather than re-deriving the coercion here.
-            ingestion_drain_status = drain_status_from_stats(apply_stats)
-
-            pass_result = DreamPassResult(
-                user_id=user_id,
-                pass_id=pass_id,
-                execution_path="anthropic_batch",
-                consolidated_count=_count("consolidated_count"),
-                proposal_count=_count("proposal_count"),
-                demotion_count=_count("demotion_count"),
-                entity_invalidation_count=_count("entity_invalidation_count"),
-                dream_session_id=session_id,
-                ingestion_drain_status=ingestion_drain_status,
-                operations=snapshot,
-                # Carry the user-facing narrative like the sync path does —
-                # without it the Memory Visualizer renders a blank summary for
-                # batch-completed dreams even though the session message exists.
-                summary_for_user=ops.summary_for_user,
-            )
-            await mark_complete(kind="dream_pass", job_id=job_id, result=pass_result)
-        except Exception:
-            logger.exception("Failed to mark dream pass job %s complete", job_id)
+    await _record_completion(
+        user_id=user_id,
+        pass_id=pass_id,
+        job_id=job_id,
+        apply_stats=apply_stats,
+        # The batch path skips the drain by design, so apply reports
+        # ``skipped`` whenever the pass enqueued writes (``drained`` only
+        # for an empty pass). Read it via the shared, fail-closed helper
+        # rather than re-deriving the coercion here.
+        ingestion_drain_status=drain_status_from_stats(apply_stats),
+        summary_for_user=ops.summary_for_user,
+        usage=_landed_usage(state, phase_models, pass_id),
+    )
 
     # The batch path disowned the dream lock to this callback; release it now
     # that the pass has terminated so the next dream for this user can run.
     await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
+
+
+async def _record_completion(
+    *,
+    user_id: str,
+    pass_id: str,
+    job_id: str,
+    apply_stats: _ApplyStats,
+    ingestion_drain_status: IngestionDrainStatus,
+    summary_for_user: str,
+    usage: DreamPassUsage | None,
+) -> None:
+    """Close the admin job and the pass's record with what apply reported.
+
+    Neither may raise: apply's writes have landed, and the crash guard would
+    route an exception here to ``_fail_pass`` and report the pass errored.
+    """
+    try:
+        pass_result = _applied_result(
+            user_id=user_id,
+            pass_id=pass_id,
+            apply_stats=apply_stats,
+            ingestion_drain_status=ingestion_drain_status,
+            summary_for_user=summary_for_user,
+        )
+    except Exception:
+        logger.exception("Failed to build the result of dream pass %s", pass_id)
+        return
+    if job_id:
+        try:
+            from .job_status import mark_complete
+
+            await mark_complete(kind="dream_pass", job_id=job_id, result=pass_result)
+        except Exception:
+            logger.exception("Failed to mark dream pass job %s complete", job_id)
+    await record_batch_complete(pass_result, usage)
+
+
+def _applied_result(
+    *,
+    user_id: str,
+    pass_id: str,
+    apply_stats: _ApplyStats,
+    ingestion_drain_status: IngestionDrainStatus,
+    summary_for_user: str,
+) -> DreamPassResult:
+    """The ``DreamPassResult`` of a batch pass whose apply just returned."""
+    raw_session_id = apply_stats.get("session_id")
+    return DreamPassResult(
+        user_id=user_id,
+        pass_id=pass_id,
+        execution_path="anthropic_batch",
+        consolidated_count=_stat_count(apply_stats, "consolidated_count"),
+        proposal_count=_stat_count(apply_stats, "proposal_count"),
+        demotion_count=_stat_count(apply_stats, "demotion_count"),
+        entity_invalidation_count=_stat_count(apply_stats, "entity_invalidation_count"),
+        dream_session_id=raw_session_id if isinstance(raw_session_id, str) else None,
+        ingestion_drain_status=ingestion_drain_status,
+        operations=_stat_snapshot(apply_stats),
+        # Carry the user-facing narrative like the sync path does —
+        # without it the Memory Visualizer renders a blank summary for
+        # batch-completed dreams even though the session message exists.
+        summary_for_user=summary_for_user,
+    )
+
+
+def _stat_count(
+    apply_stats: _ApplyStats,
+    key: str,
+) -> int:
+    """One apply count as a plain ``int``, 0 when missing or malformed: the
+    stats values are a union that includes the snapshot."""
+    value = apply_stats.get(key)
+    if isinstance(value, (int, str)):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def _stat_snapshot(
+    apply_stats: _ApplyStats,
+) -> DreamOperationsSnapshot | None:
+    raw_snapshot = apply_stats.get("snapshot")
+    if isinstance(raw_snapshot, DreamOperationsSnapshot):
+        return raw_snapshot
+    if isinstance(raw_snapshot, dict):
+        return DreamOperationsSnapshot.model_validate(raw_snapshot)
+    return None
+
+
+def _landed_usage(
+    state: dict[str, dict[str, Any]], phase_models: dict[str, str], pass_id: str
+) -> DreamPassUsage | None:
+    """What the pass's landed phases used, for its record. A state row that
+    will not price costs the record its usage, never the pass its outcome."""
+    try:
+        return batch_pass_usage(state, phase_models)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not price its landed phases for the record",
+            exc_info=True,
+        )
+        return None
 
 
 async def _fail_pass(
@@ -903,6 +985,9 @@ async def _fail_pass(
             state=state,
             phase_models=phase_models,
         )
+    await record_batch_failed(
+        pass_id, error, _landed_usage(state, phase_models, pass_id)
+    )
     # Release the dream lock the batch path disowned to this callback.
     await _release_lock(user_id, pass_id, expert_id)
     await _best_effort_cleanup(pass_id)
@@ -1020,18 +1105,13 @@ async def _log_phase_cost(
             phase,
         )
         return
+    usage = landed_phase_usage(row, phase_model)
+    if usage is None:
+        return
     ctx = InferenceContext(
         scope=scope,
         job=phase_job(phase, pass_id, timeout_seconds=None, pinned_model=phase_model),
         route=anthropic_batch_route(phase_model),
-    )
-    usage = InferenceUsage(
-        model=phase_model,
-        input_tokens=int(row.get("input_tokens") or 0),
-        output_tokens=int(row.get("output_tokens") or 0),
-        cache_read_tokens=int(row.get("cache_read_tokens") or 0),
-        cache_creation_tokens=int(row.get("cache_creation_tokens") or 0),
-        payer=ctx.route.payer,
     )
     await record_phase_cost(ctx, usage)
 

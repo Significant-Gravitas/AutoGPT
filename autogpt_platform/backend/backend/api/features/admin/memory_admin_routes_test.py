@@ -1,5 +1,6 @@
 """Tests for the admin memory inspector routes."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote
 
@@ -7,10 +8,23 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+)
 from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.copilot.dream.schemas import DreamPassUsage, IngestionDrainStatus
 from backend.copilot.graphiti.client import derive_memory_group_id
+from backend.data.dream_pass import (
+    DreamPassApplied,
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPhaseOutputs,
+)
 
 from .memory_admin_routes import router as memory_admin_router
 
@@ -798,6 +812,92 @@ def _fake_status_row(kind: str, user_id: str, job_id: str = "job-1"):
         started_at=now,
         updated_at=now,
     )
+
+
+def _dream_pass_row(user_id: str) -> DreamPassRecord:
+    started = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
+    return DreamPassRecord(
+        id="p1",
+        user_id=user_id,
+        expert_id=None,
+        scope_key=user_id,
+        route=DreamPassRoute.ANTHROPIC_BATCH,
+        trigger=DreamPassTrigger.EVAL,
+        phase=DreamPassPhase.DONE,
+        status=DreamPassStatus.COMPLETE,
+        skip_reason=None,
+        cancel_generation=0,
+        provider_batch_id="msgbatch_sanitize",
+        lease_token="tok",
+        lease_expires_at=started + timedelta(hours=24),
+        input_bundle=None,
+        phase_outputs=DreamPhaseOutputs(),
+        operations=DreamPassOperations(
+            applied=DreamPassApplied(
+                consolidated_count=2,
+                dream_session_id="s1",
+                ingestion_drain_status=IngestionDrainStatus.skipped,
+            )
+        ),
+        usage=DreamPassUsage(total_cost_usd=0.011, discount_applied=0.5),
+        window_start=None,
+        window_end=None,
+        error=None,
+        created_at=started,
+        started_at=started,
+        submitted_at=started,
+        applied_at=started + timedelta(minutes=7),
+        completed_at=started + timedelta(minutes=7),
+        updated_at=started + timedelta(minutes=7),
+    )
+
+
+class TestDreamPassRecord:
+    """``GET /{user_id}/dream/{pass_id}/record`` reads the pass's durable row,
+    and the ``DreamPassResult`` the eval driver scores, usage included."""
+
+    def test_returns_the_row_and_the_result_read_off_it(self) -> None:
+        read = AsyncMock(return_value=_dream_pass_row("abc"))
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("p1", user_id="abc")
+        body = resp.json()
+        assert body["record"]["id"] == "p1"
+        assert body["record"]["status"] == "COMPLETE"
+        assert body["record"]["trigger"] == "EVAL"
+        result = body["result"]
+        assert result["execution_path"] == "anthropic_batch"
+        assert result["usage"]["total_cost_usd"] == 0.011
+        assert result["consolidated_count"] == 2
+        assert result["elapsed_seconds"] == 420.0
+        assert result["skipped"] is False
+
+    def test_me_reads_the_callers_own_pass(self, mock_jwt_admin) -> None:
+        read = AsyncMock(return_value=_dream_pass_row(mock_jwt_admin["user_id"]))
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/me/dream/p1/record")
+
+        assert resp.status_code == 200
+        read.assert_awaited_once_with("p1", user_id=mock_jwt_admin["user_id"])
+
+    def test_a_missing_or_another_users_pass_is_404(self) -> None:
+        # The read is owner-scoped: another user's pass comes back as None,
+        # exactly like a pass that does not exist.
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=AsyncMock(return_value=None)):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 404
+
+    def test_non_admin_gets_403_before_the_read(self, mock_jwt_user) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        read = AsyncMock()
+        with patch(f"{_MOCK_MODULE}.read_dream_pass", new=read):
+            resp = client.get("/admin/memory/abc/dream/p1/record")
+
+        assert resp.status_code == 403
+        read.assert_not_awaited()
 
 
 class TestAdminGating:

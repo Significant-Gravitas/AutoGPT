@@ -12,6 +12,10 @@ first phase to Anthropic's Message Batches API instead and
 ``batch_callbacks`` runs the later phases and the apply step as the
 results land.
 
+Every pass, on either route, gets a durable ``DreamPass`` row
+(``store.py``): inserted at the start, advanced after each step, closed
+with how the pass ended.
+
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set, so the admin trigger always
 gets a structured response back.
@@ -36,7 +40,6 @@ from backend.copilot.inference.context import (
     InferenceContext,
     InferenceError,
     InferenceScope,
-    InferenceUsage,
 )
 from backend.copilot.inference.routing import resolve_route
 from backend.copilot.inference.trace import trace
@@ -67,7 +70,7 @@ from .prompts import (
     build_recombine_prompt,
     build_sanitize_prompt,
 )
-from .routing import ExecutionPath, batch_discount, resolve_dream_execution_path
+from .routing import ExecutionPath, resolve_dream_execution_path
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -80,6 +83,16 @@ from .schemas import (
     ProposedFinding,
     RecombinationOutput,
 )
+from .store import (
+    DreamTrigger,
+    record_applying,
+    record_gathered,
+    record_phase_output,
+    record_submitted,
+    record_sync_outcome,
+    start_pass,
+)
+from .usage import aggregate_usage, phase_usage
 
 logger = logging.getLogger(__name__)
 
@@ -642,7 +655,8 @@ async def _run_phase(
             raise
         usage = await record_phase_cost(call.ctx, completion.usage)
         call.usage = usage
-    return completion.value, _phase_usage(phase, usage)
+    await record_phase_output(run.pass_id, phase, completion.value)
+    return completion.value, phase_usage(phase, usage)
 
 
 async def _record_failed_attempt(ctx: InferenceContext, exc: InferenceError) -> None:
@@ -660,44 +674,7 @@ def _billed_phases(
     failed one when its answer came back (``_run_phase`` recorded it)."""
     if exc.usage is None:
         return completed
-    return [*completed, _phase_usage(phase, exc.usage)]
-
-
-def _phase_usage(phase: DreamPhase, usage: InferenceUsage) -> PhaseUsage:
-    return PhaseUsage(
-        phase=phase,
-        model=usage.model,
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_read_tokens=usage.cache_read_tokens,
-        cache_creation_tokens=usage.cache_creation_tokens,
-        cost_usd=usage.cost_usd,
-    )
-
-
-def _aggregate_usage(
-    phases: list[PhaseUsage], execution_path: ExecutionPath
-) -> DreamPassUsage:
-    """Roll up per-phase usage into a ``DreamPassUsage``.
-
-    ``total_cost_usd`` is None when any single phase had unknown cost
-    so we never silently bill at a partial figure.
-    """
-    total_cost: float | None = 0.0
-    for p in phases:
-        if p.cost_usd is None:
-            total_cost = None
-            break
-        total_cost += p.cost_usd
-    return DreamPassUsage(
-        phases=phases,
-        total_input_tokens=sum(p.input_tokens for p in phases),
-        total_output_tokens=sum(p.output_tokens for p in phases),
-        total_cache_read_tokens=sum(p.cache_read_tokens for p in phases),
-        total_cache_creation_tokens=sum(p.cache_creation_tokens for p in phases),
-        total_cost_usd=total_cost,
-        discount_applied=batch_discount(execution_path),
-    )
+    return [*completed, phase_usage(phase, exc.usage)]
 
 
 async def _read_last_completed_marker(scope: MemoryScope) -> datetime | None:
@@ -794,6 +771,7 @@ async def _execute_dream_pass_async(
     expert_id: str | None,
     config: ChatConfig | None = None,
     status_id: str | None = None,
+    trigger: DreamTrigger = "cron",
 ) -> DreamPassResult:
     config = config or ChatConfig()
     pass_id = str(uuidlib.uuid4())
@@ -825,6 +803,13 @@ async def _execute_dream_pass_async(
     ttl = DEFAULT_LOCK_TTL_SECONDS
     try:
         scope = MemoryScope.build(user_id, expert_id)
+        await start_pass(
+            pass_id,
+            scope,
+            route=execution_path,
+            trigger=trigger,
+            started_at=started_at,
+        )
         lock_context = dream_lock(scope, ttl_seconds=ttl)
         async with lock_context as dream_lock_handle:
             # Pre-flight billing check. Runs inside the lock so a
@@ -904,6 +889,8 @@ async def _execute_dream_pass_async(
                     skip_reason="no_new_activity",
                 )
 
+            await record_gathered(pass_id, input_bundle)
+
             # ---- Anthropic batch path -----------------------------------
             #
             # When routing picks ``anthropic_batch`` we persist the
@@ -946,7 +933,7 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"consolidate: {exc}",
-                    usage=_aggregate_usage(
+                    usage=aggregate_usage(
                         _billed_phases(step_usages, "consolidate", exc), execution_path
                     ),
                 )
@@ -964,7 +951,7 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"recombine: {exc}",
-                    usage=_aggregate_usage(
+                    usage=aggregate_usage(
                         _billed_phases(step_usages, "recombine", exc), execution_path
                     ),
                 )
@@ -982,7 +969,7 @@ async def _execute_dream_pass_async(
                     monotonic_start,
                     execution_path,
                     f"sanitize: {exc}",
-                    usage=_aggregate_usage(
+                    usage=aggregate_usage(
                         _billed_phases(step_usages, "sanitize", exc), execution_path
                     ),
                 )
@@ -993,6 +980,7 @@ async def _execute_dream_pass_async(
                 len(input_bundle.facts),
                 known_fact_uuids=input_bundle.known_fact_uuids,
             )
+            await record_applying(pass_id, ops)
             apply_stats = await apply_operations(
                 scope,
                 pass_id,
@@ -1041,7 +1029,7 @@ async def _execute_dream_pass_async(
                 operations=(
                     snapshot if isinstance(snapshot, DreamOperationsSnapshot) else None
                 ),
-                usage=_aggregate_usage(step_usages, execution_path),
+                usage=aggregate_usage(step_usages, execution_path),
             )
 
     except DreamLockHeld:
@@ -1097,6 +1085,7 @@ async def execute_dream_pass(
     *,
     status_id: str | None = None,
     expert_id: str | None = None,
+    trigger: DreamTrigger = "cron",
 ) -> DreamPassResult:
     """Public async entry point used by the scheduler + admin trigger.
 
@@ -1105,10 +1094,16 @@ async def execute_dream_pass(
     into the batch path so the BatchExecutor callbacks can update the
     user-visible status row as each phase lands. AgentProbe + other
     sync callers pass ``None`` and never hit the batch path.
+
+    ``trigger`` is what started the pass, as its ``DreamPass`` row
+    records it: ``cron`` for the nightly job, ``admin`` for the admin
+    triggers, ``eval`` for an eval run.
     """
-    return await _execute_dream_pass_async(
-        user_id, status_id=status_id, expert_id=expert_id
+    result = await _execute_dream_pass_async(
+        user_id, status_id=status_id, expert_id=expert_id, trigger=trigger
     )
+    await record_sync_outcome(result)
+    return result
 
 
 async def _submit_dream_pass_batch(
@@ -1227,6 +1222,13 @@ async def _submit_dream_pass_batch(
             "anthropic_batch: dream lock lost before handoff — batch revoked",
         )
     dream_lock_handle.disown()
+    await record_submitted(
+        pass_id,
+        input_bundle=input_bundle,
+        provider_batch_id=submission.provider_batch_id,
+        lease_token=dream_lock_handle.token,
+        lease_ttl_seconds=BATCH_LOCK_TTL_SECONDS,
+    )
     return DreamPassResult(
         user_id=user_id,
         pass_id=pass_id,

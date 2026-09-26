@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 from .billing import check_dream_budget
 from .ratification import RatificationResult, run_ratification_pass
 from .schemas import DreamPassResult
+from .store import DreamTrigger
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,9 @@ class NightlyBatchResult(BaseModel):
     error: str | None = None
 
 
-async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
+async def run_nightly_batch_submit(
+    user_id: str, *, trigger: DreamTrigger = "cron"
+) -> NightlyBatchResult:
     """Fan out per-user nightly batch-family submissions, in order.
 
     Today the order is dream-pass → ratification-supersession-sweep.
@@ -110,6 +113,9 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     Never raises — top-level failures are captured in
     ``NightlyBatchResult.error`` so the scheduler wrapper can log
     without retry-storming the cron.
+
+    ``trigger`` is recorded on the dream pass: ``cron`` from the nightly
+    job, ``admin`` when an admin ran the fan-out on demand.
     """
     nightly_id = str(uuidlib.uuid4())
     started_at = datetime.now(timezone.utc)
@@ -154,7 +160,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     try:
         from .orchestrator import execute_dream_pass
 
-        result.dream = await execute_dream_pass(user_id)
+        result.dream = await execute_dream_pass(user_id, trigger=trigger)
         if result.dream.error:
             logger.warning(
                 "Nightly batch %s: dream submitter errored for user %s: %s",

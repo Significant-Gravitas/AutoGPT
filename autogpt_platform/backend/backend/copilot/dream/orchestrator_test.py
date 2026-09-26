@@ -8,11 +8,18 @@ the unit-level safety net for the control-flow.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+)
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
@@ -22,13 +29,14 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.inference.trace import TracedCall
+from backend.data.dream_pass import DreamPassDraft
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
 from . import billing as billing_mod
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
 from .fetch import DreamInput, EpisodeRow, FactRow
-from .locks import DEFAULT_LOCK_TTL_SECONDS
+from .locks import BATCH_LOCK_TTL_SECONDS, DEFAULT_LOCK_TTL_SECONDS, DreamLockHeld
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -2030,3 +2038,266 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     delete_bundle.assert_awaited_once_with("p-lock-lost")
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
+
+
+# ---------------------------------------------------------------------------
+# The pass's durable DreamPass row, as execute_dream_pass writes it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
+    input_bundle = _build_input()
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=input_bundle)
+    )
+    _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None and result.skipped is False
+    assert fake_dream_db.writes[0] == (
+        result.pass_id,
+        DreamPassDraft(
+            id=result.pass_id,
+            user_id="u",
+            scope_key=MemoryScope.for_user("u").scope_key,
+            route=DreamPassRoute.SYNC,
+            trigger=DreamPassTrigger.CRON,
+            started_at=result.started_at,
+        ),
+    )
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.APPLYING,
+        DreamPassStatus.COMPLETE,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+        DreamPassPhase.RECOMBINE,
+        DreamPassPhase.SANITIZE,
+        DreamPassPhase.APPLY,
+        DreamPassPhase.DONE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert (row["window_start"], row["window_end"]) == (
+        input_bundle.window_start,
+        input_bundle.window_end,
+    )
+    assert row["phase_outputs"] == {
+        "consolidate": ConsolidationOutput(facts=[]),
+        "recombine": RecombinationOutput(proposals=[]),
+        "sanitize": DreamOperations(summary_for_user="ok"),
+    }
+    assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
+    assert row["operations"]["applied"].dream_session_id == "s"
+    assert row["usage"] == result.usage
+    assert row["completed_at"] == result.completed_at
+    # The sync route keeps no input bundle: nothing resumes it from the row.
+    assert "input_bundle" not in row
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger, recorded",
+    [("admin", DreamPassTrigger.ADMIN), ("eval", DreamPassTrigger.EVAL)],
+)
+async def test_the_callers_trigger_is_recorded(
+    mocker, fake_dream_db, trigger, recorded
+):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", trigger=trigger)
+
+    pass_id, draft = fake_dream_db.writes[0]
+    assert pass_id == result.pass_id
+    assert isinstance(draft, DreamPassDraft) and draft.trigger is recorded
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_pass_closes_its_row_as_skipped(mocker, fake_dream_db):
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SKIPPED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [DreamPassPhase.GATHER]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["skip_reason"] == "no_input"
+    assert row["completed_at"] == result.completed_at
+
+
+@pytest.mark.asyncio
+async def test_a_pass_that_finds_the_lock_held_is_recorded_skipped(
+    mocker, fake_dream_db
+):
+    @asynccontextmanager
+    async def busy_lock(*args, **kwargs):
+        raise DreamLockHeld("u")
+        yield  # pragma: no cover
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", busy_lock)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SKIPPED,
+    ]
+    assert fake_dream_db.rows[result.pass_id]["skip_reason"] == "lock_held"
+
+
+@pytest.mark.asyncio
+async def test_a_phase_failure_closes_the_row_errored_at_that_phase(
+    mocker, fake_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _wrap(ConsolidationOutput(facts=[])),
+                InferenceError("provider down"),
+            ]
+        ),
+    )
+    apply_mock = mocker.patch.object(orchestrator_mod, "apply_operations", AsyncMock())
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == "recombine: provider down"
+    apply_mock.assert_not_awaited()
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.ERRORED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+        DreamPassPhase.RECOMBINE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["error"] == result.error
+    assert list(row["phase_outputs"]) == ["consolidate"]
+    assert row["usage"] == result.usage
+    assert [p.phase for p in row["usage"].phases] == ["consolidate"]
+
+
+@pytest.mark.asyncio
+async def test_a_store_outage_never_fails_the_pass(mocker, fake_dream_db, caplog):
+    fake_dream_db.fail = True
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    with caplog.at_level(logging.WARNING):
+        result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None and result.skipped is False
+    assert result.dream_session_id == "s"
+    apply_mock.assert_awaited_once()
+    assert fake_dream_db.writes == []
+    assert "could not insert its record" in caplog.text
+    assert "could not record the outcome" in caplog.text
+
+
+def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
+    """Route the pass to the Anthropic batch path with its submit mocked;
+    returns the lock handle the pass holds."""
+    mocker.patch.object(
+        orchestrator_mod,
+        "resolve_dream_execution_path",
+        return_value="anthropic_batch",
+    )
+    config = MagicMock()
+    config.direct_anthropic_api_key = "key"
+    mocker.patch.object(orchestrator_mod, "ChatConfig", return_value=config)
+    handle = MagicMock()
+    handle.token = "tok"
+    handle.extend = AsyncMock(return_value=lock_extends)
+
+    @asynccontextmanager
+    async def held_lock(*args, **kwargs):
+        yield handle
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", held_lock)
+    mocker.patch("backend.copilot.dream.batch_submit.persist_input_bundle", AsyncMock())
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.phase_models_for_config", return_value={}
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_submit.submit_phase",
+        AsyncMock(return_value=MagicMock(provider_batch_id="batch-xyz")),
+    )
+    return handle
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submit_records_the_batch_and_leaves_the_end_to_callbacks(
+    mocker, fake_dream_db
+):
+    _batch_route(mocker, lock_extends=True)
+    input_bundle = _build_input()
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=input_bundle)
+    )
+    before = datetime.now(timezone.utc)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.execution_path == "anthropic_batch" and result.error is None
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.SUBMITTED,
+    ]
+    assert fake_dream_db.phases(result.pass_id) == [
+        DreamPassPhase.GATHER,
+        DreamPassPhase.CONSOLIDATE,
+    ]
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["route"] is DreamPassRoute.ANTHROPIC_BATCH
+    assert row["provider_batch_id"] == "batch-xyz"
+    assert row["input_bundle"] == input_bundle
+    assert row["lease_token"] == "tok"
+    assert row["submitted_at"] >= before
+    assert row["lease_expires_at"] - row["submitted_at"] == timedelta(
+        seconds=BATCH_LOCK_TTL_SECONDS
+    )
+    assert "completed_at" not in row
+
+
+@pytest.mark.asyncio
+async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
+    mocker, fake_dream_db
+):
+    _batch_route(mocker, lock_extends=False)
+    mocker.patch("backend.executor.batch_executor.remove_pending", AsyncMock())
+    mocker.patch("backend.copilot.dream.batch_submit.delete_input_bundle", AsyncMock())
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error and "lock lost" in result.error
+    assert fake_dream_db.statuses(result.pass_id) == [
+        DreamPassStatus.RUNNING,
+        DreamPassStatus.ERRORED,
+    ]
+    assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]

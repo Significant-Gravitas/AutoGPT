@@ -34,8 +34,10 @@ from backend.copilot.dream.job_status import (
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
+from backend.copilot.dream.store import dream_pass_result_from_row, read_dream_pass
 from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.dream_pass import DreamPassRecord
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -998,6 +1000,14 @@ class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
     """JobStatus envelope for ``kind="rebuild"``."""
 
 
+class DreamPassRecordResponse(BaseModel):
+    """One dream pass's durable record, and the ``DreamPassResult`` read off
+    it: what the eval driver scores, with usage for batch passes too."""
+
+    record: DreamPassRecord
+    result: DreamPassResult
+
+
 @router.post(
     "/{user_id}/dream",
     response_model=JobTriggerResponse,
@@ -1081,6 +1091,39 @@ async def get_dream_pass_status(
     if status.user_id != target:
         raise HTTPException(status_code=403, detail="job belongs to a different user")
     return DreamJobStatus.model_validate(status.model_dump())
+
+
+@router.get(
+    "/{user_id}/dream/{pass_id}/record",
+    response_model=DreamPassRecordResponse,
+)
+async def get_dream_pass_record(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    pass_id: Annotated[str, Path(description="The dream pass id")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+) -> DreamPassRecordResponse:
+    """Read one dream pass's durable record, on either route.
+
+    The job status above is a Redis row that lapses after six hours and, for
+    a batch pass, carries no usage; the record outlives the pass and holds
+    what its phases used. 404 for a pass that does not exist or belongs to
+    another user, alike.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    record = await read_dream_pass(pass_id, user_id=target)
+    if record is None:
+        raise HTTPException(status_code=404, detail="dream pass not found")
+    return DreamPassRecordResponse(
+        record=record, result=dream_pass_result_from_row(record)
+    )
 
 
 @router.post("/{user_id}/ratification", response_model=RatificationResult)

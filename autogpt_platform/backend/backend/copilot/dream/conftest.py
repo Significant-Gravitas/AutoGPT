@@ -10,14 +10,28 @@ Without the server there is no Redis either, and ``get_redis_async`` retries
 for close to an hour before giving up, so every test in this directory gets an
 in-memory stand-in by default. Tests that need their own fake keep patching
 ``backend.data.redis_client.get_redis_async`` as before; a later patch wins.
+
+No Postgres either, and the DatabaseManager RPC client behind ``dream_db()``
+retries just as long, so the dream store writes each pass's record to an
+in-memory ``FakeDreamDb`` that tests can read the transitions back from.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 import pytest_asyncio
+
+from backend.data.dream_pass import (
+    OPEN_STATUSES,
+    DreamPassDraft,
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPassUpdate,
+    DreamPhaseOutputs,
+)
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -162,6 +176,85 @@ class FakeAsyncRedis:
 
     async def aclose(self) -> None:
         return None
+
+
+class FakeDreamDb:
+    """In-memory stand-in for ``backend.data.dream_pass`` behind ``dream_db()``.
+
+    Keeps each pass's row the way the data module does: a ``None`` field
+    leaves its column, ``phase_outputs`` and ``operations`` merge one field at
+    a time, and a terminal row is final. ``writes`` holds every draft and
+    update that landed, in order. ``fail`` makes every call raise, as an
+    unreachable database would.
+    """
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, Any]] = {}
+        self.writes: list[tuple[str, DreamPassDraft | DreamPassUpdate]] = []
+        self.fail = False
+
+    async def create_dream_pass(self, draft: DreamPassDraft) -> None:
+        self._raise_if_down()
+        if draft.id in self.rows:
+            raise ValueError(f"duplicate dream pass {draft.id}")
+        self.writes.append((draft.id, draft))
+        self.rows[draft.id] = {**dict(draft), "phase_outputs": {}, "operations": {}}
+
+    async def update_dream_pass(self, pass_id: str, update: DreamPassUpdate) -> bool:
+        self._raise_if_down()
+        row = self.rows.get(pass_id)
+        if row is None or row["status"] not in OPEN_STATUSES:
+            return False
+        self.writes.append((pass_id, update))
+        for field, value in dict(update).items():
+            if value is None:
+                continue
+            if field in ("phase_outputs", "operations"):
+                row[field].update(
+                    {k: v for k, v in dict(value).items() if v is not None}
+                )
+            else:
+                row[field] = value
+        return True
+
+    def seed(self, draft: DreamPassDraft) -> None:
+        """A row as an earlier step (another process) would have left it."""
+        self.rows[draft.id] = {**dict(draft), "phase_outputs": {}, "operations": {}}
+
+    def statuses(self, pass_id: str) -> list[Any]:
+        return [w.status for pid, w in self.writes if pid == pass_id and w.status]
+
+    def phases(self, pass_id: str) -> list[Any]:
+        """The steps the row went through, a step written twice in a row once."""
+        steps = [w.phase for pid, w in self.writes if pid == pass_id and w.phase]
+        return [s for i, s in enumerate(steps) if i == 0 or s != steps[i - 1]]
+
+    def record(self, pass_id: str) -> DreamPassRecord:
+        """The row as ``get_dream_pass`` would read it back."""
+        row = self.rows[pass_id]
+        stamp = row.get("started_at") or datetime.now(timezone.utc)
+        return DreamPassRecord.model_validate(
+            {
+                **{name: row.get(name) for name in DreamPassRecord.model_fields},
+                "cancel_generation": 0,
+                "created_at": stamp,
+                "updated_at": stamp,
+                "phase_outputs": DreamPhaseOutputs(**row["phase_outputs"]),
+                "operations": DreamPassOperations(**row["operations"]),
+            }
+        )
+
+    def _raise_if_down(self) -> None:
+        if self.fail:
+            raise ConnectionError("dream pass database unreachable")
+
+
+@pytest.fixture(autouse=True)
+def fake_dream_db(monkeypatch: pytest.MonkeyPatch) -> FakeDreamDb:
+    """Give every dream test an in-memory pass record behind the store."""
+    fake = FakeDreamDb()
+    monkeypatch.setattr("backend.copilot.dream.store.dream_db", lambda: fake)
+    return fake
 
 
 @pytest.fixture(autouse=True)
