@@ -196,7 +196,7 @@ class _TurnCollector:
     def _consume(self, row: dict[str, Any]) -> None:
         if not self.resolved:
             if self._is_prompt(row):
-                self.turn_id = _turn_of(row) or self.receipt_id
+                self.turn_id = _turn_of(row)
             elif self.receipt_id in _tags(row):
                 # The prompt row is older than anything read: the turn's
                 # start is not in `rows`.
@@ -222,7 +222,11 @@ class _TurnCollector:
 
     def _same_turn(self, row: dict[str, Any]) -> bool:
         tags = _tags(row)
-        return not tags or self.turn_id in tags or self.receipt_id in tags
+        return (
+            (not tags and not self.turn_id)
+            or self.turn_id in tags
+            or self.receipt_id in tags
+        )
 
     def _keep(self, row: dict[str, Any]) -> None:
         if len(self.rows) == self.rows.maxlen:
