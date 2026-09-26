@@ -1226,8 +1226,11 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         )
 
 
-def execute_dream_pass_with_status(user_id: str, job_id: str):
-    """Run the dream pass in isolation and record JobStatus transitions."""
+def execute_dream_pass_with_status(user_id: str, job_id: str, force: bool = False):
+    """Run the dream pass in isolation and record JobStatus transitions.
+
+    ``force`` has the pass's guard expire a fresh open pass of the account
+    instead of skipping behind it (the admin trigger's ``?force=true``)."""
     from backend.copilot.dream.job_status import (
         mark_complete,
         mark_errored,
@@ -1250,7 +1253,7 @@ def execute_dream_pass_with_status(user_id: str, job_id: str):
 
     try:
         result = run_async(
-            execute_dream_pass(user_id, status_id=job_id, trigger="admin"),
+            execute_dream_pass(user_id, status_id=job_id, trigger="admin", force=force),
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
     except Exception as exc:
@@ -3006,14 +3009,17 @@ class Scheduler(AppService):
         return {"scheduled": True, "job_id": job_id, "kind": "nightly"}
 
     @expose
-    def schedule_immediate_dream_pass(self, user_id: str, job_id: str) -> dict:
-        """Schedule a one-shot dream pass run keyed by ``job_id``."""
+    def schedule_immediate_dream_pass(
+        self, user_id: str, job_id: str, force: bool = False
+    ) -> dict:
+        """Schedule a one-shot dream pass run keyed by ``job_id``; ``force``
+        goes to the pass's guard (see ``execute_dream_pass_with_status``)."""
         import datetime as _dt
 
         scheduler_job_id = f"adhoc_dream_{job_id}"
         self.scheduler.add_job(
             execute_dream_pass_with_status,
-            kwargs={"user_id": user_id, "job_id": job_id},
+            kwargs={"user_id": user_id, "job_id": job_id, "force": force},
             trigger="date",
             run_date=_dt.datetime.now(_dt.timezone.utc),
             id=scheduler_job_id,

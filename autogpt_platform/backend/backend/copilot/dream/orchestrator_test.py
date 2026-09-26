@@ -2612,7 +2612,7 @@ async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
         AsyncMock(return_value=MagicMock(provider_batch_id="batch-recombine")),
     )
     mocker.patch(
-        "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+        "backend.copilot.dream.batch_callbacks.anthropic_api_key",
         return_value="sk-ant-test",
     )
     entered, release = asyncio.Event(), asyncio.Event()
@@ -2655,8 +2655,11 @@ async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
 
     assert result.error is None and result.dream_session_id == "s"
     apply_mock.assert_awaited_once()
-    # The insert and six updates, each abandoned at the deadline.
-    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (7, 7)
+    # The insert, the guard's read of the scope's open passes, six updates
+    # and the four stop checks (three phases, apply), each abandoned at the
+    # deadline; neither the guard nor a check held the pass on a store that
+    # did not answer.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (12, 12)
 
 
 @pytest.mark.asyncio

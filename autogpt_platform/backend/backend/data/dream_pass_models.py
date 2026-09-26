@@ -38,6 +38,10 @@ OPEN_STATUSES: tuple[DreamPassStatus, ...] = (
     DreamPassStatus.APPLYING,
 )
 
+# A new row's cancelGeneration (the column default). Only a stop from outside
+# the pass moves it, so a pass that reads anything else was stopped.
+INITIAL_CANCEL_GENERATION = 0
+
 
 class DreamPhaseOutputs(BaseModel):
     """Each phase's validated output, as the next phase and apply read it."""
@@ -90,6 +94,11 @@ class DreamPassUpdate(BaseModel):
     ``phase_outputs`` and ``operations`` merge into what the row holds, one
     top-level field at a time, so a transition sends only the phase or the
     part it produced.
+
+    A stop from outside the pass (a cancel, an expiry) sets
+    ``bump_cancel_generation``, and may make the write conditional on more
+    than the row being open: ``owner_user_id`` (the row is that user's) and
+    ``not_updated_since`` (nothing has written the row after that instant).
     """
 
     status: DreamPassStatus | None = None
@@ -108,6 +117,9 @@ class DreamPassUpdate(BaseModel):
     submitted_at: datetime | None = None
     applied_at: datetime | None = None
     completed_at: datetime | None = None
+    bump_cancel_generation: bool = False
+    owner_user_id: str | None = None
+    not_updated_since: datetime | None = None
 
     @model_validator(mode="after")
     def _batch_names_its_phase(self) -> "DreamPassUpdate":

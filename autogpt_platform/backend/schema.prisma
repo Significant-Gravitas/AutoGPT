@@ -534,8 +534,9 @@ model DreamPass {
   phase            DreamPassPhase   @default(GATHER)
   status           DreamPassStatus  @default(QUEUED)
   skipReason       String?
-  // Bumped by a cancel, so a step that started under an older generation
-  // knows to stop. Nothing cancels yet.
+  // Bumped by a stop from outside the pass (a cancel, or an expiry by a newer
+  // pass's guard) in the statement that closes the row, so a step that started
+  // under an older generation knows to stop.
   cancelGeneration Int              @default(0)
 
   // The provider batch of the phase in flight (batch route only).

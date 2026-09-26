@@ -44,10 +44,11 @@ async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
 async def update_dream_pass(pass_id: str, update: DreamPassUpdate) -> bool:
     """Apply one transition to the pass's row, in a single statement.
 
-    ``False`` when there is no such row or it has reached a terminal status.
-    ``True`` means the row was open, not that every field moved: a status or
-    phase behind the row's, or a batch for a phase the row has left, is
-    dropped in the statement.
+    ``False`` when there is no such row, it has reached a terminal status, or
+    it fails the update's owner or not-updated-since condition. ``True``
+    means the row was written, not that every field moved: a status or phase
+    behind the row's, or a batch for a phase the row has left, is dropped in
+    the statement.
     """
     written = await execute_raw_with_schema(
         TRANSITION_SQL, *transition_args(pass_id, update)

@@ -1476,7 +1476,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Trigger Dream Pass",
-        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter — for the full\nnightly fan-out use ``POST /{user_id}/nightly``.",
+        "description": "Fire a dream pass and return 202 + job_id immediately.\n\nFrontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``\nfor progress. Runs ONLY the dream pass submitter — for the full\nnightly fan-out use ``POST /{user_id}/nightly``. The pass goes through\nthe same guard as the nightly one: it skips behind a fresh open pass of\nthe account unless ``force`` expires that pass first. ``force`` does not\ntake a lock another pass holds.",
         "operationId": "postV2TriggerDreamPass",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1490,6 +1490,18 @@
               "title": "User Id"
             },
             "description": "User id or 'me'"
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Expire a fresh open dream pass of the account first instead of skipping behind it",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Expire a fresh open dream pass of the account first instead of skipping behind it"
           }
         ],
         "responses": {
@@ -1552,6 +1564,75 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/DreamJobStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/dream/{pass_id}/cancel": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Cancel Dream Pass Run",
+        "description": "Cancel an open dream pass and return its record, now CANCELLED.\n\nThe row closes at once; the pass itself stops at its next check (a\nphase boundary or just before apply, on either route) without applying,\nand whatever it already applied stays. 404 for a pass that does not\nexist or belongs to another user, alike; 409 once the pass has ended.",
+        "operationId": "postV2CancelDreamPassRun",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "pass_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The dream pass id",
+              "title": "Pass Id"
+            },
+            "description": "The dream pass id"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/DreamPassCancelRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DreamPassRecordResponse"
+                }
               }
             }
           },
@@ -21305,6 +21386,20 @@
         "type": "object",
         "title": "DreamPassApplied",
         "description": "What apply reported: the counts and narrative a ``DreamPassResult``\ncarries, and the per-operation snapshot."
+      },
+      "DreamPassCancelRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "DreamPassCancelRequest",
+        "description": "Why an admin cancels a dream pass, kept as the pass's error."
       },
       "DreamPassOperations": {
         "properties": {

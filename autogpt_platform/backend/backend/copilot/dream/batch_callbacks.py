@@ -20,7 +20,9 @@ The pass's Redis state and its at-most-once gates are ``batch_state.py``;
 how the pass ends (JobStatus, the durable ``DreamPass`` record, the lock)
 is ``batch_outcome.py``; what its phases cost and used is ``batch_costs.py``. Each
 callback also advances the record: the phase that landed and its output,
-the next batch, the apply, and the end.
+the next batch, the apply, and the end. Before it chains the next phase and
+before it claims the apply gate, it reads the record and ends a pass that was
+cancelled or expired meanwhile (``cancel.py``).
 """
 
 from __future__ import annotations
@@ -52,8 +54,10 @@ from .batch_state import (
     write_phase_to_state,
 )
 from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
+from .cancel import end_batch_pass_if_stopped
 from .clamp import clamp_operations
 from .llm import parse_json_with_prose_fallback
+from .provider_batch import anthropic_api_key
 from .schemas import DreamOperations, DreamPhase, IngestionDrainStatus
 from .store import (
     record_applying,
@@ -240,15 +244,17 @@ async def _landed_output(
 async def _chain_next_phase(
     bp: BatchPass, input_bundle: DreamInput, next_phase: DreamPhase
 ) -> None:
-    """Submit the next phase in the chain.
+    """Submit the next phase in the chain, unless the pass was stopped.
 
     Uses the validated ``DreamInput`` + accumulated prior phase outputs
     from Redis, builds the next phase's prompt, fires another
     batch submission. On any failure to submit, marks the JobStatus
     errored — silent submission failures are unrecoverable.
     """
+    if await end_batch_pass_if_stopped(bp):
+        return
     state = await read_state(bp.pass_id)
-    api_key = _anthropic_api_key()
+    api_key = anthropic_api_key()
     if api_key is None:
         await fail_pass(bp, f"{next_phase}: no Anthropic API key configured")
         return
@@ -344,14 +350,18 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
 async def _claim_apply(
     bp: BatchPass, state: dict[str, dict[str, Any]], ops: DreamOperations
 ) -> bool:
-    """Record APPLYING, then claim the apply gate; ``False`` once a duplicate
-    delivery or an unreadable gate has ended this one.
+    """Record APPLYING, check the record for a stop, then claim the apply
+    gate; ``False`` once a stop, a duplicate delivery or an unreadable gate
+    has ended this one.
 
-    The record write comes first, so a delivery that stalls or dies on it
-    has not claimed the gate and a redelivery still applies. Once the gate
-    is claimed, apply follows with nothing awaited in between.
+    The write and the check come first, so a delivery that stalls or dies on
+    them has not claimed the gate and a redelivery still applies; the check
+    comes last of the two to leave a cancel the least time to slip past it.
+    Once the gate is claimed, apply follows with nothing awaited in between.
     """
     await record_applying(bp.pass_id, ops)
+    if await end_batch_pass_if_stopped(bp):
+        return False
     gate = await claim_apply_gate(bp.pass_id)
     if gate == "error":
         # We cannot tell first-vs-duplicate apart, and "complete with no
@@ -454,31 +464,6 @@ async def _finish_applied(
     # that the pass has terminated so the next dream for this user can run.
     await release_lock(bp)
     await best_effort_cleanup(bp.pass_id)
-
-
-def _anthropic_api_key() -> str | None:
-    """Look up the Anthropic key from the copilot config first, then
-    fall back to the shared settings key.
-
-    Mirrors what ``backend/executor/batch_executor.py::_default_api_key_for``
-    does — callbacks live in their own subprocess so they need to
-    re-resolve the key on their own.
-    """
-    try:
-        from backend.copilot.config import ChatConfig
-
-        cfg = ChatConfig()
-        if cfg.direct_anthropic_api_key:
-            return cfg.direct_anthropic_api_key
-    except Exception:
-        logger.debug("ChatConfig unavailable during dream batch callback")
-    try:
-        from backend.util.settings import Settings
-
-        key = Settings().secrets.anthropic_api_key
-        return key or None
-    except Exception:
-        return None
 
 
 def _register() -> None:
