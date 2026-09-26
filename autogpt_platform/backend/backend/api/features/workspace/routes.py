@@ -70,16 +70,40 @@ router = fastapi.APIRouter(
 )
 
 
+# Types the browser may render in place. Everything else is sent as a download
+# with a neutral content type, because the file content is supplied by a user
+# and one of these responses is reachable without authentication.
+INLINE_RENDERABLE_MIME_TYPES = frozenset(
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/bmp",
+        "image/x-icon",
+        "application/pdf",
+        "text/plain",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "video/mp4",
+        "video/webm",
+    }
+)
+
+
 def _create_streaming_response(
     content: bytes, file: WorkspaceFile, *, inline: bool = False
 ) -> Response:
     """Create a streaming response for file content."""
+    mime_type = (file.mime_type or "").split(";")[0].strip().lower()
+    renderable = mime_type in INLINE_RENDERABLE_MIME_TYPES
     disposition = _sanitize_filename_for_header(
-        file.name, disposition="inline" if inline else "attachment"
+        file.name, disposition="inline" if inline and renderable else "attachment"
     )
     return Response(
         content=content,
-        media_type=file.mime_type,
+        media_type=file.mime_type if renderable else "application/octet-stream",
         headers={
             "Content-Disposition": disposition,
             "Content-Security-Policy": "sandbox",

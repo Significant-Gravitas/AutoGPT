@@ -1057,6 +1057,38 @@ class TestCreateStreamingResponse:
         response = _create_streaming_response(content, file)
         assert response.headers["Content-Length"] == "1000"
 
+    def test_markup_is_not_rendered_inline(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="page.html", mime_type="text/html")
+        response = _create_streaming_response(b"<h1>hi</h1>", file, inline=True)
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.headers["Content-Type"] == "application/octet-stream"
+
+    def test_svg_is_not_rendered_inline(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="logo.svg", mime_type="image/svg+xml")
+        response = _create_streaming_response(b"<svg/>", file, inline=True)
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.headers["Content-Type"] == "application/octet-stream"
+
+    def test_mime_parameters_do_not_bypass_the_check(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="page.html", mime_type="text/HTML; charset=utf-8")
+        response = _create_streaming_response(b"<h1>hi</h1>", file, inline=True)
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.headers["Content-Type"] == "application/octet-stream"
+
+    def test_missing_mime_type_falls_back_to_a_download(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file_mock(name="unknown", mime_type=None)
+        response = _create_streaming_response(b"data", file, inline=True)
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert response.headers["Content-Type"] == "application/octet-stream"
+
 
 # -- create_file_download_response tests --
 
