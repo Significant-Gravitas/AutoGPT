@@ -1678,7 +1678,10 @@ def _tail_token_count(tail_lines: list[str], model: str) -> int:
             if isinstance(content, str)
             else json.dumps(content, separators=(",", ":"))
         )
-        total += token_len(text, model)
+        # Only ``message.content`` reaches the API; uuid, parentUuid and the
+        # other JSONL fields are CLI bookkeeping.  The 3-token per-message
+        # wrapper matches _msg_tokens on the prefix side.
+        total += 3 + token_len(text, model)
     return total
 
 
@@ -1735,8 +1738,11 @@ def _truncate_tail_lines(
     cut_total = sum(sizes)
     if available <= 0 or cut_total <= available:
         return None
+    # A small part keeps at least 32 tokens, unless so many parts share the
+    # budget that even the floors would overrun it.
+    floor = min(32, max(1, available // len(parts)))
     for (ref, key), size in zip(parts, sizes):
-        share = max(32, int(available * size / cut_total))
+        share = max(floor, int(available * size / cut_total))
         if size <= share:
             continue
         text = truncate_middle(current(ref, key), model, share)

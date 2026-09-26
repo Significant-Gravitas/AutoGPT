@@ -866,7 +866,10 @@ async def summarize_messages(
     if len(chunks) > MAX_SUMMARY_CHUNKS:
         dropped = chunks[: len(chunks) - MAX_SUMMARY_CHUNKS]
         chunks = chunks[len(chunks) - MAX_SUMMARY_CHUNKS :]
-        coverage = 1.0 - sum(len(c) for c in dropped) / total_chars
+        # Both sides measured on the joined chunks so the separators added
+        # by _chunk_texts cancel out.
+        chunk_chars = sum(len(c) for c in dropped) + sum(len(c) for c in chunks)
+        coverage = 1.0 - sum(len(c) for c in dropped) / chunk_chars
         logger.warning(
             "Summariser input exceeds %d chunks; dropping the oldest %d "
             "(coverage %.0f%%)",
