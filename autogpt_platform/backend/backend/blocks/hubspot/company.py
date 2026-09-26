@@ -77,8 +77,9 @@ class HubSpotCompanyBlock(Block):
                 search_url, headers=headers, json=search_data
             )
             search_result = search_response.json()
-            yield "search_company", search_result.get("results", [{}])[0]
-            yield "status", "retrieved"
+            companies = search_result.get("results", [])
+            yield "company", companies[0] if companies else {}
+            yield "status", "retrieved" if companies else "company_not_found"
 
         elif input_data.operation == "update":
             # First get company ID by domain
@@ -100,7 +101,8 @@ class HubSpotCompanyBlock(Block):
                 },
             )
             search_result = search_response.json()
-            company_id = search_result.get("results", [{}])[0].get("id")
+            companies = search_result.get("results", [])
+            company_id = companies[0].get("id") if companies else None
 
             if company_id:
                 response = await Requests().patch(
