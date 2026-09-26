@@ -3,6 +3,7 @@
 import json
 import logging
 from collections import deque
+from contextlib import nullcontext
 from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
@@ -12,6 +13,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util.link_checkout import engine as private_browser
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -453,7 +455,15 @@ class BaseTool:
         session.announce_inflight_tool_call(self.name, kwargs)
 
         try:
-            result = await self._execute(user_id, session, **kwargs)
+            # Private-checkout browsers belong to the authenticated caller;
+            # the engine reads it from here, never from tool arguments.
+            with (
+                private_browser.caller(user_id, session.session_id, session.user_id)
+                if self.name.startswith("browser_")
+                and private_browser.active_for(user_id)
+                else nullcontext()
+            ):
+                result = await self._execute(user_id, session, **kwargs)
             if user_id:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = result.model_dump_json(exclude_none=True)

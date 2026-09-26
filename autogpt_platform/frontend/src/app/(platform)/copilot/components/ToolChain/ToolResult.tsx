@@ -2,6 +2,8 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { HeldCallDetail } from "./HeldCallRowParts";
+import { LinkCheckout } from "../../tools/GenericTool/components/LinkCheckout/LinkCheckout";
+import { isLinkCheckoutOutput } from "../../tools/GenericTool/components/LinkCheckout/helpers";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -249,6 +251,8 @@ function toolCard(
   const input = asObject(row.input);
 
   if (output) {
+    if (isLinkCheckoutOutput(row.tool, output))
+      return <LinkCheckout output={output} />;
     const setupCard = setupRequirementsCard(row, output);
     if (setupCard) return setupCard;
     const questions = asItems(output.questions);

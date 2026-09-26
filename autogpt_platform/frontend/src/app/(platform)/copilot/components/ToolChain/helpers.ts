@@ -12,6 +12,7 @@ import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import type { HeldRowInfo } from "./heldRow";
 import { heldAskText, heldToolName } from "./heldRow";
 import { asObject, integrationIconSrc } from "./resultHelpers";
+import { isLinkCheckoutOutput } from "../../tools/GenericTool/components/LinkCheckout/helpers";
 
 export type ChainRowState = "running" | "done" | "error";
 
@@ -106,6 +107,25 @@ function actionLabel(toolName: string, tool: ToolUIPart): string | null {
   const output = tool.output;
   const data = asObject(output);
   if (!data) return null;
+  const target = capabilityTargetToolName(tool.type, tool.input) ?? toolName;
+  if (isLinkCheckoutOutput(target, data)) {
+    if (
+      ["submitted", "outcome_unknown", "not_submitted"].includes(
+        String(data.status),
+      )
+    ) {
+      return "Check your Link payment";
+    }
+    return [
+      "awaiting_approval",
+      "created",
+      "pending_approval",
+      "approved",
+      "requires_action",
+    ].includes(String(data.status))
+      ? "Review your Link payment"
+      : null;
+  }
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }

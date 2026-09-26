@@ -29,6 +29,7 @@ from backend.blocks.stripe_link._auth import (
     link_api_request,
 )
 from backend.data.model import SchemaField
+from backend.util.link_checkout import engine as link_checkout
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
@@ -809,7 +810,7 @@ class StripeLinkRetrieveCardBlock(Block):
                 "blocks instead."
             ),
             categories={BlockCategory.DATA},
-            disabled=CARD_FLOW_DISABLED,
+            disabled=CARD_FLOW_DISABLED or link_checkout.requested(),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -848,6 +849,15 @@ class StripeLinkRetrieveCardBlock(Block):
         credentials: StripeLinkCredentials,
         **kwargs: Any,
     ) -> BlockOutput:
+        if link_checkout.requested():
+            # With the private checkout on, a card number must never reach
+            # the agent; the checkout tools pay without returning one.
+            yield "error", (
+                "Card retrieval is off while the private checkout is on. Pay "
+                "with tool:browser_request_link_payment and "
+                "tool:browser_complete_link_payment instead."
+            )
+            return
         try:
             result = await self._link_api_request(
                 credentials,

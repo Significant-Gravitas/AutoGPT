@@ -41,6 +41,27 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Taking a screenshot",
     done: "Took a screenshot",
   },
+  browser_request_link_payment: {
+    category: "browser",
+    running: "Preparing Link approval",
+    done: "Requested Link approval",
+    subject: (input) => quoted(input, "merchant_name"),
+  },
+  browser_complete_link_payment: {
+    category: "browser",
+    running: "Completing private checkout",
+    done: "Checked Link checkout",
+  },
+  browser_link_payment_status: {
+    category: "browser",
+    running: "Checking Link payment status",
+    done: "Checked Link payment status",
+  },
+  browser_reset_after_payment: {
+    category: "browser",
+    running: "Resetting the browser",
+    done: "Reset the browser",
+  },
   bash_exec: {
     category: "bash",
     running: "Running command",
