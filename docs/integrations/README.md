@@ -335,7 +335,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Firecrawl Search](block-integrations/firecrawl/search.md#firecrawl-search) | Firecrawl searches the web for the given query |
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
+| [Google Maps Get Directions](block-integrations/search.md#google-maps-get-directions) | Get directions between two places with Google Maps: distance, travel time and a route summary, plus turn-by-turn steps if you ask for them |
+| [Google Maps Resolve Links](block-integrations/search.md#google-maps-resolve-links) | Find the place a Google Maps link points to, including short share links: place ID, name, address, coordinates and types |
+| [Google Maps Resolve Places](block-integrations/search.md#google-maps-resolve-places) | Look up place names or addresses on Google Maps and get each one's place ID, name, full address, coordinates, types and Google Maps link |
 | [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Google Maps Weather](block-integrations/search.md#google-maps-weather) | Get the weather for a place from Google Maps: current conditions, a daily forecast for up to 10 days, or an hourly forecast for up to 240 hours |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
