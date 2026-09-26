@@ -29,9 +29,12 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 @pytest.fixture(autouse=True)
 async def clean_marketplace(server: SpinTestServer):
-    """These tests own the platform listings and templates they create; the
-    marketplace tests in skill_db_test.py need the table empty, so leave it
-    that way."""
+    # The teardown empties the marketplace tables, so take them only when empty.
+    if await prisma.models.SkillListing.prisma().count():
+        pytest.fail(
+            "this database already holds skill listings; run this file against a "
+            "throwaway Postgres, not the one every worktree here shares"
+        )
     yield
     await prisma.models.ExpertSkillListing.prisma().delete_many()
     await prisma.models.Expert.prisma().delete_many(
