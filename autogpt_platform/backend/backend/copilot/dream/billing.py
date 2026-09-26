@@ -55,14 +55,13 @@ logger = logging.getLogger(__name__)
 # :func:`_provider_for_execution_path` below).
 _PROVIDER_BY_BATCH_PATH: dict[ExecutionPath, str] = {
     "anthropic_batch": "anthropic",
-    "openai_batch": "openai",
 }
 
 
 def _provider_for_execution_path(execution_path: ExecutionPath) -> str:
     """Resolve the ``PlatformCostLog.provider`` label for a phase row.
 
-    Batch paths are pinned to their provider (Anthropic / OpenAI). The
+    The batch path is pinned to Anthropic. The
     sync_baseline path follows the active chat transport — so a
     local-Ollama install logs ``provider="ollama"``, a subscription
     or direct-Anthropic install logs ``"anthropic"``, and the cloud

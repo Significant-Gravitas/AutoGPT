@@ -19,9 +19,10 @@ shared cost ledger.
 from __future__ import annotations
 
 import logging
-from typing import Literal
 
 from pydantic.dataclasses import dataclass
+
+from .routing import ExecutionPath
 
 logger = logging.getLogger(__name__)
 
@@ -104,17 +105,12 @@ _RATES: dict[str, ModelRate] = {
 }
 
 
-ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
-
-
-# Both Anthropic and OpenAI batch APIs offer a 50% discount on the
-# normal rate for asynchronous batch processing. We pass that savings
-# through to the user — recorded in the cost ledger so the discount is
-# auditable.
+# Anthropic's Message Batches API offers a 50% discount on the normal
+# rate for asynchronous batch processing. We pass that savings through
+# to the user — recorded in the cost ledger so the discount is auditable.
 _BATCH_DISCOUNTS: dict[ExecutionPath, float] = {
     "sync_baseline": 0.0,
     "anthropic_batch": 0.5,
-    "openai_batch": 0.5,
 }
 
 
