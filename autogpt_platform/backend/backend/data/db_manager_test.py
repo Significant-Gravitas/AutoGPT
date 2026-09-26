@@ -22,3 +22,25 @@ def test_bot_analytics_methods_registered() -> None:
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)
+
+
+def test_memory_schedule_methods_registered() -> None:
+    """The scheduler and copilot-executor have no Prisma client; the
+    schedule registry reaches its rows through these."""
+    for method in (
+        "get_scope_schedule",
+        "claim_scope_schedule",
+        "record_scope_jobs",
+        "set_scope_state",
+        "forget_scope_job",
+        "record_scope_run",
+        "list_user_scope_schedules",
+    ):
+        assert hasattr(DatabaseManager, method)
+        assert hasattr(DatabaseManagerAsyncClient, method)
+
+
+def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.claim_scope_schedule)
+    manager._create_fastapi_endpoint(manager.record_scope_run)

@@ -308,3 +308,42 @@ async def test_skipped_or_errored_batch_path_dream_is_not_in_flight():
             result = await run_nightly_batch_submit("u")
 
         assert result.dream_in_flight is False
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_reaches_both_submitters_and_the_owner_pays():
+    """An expert's nightly cron runs the dream and the sweep on the expert's
+    graph, while the budget check stays on the owner, whose allowance pays
+    for it."""
+    budget = AsyncMock(return_value=(True, None))
+    dream_spy = AsyncMock(return_value=_dream_result())
+    rat_spy = AsyncMock(return_value=_ratification_result())
+    with patch.object(nightly_batch, "check_dream_budget", new=budget), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
+    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+        result = await run_nightly_batch_submit("u", expert_id="expert-1")
+
+    budget.assert_awaited_once_with("u")
+    dream_spy.assert_awaited_once_with("u", expert_id="expert-1")
+    rat_spy.assert_awaited_once_with("u", expert_id="expert-1")
+    assert result.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_account_scope_runs_the_account_graph():
+    dream_spy = AsyncMock(return_value=_dream_result())
+    rat_spy = AsyncMock(return_value=_ratification_result())
+    with patch.object(
+        nightly_batch,
+        "check_dream_budget",
+        new=AsyncMock(return_value=(True, None)),
+    ), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
+        result = await run_nightly_batch_submit("u")
+
+    dream_spy.assert_awaited_once_with("u", expert_id=None)
+    rat_spy.assert_awaited_once_with("u", expert_id=None)
+    assert result.expert_id is None

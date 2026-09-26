@@ -23,6 +23,25 @@ def _application_user(user_id: str, email: str) -> user_module.User:
 
 
 class TestUpdateUserTimezone:
+    @pytest.fixture(autouse=True)
+    def _stub_background_reregistration(self, mocker):
+        """The update spawns the dream and briefing re-registrations as
+        background tasks. Left live, they reach the flag service, the
+        registry and Redis from the test's loop and can outlive the test;
+        the tests that pin those tasks patch them again themselves."""
+        mocker.patch(
+            "backend.copilot.dream.registry.reregister_user",
+            new=AsyncMock(return_value={}),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.clear_briefing_registration_marker",
+            new=AsyncMock(),
+        )
+        mocker.patch(
+            "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+            new=AsyncMock(),
+        )
+
     @pytest.mark.asyncio
     async def test_invalidates_all_three_user_caches(self):
         prisma_user = MagicMock(id="user-1", email="user@example.com")
@@ -79,19 +98,19 @@ class TestUpdateUserTimezone:
         assert "connection lost" in str(exc.value)
 
     @pytest.mark.asyncio
-    async def test_eagerly_re_registers_dream_schedules_with_force_refresh(self):
+    async def test_eagerly_re_registers_every_memory_scope_of_the_user(self):
         """APScheduler cron triggers bind to the timezone at registration
-        time. A profile-page timezone change MUST eagerly re-register
-        the dream-system crons so they fire at the right local time
-        without waiting for the 7-day Redis dedup-key TTL to expire."""
+        time. A profile-page timezone change MUST eagerly re-register the
+        dream-system crons of every memory scope the user has (the account
+        and each expert) so they fire at the right local time."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
-        captured: list[tuple[str, bool]] = []
+        captured: list[str] = []
 
-        async def fake_ensure(user_id: str, *, force_refresh: bool = False):
-            captured.append((user_id, force_refresh))
+        async def fake_reregister(user_id: str):
+            captured.append(user_id)
             return {}
 
         with (
@@ -100,9 +119,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=fake_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=fake_reregister),
             # This test isolates the dream-system re-registration contract;
             # the sibling morning-briefing re-registration (also wired here)
             # is covered separately by scheduling_test.py.
@@ -125,7 +142,7 @@ class TestUpdateUserTimezone:
             # assert it was called.
             await asyncio.sleep(0)
 
-        assert captured == [("user-tz", True)]
+        assert captured == ["user-tz"]
 
     @pytest.mark.asyncio
     async def test_re_register_task_is_retained_and_its_failure_logged(self):
@@ -135,11 +152,11 @@ class TestUpdateUserTimezone:
         ``_background_tasks`` until done and log failures via the
         done-callback instead of dropping them."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
 
-        async def failing_ensure(user_id: str, *, force_refresh: bool = False):
+        async def failing_reregister(user_id: str):
             raise RuntimeError("scheduler unreachable")
 
         with (
@@ -148,9 +165,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=failing_ensure
-            ),
+            patch.object(dream_registry, "reregister_user", new=failing_reregister),
             # Isolate the dream-system task-retention contract under test
             # from the sibling morning-briefing re-registration (also wired
             # here) — real Redis/flag I/O in that path would otherwise give
@@ -196,7 +211,7 @@ class TestUpdateUserTimezone:
         stored marker before re-ensuring, or the drift check would read
         the just-superseded timezone and skip the re-register."""
         from backend.copilot.briefing import scheduling as briefing_scheduling
-        from backend.copilot.dream import scheduling as dream_scheduling
+        from backend.copilot.dream import registry as dream_registry
 
         prisma_user = MagicMock(id="user-tz", email="user@example.com")
         calls: list[str] = []
@@ -213,9 +228,7 @@ class TestUpdateUserTimezone:
             patch.object(user_module.get_user_by_id, "cache_delete"),
             patch.object(user_module.get_user_by_email, "cache_delete"),
             patch.object(user_module.get_or_create_user, "cache_clear"),
-            patch.object(
-                dream_scheduling, "ensure_dream_system_scheduled", new=AsyncMock()
-            ),
+            patch.object(dream_registry, "reregister_user", new=AsyncMock()),
             patch.object(
                 briefing_scheduling,
                 "clear_briefing_registration_marker",

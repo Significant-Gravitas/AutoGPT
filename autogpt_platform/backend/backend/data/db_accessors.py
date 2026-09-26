@@ -131,6 +131,19 @@ def user_db():
     return user_db
 
 
+def memory_schedule_db():
+    if db.is_connected():
+        from backend.data import memory_schedule as _memory_schedule_db
+
+        memory_schedule_db = _memory_schedule_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        memory_schedule_db = get_database_manager_async_client()
+
+    return memory_schedule_db
+
+
 def understanding_db():
     if db.is_connected():
         from backend.data import understanding as _understanding_db

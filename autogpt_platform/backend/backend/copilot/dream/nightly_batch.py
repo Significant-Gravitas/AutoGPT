@@ -1,7 +1,8 @@
-"""Nightly batch-submit cron body — fans out per-user batch-family work.
+"""Nightly batch-submit cron body — fans out one scope's batch-family work.
 
-One per-user APScheduler cron (``dream_nightly_batch_{user_id}``)
-fires at user-local 03:00 daily and calls :func:`run_nightly_batch_submit`.
+One APScheduler cron per memory scope (``dream_nightly_batch_{scope_key}``;
+the account's scope key is its user id) fires at owner-local 03:00 daily
+and calls :func:`run_nightly_batch_submit`.
 The function sequentially invokes each enabled "batch-family"
 submitter:
 
@@ -58,6 +59,8 @@ class NightlyBatchResult(BaseModel):
     """
 
     user_id: str
+    # The expert whose memory scope this pass ran on; None for the account.
+    expert_id: str | None = None
     nightly_id: str = Field(
         description=(
             "UUID correlating every per-submitter cost-log row for "
@@ -91,8 +94,14 @@ class NightlyBatchResult(BaseModel):
     error: str | None = None
 
 
-async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
-    """Fan out per-user nightly batch-family submissions, in order.
+async def run_nightly_batch_submit(
+    user_id: str, *, expert_id: str | None = None
+) -> NightlyBatchResult:
+    """Fan out one memory scope's nightly batch-family submissions, in order.
+
+    ``expert_id`` picks the expert's scope instead of the account's; the
+    budget check stays on the owner either way, since an expert's dreams
+    are paid from the owner's allowance.
 
     Today the order is dream-pass → ratification-supersession-sweep.
     Future additions land as new sequential calls between these two
@@ -124,6 +133,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
         if budget_skip == "rate_limit_unavailable":
             return NightlyBatchResult(
                 user_id=user_id,
+                expert_id=expert_id,
                 nightly_id=nightly_id,
                 started_at=started_at,
                 completed_at=completed_at,
@@ -132,6 +142,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
             )
         return NightlyBatchResult(
             user_id=user_id,
+            expert_id=expert_id,
             nightly_id=nightly_id,
             started_at=started_at,
             completed_at=completed_at,
@@ -141,7 +152,10 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
         )
 
     result = NightlyBatchResult(
-        user_id=user_id, nightly_id=nightly_id, started_at=started_at
+        user_id=user_id,
+        expert_id=expert_id,
+        nightly_id=nightly_id,
+        started_at=started_at,
     )
 
     # Dream pass submitter. Per-submitter failure stays isolated —
@@ -151,7 +165,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     try:
         from .orchestrator import execute_dream_pass
 
-        result.dream = await execute_dream_pass(user_id)
+        result.dream = await execute_dream_pass(user_id, expert_id=expert_id)
         if result.dream.error:
             logger.warning(
                 "Nightly batch %s: dream submitter errored for user %s: %s",
@@ -179,7 +193,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     # past their grace period — promotions happen inline at
     # retrieval-hit time.
     try:
-        result.ratification = await run_ratification_pass(user_id)
+        result.ratification = await run_ratification_pass(user_id, expert_id=expert_id)
         if result.ratification.error:
             logger.warning(
                 "Nightly batch %s: ratification sweep errored for user %s: %s",
