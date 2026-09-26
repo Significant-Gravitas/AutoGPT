@@ -12,6 +12,8 @@ import {
 import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
+import { TeamToggle } from "./components/TeamTab/components/TeamToggle";
+import { useTeamRoster } from "./components/TeamTab/useTeamRoster";
 
 interface Props {
   sessionId?: string | null;
@@ -30,8 +32,9 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
   return latest;
 }
 
-/** The chat's top-right controls: the Computer toggle and the artifacts
- *  toggle, one per face of the side panel. The artifacts toggle wears the
+/** The chat's top-right controls: the Team toggle (only once someone has
+ *  been delegated to), the Computer toggle and the artifacts toggle, one per
+ *  face of the side panel. The artifacts toggle wears the
  *  name of the session's most recently generated file so the current working
  *  document stays visible, and clicking it opens that file directly in the
  *  artifact panel. Workspace files open from the thread chip instead. The
@@ -75,7 +78,8 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   // are the way in while it shows. The Computer button is not about files
   // and stays, or "Turn on screen" is out of reach until the card closes.
   const showArtifactsToggle = !isFilesCardOpen;
-  if (!showArtifactsToggle && !showComputerToggle) return null;
+  const hasTeam = useTeamRoster(sessionId).rows.length > 0;
+  if (!showArtifactsToggle && !showComputerToggle && !hasTeam) return null;
 
   // With the panel open its own header already names the document, so the
   // button collapses to the bare icon; closed, the name is the reminder of
@@ -132,6 +136,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
 
   return (
     <div className="flex shrink-0 items-center gap-1 p-2">
+      <TeamToggle sessionId={sessionId} />
       {showComputerToggle && (
         <Button
           type="button"

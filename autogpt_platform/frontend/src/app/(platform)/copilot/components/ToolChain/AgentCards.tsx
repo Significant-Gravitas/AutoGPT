@@ -13,6 +13,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
+import { OpenTeamPanelLink } from "./OpenTeamPanelLink";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
 
 function agentHref(agent: Record<string, unknown>): string | null {
@@ -191,7 +192,7 @@ export function SubSessionCard({
   const role = expert && str(expert, "role");
   const name = (expert && str(expert, "name")) ?? "Expert";
   return (
-    <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
+    <div className={cn(CARD, "flex w-full flex-col rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
@@ -215,6 +216,7 @@ export function SubSessionCard({
           {response}
         </p>
       )}
+      {minimal && <OpenTeamPanelLink />}
       {/* Keyed to the FROZEN status on purpose: once mounted for a running
           output, the live view stays up after completion showing the final
           steps + answer (it stops polling on its own). */}
