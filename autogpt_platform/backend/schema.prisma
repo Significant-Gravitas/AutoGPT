@@ -1968,12 +1968,16 @@ model PlatformCostLog {
   trackingType        String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
   trackingAmount      Float? // Amount in the unit implied by trackingType
   metadata            Json?
+  // The expert a background LLM call ran for (a dream pass on an expert's
+  // memory, a consult from an expert's chat); null for the account's own.
+  expertId            String?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@index([createdAt])
   @@index([graphExecId])
   @@index([provider, trackingType])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////

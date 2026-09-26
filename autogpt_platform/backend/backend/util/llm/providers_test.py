@@ -890,7 +890,7 @@ class TestOllama:
 
     @pytest.mark.asyncio
     async def test_force_json_output_requests_json_format(self):
-        """``structured_completion`` passes ``force_json_output=True`` for
+        """``structured_complete`` passes ``force_json_output=True`` for
         every dream phase and the dream docs promise forced JSON works on
         every transport — Ollama honors it via ``format="json"``."""
         captured: dict = {}

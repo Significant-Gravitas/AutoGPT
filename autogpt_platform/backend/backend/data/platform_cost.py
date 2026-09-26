@@ -54,6 +54,8 @@ class PlatformCostEntry(BaseModel):
     tracking_type: str | None = None
     tracking_amount: float | None = None
     metadata: dict[str, Any] | None = None
+    # The expert a background call ran for; None for the account's own spend.
+    expert_id: str | None = None
 
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
@@ -82,6 +84,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
             trackingType=entry.tracking_type,
             trackingAmount=entry.tracking_amount,
             metadata=SafeJson(entry.metadata or {}),
+            expertId=entry.expert_id,
         )
     )
 

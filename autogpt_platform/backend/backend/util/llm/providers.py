@@ -1,7 +1,7 @@
 """Per-provider LLM call helper — the single seam every caller delegates to.
 
 Owns the raw per-provider SDK call so the block-layer ``_llm_call``,
-the dream-pass ``structured_completion``, and the copilot chat
+background inference's ``structured_complete``, and the copilot chat
 dispatch all route through one implementation. Adding a new
 execution mode (``batch``, ``flex``) or a new provider lands once
 and every caller picks it up.
@@ -21,8 +21,8 @@ What this module is NOT responsible for (caller wraps):
   * Prompt compression (``compress_context``) — block layer needs it,
     dream may not
   * Retry on validation failure (block layer's ``retry`` parameter)
-  * Pydantic ``response_model`` validation (dream's
-    ``structured_completion`` does this on top)
+  * Pydantic ``response_model`` validation (background inference's
+    ``structured_complete`` does this on top)
   * Cost-log writes / rate-limit charging — caller decides which
     billing path to use, ``ProviderResponse.cost_usd`` just surfaces
     the number

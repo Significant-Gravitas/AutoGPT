@@ -17,10 +17,11 @@ from backend.copilot.context import (
     reset_consult_budget,
     take_consult_slot,
 )
-from backend.copilot.dream.llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import (
+    InferenceError,
+    InferenceUsage,
+    RouteDecision,
 )
 from backend.copilot.model import ChatSession, ChatSessionMetadata
 from backend.copilot.tools.consult_audit import audit_frame, audit_material
@@ -28,6 +29,27 @@ from backend.copilot.tools.consult_teammate import ConsultTeammateTool
 from backend.copilot.tools.models import ConsultVerdictResponse, ErrorResponse
 
 _TOOL = ConsultTeammateTool()
+_COMPLETE = "backend.copilot.tools.consult_teammate.structured_complete"
+_PERSIST = "backend.copilot.inference.record.persist_and_record_usage"
+
+
+@pytest.fixture(autouse=True)
+def _aux_route():
+    """The aux-tier route, without reading the deployment's transport."""
+    route = RouteDecision(
+        engine="provider_sync",
+        auth_provider="platform",
+        provider="open_router",
+        model="aux",
+        payer="platform_allowance",
+        execution_path="sync_baseline",
+        cost_log_provider="open_router",
+        reason="test",
+    )
+    with patch(
+        "backend.copilot.tools.consult_teammate.resolve_route", return_value=route
+    ):
+        yield
 
 
 def _expert(**overrides) -> Expert:
@@ -143,9 +165,7 @@ class TestExecute:
         with patch(
             "backend.copilot.tools.consult_teammate.resolve_target_expert",
             AsyncMock(return_value=_expert(id="drafter-1")),
-        ), patch(
-            "backend.copilot.tools.consult_teammate.structured_completion", completion
-        ):
+        ), patch(_COMPLETE, completion):
             result = await self._run(expert_id="Their Own Name")
         assert isinstance(result, ErrorResponse)
         completion.assert_not_awaited()
@@ -156,7 +176,7 @@ class TestExecute:
             "backend.copilot.tools.consult_teammate.resolve_target_expert",
             AsyncMock(return_value=_expert()),
         ), patch(
-            "backend.copilot.tools.consult_teammate.structured_completion",
+            _COMPLETE,
             AsyncMock(side_effect=RuntimeError("provider down")),
         ):
             result = await self._run()
@@ -171,15 +191,14 @@ class TestExecute:
             "backend.copilot.tools.consult_teammate.resolve_target_expert",
             AsyncMock(return_value=_expert()),
         ), patch(
-            "backend.copilot.tools.consult_teammate.structured_completion",
+            _COMPLETE,
             AsyncMock(
                 return_value=_completion(
                     _verdict("pass", "Every commitment is covered.", ["the date"])
                 )
             ),
-        ), patch(
-            "backend.copilot.tools.consult_teammate.persist_and_record_usage",
-            AsyncMock(),
+        ) as complete, patch(
+            _PERSIST, AsyncMock()
         ) as billed:
             result = await self._run()
         assert isinstance(result, ConsultVerdictResponse)
@@ -188,9 +207,25 @@ class TestExecute:
         assert result.reviewer.name == "Ada"
         assert "> the date" in result.message
         assert "No objection raised. Carry on." in result.message
-        assert billed.await_args.kwargs["prompt_tokens"] == 11
-        assert billed.await_args.kwargs["completion_tokens"] == 7
-        assert billed.await_args.kwargs["cost_usd"] == 0.0004
+        billed_row = billed.await_args.kwargs
+        assert billed_row["prompt_tokens"] == 11
+        assert billed_row["completion_tokens"] == 7
+        assert billed_row["cost_usd"] == 0.0004
+        # Part of the asking chat's turn: its session, its expert, its label,
+        # and the user's interactive daily budget like any turn cost.
+        assert billed_row["block_name_override"] == "copilot:consult_teammate"
+        assert billed_row["provider"] == "open_router"
+        assert billed_row["session"].session_id == "s-1"
+        assert billed_row["chat_session_id_override"] == "s-1"
+        assert billed_row["graph_exec_id_override"] is None
+        assert billed_row["expert_id"] == "drafter-1"
+        assert billed_row["skip_daily"] is False
+        ctx = complete.await_args.args[0]
+        assert (ctx.job.kind, ctx.job.tier, ctx.job.correlation_id) == (
+            "consult",
+            "aux",
+            "s-1",
+        )
 
     async def test_a_response_that_did_not_parse_is_still_billed(self):
         """Those tokens were charged by the provider whether or not we could
@@ -199,25 +234,47 @@ class TestExecute:
             "backend.copilot.tools.consult_teammate.resolve_target_expert",
             AsyncMock(return_value=_expert()),
         ), patch(
-            "backend.copilot.tools.consult_teammate.structured_completion",
-            AsyncMock(side_effect=DreamLLMError("not json", _usage())),
+            _COMPLETE,
+            AsyncMock(side_effect=InferenceError("not json", _usage())),
         ), patch(
-            "backend.copilot.tools.consult_teammate.persist_and_record_usage",
-            AsyncMock(),
+            _PERSIST, AsyncMock()
         ) as billed:
             result = await self._run()
         assert isinstance(result, ConsultVerdictResponse)
         assert result.verdict == "insufficient"
         assert billed.await_args.kwargs["prompt_tokens"] == 11
 
+    async def test_a_verdict_whose_response_reported_no_usage_writes_no_row(self):
+        """OpenRouter can omit usage. No tokens and no cost is no cost row and
+        no empty usage on the chat, as before the seam, rather than a $0 call
+        priced from the catalog."""
+        no_usage = InferenceUsage(model="aux", payer="platform_allowance")
+        session = _session()
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(
+            _COMPLETE,
+            AsyncMock(
+                return_value=StructuredCompletion(
+                    value=_verdict("pass", "Covered.", []), usage=no_usage
+                )
+            ),
+        ), patch(
+            _PERSIST, AsyncMock()
+        ) as billed:
+            result = await self._run(session=session)
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.verdict == "pass"
+        billed.assert_not_awaited()
+        assert session.usage == []
+
     async def test_dry_run_never_calls_the_provider(self):
         completion = AsyncMock()
         with patch(
             "backend.copilot.tools.consult_teammate.resolve_target_expert",
             AsyncMock(return_value=_expert()),
-        ), patch(
-            "backend.copilot.tools.consult_teammate.structured_completion", completion
-        ):
+        ), patch(_COMPLETE, completion):
             result = await self._run(session=_session(dry_run=True))
         completion.assert_not_awaited()
         assert isinstance(result, ConsultVerdictResponse)
@@ -266,8 +323,13 @@ def _verdict(verdict: str, reason: str, quotes: list[str]):
 
 
 def _usage():
-    return CompletionUsage(
-        model="aux", input_tokens=11, output_tokens=7, cost_usd=0.0004
+    return InferenceUsage(
+        model="aux",
+        input_tokens=11,
+        output_tokens=7,
+        cost_usd=0.0004,
+        cost_source="provider",
+        payer="platform_allowance",
     )
 
 

@@ -1,23 +1,23 @@
-"""Dream-pass billing — pre-flight check + per-step cost log.
+"""Dream-pass billing — pre-flight check + per-phase cost row.
 
 Dream-pass spend rolls into the user's existing daily/weekly USD budget
 (``backend.copilot.rate_limit``) — there is no dedicated dream-pass
-counter. This module is the seam between the orchestrator and the
-shared billing primitives:
+counter. This module is the seam between the dream and the shared billing
+primitives:
 
 * :func:`check_dream_budget` — pre-flight gate. Called once after the
   Redis lock is acquired, before phase 1 runs. Refuses the pass when
   the user is paywalled (``NO_TIER`` + ``ENABLE_PLATFORM_PAYMENT``) or
   has already exhausted their daily/weekly cap.
-* :func:`priced_phase_usage` — prices a phase the provider did not
-  price (native Anthropic, sync or batch) from the catalog price card
-  (``backend/copilot/price_card.py``) at the path's batch discount.
-* :func:`record_phase_cost` — per-phase charge. Called after each of
-  consolidate / recombine / sanitize completes, charging the real LLM
-  spend against the user's window and writing a ``PlatformCostLog``
-  row with ``provider`` set to the actual LLM provider (so downstream
-  cost dashboards don't have to back-correlate dream rows to OpenRouter
-  vs Anthropic vs OpenAI).
+* :func:`record_phase_cost` — per-phase charge, through the inference
+  package's record (``backend/copilot/inference/record.py``), which the
+  briefing lede and ``consult_teammate`` record through as well.
+  Called after each of consolidate / recombine / sanitize completes, on
+  the sync path and from the batch callbacks alike. The record prices a
+  phase the provider did not price from the catalog price card, at the
+  path's batch discount, and labels the row with the route's provider
+  (so cost dashboards don't have to back-correlate dream rows to
+  OpenRouter vs Anthropic vs a local backend).
 
 Per-LLM-call rows (not one row per pass) match the chat convention so
 the existing per-block / per-provider rollups in the admin dashboard
@@ -34,7 +34,8 @@ import logging
 from typing import Literal
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.price_card import compute_cost_usd, price_for
+from backend.copilot.inference.context import InferenceContext, InferenceUsage
+from backend.copilot.inference.record import record
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -42,41 +43,8 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
-
-from .routing import ExecutionPath, batch_discount
-from .schemas import PhaseUsage
 
 logger = logging.getLogger(__name__)
-
-
-# Provider-locked batch paths — these dispatch through a specific
-# provider's batch API regardless of which chat transport is active,
-# so the cost-log label is fixed at the table level. The
-# ``sync_baseline`` path is NOT in this table because its provider
-# follows the active ``ChatConfig.transport`` (see
-# :func:`_provider_for_execution_path` below).
-_PROVIDER_BY_BATCH_PATH: dict[ExecutionPath, str] = {
-    "anthropic_batch": "anthropic",
-}
-
-
-def _provider_for_execution_path(execution_path: ExecutionPath) -> str:
-    """Resolve the ``PlatformCostLog.provider`` label for a phase row.
-
-    The batch path is pinned to Anthropic. The
-    sync_baseline path follows the active chat transport — so a
-    local-Ollama install logs ``provider="ollama"``, a subscription
-    or direct-Anthropic install logs ``"anthropic"``, and the cloud
-    OpenRouter default logs ``"open_router"``. Centralizes what was
-    a static ``"sync_baseline" → "open_router"`` mapping that
-    misattributed local + subscription dream rows as OR spend on the
-    admin dashboard.
-    """
-    if execution_path in _PROVIDER_BY_BATCH_PATH:
-        return _PROVIDER_BY_BATCH_PATH[execution_path]
-    return routing_kwargs_for_chat_transport().cost_log_provider
 
 
 DreamBudgetSkipReason = Literal[
@@ -147,88 +115,29 @@ async def check_dream_budget(
     return True, None
 
 
-def priced_phase_usage(usage: PhaseUsage, execution_path: ExecutionPath) -> PhaseUsage:
-    """*usage* with its cost read off the model's catalog price card.
-
-    Each token bucket at the model's list rate, less the batch discount of
-    *execution_path*. The cost stays ``None`` when the model has no catalog
-    price (``price_for`` logs that); the phase then logs its tokens without
-    a charge.
-    """
-    price = price_for(usage.model)
-    if price is None:
-        return usage
-    cost = compute_cost_usd(
-        price=price,
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_read_tokens=usage.cache_read_tokens,
-        cache_creation_tokens=usage.cache_creation_tokens,
-        discount=batch_discount(execution_path),
-    )
-    return usage.model_copy(update={"cost_usd": cost})
-
-
 async def record_phase_cost(
-    *,
-    user_id: str,
-    pass_id: str,
-    phase_usage: PhaseUsage,
-    execution_path: ExecutionPath,
-) -> None:
-    """Charge one phase's spend against the user's window + log a row.
+    ctx: InferenceContext, usage: InferenceUsage
+) -> InferenceUsage:
+    """Charge one phase's spend against the user's window and log its row.
 
-    Writes a ``PlatformCostLog`` row tagged ``provider=<llm_provider>``
-    (not ``provider="dream_pass"``) so existing per-provider dashboards
-    aggregate naturally. The dream-specific shape is carried in
-    ``metadata`` (dream_pass_id, dream_phase, execution_path,
-    discount_applied) and ``block_name=copilot:dream:<phase>`` so the
-    per-block rollup separates dream spend from chat spend.
+    A thin adapter on ``inference.record``. The row keeps the dream's
+    shape: ``block_name=copilot:dream:<phase>`` so the per-block rollup
+    separates dream spend from chat spend, the pass id as
+    ``graph_exec_id`` so a pass's three rows join up, and the
+    ``dream_pass_id`` / ``dream_phase`` metadata keys dashboards read. The
+    record adds the provider label, the execution path, the discount and
+    the expert.
 
-    ``graph_exec_id`` is set to the ``pass_id`` so each phase row joins
-    back to its parent dream pass — the same join key the future P9
-    inline ``dream.operations`` SSE event will reference.
-
-    No-ops when the phase has neither tokens nor a cost (a skipped
-    phase). Matches ``persist_and_record_usage``'s contract: tokens
-    without a cost (a model with no catalog price) still log but don't
-    charge the rate-limit counter.
+    Returns *usage* as priced. No row and no charge for a phase with
+    neither tokens nor a cost; tokens without a cost (a model with no
+    catalog price) still log but don't charge the rate-limit counter.
     """
-    if (
-        phase_usage.cost_usd is None
-        and (
-            phase_usage.input_tokens
-            + phase_usage.output_tokens
-            + phase_usage.cache_read_tokens
-            + phase_usage.cache_creation_tokens
-        )
-        == 0
-    ):
-        return
-
-    provider = _provider_for_execution_path(execution_path)
-
-    await persist_and_record_usage(
-        session=None,
-        user_id=user_id,
-        prompt_tokens=phase_usage.input_tokens,
-        completion_tokens=phase_usage.output_tokens,
-        cache_read_tokens=phase_usage.cache_read_tokens,
-        cache_creation_tokens=phase_usage.cache_creation_tokens,
-        log_prefix=f"[dream:{phase_usage.phase}]",
-        cost_usd=phase_usage.cost_usd,
-        model=phase_usage.model,
-        provider=provider,
-        block_name_override=f"copilot:dream:{phase_usage.phase}",
-        graph_exec_id_override=pass_id,
-        extra_metadata={
-            "source": "dream_pass",
-            "dream_pass_id": pass_id,
-            "dream_phase": phase_usage.phase,
-            "execution_path": execution_path,
-            "discount_applied": batch_discount(execution_path),
+    return await record(
+        ctx,
+        usage,
+        block_name=f"copilot:dream:{ctx.job.phase}",
+        metadata={
+            "dream_pass_id": ctx.job.correlation_id,
+            "dream_phase": ctx.job.phase,
         },
-        # Dream is background work — it rolls up under the user's
-        # weekly cap but must not eat the interactive daily budget.
-        skip_daily=True,
     )

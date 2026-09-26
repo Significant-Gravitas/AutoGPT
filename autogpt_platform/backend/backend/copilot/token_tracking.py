@@ -129,6 +129,7 @@ async def persist_and_record_usage(
     credential_id_override: str | None = None,
     skip_daily: bool = False,
     execution_path: str = "sync",
+    expert_id: str | None = None,
 ) -> int:
     """Persist token usage to session and record generation cost for rate limiting.
 
@@ -151,6 +152,8 @@ async def persist_and_record_usage(
             report a cost and rate limiting is skipped for this turn.
         model: Model identifier for cost log attribution.
         provider: Cost provider name (e.g. "anthropic", "open_router").
+        expert_id: The expert the spend is attributed to on the cost log
+            row (``PlatformCostLog.expertId``); ``None`` for the account's own.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -306,6 +309,7 @@ async def persist_and_record_usage(
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,
                 metadata=metadata,
+                expert_id=expert_id,
             )
         )
 
