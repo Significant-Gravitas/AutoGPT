@@ -65,10 +65,12 @@ class CatalogModelCost(BaseModel):
     output_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_read_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_creation_credits_per_1m: float | None = Field(default=None, ge=0)
-    # What the PROVIDER charges us (USD list price per 1M tokens), for
-    # in-turn cost estimation — authored per model when it diverges from
-    # the transport module's family default (e.g. copilot/moonshot.py).
-    # Not the billing source; the credits fields above are what users pay.
+    # What the PROVIDER charges us (USD list price per 1M tokens). Read for
+    # in-turn cost estimation where it diverges from a transport module's
+    # family default (e.g. copilot/moonshot.py), and as the price source for
+    # background inference's USD spend accounting (copilot/price_card.py,
+    # e.g. the dream pass's cost rows). Still not the billing source: the
+    # credits fields above are what users pay.
     provider_input_usd_per_1m: float | None = Field(default=None, ge=0)
     provider_output_usd_per_1m: float | None = Field(default=None, ge=0)
     # The provider's prompt-cache list prices (USD per 1M tokens), billed

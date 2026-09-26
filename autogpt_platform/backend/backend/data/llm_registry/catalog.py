@@ -298,20 +298,22 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_json_output=True,
                 supports_reasoning=True,
-                # Sticker price ($3/$15 per Mtok; intro pricing $2/$10 ends
-                # 2026-08-31 — pricing at sticker avoids a repricing PR).
-                # Credits at the standard 1.5x margin; cache read $0.30,
-                # cache write (5m) $3.75.
+                # Anthropic list price $2/$10 per Mtok; cache read $0.20,
+                # cache write (5m) $2.50. Anthropic cancelled the scheduled
+                # rise to $3/$15, so the provider USD fields carry today's
+                # price. The credits stay as set against that $3/$15
+                # sticker: they are what the platform bills, not what the
+                # provider charges.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
                     output_credits_per_1m=2250.0,
                     cache_read_credits_per_1m=45.0,
                     cache_creation_credits_per_1m=563.0,
-                    provider_input_usd_per_1m=3.00,
-                    provider_output_usd_per_1m=15.00,
-                    provider_cache_read_usd_per_1m=0.30,
-                    provider_cache_creation_usd_per_1m=3.75,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=2.50,
                 ),
             ),
             CatalogModel(
@@ -1324,7 +1326,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=32768,
                 price_tier=1,
                 # OpenAI list price $0.40/$1.60 per Mtok, cached input $0.10;
-                # OpenAI bills nothing for writing the cache.
+                # GPT-4.1 mini bills nothing for writing the cache.
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=60.0,
@@ -1373,10 +1375,16 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI list price $1.25/$10 per Mtok, cached input $0.125;
+                # GPT-5 bills nothing for writing the cache.
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=188.0,
                     output_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=1.25,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.125,
+                    provider_cache_creation_usd_per_1m=0.0,
                 ),
             ),
             CatalogModel(

@@ -179,12 +179,11 @@ class TestSonnet5Rates:
             prompt_tokens=1_000_000,
             completion_tokens=1_000_000,
         )
-        # Intro rates in litellm today: 1M x $2 + 1M x $10 = $12 — the
-        # Opus fallback would charge $90. The catalog deliberately bills
-        # sticker ($3/$15); this asserts the vendored litellm value, so
-        # when the intro window ends (2026-08-31) and a rate refresh
-        # brings sticker rates, update this to 18.0 — that change is
-        # expected, not a mispricing.
+        # Anthropic's list rates: 1M x $2 + 1M x $10 = $12 — the Opus
+        # fallback would charge $90. The scheduled rise to $3/$15 was
+        # cancelled, so $12 stays right; the catalog's Sonnet 5 credits
+        # are set against $3/$15, but credits are the platform's billing
+        # rate, not Anthropic's.
         assert cost == 12.0
 
 

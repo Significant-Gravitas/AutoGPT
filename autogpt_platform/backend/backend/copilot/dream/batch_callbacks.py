@@ -35,6 +35,7 @@ side effects at-most-once across batch re-dispatch:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from typing import TYPE_CHECKING, Any, Literal
@@ -51,6 +52,7 @@ from .batch_submit import (
     submit_phase,
 )
 from .billing import priced_phase_usage, record_phase_cost
+from .llm import DreamLLMError, parse_json_with_prose_fallback
 from .locks import release_dream_lock
 from .schemas import (
     DreamOperations,
@@ -457,10 +459,14 @@ async def _handle_phase_result(
 
     # Validate the row's content matches the phase's Pydantic schema
     # BEFORE persisting — corrupted content shouldn't pollute the
-    # accumulator for the next phase to read back.
+    # accumulator for the next phase to read back. Parsed the way the sync
+    # path parses it: a model the output tool couldn't be forced on may
+    # answer in text, its JSON fenced or behind prose, so what is stored
+    # (and read back by the next phase) is the JSON alone.
     try:
-        PHASE_RESPONSE_MODELS[phase].model_validate(json.loads(row.content))
-    except (json.JSONDecodeError, ValidationError) as exc:
+        payload = parse_json_with_prose_fallback(row.content)
+        PHASE_RESPONSE_MODELS[phase].model_validate(payload)
+    except (DreamLLMError, ValidationError) as exc:
         await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
         await _fail_pass(
             user_id=user_id,
@@ -472,7 +478,11 @@ async def _handle_phase_result(
         )
         return
 
-    await _write_phase_to_state(pass_id=pass_id, phase=phase, row=row)
+    await _write_phase_to_state(
+        pass_id=pass_id,
+        phase=phase,
+        row=dataclasses.replace(row, content=json.dumps(payload)),
+    )
 
     next_phase = NEXT_PHASE[phase]
     if next_phase is not None:

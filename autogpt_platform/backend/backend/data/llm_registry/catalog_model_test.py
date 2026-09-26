@@ -74,7 +74,7 @@ _USD_PAIR = {"provider_input_usd_per_1m": 1.0, "provider_output_usd_per_1m": 5.0
 )
 def test_negative_costs_rejected(field):
     with pytest.raises(pydantic.ValidationError):
-        CatalogModelCost(**{**_USD_PAIR, field: -1})
+        CatalogModelCost.model_validate({**_USD_PAIR, field: -1})
 
 
 @pytest.mark.parametrize(
@@ -82,12 +82,13 @@ def test_negative_costs_rejected(field):
 )
 def test_usd_cache_price_requires_the_base_usd_pair(field):
     with pytest.raises(pydantic.ValidationError, match="require"):
-        CatalogModelCost(**{field: 0.1})
+        CatalogModelCost.model_validate({field: 0.1})
 
 
 def test_usd_cache_prices_accepted_alongside_the_base_pair():
     cost = CatalogModelCost(
-        **_USD_PAIR,
+        provider_input_usd_per_1m=1.0,
+        provider_output_usd_per_1m=5.0,
         provider_cache_read_usd_per_1m=0.1,
         provider_cache_creation_usd_per_1m=1.25,
     )

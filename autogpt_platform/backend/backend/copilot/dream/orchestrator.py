@@ -4,10 +4,12 @@ Walks a user's recent memory window through the consolidate → recombine
 → sanitize pipeline, then applies the sanitizer's ``DreamOperations``
 to Graphiti + Postgres.
 
-Slice 1 of P-0 deliberately bypasses Anthropic batch — every phase
-calls the OpenRouter-fronted OpenAI-compat client. The batch path
-slots in below this layer (`routing.py` returns ``"batch"``) in a
-future PR.
+Each phase here is one ``structured_completion`` call on the chat
+transport's provider. When ``routing.resolve_dream_execution_path``
+picks ``anthropic_batch``, ``_submit_dream_pass_batch`` submits the
+first phase to Anthropic's Message Batches API instead and
+``batch_callbacks`` runs the later phases and the apply step as the
+results land.
 
 The orchestrator never raises out — every failure becomes a
 ``DreamPassResult`` with ``error`` set, so the admin trigger always
@@ -81,6 +83,8 @@ logger = logging.getLogger(__name__)
 CONSOLIDATE_TEMP = 0.2
 RECOMBINE_TEMP = 0.9
 SANITIZE_TEMP = 0.0
+# The budget covers thinking as well as the JSON: 4096 is too small if the
+# standard slot ever runs a model that always thinks, like Opus 5.5.
 CONSOLIDATE_MAX_TOKENS = 4096
 # Recombine + sanitize emit list-heavy JSON (up to 30 writes + 20
 # proposals + 10 demotions, each with uuid arrays). At 8192 the

@@ -1,5 +1,7 @@
 """Unit tests for the shared model-slug normalizer."""
 
+from typing import Any
+
 import pytest
 
 from .config import ChatConfig
@@ -9,16 +11,27 @@ from .model_normalize import (
 )
 
 
-def _make_cfg(**kwargs) -> ChatConfig:
-    defaults: dict = {
+def _make_cfg(**kwargs: Any) -> ChatConfig:
+    """A config built from these settings alone: no ``.env`` file
+    (``_env_file=None``), and the models and transport flags the
+    normalizer reads pinned, so neither a developer's ``.env`` nor a
+    ``CHAT_*`` variable in the environment can pick the transport or
+    model under test. Explicit arguments outrank the environment."""
+    settings: dict[str, Any] = {
+        "_env_file": None,
+        "fast_standard_model": "anthropic/claude-sonnet-4-6",
+        "fast_advanced_model": "anthropic/claude-opus-4-7",
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        "use_local": False,
+        "use_openrouter": False,
+        "use_claude_code_subscription": False,
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target normalize behavior, not the aux check.
         "aux_api_key": "or-aux-key",
+        **kwargs,
     }
-    defaults.update(kwargs)
-    return ChatConfig(**defaults)
+    return ChatConfig(**settings)
 
 
 class TestNormalizeModelForTransport:
@@ -105,7 +118,7 @@ class TestNormalizeModelForTransport:
         # like ``llama3.1:8b-instruct-q4_K_M`` that don't fit the
         # ``vendor/model`` convention and must not be rewritten — the
         # Anthropic-prefix rule applies only to cloud transports.
-        cfg = ChatConfig(
+        cfg = _make_cfg(
             use_local=True,
             api_key="ollama",
             base_url="http://ollama:11434/v1",

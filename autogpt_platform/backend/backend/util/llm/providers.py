@@ -48,6 +48,7 @@ from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
+    MODEL_DATE_SUFFIX_RE,
     strip_anthropic_vendor_prefix,
 )
 from backend.util.clients import OPENROUTER_BASE_URL
@@ -159,6 +160,47 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
         phrase in error_text
         for phrase in ("deprecated", "not supported", "unsupported", "removed")
     )
+
+
+# Anthropic's newest models reject a forced ``tool_choice`` (``{"type":
+# "tool", ...}`` or ``{"type": "any"}``) with a 400 — ``tool_choice: type
+# "tool" and "any" are not supported for this model.`` — on the Messages API
+# and on the Message Batches API, where it only comes back hours later in the
+# result rows. ``tool_use.structured_tool_choice`` sends ``auto`` to these
+# models instead. The dream pass's sync call also retries once with ``auto``
+# on that exact error (``is_forced_tool_choice_rejection``), so an unlisted
+# model self-heals there; batch submissions rely on this list alone.
+#
+# Maintained apart from the temperature list above because the two
+# restrictions cover different models: every Claude 5 model and Opus 4.7/4.8
+# reject ``temperature``, but only these reject a forced tool — Sonnet 5 and
+# Opus 5 still honour one. Hence exact native slugs rather than family
+# prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
+# after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
+# Anthropic documents the restriction for Opus 5.5 and for the Fable 5.1 /
+# Mythos 5.1 line; add a model here when it documents the same for another.
+_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
+    {"claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+)
+
+
+def anthropic_accepts_forced_tool_choice(model: str) -> bool:
+    """False for a model that answers a forced ``tool_choice`` with a 400,
+    in any spelling: ``anthropic/claude-opus-5.5``, ``claude-opus-5-5`` or a
+    dated snapshot of either."""
+    native = strip_anthropic_vendor_prefix(model).replace(".", "-")
+    return (
+        MODEL_DATE_SUFFIX_RE.sub("", native)
+        not in _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED
+    )
+
+
+def is_forced_tool_choice_rejection(exc: BaseException) -> bool:
+    """Whether *exc* is Anthropic's 400 for a forced ``tool_choice`` on a
+    model that takes none: ``tool_choice: type "tool" and "any" are not
+    supported for this model.``"""
+    error_text = str(exc).lower()
+    return "tool_choice" in error_text and "not supported" in error_text
 
 
 # ---------------------------------------------------------------------------
@@ -1414,28 +1456,24 @@ def _anthropic_answer_blocks(
 def _anthropic_content_to_text(message: anthropic.types.Message | None) -> str:
     """Flatten an Anthropic ``message.content`` blob into a string.
 
-    Three shapes the BatchExecutor's downstream parser handles:
-      * Single ``text`` block → return its ``text``.
-      * Single ``tool_use`` block → return ``json.dumps(input)``. This
-        is the "structured output" path (forced ``tool_choice`` makes
-        Claude emit exactly one tool_use block; the dream pass parses
-        the JSON straight into a Pydantic model).
-      * Multi-block / unknown → join all ``text`` blocks with newlines.
+    Two shapes the BatchExecutor's downstream parser handles:
+      * A ``tool_use`` block → ``json.dumps(input)`` of the first one. This
+        is the "structured output" path: the dream pass offers one output
+        tool, forced where the model accepts that (exactly one tool_use
+        block) and left to the model's choice (``auto``) where it doesn't,
+        in which case a short text block can come before the call. The
+        dream pass parses the JSON straight into a Pydantic model.
+      * No ``tool_use`` block → the ``text`` blocks joined with newlines
+        (a single text block comes back as is).
 
     Returns ``""`` when the message is missing or empty.
     """
     content = _anthropic_answer_blocks(message)
-    if not content:
-        return ""
-    first = content[0]
-    first_type = first.type
-    if first_type == "tool_use" and len(content) == 1:
-        return json_module.dumps(getattr(first, "input", {}) or {})
-    if first_type == "text" and len(content) == 1:
-        return getattr(first, "text", "") or ""
-    # Multi-block fallback — concatenate text blocks.
-    parts: list[str] = []
-    for block in content:
-        if getattr(block, "type", None) == "text":
-            parts.append(getattr(block, "text", "") or "")
-    return "\n".join(parts)
+    tool_use = next((block for block in content if block.type == "tool_use"), None)
+    if tool_use is not None:
+        return json_module.dumps(getattr(tool_use, "input", {}) or {})
+    return "\n".join(
+        getattr(block, "text", "") or ""
+        for block in content
+        if getattr(block, "type", None) == "text"
+    )

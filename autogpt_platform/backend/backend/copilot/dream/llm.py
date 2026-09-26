@@ -25,12 +25,12 @@ pinning a provider:
   * ``response_format={"type":"json_object"}`` is supported across
     OpenAI, OpenRouter, and Ollama. The native Anthropic API ignores
     it, so on the ``anthropic`` provider the output comes from one
-    forced tool built from the response model instead, the way the
-    batch path gets it (``structured_output.py``).
-  * The Anthropic batch path in the orchestrator (see
-    ``plans/idempotent-launching-moth.md`` component E) layers in
-    *below* this wrapper via ``call_provider(execution_mode="batch")``
-    when the transport supports it; this wrapper stays sync-only.
+    tool built from the response model instead, the way the batch
+    path gets it (``structured_output.py``): forced where the model
+    accepts that, left to the model (``auto``) where it doesn't.
+  * The Anthropic batch path (``batch_submit.py``) calls
+    ``call_provider(execution_mode="batch")`` itself, beside this
+    wrapper rather than through it; this wrapper stays sync-only.
 """
 
 from __future__ import annotations
@@ -45,7 +45,13 @@ from backend.copilot.transport_routing import (
     ProviderRoutingKwargs,
     routing_kwargs_for_chat_transport,
 )
-from backend.util.llm.providers import ProviderLiteral, ProviderResponse, call_provider
+from backend.util.llm.providers import (
+    BatchSubmissionRef,
+    ProviderLiteral,
+    ProviderResponse,
+    call_provider,
+    is_forced_tool_choice_rejection,
+)
 
 from .structured_output import StructuredRequest, structured_payload, structured_request
 
@@ -105,9 +111,10 @@ async def structured_completion(
     """Call the LLM for structured output and parse into ``response_model``.
 
     JSON mode on every provider but the native Anthropic API, which gets
-    ``model`` in its native spelling and one forced tool built from
-    ``response_model`` (see ``structured_output.py``); the tool call's
-    arguments are parsed, or the message text when there is none.
+    ``model`` in its native spelling and one tool built from
+    ``response_model``, forced where the model accepts that (see
+    ``structured_output.py``); the tool call's arguments are parsed, or
+    the message text when there is none.
 
     Returns a ``StructuredCompletion`` carrying both the parsed value
     and a ``CompletionUsage`` block so the dream orchestrator can roll
@@ -149,7 +156,7 @@ async def structured_completion(
     # Everything below this point is post-billing: the provider already
     # charged for the tokens it sent, so every failure carries the usage out.
     try:
-        payload = _parse_json_with_prose_fallback(content)
+        payload = parse_json_with_prose_fallback(content)
         return StructuredCompletion(
             value=response_model.model_validate(payload),
             usage=usage,
@@ -173,18 +180,26 @@ async def _call_provider_sync(
     timeout_seconds: float | None,
 ) -> ProviderResponse:
     """One sync ``call_provider`` round trip; any failure is a ``DreamLLMError``
-    with no usage, since no response came back to bill."""
-    try:
-        response = await call_provider(
+    with no usage, since no response came back to bill.
+
+    A model that turns the forced output tool down (Anthropic's 400 naming
+    ``tool_choice``) is asked once more with the tool left to its choice
+    and the prompt asking for the call: the self-heal for a model missing
+    from the provider's forced-tool list."""
+
+    async def send(
+        attempt: StructuredRequest,
+    ) -> ProviderResponse | BatchSubmissionRef:
+        return await call_provider(
             provider=routing.provider,
-            model=request.model,
+            model=attempt.model,
             api_key=routing.api_key,
-            messages=messages,
+            messages=attempt.prompt(messages),
             max_tokens=max_output_tokens,
             temperature=temperature,
-            force_json_output=request.force_json_output,
-            tools=request.tools,
-            tool_choice=request.tool_choice,
+            force_json_output=attempt.force_json_output,
+            tools=attempt.tools,
+            tool_choice=attempt.tool_choice,
             timeout_seconds=timeout_seconds,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
@@ -194,15 +209,34 @@ async def _call_provider_sync(
             # ``ollama.AsyncClient`` wants the raw host:port.
             ollama_host=_normalize_ollama_host(routing.base_url),
         )
+
+    try:
+        try:
+            response = await send(request)
+        except Exception as exc:
+            if not (
+                request.forces_output_tool and is_forced_tool_choice_rejection(exc)
+            ):
+                raise
+            logger.warning(
+                "Model %s rejected the forced output tool (%s); retrying once "
+                "with tool_choice=auto. Add it to "
+                "_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED in "
+                "backend/util/llm/providers.py.",
+                request.model,
+                exc,
+            )
+            response = await send(request.with_output_tool_optional())
     except DreamLLMError:
         raise
     except Exception as exc:
         raise DreamLLMError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
 
     if not isinstance(response, ProviderResponse):
-        # ``call_provider`` only returns a non-ProviderResponse when the
-        # caller passed ``execution_mode="batch"`` (lands later). The
-        # dream's sync wrapper never opts in, so anything else is a bug.
+        # ``call_provider`` returns a ``BatchSubmissionRef`` only for
+        # ``execution_mode="batch"``, which the batch path
+        # (``batch_submit.submit_phase``) asks for; this sync wrapper never
+        # does, so anything else is a bug.
         raise DreamLLMError(
             "structured_completion expected a sync ProviderResponse but got a "
             f"{type(response).__name__} — execution_mode must stay 'sync' here."
@@ -224,7 +258,7 @@ def _usage_from_provider_response(
     )
 
 
-def _parse_json_with_prose_fallback(content: str) -> object:
+def parse_json_with_prose_fallback(content: str) -> object:
     """Parse JSON from a model response, recovering from common preamble bugs.
 
     Two layers of defense, in order:

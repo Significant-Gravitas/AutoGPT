@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from backend.util.llm.tool_use import (
     _inline_refs,
+    auto_tool_choice,
     force_tool_choice,
+    is_forced_tool_choice,
     pydantic_to_anthropic_tool,
+    structured_tool_choice,
 )
 
 
@@ -79,6 +83,48 @@ class TestForceToolChoice:
         re-introduce the multi-block output we're trying to eliminate."""
         choice = force_tool_choice("any_name")
         assert choice["disable_parallel_tool_use"] is True
+
+
+class TestStructuredToolChoice:
+    """Opus 5.5 answers a forced ``tool_choice`` with a 400, so its output
+    tool goes out under ``auto``; models that accept forcing keep it."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic/claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-fable-5-1",
+        ],
+    )
+    def test_models_that_reject_forcing_get_auto(self, model: str):
+        assert structured_tool_choice(model, "emit_x") == auto_tool_choice()
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5",
+            "anthropic/claude-sonnet-5",
+            "claude-opus-5",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_models_that_accept_forcing_keep_it(self, model: str):
+        assert structured_tool_choice(model, "emit_x") == force_tool_choice("emit_x")
+
+    def test_auto_still_allows_at_most_one_call(self):
+        assert auto_tool_choice() == {
+            "type": "auto",
+            "disable_parallel_tool_use": True,
+        }
+
+    def test_only_tool_and_any_count_as_forced(self):
+        assert is_forced_tool_choice(force_tool_choice("emit_x"))
+        assert is_forced_tool_choice({"type": "any"})
+        assert not is_forced_tool_choice(auto_tool_choice())
+        assert not is_forced_tool_choice(None)
 
 
 class TestInlineRefs:

@@ -27,8 +27,10 @@ from backend.util.llm.providers import (
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
+    anthropic_accepts_forced_tool_choice,
     call_provider,
     call_provider_openai_compat_sync,
+    is_forced_tool_choice_rejection,
     request_timeout,
 )
 from backend.util.settings import Config, Settings
@@ -1984,6 +1986,51 @@ class TestDownloadBatchResults:
         assert rows[0].content == '{"writes": [], "summary_for_user": "ok"}'
 
     @pytest.mark.asyncio
+    async def test_tool_use_after_a_text_block_is_still_the_result(self):
+        """Under ``tool_choice`` ``auto`` (a model that rejects a forced
+        tool) a short text block can come before the call. The tool input
+        is still the structured payload, not the text."""
+        results_iter = _fake_async_iter(
+            [
+                SimpleNamespace(
+                    custom_id="passid-1_recombine",
+                    result=SimpleNamespace(
+                        type="succeeded",
+                        message=SimpleNamespace(
+                            content=[
+                                anthropic.types.TextBlock(
+                                    type="text", text="Recording the proposals."
+                                ),
+                                anthropic.types.ToolUseBlock(
+                                    type="tool_use",
+                                    id="tool-1",
+                                    name="emit_recombination",
+                                    input={"proposals": []},
+                                ),
+                            ],
+                            usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            messages=SimpleNamespace(
+                batches=SimpleNamespace(results=AsyncMock(return_value=results_iter))
+            ),
+        )
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=fake_client,
+        ):
+            rows = await download_batch_results(
+                provider="anthropic",
+                provider_batch_id="x",
+                api_key="x",
+            )
+        assert rows[0].content == '{"proposals": []}'
+
+    @pytest.mark.asyncio
     async def test_errored_row_carries_error_string_with_zero_tokens(self):
         """Per-request errors do not fail the whole batch — they surface
         as a row with ``error`` set and token counts at 0. The
@@ -2466,3 +2513,64 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+class TestForcedToolChoiceCapability:
+    """Opus 5.5 and the Fable 5.1 / Mythos 5.1 line answer a forced
+    ``tool_choice`` with a 400. Exact slugs, not family prefixes: Sonnet 5
+    and Opus 5 still accept a forced tool."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5-5",
+            "anthropic/claude-opus-5.5",
+            "anthropic.claude-opus-5-5",
+            "claude-opus-5-5-20261015",
+            "claude-fable-5-1",
+            "claude-mythos-5-1",
+        ],
+    )
+    def test_rejecting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-5",
+            "anthropic/claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5-20251001",
+        ],
+    )
+    def test_accepting_models(self, model: str):
+        assert anthropic_accepts_forced_tool_choice(model) is True
+
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
+        )
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    def test_rejection_matches_anthropics_400(self):
+        assert is_forced_tool_choice_rejection(
+            self._err(
+                'tool_choice: type "tool" and "any" are not supported for this model.'
+            )
+        )
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "temperature is not supported by this model",
+            "tool_choice.name: Field required",
+            "rate limited",
+        ],
+    )
+    def test_rejection_ignores_other_errors(self, message: str):
+        assert not is_forced_tool_choice_rejection(self._err(message))

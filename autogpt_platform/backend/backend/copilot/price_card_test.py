@@ -92,11 +92,23 @@ def test_resolution_does_not_need_the_in_process_registry(monkeypatch):
 
 
 def test_sonnet_5_card_carries_the_authored_list_prices():
+    """Anthropic's list price: the scheduled rise to $3/$15 was cancelled."""
     assert price_for("anthropic/claude-sonnet-5") == PriceCard(
-        input_usd_per_mtok=3.0,
-        output_usd_per_mtok=15.0,
-        cache_read_usd_per_mtok=0.30,
-        cache_creation_usd_per_mtok=3.75,
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.20,
+        cache_creation_usd_per_mtok=2.50,
+    )
+
+
+def test_gpt_5_is_priced_at_openai_list_prices():
+    """The deleted dream rate table priced ``gpt-5``; the catalog card
+    keeps it priced, at OpenAI's list rates."""
+    assert price_for("gpt-5") == PriceCard(
+        input_usd_per_mtok=1.25,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.125,
+        cache_creation_usd_per_mtok=0.0,
     )
 
 
@@ -106,14 +118,14 @@ def test_each_bucket_is_priced_at_its_own_rate():
     one_million = 1_000_000
     assert compute_cost_usd(
         price=card, input_tokens=one_million, output_tokens=0
-    ) == pytest.approx(3.0)
+    ) == pytest.approx(2.0)
     assert compute_cost_usd(
         price=card,
         input_tokens=one_million,
         output_tokens=one_million,
         cache_read_tokens=one_million,
         cache_creation_tokens=one_million,
-    ) == pytest.approx(3.0 + 15.0 + 0.30 + 3.75)
+    ) == pytest.approx(2.0 + 10.0 + 0.20 + 2.50)
 
 
 def test_batch_discount_halves_the_list_cost():

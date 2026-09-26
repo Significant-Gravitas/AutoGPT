@@ -490,7 +490,7 @@ class TestPhaseChaining:
             call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].cost_usd
             for call in record_cost.await_args_list
         }
-        sonnet_5_cost = (10 * 3.0 + 20 * 15.0) / 1_000_000 / 2
+        sonnet_5_cost = (10 * 2.0 + 20 * 10.0) / 1_000_000 / 2
         opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
         assert costs_by_phase["consolidate"] == pytest.approx(sonnet_5_cost)
         assert costs_by_phase["recombine"] == pytest.approx(opus_5_5_cost)
@@ -826,6 +826,39 @@ class TestErrorPaths:
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
         assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+
+    @pytest.mark.asyncio
+    async def test_text_answer_around_the_json_still_chains(self, fake_redis):
+        """A model the output tool can't be forced on (``auto``) may answer
+        in text. The JSON in it, fenced behind a line of prose, is the
+        phase result, and the next phase reads the JSON alone."""
+        await _persist_autopilot_bundle()
+        submit_phase = AsyncMock(
+            return_value=MagicMock(provider_batch_id="msgbatch_recombine")
+        )
+        mark_errored = AsyncMock()
+        with patch(
+            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
+        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
+            "backend.copilot.dream.job_status.update_status_phase", AsyncMock()
+        ), patch(
+            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+            return_value="sk-ant-test",
+        ):
+            await handle_dream_batch_result(
+                _entry(phase="consolidate"),
+                [
+                    _row(
+                        custom_id="p1:consolidate",
+                        content='Here are the facts:\n```json\n{"facts": []}\n```',
+                    )
+                ],
+            )
+        mark_errored.assert_not_awaited()
+        submit_phase.assert_awaited_once()
+        assert submit_phase.call_args.kwargs["consolidated_json"] == (
+            _CONSOLIDATE_CONTENT
+        )
 
     @pytest.mark.asyncio
     async def test_apply_crash_marks_errored_still_records_usage(self, fake_redis):

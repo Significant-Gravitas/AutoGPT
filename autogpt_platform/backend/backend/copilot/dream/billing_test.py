@@ -257,6 +257,7 @@ async def test_record_phase_cost_records_no_discount_on_the_sync_path():
             ),
             execution_path="sync_baseline",
         )
+    assert spy.await_args is not None
     assert spy.await_args.kwargs["extra_metadata"]["discount_applied"] == 0.0
 
 
@@ -309,9 +310,9 @@ def _sonnet_5_usage() -> PhaseUsage:
     )
 
 
-# Sonnet 5's catalog card: $3 in, $15 out, $0.30 cache read, $3.75 cache
+# Sonnet 5's catalog card: $2 in, $10 out, $0.20 cache read, $2.50 cache
 # write per Mtok, every bucket billed on its own.
-_SONNET_5_LIST_COST = 3.0 + 1.5 + 0.06 + 0.0375
+_SONNET_5_LIST_COST = 2.0 + 1.0 + 0.04 + 0.025
 
 
 def test_priced_phase_usage_charges_the_list_price_on_the_sync_path():

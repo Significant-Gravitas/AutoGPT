@@ -9,17 +9,19 @@ the fence-stripper that prevents the regression.
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import anthropic
+import httpx
 import pytest
 from pydantic import BaseModel
 
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
 from backend.util.llm.providers import ProviderResponse
-from backend.util.llm.tool_use import force_tool_choice
+from backend.util.llm.tool_use import auto_tool_choice, force_tool_choice
 
 from .llm import (
     DreamLLMError,
@@ -28,7 +30,12 @@ from .llm import (
     _strip_json_code_fence,
     structured_completion,
 )
-from .structured_output import output_tool_name
+from .structured_output import (
+    OUTPUT_TOOL_CALL_ONCE,
+    output_tool_name,
+    structured_request,
+    with_output_tool_instruction,
+)
 
 
 @pytest.mark.parametrize(
@@ -459,6 +466,19 @@ class TestStructuredCompletionDelegation:
 # ---------------------------------------------------------------------------
 
 
+def _bad_request(message: str) -> anthropic.BadRequestError:
+    response = httpx.Response(
+        400, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    )
+    return anthropic.BadRequestError(message, response=response, body=None)
+
+
+# Anthropic's 400 for a forced ``tool_choice`` on a model that takes none.
+_FORCED_TOOL_REJECTION = (
+    'tool_choice: type "tool" and "any" are not supported for this model.'
+)
+
+
 def _tool_response(arguments: str, **usage: int) -> ProviderResponse:
     """What ``call_provider`` returns for a forced tool call: ``content``
     is the tool NAME, the JSON is in the tool call's arguments."""
@@ -512,10 +532,45 @@ class TestAnthropicToolPath:
         assert [tool["name"] for tool in kwargs["tools"]] == [tool_name]
         assert kwargs["tools"][0]["input_schema"]["required"] == ["facts"]
         assert kwargs["tool_choice"] == force_tool_choice(tool_name)
+        # A forced tool needs no prompt line asking for it.
+        assert kwargs["messages"] == [{"role": "user", "content": "give me a fact"}]
         # Usage names the model that was called, the spelling the price
         # card resolves, with its tokens.
         assert result.usage.model == "claude-sonnet-5"
         assert (result.usage.input_tokens, result.usage.cache_read_tokens) == (12, 3)
+
+    @pytest.mark.asyncio
+    async def test_opus_5_5_gets_auto_and_the_prompt_asks_for_the_call(self):
+        """Opus 5.5 answers a forced ``tool_choice`` with a 400, so the tool
+        goes out under ``auto``, and both its description and the last user
+        turn ask for one call with the complete result."""
+        fake = _tool_response('{"facts": [{"content": "x", "confidence": 0.9}]}')
+        call_provider_mock = AsyncMock(return_value=fake)
+
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            result = await structured_completion(
+                model="anthropic/claude-opus-5.5",
+                messages=[
+                    {"role": "system", "content": "you consolidate facts"},
+                    {"role": "user", "content": "give me a fact"},
+                ],
+                response_model=_SampleOutput,
+            )
+
+        assert result.value.facts[0].content == "x"
+        kwargs = call_provider_mock.call_args.kwargs
+        tool_name = output_tool_name(_SampleOutput)
+        assert kwargs["model"] == "claude-opus-5-5"
+        assert kwargs["tool_choice"] == auto_tool_choice()
+        assert kwargs["tools"][0]["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
+        system, user = kwargs["messages"]
+        assert system == {"role": "system", "content": "you consolidate facts"}
+        assert user["role"] == "user"
+        assert user["content"].startswith("give me a fact\n\n")
+        assert tool_name in user["content"]
 
     @pytest.mark.asyncio
     async def test_parses_the_message_text_when_no_tool_was_called(self):
@@ -622,3 +677,161 @@ class TestAnthropicToolPath:
         (tool,) = sent["tools"]
         assert set(tool["input_schema"]["properties"]) == {"facts"}
         assert tool["input_schema"]["required"] == ["facts"]
+
+    @pytest.mark.asyncio
+    async def test_a_text_answer_under_auto_still_parses(self):
+        """End to end on Opus 5.5: ``auto`` goes out, the model answers in
+        text rather than calling the tool, and the JSON in that text
+        (fenced, behind a line of prose) is still the parsed value."""
+        message = anthropic.types.Message(
+            id="msg-2",
+            type="message",
+            role="assistant",
+            model="claude-opus-5-5",
+            content=[
+                anthropic.types.TextBlock(
+                    type="text",
+                    text=(
+                        "Here are the facts:\n```json\n"
+                        '{"facts": [{"content": "prose", "confidence": 0.4}]}'
+                        "\n```"
+                    ),
+                )
+            ],
+            stop_reason="end_turn",
+            usage=anthropic.types.Usage(input_tokens=9, output_tokens=5),
+        )
+        create = AsyncMock(return_value=message)
+        client = SimpleNamespace(messages=SimpleNamespace(create=create))
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=client,
+        ):
+            result = await structured_completion(
+                model="anthropic/claude-opus-5.5",
+                messages=[
+                    {"role": "system", "content": "you consolidate facts"},
+                    {"role": "user", "content": "facts"},
+                ],
+                response_model=_SampleOutput,
+            )
+
+        assert result.value.facts[0].content == "prose"
+        assert result.usage.model == "claude-opus-5-5"
+        assert result.usage.output_tokens == 5
+        sent = create.call_args.kwargs
+        assert sent["model"] == "claude-opus-5-5"
+        assert sent["tool_choice"] == auto_tool_choice()
+        assert output_tool_name(_SampleOutput) in sent["messages"][-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_forced_tool_rejection_retries_once_with_auto(self, caplog):
+        """A model missing from the forced-tool list answers the forced
+        choice with a 400. The call goes once more under ``auto``, the
+        prompt asking for the tool, and the swap is logged as a warning."""
+        fake = _tool_response('{"facts": [{"content": "healed", "confidence": 0.7}]}')
+        call_provider_mock = AsyncMock(
+            side_effect=[_bad_request(_FORCED_TOOL_REJECTION), fake]
+        )
+
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch(
+            "backend.copilot.dream.llm.call_provider", call_provider_mock
+        ), caplog.at_level(
+            logging.WARNING, logger="backend.copilot.dream.llm"
+        ):
+            result = await structured_completion(
+                model="anthropic/claude-sonnet-5",
+                messages=[{"role": "user", "content": "hi"}],
+                response_model=_SampleOutput,
+            )
+
+        assert result.value.facts[0].content == "healed"
+        tool_name = output_tool_name(_SampleOutput)
+        first, second = call_provider_mock.call_args_list
+        assert first.kwargs["tool_choice"] == force_tool_choice(tool_name)
+        assert first.kwargs["messages"] == [{"role": "user", "content": "hi"}]
+        assert second.kwargs["tool_choice"] == auto_tool_choice()
+        assert second.kwargs["model"] == "claude-sonnet-5"
+        assert tool_name in second.kwargs["messages"][-1]["content"]
+        assert "retrying once with tool_choice=auto" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_forced_tool_rejection_is_retried_only_once(self):
+        call_provider_mock = AsyncMock(
+            side_effect=[
+                _bad_request(_FORCED_TOOL_REJECTION),
+                _bad_request(_FORCED_TOOL_REJECTION),
+            ]
+        )
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            with pytest.raises(DreamLLMError, match="tool_choice") as exc_info:
+                await structured_completion(
+                    model="anthropic/claude-sonnet-5",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
+        assert call_provider_mock.await_count == 2
+        # Neither call came back with a response, so nothing was billed.
+        assert exc_info.value.usage is None
+
+    @pytest.mark.asyncio
+    async def test_other_bad_requests_are_not_retried(self):
+        call_provider_mock = AsyncMock(
+            side_effect=_bad_request("messages: at least one message is required")
+        )
+        with patch(
+            "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
+            return_value=_anthropic_routing(api_key="sk-ant-test"),
+        ), patch("backend.copilot.dream.llm.call_provider", call_provider_mock):
+            with pytest.raises(DreamLLMError, match="at least one message"):
+                await structured_completion(
+                    model="anthropic/claude-sonnet-5",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
+        assert call_provider_mock.await_count == 1
+
+
+class TestStructuredRequest:
+    """Which structured-output device each provider and model gets."""
+
+    def test_opus_5_5_offers_the_tool_under_auto(self):
+        request = structured_request(
+            "anthropic", "anthropic/claude-opus-5.5", _SampleOutput
+        )
+        assert request.model == "claude-opus-5-5"
+        assert request.tool_choice == auto_tool_choice()
+        assert not request.forces_output_tool
+
+    def test_sonnet_5_forces_the_tool_and_leaves_the_prompt_alone(self):
+        request = structured_request(
+            "anthropic", "anthropic/claude-sonnet-5", _SampleOutput
+        )
+        assert request.tool_choice == force_tool_choice(output_tool_name(_SampleOutput))
+        messages = [{"role": "user", "content": "hi"}]
+        assert request.prompt(messages) is messages
+
+    def test_json_mode_providers_get_no_tool(self):
+        request = structured_request(
+            "open_router", "anthropic/claude-opus-5.5", _SampleOutput
+        )
+        assert request.force_json_output
+        assert request.tools is None and request.tool_choice is None
+        messages = [{"role": "user", "content": "hi"}]
+        assert request.prompt(messages) is messages
+
+    def test_instruction_gets_its_own_turn_after_a_non_user_message(self):
+        messages = [{"role": "system", "content": "sys"}]
+        prompted = with_output_tool_instruction(messages, "emit_x")
+        assert [m["role"] for m in prompted] == ["system", "user"]
+        assert "emit_x" in prompted[-1]["content"]
+        assert messages == [{"role": "system", "content": "sys"}]

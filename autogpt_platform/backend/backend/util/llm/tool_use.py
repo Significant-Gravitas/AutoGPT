@@ -8,9 +8,14 @@ matching the schema — no preamble, no markdown, no "Looking at the
 inputs, I need to..." prose. The model literally cannot emit anything
 else.
 
+Anthropic's newest models (Opus 5.5 among them) answer a forced
+``tool_choice`` with a 400, so ``structured_tool_choice`` picks per
+model: the forced choice where it is accepted, ``auto`` where it is not.
+With ``auto`` the model can still reply in text, so the caller asks for
+the call in the prompt and parses a text reply as the fallback.
+
 This module turns any Pydantic ``BaseModel`` subclass into the tool
-definition Anthropic expects + provides the forced ``tool_choice``
-helper.
+definition Anthropic expects + provides the ``tool_choice`` helpers.
 """
 
 from __future__ import annotations
@@ -18,6 +23,8 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel
+
+from backend.util.llm.providers import anthropic_accepts_forced_tool_choice
 
 
 def pydantic_to_anthropic_tool(
@@ -67,6 +74,35 @@ def force_tool_choice(tool_name: str) -> dict[str, Any]:
         "name": tool_name,
         "disable_parallel_tool_use": True,
     }
+
+
+def auto_tool_choice() -> dict[str, Any]:
+    """A ``tool_choice`` that leaves calling the tool to the model, for
+    models that reject a forced one. ``disable_parallel_tool_use`` still
+    holds under ``auto``: at most one tool_use block, never a result split
+    across two calls.
+    """
+    return {"type": "auto", "disable_parallel_tool_use": True}
+
+
+def structured_tool_choice(model: str, tool_name: str) -> dict[str, Any]:
+    """The ``tool_choice`` for a structured-output call to *model*:
+    ``force_tool_choice(tool_name)`` where the model accepts a forced tool,
+    ``auto_tool_choice()`` where it answers one with a 400 (see
+    ``providers.anthropic_accepts_forced_tool_choice``).
+
+    Under ``auto`` the model may reply in text instead of calling the
+    tool, so the caller also asks for the call in the prompt and parses a
+    text reply as the fallback.
+    """
+    if anthropic_accepts_forced_tool_choice(model):
+        return force_tool_choice(tool_name)
+    return auto_tool_choice()
+
+
+def is_forced_tool_choice(tool_choice: dict[str, Any] | None) -> bool:
+    """Whether *tool_choice* forces a tool call (``tool`` or ``any``)."""
+    return tool_choice is not None and tool_choice.get("type") in ("tool", "any")
 
 
 # ---------------------------------------------------------------------------

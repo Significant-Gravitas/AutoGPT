@@ -3,9 +3,10 @@
 Both the orchestrator (kicking off phase 1) and the dream
 ``batch_callbacks`` (chaining phases 2 → 3 as results arrive) need to
 submit identically: build the per-phase prompt with whatever upstream
-phase outputs we have, force tool_use structured output against the
-phase's Pydantic schema, then enqueue the submission so the
-BatchExecutor polls it. This module owns that flow.
+phase outputs we have, ask for tool_use structured output against the
+phase's Pydantic schema (forced where the phase model accepts a forced
+tool), then enqueue the submission so the BatchExecutor polls it. This
+module owns that flow.
 
 Splitting it out:
   * Keeps the orchestrator focused on routing / cost accounting and
@@ -31,13 +32,18 @@ from backend.executor.batch_executor import (
     PendingEntry,
     enqueue_pending,
 )
+from backend.util.feature_flag import Flag
 from backend.util.llm.providers import (
     BatchSubmissionRef,
     ProviderResponse,
     call_provider,
     cancel_batch,
 )
-from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
+from backend.util.llm.tool_use import (
+    is_forced_tool_choice,
+    pydantic_to_anthropic_tool,
+    structured_tool_choice,
+)
 
 from .fetch import DreamInput
 from .locks import read_dream_lock_token
@@ -47,6 +53,7 @@ from .prompts import (
     build_sanitize_prompt,
 )
 from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
+from .structured_output import OUTPUT_TOOL_CALL_ONCE, with_output_tool_instruction
 
 if TYPE_CHECKING:
     from backend.copilot.config import ChatConfig
@@ -56,9 +63,11 @@ logger = logging.getLogger(__name__)
 DreamPhase = Literal["consolidate", "recombine", "sanitize"]
 
 
-# Tool name the model must emit for each phase. Forced ``tool_choice``
+# Tool name the model must emit for each phase. A forced ``tool_choice``
 # constrains output to exactly one tool_use block whose ``input`` matches
-# the corresponding Pydantic schema — no JSON-parse-prose failures.
+# the corresponding Pydantic schema — no JSON-parse-prose failures. A model
+# that rejects a forced tool gets ``auto`` and a prompt line asking for the
+# call; a text answer is parsed on arrival (``batch_callbacks``).
 PHASE_TOOL_NAMES: dict[DreamPhase, str] = {
     "consolidate": "emit_consolidation",
     "recombine": "emit_recombination",
@@ -74,6 +83,8 @@ PHASE_RESPONSE_MODELS: dict[DreamPhase, type[BaseModel]] = {
 
 
 # Max output tokens per phase (mirrors the sync orchestrator's values).
+# The budget covers thinking as well as the JSON: 4096 is too small if the
+# standard slot ever runs a model that always thinks, like Opus 5.5.
 PHASE_MAX_TOKENS: dict[DreamPhase, int] = {
     "consolidate": 4096,
     "recombine": 16384,
@@ -114,15 +125,37 @@ def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
 
     The batch path always submits to Anthropic's native Batches API,
     whatever the chat transport, so every model takes the native spelling
-    (``normalize_model_for_anthropic``), which raises for a non-Anthropic
-    model rather than submitting a batch that fails hours later.
+    (``normalize_model_for_anthropic``), and a non-Anthropic model raises
+    ``ValueError`` here rather than submitting a batch that fails hours
+    later.
     """
-    standard = normalize_model_for_anthropic(config.fast_standard_model)
+    standard = _native_phase_model(
+        config.fast_standard_model, "CHAT_FAST_STANDARD_MODEL"
+    )
     return {
         "consolidate": standard,
-        "recombine": normalize_model_for_anthropic(config.fast_advanced_model),
+        "recombine": _native_phase_model(
+            config.fast_advanced_model, "CHAT_FAST_ADVANCED_MODEL"
+        ),
         "sanitize": standard,
     }
+
+
+def _native_phase_model(model: str, setting: str) -> str:
+    """*model* in its native Anthropic spelling. The shared normalizer's
+    error suggests enabling OpenRouter, which this path never uses, so a
+    non-Anthropic model gets the two remedies that do apply."""
+    try:
+        return normalize_model_for_anthropic(model)
+    except ValueError as exc:
+        raise ValueError(
+            "The dream batch path submits every phase to Anthropic's Message "
+            f"Batches API, so its phase models must be Anthropic models; got "
+            f"{setting}={model!r}. Choose Anthropic phase models (anthropic/* "
+            "or claude-* slugs), or disable batch routing (the "
+            f"{Flag.DREAM_PASS_BATCH_ENABLED.value!r} flag) so dreams run on "
+            "the sync path."
+        ) from exc
 
 
 async def submit_phase(
@@ -162,11 +195,14 @@ async def submit_phase(
         recombined_json=recombined_json,
     )
     tool_name = PHASE_TOOL_NAMES[phase]
+    tool_choice = structured_tool_choice(model, tool_name)
+    if not is_forced_tool_choice(tool_choice):
+        messages = with_output_tool_instruction(messages, tool_name)
     tools = [
         pydantic_to_anthropic_tool(
             PHASE_RESPONSE_MODELS[phase],
             tool_name=tool_name,
-            description=PHASE_DESCRIPTIONS[phase],
+            description=f"{PHASE_DESCRIPTIONS[phase]} {OUTPUT_TOOL_CALL_ONCE}",
         )
     ]
     # Anthropic's custom_id must match ``^[a-zA-Z0-9_-]{1,64}$`` —
@@ -183,7 +219,7 @@ async def submit_phase(
         max_tokens=PHASE_MAX_TOKENS[phase],
         temperature=PHASE_TEMPERATURES[phase],
         tools=tools,
-        tool_choice=force_tool_choice(tool_name),
+        tool_choice=tool_choice,
         execution_mode="batch",
         custom_id=custom_id,
     )

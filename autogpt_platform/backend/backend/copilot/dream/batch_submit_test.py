@@ -5,7 +5,8 @@ cancelled when the BatchExecutor enqueue fails afterwards — otherwise it
 runs to completion with no callback to consume it), the dream-lock
 ownership token riding on the persisted input bundle so the batch
 callback can compare-and-delete the lock hours later, and what a phase
-submits: the native model spelling and a forced tool carrying its schema.
+submits: the native model spelling and a tool carrying its schema, forced
+where the model accepts a forced tool.
 """
 
 from __future__ import annotations
@@ -28,9 +29,14 @@ from backend.copilot.dream.batch_submit import (
 )
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.schemas import ConsolidationOutput
+from backend.copilot.dream.structured_output import OUTPUT_TOOL_CALL_ONCE
 from backend.copilot.graphiti.scope import DREAM_LOCK_KEY_PREFIX, MemoryScope
 from backend.util.llm.providers import BatchSubmissionRef
-from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
+from backend.util.llm.tool_use import (
+    auto_tool_choice,
+    force_tool_choice,
+    pydantic_to_anthropic_tool,
+)
 
 
 def _bundle(expert_id: str | None = None) -> DreamInput:
@@ -288,8 +294,48 @@ async def test_submitted_phase_tool_carries_the_phase_schema(fake_redis):
     assert tool["input_schema"]["properties"] == expected["properties"]
     assert tool["input_schema"]["required"] == expected.get("required", [])
     assert tool["input_schema"]["properties"]["facts"]["items"]["properties"]
+    assert tool["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
     assert params["tool_choice"] == force_tool_choice("emit_consolidation")
     assert params["model"] == "claude-sonnet-5"
+    # A forced tool needs no prompt line asking for it.
+    assert "emit_consolidation" not in params["messages"][-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_opus_5_5_phase_offers_the_tool_under_auto(fake_redis):
+    """Opus 5.5 answers a forced ``tool_choice`` with a 400, on the Batches
+    API only hours later in the result row, so its phase goes out under
+    ``auto``, the last user turn asking for one call with the full result."""
+    create = AsyncMock(return_value=SimpleNamespace(id="msgbatch_auto"))
+    client = SimpleNamespace(
+        messages=SimpleNamespace(batches=SimpleNamespace(create=create))
+    )
+    with patch(
+        "backend.util.llm.providers.anthropic.AsyncAnthropic", return_value=client
+    ), patch(
+        "backend.copilot.dream.batch_submit.enqueue_pending",
+        AsyncMock(return_value=None),
+    ):
+        await submit_phase(
+            user_id="u1",
+            pass_id="p1",
+            job_id="j1",
+            phase="recombine",
+            phase_models={"recombine": "claude-opus-5-5"},
+            api_key="sk-test",
+            input_bundle=_bundle(),
+            consolidated_json='{"facts": []}',
+        )
+
+    params = create.call_args.kwargs["requests"][0]["params"]
+    assert params["model"] == "claude-opus-5-5"
+    assert params["tool_choice"] == auto_tool_choice()
+    (tool,) = params["tools"]
+    assert tool["name"] == "emit_recombination"
+    assert tool["description"].endswith(OUTPUT_TOOL_CALL_ONCE)
+    last = params["messages"][-1]
+    assert last["role"] == "user"
+    assert "emit_recombination" in last["content"]
 
 
 def test_phase_models_take_the_native_anthropic_spelling():
@@ -306,11 +352,35 @@ def test_phase_models_take_the_native_anthropic_spelling():
     }
 
 
-def test_phase_models_refuse_a_non_anthropic_model():
-    """Refused at submit rather than failing in the batch results hours later."""
+@pytest.mark.parametrize(
+    "standard,advanced,named",
+    [
+        (
+            "openai/gpt-4.1-mini",
+            "anthropic/claude-opus-5.5",
+            "CHAT_FAST_STANDARD_MODEL='openai/gpt-4.1-mini'",
+        ),
+        (
+            "anthropic/claude-sonnet-5",
+            "llama3.1:8b",
+            "CHAT_FAST_ADVANCED_MODEL='llama3.1:8b'",
+        ),
+    ],
+)
+def test_phase_models_refuse_a_non_anthropic_model(
+    standard: str, advanced: str, named: str
+):
+    """Refused at submit rather than failing in the batch results hours
+    later, with the remedies this path has: it always submits to Anthropic
+    directly, so enabling OpenRouter is not one of them."""
     config = ChatConfig.model_construct(
-        fast_standard_model="openai/gpt-4.1-mini",
-        fast_advanced_model="anthropic/claude-opus-5.5",
+        fast_standard_model=standard, fast_advanced_model=advanced
     )
-    with pytest.raises(ValueError, match="requires an Anthropic model"):
+    with pytest.raises(ValueError) as exc_info:
         phase_models_for_config(config)
+    message = str(exc_info.value)
+    assert named in message
+    assert "Choose Anthropic phase models" in message
+    assert "disable batch routing" in message
+    assert "dream-pass-batch-enabled" in message
+    assert "OpenRouter" not in message
