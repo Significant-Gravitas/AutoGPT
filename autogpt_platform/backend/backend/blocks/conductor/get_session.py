@@ -165,7 +165,11 @@ class ConductorGetSessionBlock(Block):
         yield "messages", messages
         yield "latest_reply", latest_reply(messages)
         yield "has_more", bool(listing.get("hasMore", False))
-        yield "next_after", str(messages[-1].get("id") or "") if messages else ""
+        yield "next_after", (
+            str(messages[-1].get("id") or input_data.after)
+            if messages
+            else input_data.after
+        )
         if data.get("message"):
             yield "message", data["message"]
         yield "deep_link", str(session.get("deepLink") or "")
