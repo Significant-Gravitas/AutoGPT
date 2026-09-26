@@ -14,7 +14,7 @@ from prisma.enums import (
 )
 
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.data.dream_pass import (
+from backend.data.dream_pass_models import (
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -25,6 +25,7 @@ from backend.data.dream_pass import (
 
 from . import store
 from .fetch import DreamInput
+from .pass_record import dream_pass_result_from_row
 from .schemas import (
     ConsolidationOutput,
     DreamOperations,
@@ -211,10 +212,15 @@ class TestWrites:
         assert update.submitted_at is not None and update.submitted_at >= before
         assert update.lease_expires_at == update.submitted_at + timedelta(hours=1)
 
-    async def test_next_batch_moves_only_the_batch_id(self, db):
-        await store.record_next_batch("p1", "msgbatch_2")
+    async def test_next_batch_names_the_phase_it_runs(self, db):
+        await store.record_next_batch("p1", "recombine", "msgbatch_2")
 
-        assert _update(db) == ("p1", DreamPassUpdate(provider_batch_id="msgbatch_2"))
+        assert _update(db) == (
+            "p1",
+            DreamPassUpdate(
+                phase=DreamPassPhase.RECOMBINE, provider_batch_id="msgbatch_2"
+            ),
+        )
 
     async def test_a_completed_sync_pass_records_what_apply_reported(self, db):
         result = _complete_result()
@@ -336,7 +342,7 @@ class TestAFailedWriteNeverFailsThePass:
                 lease_token="t",
                 lease_ttl_seconds=60,
             ),
-            lambda: store.record_next_batch("p1", "b"),
+            lambda: store.record_next_batch("p1", "sanitize", "b"),
             lambda: store.record_sync_outcome(_complete_result()),
             lambda: store.record_batch_complete(_complete_result(), None),
             lambda: store.record_batch_failed("p1", "boom", None),
@@ -371,7 +377,7 @@ class TestAFailedWriteNeverFailsThePass:
         mocker.patch.object(store, "dream_db", side_effect=RuntimeError("no rpc"))
 
         with caplog.at_level(logging.WARNING, logger=store.logger.name):
-            await store.record_next_batch("p1", "b")
+            await store.record_next_batch("p1", "sanitize", "b")
 
         assert "could not record the next batch" in caplog.text
 
@@ -388,7 +394,7 @@ class TestAFailedWriteNeverFailsThePass:
         db.update_dream_pass.return_value = False
 
         with caplog.at_level(logging.WARNING, logger=store.logger.name):
-            await store.record_next_batch("p1", "b")
+            await store.record_next_batch("p1", "sanitize", "b")
 
         assert "no open record" in caplog.text
 
@@ -428,7 +434,7 @@ class TestReadSide:
             ),
         )
 
-        result = store.dream_pass_result_from_row(row)
+        result = dream_pass_result_from_row(row)
 
         assert result == DreamPassResult(
             user_id="u1",
@@ -453,7 +459,7 @@ class TestReadSide:
             completed_at=_FINISHED,
         )
 
-        result = store.dream_pass_result_from_row(row)
+        result = dream_pass_result_from_row(row)
 
         assert result.skipped is True
         assert result.skip_reason == "lock_held"
@@ -469,7 +475,7 @@ class TestReadSide:
             completed_at=_FINISHED,
         )
 
-        result = store.dream_pass_result_from_row(row)
+        result = dream_pass_result_from_row(row)
 
         assert (result.error, result.usage, result.skipped) == (
             "sanitize: bad json",
@@ -484,7 +490,7 @@ class TestReadSide:
             phase=DreamPassPhase.RECOMBINE,
         )
 
-        result = store.dream_pass_result_from_row(row)
+        result = dream_pass_result_from_row(row)
 
         assert result.completed_at is None
         assert result.elapsed_seconds is None
@@ -506,7 +512,7 @@ class TestReadSide:
             completed_at=update.completed_at,
         )
 
-        assert store.dream_pass_result_from_row(row) == result
+        assert dream_pass_result_from_row(row) == result
 
 
 def _row(**overrides) -> DreamPassRecord:

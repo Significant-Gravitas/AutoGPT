@@ -20,7 +20,7 @@ from backend.copilot.dream.schemas import (
 from backend.util.json import to_dict
 
 from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
-from .dream_pass import (
+from .dream_pass_models import (
     DreamPassApplied,
     DreamPassOperations,
     DreamPassRecord,

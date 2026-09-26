@@ -52,6 +52,9 @@ CREATE INDEX "DreamPass_scopeKey_status_idx" ON "DreamPass"("scopeKey", "status"
 -- CreateIndex
 CREATE INDEX "DreamPass_userId_createdAt_idx" ON "DreamPass"("userId", "createdAt");
 
+-- CreateIndex
+CREATE INDEX "DreamPass_expertId_idx" ON "DreamPass"("expertId");
+
 -- AddForeignKey
 ALTER TABLE "DreamPass" ADD CONSTRAINT "DreamPass_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

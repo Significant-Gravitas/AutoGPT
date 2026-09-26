@@ -488,7 +488,8 @@ enum DreamPassTrigger {
 
 // The step a dream pass is at: gathering its input, running (or waiting on
 // the batch of) one of its three phases, applying what the last one returned,
-// or done.
+// or done. Declared in that order, and the order is load-bearing: an update
+// only moves a row's phase to a later value (data/dream_pass_update.py).
 enum DreamPassPhase {
   GATHER
   CONSOLIDATE
@@ -498,6 +499,8 @@ enum DreamPassPhase {
   DONE
 }
 
+// Open statuses first, in the order a pass moves through them, then the
+// terminal ones. An update only moves a row's status to a later value.
 enum DreamPassStatus {
   QUEUED
   RUNNING
@@ -565,6 +568,8 @@ model DreamPass {
 
   @@index([scopeKey, status])
   @@index([userId, createdAt])
+  // Deleting an expert cascades here; without it that scans every pass.
+  @@index([expertId])
 }
 
 ////////////////////////////////////////////////////////////

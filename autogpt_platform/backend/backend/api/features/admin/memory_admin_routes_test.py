@@ -19,7 +19,7 @@ from redis.exceptions import ResponseError
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.dream.schemas import DreamPassUsage, IngestionDrainStatus
 from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.data.dream_pass import (
+from backend.data.dream_pass_models import (
     DreamPassApplied,
     DreamPassOperations,
     DreamPassRecord,

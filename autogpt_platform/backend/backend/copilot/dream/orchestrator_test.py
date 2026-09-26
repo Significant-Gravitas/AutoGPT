@@ -8,6 +8,7 @@ the unit-level safety net for the control-flow.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -29,14 +30,30 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.inference.trace import TracedCall
-from backend.data.dream_pass import DreamPassDraft
+from backend.data.dream_pass_models import DreamPassDraft
+from backend.executor.batch_executor import PendingEntry
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
+from backend.util.llm.providers import BatchResultRow
 
+from . import batch_handoff as batch_handoff_mod
 from . import billing as billing_mod
+from . import clamp as clamp_mod
+from . import dedup as dedup_mod
+from . import nightly_batch as nightly_batch_mod
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
+from .batch_callbacks import handle_dream_batch_result
+from .batch_submit import persist_input_bundle
 from .fetch import DreamInput, EpisodeRow, FactRow
-from .locks import BATCH_LOCK_TTL_SECONDS, DEFAULT_LOCK_TTL_SECONDS, DreamLockHeld
+from .locks import (
+    BATCH_LOCK_TTL_SECONDS,
+    DEFAULT_LOCK_TTL_SECONDS,
+    DreamLockHeld,
+    DreamLockLostError,
+)
+from .locks import dream_lock as real_dream_lock
+from .pass_run import DreamPassRun
+from .ratification import RatificationResult
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -712,17 +729,13 @@ def test_clamp_operations_demotion_cap_rules():
         demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
     )
     # 5% of 100 = 5 (below the absolute cap)
-    assert len(orchestrator_mod._clamp_operations(ops, 100).demotions) == 5
+    assert len(clamp_mod.clamp_operations(ops, 100).demotions) == 5
     # 5% of 1000 = 50, so the absolute cap binds
     assert (
-        len(orchestrator_mod._clamp_operations(ops, 1000).demotions)
-        == MAX_DEMOTIONS_PER_PASS
+        len(clamp_mod.clamp_operations(ops, 1000).demotions) == MAX_DEMOTIONS_PER_PASS
     )
     # Unknown active-fact count -> absolute cap only, never zero
-    assert (
-        len(orchestrator_mod._clamp_operations(ops, -1).demotions)
-        == MAX_DEMOTIONS_PER_PASS
-    )
+    assert len(clamp_mod.clamp_operations(ops, -1).demotions) == MAX_DEMOTIONS_PER_PASS
 
 
 def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
@@ -733,14 +746,14 @@ def test_clamp_operations_small_graph_demotion_cap_floors_at_one():
     ops = DreamOperations(
         demotions=[DreamDemotion(edge_uuid=f"e{i}", reason="r") for i in range(50)],
     )
-    assert len(orchestrator_mod._clamp_operations(ops, 10).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 1).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 19).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 10).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 1).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 19).demotions) == 1
     # 20 facts crosses the 5% threshold back to the proportional cap
-    assert len(orchestrator_mod._clamp_operations(ops, 20).demotions) == 1
-    assert len(orchestrator_mod._clamp_operations(ops, 40).demotions) == 2
+    assert len(clamp_mod.clamp_operations(ops, 20).demotions) == 1
+    assert len(clamp_mod.clamp_operations(ops, 40).demotions) == 2
     # No active facts at all -> no demotion budget
-    assert len(orchestrator_mod._clamp_operations(ops, 0).demotions) == 0
+    assert len(clamp_mod.clamp_operations(ops, 0).demotions) == 0
 
 
 def test_hallucinated_uuid_does_not_consume_cap_slot():
@@ -754,12 +767,12 @@ def test_hallucinated_uuid_does_not_consume_cap_slot():
             DreamDemotion(edge_uuid="f0", reason="r"),
         ],
     )
-    clamped = orchestrator_mod._clamp_operations(ops, 10, known_fact_uuids={"f0"})
+    clamped = clamp_mod.clamp_operations(ops, 10, known_fact_uuids={"f0"})
     assert [d.edge_uuid for d in clamped.demotions] == ["f0"]
 
     # Without the allowlist the clamp can't pre-filter — the cap slices
     # the raw list and apply.py's filter remains the only defense.
-    unfiltered = orchestrator_mod._clamp_operations(ops, 10)
+    unfiltered = clamp_mod.clamp_operations(ops, 10)
     assert [d.edge_uuid for d in unfiltered.demotions] == ["hallucinated"]
 
 
@@ -830,10 +843,9 @@ def test_clamp_operations_caps_entity_invalidations():
             EntityInvalidation(entity_uuid=f"ent{i}", reason="r") for i in range(25)
         ],
     )
-    clamped = orchestrator_mod._clamp_operations(ops, 100)
+    clamped = clamp_mod.clamp_operations(ops, 100)
     assert (
-        len(clamped.entity_invalidations)
-        == orchestrator_mod.MAX_ENTITY_INVALIDATIONS_PER_PASS
+        len(clamped.entity_invalidations) == clamp_mod.MAX_ENTITY_INVALIDATIONS_PER_PASS
     )
     # The first N proposed invalidations survive, in order
     assert [e.entity_uuid for e in clamped.entity_invalidations] == [
@@ -1740,7 +1752,7 @@ class TestTransientIntentFilter:
         ],
     )
     def test_flags_transient_intent(self, content):
-        assert orchestrator_mod._is_transient_intent(content) is True
+        assert clamp_mod._is_transient_intent(content) is True
 
     @pytest.mark.parametrize(
         "content",
@@ -1786,7 +1798,7 @@ class TestTransientIntentFilter:
         ],
     )
     def test_keeps_durable_facts_goals_and_generic_knowledge(self, content):
-        assert orchestrator_mod._is_transient_intent(content) is False
+        assert clamp_mod._is_transient_intent(content) is False
 
     def test_clamp_drops_transient_writes_and_proposals(self):
         ops = DreamOperations(
@@ -1812,7 +1824,7 @@ class TestTransientIntentFilter:
             ],
             summary_for_user="ok",
         )
-        clamped = orchestrator_mod._clamp_operations(ops, active_fact_count=50)
+        clamped = clamp_mod.clamp_operations(ops, active_fact_count=50)
         assert [w.content for w in clamped.writes] == ["Nick prefers Python"]
         assert [p.content for p in clamped.proposals] == [
             "Nick and Sarah both work on auth"
@@ -1829,7 +1841,7 @@ class TestTransientIntentFilter:
             ),
             ConsolidatedFact(content="Nick deploys to us-east1", confidence=0.8),
         ]
-        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        kept, dropped_count = clamp_mod._drop_transient_intent(items)
         assert [k.content for k in kept] == [
             "Nick prefers Python",
             "Nick deploys to us-east1",
@@ -1841,7 +1853,7 @@ class TestTransientIntentFilter:
         items = [
             ConsolidatedFact(content="Nick prefers Python", confidence=0.9),
         ]
-        kept, dropped_count = orchestrator_mod._drop_transient_intent(items)
+        kept, dropped_count = clamp_mod._drop_transient_intent(items)
         assert [k.content for k in kept] == ["Nick prefers Python"]
         assert dropped_count == 0
 
@@ -1865,7 +1877,7 @@ class TestNearDuplicateWriteDedup:
                 confidence=0.7,
             ),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 1
         assert len(kept) == 1
         # The longer, more specific phrasing survives.
@@ -1878,7 +1890,7 @@ class TestNearDuplicateWriteDedup:
                 content="Nick prefers Rust for systems work", confidence=0.8
             ),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
 
@@ -1893,7 +1905,7 @@ class TestNearDuplicateWriteDedup:
                 content="Nick deployed the billing service to prod", confidence=0.7
             ),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
 
@@ -1903,7 +1915,7 @@ class TestNearDuplicateWriteDedup:
             ConsolidatedFact(content="Beta fact about billing", confidence=0.5),
             ConsolidatedFact(content="Gamma fact about deploys", confidence=0.5),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert [w.content for w in kept] == [
             "Alpha fact about onboarding",
@@ -1924,7 +1936,7 @@ class TestNearDuplicateWriteDedup:
                 confidence=0.7,
             ),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
 
@@ -1944,7 +1956,7 @@ class TestNearDuplicateWriteDedup:
                 source_episode_uuids=["ep-2", "ep-3"],
             ),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 1
         assert len(kept) == 1
         # Survivor keeps its own uuids first, then the absorbed extras.
@@ -1955,7 +1967,7 @@ class TestNearDuplicateWriteDedup:
             ConsolidatedFact(content="Alice introduced Bob to Carol", confidence=0.7),
             ConsolidatedFact(content="Alice introduced Carol to Bob", confidence=0.7),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
 
@@ -1964,7 +1976,7 @@ class TestNearDuplicateWriteDedup:
             ConsolidatedFact(content="Nick uses vim", confidence=0.7),
             ConsolidatedFact(content="Nick never uses vim", confidence=0.7),
         ]
-        kept, dropped = orchestrator_mod._dedupe_near_duplicate_writes(writes)
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
 
@@ -1985,7 +1997,7 @@ class TestNearDuplicateWriteDedup:
             proposals=[],
             summary_for_user="ok",
         )
-        clamped = orchestrator_mod._clamp_operations(ops, active_fact_count=50)
+        clamped = clamp_mod.clamp_operations(ops, active_fact_count=50)
         contents = [w.content for w in clamped.writes]
         # The two churn paraphrases collapse to one; revenue fact untouched.
         assert len(contents) == 2
@@ -2000,20 +2012,22 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     removed (poller never dispatches callbacks), the input bundle is
     dropped, the lock is NOT disowned, and the pass reports failure."""
     submission = mocker.MagicMock(provider_batch_id="batch-xyz")
-    mocker.patch("backend.copilot.dream.batch_submit.persist_input_bundle", AsyncMock())
     mocker.patch(
-        "backend.copilot.dream.batch_submit.phase_models_for_config",
+        "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.phase_models_for_config",
         return_value=mocker.MagicMock(),
     )
     mocker.patch(
-        "backend.copilot.dream.batch_submit.submit_phase",
+        "backend.copilot.dream.batch_handoff.submit_phase",
         AsyncMock(return_value=submission),
     )
     remove_pending = mocker.patch(
-        "backend.executor.batch_executor.remove_pending", AsyncMock()
+        "backend.copilot.dream.batch_handoff.remove_pending", AsyncMock()
     )
     delete_bundle = mocker.patch(
-        "backend.copilot.dream.batch_submit.delete_input_bundle", AsyncMock()
+        "backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock()
     )
     handle = mocker.MagicMock()
     handle.extend = AsyncMock(return_value=False)
@@ -2022,20 +2036,18 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     config = mocker.MagicMock()
     config.direct_anthropic_api_key = "key"
 
-    result = await orchestrator_mod._submit_dream_pass_batch(
-        user_id="u-lock-lost",
-        pass_id="p-lock-lost",
-        started_at=datetime.now(timezone.utc),
-        monotonic_start=0.0,
-        execution_path="anthropic_batch",
+    run = DreamPassRun.begin("u-lock-lost", "anthropic_batch")
+
+    result = await batch_handoff_mod.submit_dream_pass_batch(
+        run,
         config=config,
         input_bundle=_build_input(),
         status_id=None,
-        dream_lock_handle=handle,
+        lock_handle=handle,
     )
 
     remove_pending.assert_awaited_once_with("batch-xyz")
-    delete_bundle.assert_awaited_once_with("p-lock-lost")
+    delete_bundle.assert_awaited_once_with(run.pass_id)
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
 
@@ -2237,12 +2249,14 @@ def _batch_route(mocker, *, lock_extends: bool) -> MagicMock:
         yield handle
 
     mocker.patch.object(orchestrator_mod, "dream_lock", held_lock)
-    mocker.patch("backend.copilot.dream.batch_submit.persist_input_bundle", AsyncMock())
     mocker.patch(
-        "backend.copilot.dream.batch_submit.phase_models_for_config", return_value={}
+        "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
     )
     mocker.patch(
-        "backend.copilot.dream.batch_submit.submit_phase",
+        "backend.copilot.dream.batch_handoff.phase_models_for_config", return_value={}
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.submit_phase",
         AsyncMock(return_value=MagicMock(provider_batch_id="batch-xyz")),
     )
     return handle
@@ -2287,8 +2301,8 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
     mocker, fake_dream_db
 ):
     _batch_route(mocker, lock_extends=False)
-    mocker.patch("backend.executor.batch_executor.remove_pending", AsyncMock())
-    mocker.patch("backend.copilot.dream.batch_submit.delete_input_bundle", AsyncMock())
+    mocker.patch("backend.copilot.dream.batch_handoff.remove_pending", AsyncMock())
+    mocker.patch("backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock())
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
     )
@@ -2301,3 +2315,259 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
         DreamPassStatus.ERRORED,
     ]
     assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]
+    # The revoked batch still runs and bills at the provider, unread: what
+    # the pass used is unknown, not zero.
+    assert result.usage is None
+    assert "usage" not in fake_dream_db.rows[result.pass_id]
+
+
+def _billed(value) -> StructuredCompletion:
+    """A phase answer the provider billed 100 input + 20 output tokens and
+    $0.001 for."""
+    return StructuredCompletion(
+        value=value,
+        usage=InferenceUsage(
+            model="claude-sonnet-5",
+            input_tokens=100,
+            output_tokens=20,
+            cost_usd=0.001,
+            cost_source="provider",
+            payer="platform_allowance",
+        ),
+    )
+
+
+def _three_billed_phases(mocker) -> None:
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[
+                _billed(ConsolidationOutput(facts=[])),
+                _billed(RecombinationOutput(proposals=[])),
+                _billed(DreamOperations(summary_for_user="ok")),
+            ]
+        ),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("apply exploded"), DreamLockLostError("u")],
+    ids=["apply_crash", "lock_lost"],
+)
+async def test_a_failure_after_the_phases_keeps_all_three_phases_usage(
+    mocker, fake_dream_db, failure
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    _three_billed_phases(mocker)
+    mocker.patch.object(
+        orchestrator_mod, "apply_operations", AsyncMock(side_effect=failure)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == str(failure)
+    assert result.usage is not None
+    assert [p.phase for p in result.usage.phases] == [
+        "consolidate",
+        "recombine",
+        "sanitize",
+    ]
+    assert (result.usage.total_input_tokens, result.usage.total_output_tokens) == (
+        300,
+        60,
+    )
+    assert result.usage.total_cost_usd == pytest.approx(0.003)
+    row = fake_dream_db.rows[result.pass_id]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["usage"] == result.usage
+
+
+def _ends(mocker, ending: str) -> None:
+    """Stub the pass to end the way *ending* names."""
+    bundle = _build_input(episodes=0, facts=0) if ending == "no_input" else None
+    mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=bundle or _build_input()),
+    )
+    if ending == "phase_failure":
+        mocker.patch.object(
+            orchestrator_mod,
+            "structured_complete",
+            AsyncMock(side_effect=InferenceError("provider down")),
+        )
+        return
+    apply_mock = _stub_three_phases_and_apply(mocker)
+    if ending == "apply_crash":
+        apply_mock.side_effect = RuntimeError("apply exploded")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ending, status",
+    [
+        ("complete", DreamPassStatus.COMPLETE),
+        ("phase_failure", DreamPassStatus.ERRORED),
+        ("no_input", DreamPassStatus.SKIPPED),
+        ("apply_crash", DreamPassStatus.ERRORED),
+    ],
+)
+async def test_the_outcome_is_recorded_before_the_lock_is_released(
+    mocker, fake_dream_db, fake_dream_redis, ending, status
+):
+    """A later pass that finds the scope's lock free never finds this pass's
+    record still open."""
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=fake_dream_redis),
+    )
+    mocker.patch.object(orchestrator_mod, "dream_lock", real_dream_lock)
+    _ends(mocker, ending)
+    lock_key = MemoryScope.for_user("u").redis_key("dream_lock")
+    held_at_outcome: list[bool] = []
+    record = fake_dream_db.update_dream_pass
+
+    async def watched(pass_id, update):
+        if update.status is status:
+            held_at_outcome.append(lock_key in fake_dream_redis.store)
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", watched)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert fake_dream_db.rows[result.pass_id]["status"] is status
+    assert held_at_outcome == [True]
+    assert lock_key not in fake_dream_redis.store
+
+
+def _consolidate_delivery(pass_id: str) -> tuple[PendingEntry, list[BatchResultRow]]:
+    now = datetime.now(timezone.utc)
+    entry = PendingEntry(
+        provider="anthropic",
+        provider_batch_id="batch-xyz",
+        callback_namespace="dream_pass",
+        submitted_at=now,
+        next_poll_at=now,
+        payload={
+            "user_id": "u",
+            "pass_id": pass_id,
+            "job_id": "",
+            "phase": "consolidate",
+            "phase_models": {
+                "consolidate": "claude-sonnet-5",
+                "recombine": "claude-opus-5-5",
+                "sanitize": "claude-sonnet-5",
+            },
+        },
+    )
+    row = BatchResultRow(
+        custom_id=f"{pass_id}_consolidate",
+        content='{"facts": []}',
+        input_tokens=10,
+        output_tokens=20,
+    )
+    return entry, [row]
+
+
+@pytest.mark.asyncio
+async def test_a_late_submit_write_keeps_the_first_callbacks_progress(
+    mocker, fake_dream_db, fake_dream_redis
+):
+    """The submit's record write lands only after the first callback has
+    moved the row on (it is written once the batch is already pollable).
+    It must not pull the row back to consolidate or its first batch."""
+    mocker.patch(
+        "backend.data.redis_client.get_redis_async",
+        AsyncMock(return_value=fake_dream_redis),
+    )
+    _batch_route(mocker, lock_extends=True)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.persist_input_bundle",
+        persist_input_bundle,
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_callbacks.submit_phase",
+        AsyncMock(return_value=MagicMock(provider_batch_id="batch-recombine")),
+    )
+    mocker.patch(
+        "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+        return_value="sk-ant-test",
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+    record = fake_dream_db.update_dream_pass
+
+    async def submit_held(pass_id, update):
+        if update.status is DreamPassStatus.SUBMITTED:
+            entered.set()
+            await release.wait()
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", submit_held)
+
+    task = asyncio.create_task(orchestrator_mod.execute_dream_pass("u"))
+    await asyncio.wait_for(entered.wait(), 5)
+    pass_id = next(iter(fake_dream_db.rows))
+    await handle_dream_batch_result(*_consolidate_delivery(pass_id))
+    assert fake_dream_db.rows[pass_id]["phase"] is DreamPassPhase.RECOMBINE
+    release.set()
+    await task
+
+    row = fake_dream_db.rows[pass_id]
+    assert row["status"] is DreamPassStatus.SUBMITTED
+    assert row["phase"] is DreamPassPhase.RECOMBINE
+    assert row["provider_batch_id"] == "batch-recombine"
+    assert list(row["phase_outputs"]) == ["consolidate"]
+    assert row["lease_token"] == "tok"
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_record_store_costs_each_write_only_its_deadline(
+    mocker, stalled_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await asyncio.wait_for(orchestrator_mod.execute_dream_pass("u"), 10)
+
+    assert result.error is None and result.dream_session_id == "s"
+    apply_mock.assert_awaited_once()
+    # The insert and six updates, each abandoned at the deadline.
+    assert (stalled_dream_db.started, stalled_dream_db.cancelled) == (7, 7)
+
+
+@pytest.mark.asyncio
+async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
+    mocker, stalled_dream_db
+):
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    _stub_three_phases_and_apply(mocker)
+    mocker.patch.object(
+        nightly_batch_mod, "check_dream_budget", AsyncMock(return_value=(True, None))
+    )
+    ratification = mocker.patch.object(
+        nightly_batch_mod,
+        "run_ratification_pass",
+        AsyncMock(
+            return_value=RatificationResult(
+                user_id="u", started_at=datetime.now(timezone.utc)
+            )
+        ),
+    )
+
+    result = await asyncio.wait_for(nightly_batch_mod.run_nightly_batch_submit("u"), 10)
+
+    ratification.assert_awaited_once_with("u")
+    assert result.dream is not None and result.dream.error is None

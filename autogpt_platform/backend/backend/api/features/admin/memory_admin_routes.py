@@ -32,12 +32,13 @@ from backend.copilot.dream.job_status import (
     write_initial_status,
 )
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
+from backend.copilot.dream.pass_record import dream_pass_result_from_row
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.dream.store import dream_pass_result_from_row, read_dream_pass
+from backend.copilot.dream.store import read_dream_pass
 from backend.copilot.graphiti.falkordb_driver import open_driver
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.data.dream_pass import DreamPassRecord
+from backend.data.dream_pass_models import DreamPassRecord
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)

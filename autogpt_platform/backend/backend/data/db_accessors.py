@@ -292,6 +292,9 @@ def dream_db():
     else:
         from backend.util.clients import get_database_manager_async_client
 
-        dream_db = get_database_manager_async_client()
+        # The dream record is written under a short deadline that already
+        # covers retrying (copilot/dream/store.py); a retrying client would
+        # only keep going on a request the deadline has given up on.
+        dream_db = get_database_manager_async_client(should_retry=False)
 
     return dream_db

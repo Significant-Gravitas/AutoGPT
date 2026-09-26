@@ -26757,7 +26757,7 @@
           "nightly_id": {
             "type": "string",
             "title": "Nightly Id",
-            "description": "UUID correlating every per-submitter cost-log row for this pass. The dream pass and ratification supersession sweep all share this id."
+            "description": "UUID naming this fan-out in its logs and result. Cost rows carry each submitter's own id instead: the dream pass logs under dream.pass_id."
           },
           "started_at": {
             "type": "string",

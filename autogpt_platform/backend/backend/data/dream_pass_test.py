@@ -28,17 +28,19 @@ from backend.copilot.dream.schemas import (
 from backend.util.json import SafeJson
 
 from .dream_pass import (
-    DreamPassApplied,
-    DreamPassDraft,
-    DreamPassOperations,
-    DreamPassUpdate,
-    DreamPhaseOutputs,
     create_dream_pass,
     get_dream_pass,
     get_dream_pass_for_user,
     list_dream_passes,
     list_open_dream_passes,
     update_dream_pass,
+)
+from .dream_pass_models import (
+    DreamPassApplied,
+    DreamPassDraft,
+    DreamPassOperations,
+    DreamPassUpdate,
+    DreamPhaseOutputs,
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -117,7 +119,10 @@ async def test_an_update_writes_only_the_columns_it_sets(make_user):
             window_end=_NOW,
         ),
     )
-    assert await update_dream_pass(draft.id, DreamPassUpdate(provider_batch_id="b1"))
+    assert await update_dream_pass(
+        draft.id,
+        DreamPassUpdate(phase=DreamPassPhase.CONSOLIDATE, provider_batch_id="b1"),
+    )
 
     row = await get_dream_pass(draft.id)
     assert row is not None
