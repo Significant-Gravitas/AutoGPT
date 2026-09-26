@@ -88,7 +88,11 @@ class ResolvedCodexModel(NamedTuple):
 
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
-    ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
+    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard bootstrap
+    # default (2026-09); gpt-5.6-luna remains a selectable catalog model,
+    # it's just no longer the default fallback here or in catalog.py's
+    # routing cell.
+    ("fast", "standard"): LLMModel.GPT6_LUNA.value,
     ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
     ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,

@@ -1843,7 +1843,11 @@ def _build_catalog() -> CatalogPayload:
         routing={
             "copilot_codex": {
                 "fast": {
-                    "standard": "gpt-5.6-luna",
+                    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard
+                    # default (2026-09). gpt-5.6-luna stays in the catalog
+                    # (still selectable, still billed) -- only the default
+                    # moved.
+                    "standard": "gpt-6-luna",
                     "advanced": "gpt-6-astra",
                 },
                 "thinking": {
