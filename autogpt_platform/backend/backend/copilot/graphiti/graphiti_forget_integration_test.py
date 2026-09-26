@@ -125,6 +125,48 @@ async def test_mark_edges_superseded_supports_contradicted_status(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_invalidate_entity_skips_protected_edges(clean_graph) -> None:
+    """The dream pass passes its usage-protected set here, because entity
+    invalidation never reaches ``apply``'s demotion guard. Run the real
+    Cypher: the protected edge must survive an invalidation that takes its
+    neighbour, or a single hub invalidation still wipes facts the user
+    recalls daily.
+    """
+    driver, group_id = clean_graph
+
+    await driver.execute_query(
+        """
+        CREATE
+          (h:Entity {uuid: 'HUB', name: 'HUB', group_id: $gid}),
+          (x:Entity {uuid: 'X', name: 'X', group_id: $gid}),
+          (y:Entity {uuid: 'Y', name: 'Y', group_id: $gid}),
+          (h)-[:RELATES_TO {uuid: 'KEEP', group_id: $gid, fact: 'used daily', status: 'active'}]->(x),
+          (h)-[:RELATES_TO {uuid: 'DROP', group_id: $gid, fact: 'never used', status: 'active'}]->(y)
+        """,
+        gid=group_id,
+    )
+
+    demoted = await invalidate_entity_direct_neighbors(
+        driver,
+        group_id=group_id,
+        entity_uuid="HUB",
+        reason="dead_client",
+        protected_edge_uuids={"KEEP"},
+    )
+
+    assert demoted == ["DROP"]
+
+    keep = await _select_edge(driver, "KEEP")
+    assert keep is not None
+    assert keep["expired_at"] is None, "a usage-protected edge must survive"
+    assert keep["status"] == "active"
+
+    drop = await _select_edge(driver, "DROP")
+    assert drop is not None and drop["expired_at"] is not None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_invalidate_entity_direct_neighbors_is_single_hop(
     clean_graph,
 ) -> None:
