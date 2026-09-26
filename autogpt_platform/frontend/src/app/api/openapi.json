@@ -25917,7 +25917,7 @@
       },
       "MemoryForgetFailureCode": {
         "type": "string",
-        "enum": ["no_match", "query_error"],
+        "enum": ["no_match", "query_error", "cleanup_error"],
         "title": "MemoryForgetFailureCode",
         "description": "Stable, machine-switchable reason a forget delete failed.\n\nThe frontend/model can branch on this code (retry vs. give up) without\nparsing the free-text ``reason``. New codes may be added over time, so\nconsumers must tolerate unknown values."
       },

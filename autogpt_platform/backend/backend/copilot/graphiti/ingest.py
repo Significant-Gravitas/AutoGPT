@@ -14,6 +14,7 @@ from graphiti_core.nodes import EpisodeType
 
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .recall import previous_episode_uuids
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -301,16 +302,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 # pop it before the **payload spread. Present only for dream
                 # writes; None for conversation turns / memory-store calls.
                 edge_metadata = payload.pop("_edge_metadata", None)
-                # Pass custom entity + edge types so MemoryEnvelope metadata
-                # (status, confidence, source_kind, scope, provenance) lives
-                # on :RELATES_TO edges and not only inside :Episodic.content.
-                # Single point of wire-in for every caller of this worker.
-                result = await client.add_episode(
-                    **payload,
-                    entity_types=ENTITY_TYPES,
-                    edge_types=EDGE_TYPES,
-                    edge_type_map=EDGE_TYPE_MAP,
-                )
+                result = await _add_episode(client, group_id, payload)
                 # graphiti's attribute extraction fills MemoryFact fields from
                 # the episode text, not the envelope, so dream metadata
                 # (source_kind/provenance/exact status) doesn't survive. Stamp
@@ -363,6 +355,29 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                         _ingestion_worker(user_id, group_id, queue),
                         name=f"graphiti-ingest-{group_id[:12]}",
                     )
+
+
+async def _add_episode(client, group_id: str, payload: dict):
+    """graphiti's ``add_episode`` with our types and the recall policy's
+    choice of earlier episodes.
+
+    The custom entity and edge types keep MemoryEnvelope metadata (status,
+    confidence, source_kind, scope, provenance) on ``RELATES_TO`` edges, not
+    only inside ``Episodic.content``; this is the single wire-in for every
+    caller of the worker. The earlier episodes are the ones graphiti would
+    show its extraction prompts, minus those a forget hid: left to pick
+    them itself it would show a forgotten episode again.
+    """
+    previous = await previous_episode_uuids(
+        client.driver, group_id, payload["reference_time"], payload["source"]
+    )
+    return await client.add_episode(
+        **payload,
+        previous_episode_uuids=previous,
+        entity_types=ENTITY_TYPES,
+        edge_types=EDGE_TYPES,
+        edge_type_map=EDGE_TYPE_MAP,
+    )
 
 
 async def enqueue_conversation_turn(

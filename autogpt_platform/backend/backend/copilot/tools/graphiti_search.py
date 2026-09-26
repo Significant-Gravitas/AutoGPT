@@ -7,14 +7,8 @@ from typing import Any
 from graphiti_core.edges import EntityEdge
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.recall import (
-    episode_scope,
-    recent_episodes,
-    record_hit,
-    render,
-    render_episode,
-    search_facts,
-)
+from backend.copilot.graphiti.recall import recent_episodes, record_hit, search_facts
+from backend.copilot.graphiti.recall_render import episode_scope, render, render_episode
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.util.background import spawn_background_task

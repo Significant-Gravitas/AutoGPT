@@ -52,6 +52,10 @@ class MemoryForgetFailureCode(str, Enum):
 
     NO_MATCH = "no_match"
     QUERY_ERROR = "query_error"
+    CLEANUP_ERROR = "cleanup_error"
+    """The fact was forgotten, but the clean-up after it (redacting or
+    deleting what it came from) failed. Recall keeps the text hidden anyway,
+    and forgetting it again is safe."""
 
 
 # Reason given when a forget matched no edge: the UUID is stale, already
@@ -89,21 +93,39 @@ class MemoryForgetFailure(BaseModel):
         real query error from a plain no-match; never the full ``repr``,
         which can carry connection details. Log the exception where caught.
         """
-        detail = exc.args[0] if exc.args else type(exc).__name__
         return cls(
             uuid=uuid,
             code=MemoryForgetFailureCode.QUERY_ERROR,
-            reason=f"Deletion query failed: {type(exc).__name__}: {detail}",
+            reason=f"Deletion query failed: {_describe(exc)}",
         )
+
+    @classmethod
+    def cleanup_error(cls, uuid: str, exc: Exception) -> "MemoryForgetFailure":
+        """The fact is forgotten but its clean-up failed; the reason says so,
+        so the model neither reports a plain success nor a lost forget."""
+        return cls(
+            uuid=uuid,
+            code=MemoryForgetFailureCode.CLEANUP_ERROR,
+            reason=(
+                "Forgotten and no longer recalled, but the clean-up after it "
+                f"failed: {_describe(exc)}. Forgetting it again is safe."
+            ),
+        )
+
+
+def _describe(exc: Exception) -> str:
+    detail = exc.args[0] if exc.args else type(exc).__name__
+    return f"{type(exc).__name__}: {detail}"
 
 
 class ForgetResult(BaseModel):
     """What one ``recall_forget.retract`` call did.
 
     ``deleted`` lists the edges retracted (soft) or removed (hard);
-    ``failures`` holds one entry per other requested uuid, in the shape
-    ``memory_forget_confirm`` reports. The episode and entity lists record
-    the clean-up each mode did.
+    ``failures`` holds one entry per requested uuid that was not, in the
+    shape ``memory_forget_confirm`` reports, plus a ``cleanup_error`` for an
+    edge whose clean-up failed, which is in ``deleted`` too when its own write
+    landed. The episode and entity lists record the clean-up done.
     """
 
     deleted: list[str] = Field(default_factory=list)

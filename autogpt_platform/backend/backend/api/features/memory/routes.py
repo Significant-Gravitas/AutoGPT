@@ -9,9 +9,10 @@ so these routes can never read or delete another user's memory by construction.
 Facts are listed and counted with the recall policy's live-fact test
 (``graphiti/recall.py``), and a single-fact forget is the chat forget tool's
 soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
-``retracted`` and stops being served but stays for audit, and an episode left
-with no live fact stops being recalled. The scope erase hard-deletes every
-node and edge in the scope's graph, raw episode text included.
+``retracted`` and stops being served but stays for audit, and every episode
+it came from stops being recalled. A forget whose clean-up failed answers 500,
+not success, so the caller retries. The scope erase hard-deletes every node
+and edge in the scope's graph, raw episode text included.
 """
 
 import logging
@@ -211,9 +212,17 @@ async def _forget_fact_impl(
     # The chat forget tool's soft retraction (a system retraction, not a
     # world change), so the fact and its episode text stop being recalled.
     result = await retract(scope, [fact_uuid])
+    codes = {failure.code for failure in result.failures}
+    if MemoryForgetFailureCode.CLEANUP_ERROR in codes:
+        # Recall already hides the fact and its text, but the redaction did
+        # not land; a retry finishes it, so this is not reported as done.
+        raise HTTPException(
+            status_code=500,
+            detail="Forgot this memory but could not finish cleaning up; try again",
+        )
     if result.deleted:
         return ForgetFactResponse(uuid=fact_uuid, forgotten=True)
-    if any(f.code == MemoryForgetFailureCode.QUERY_ERROR for f in result.failures):
+    if MemoryForgetFailureCode.QUERY_ERROR in codes:
         raise HTTPException(status_code=500, detail="Could not forget this memory")
     raise HTTPException(status_code=404, detail="Memory not found")
 

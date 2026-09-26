@@ -149,6 +149,7 @@ class TestForgetConfirmModes:
                 "user-abc", session, uuids=["e1"], hard_delete=True
             )
 
+        assert retract.await_args is not None
         assert retract.await_args.kwargs == {"hard": True}
         assert isinstance(response, MemoryForgetConfirmResponse)
         assert response.message == "1 memory edge(s) permanently deleted."
@@ -249,6 +250,36 @@ class TestForgetFailuresAreActionable:
         assert "1 memory edge(s) retracted from memory." in response.message
         assert "1 failed" in response.message
         assert "gone" in response.message
+
+    @pytest.mark.asyncio
+    async def test_confirm_tool_reports_a_failed_clean_up(self) -> None:
+        """Retracted, but the episode redaction failed: the model is told the
+        fact is forgotten and that the clean-up did not finish."""
+        driver = AsyncMock()
+        driver.execute_query.side_effect = [
+            ([{"uuid": "u1"}], [], None),  # lookup
+            ([{"uuid": "u1"}], [], None),  # retract
+            RuntimeError("down"),  # redact its episodes
+        ]
+        session = ChatSession.new("user-abc", dry_run=False)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(
+                "backend.copilot.graphiti.recall_forget.open_driver",
+                MagicMock(return_value=driver),
+            ),
+        ):
+            response = await MemoryForgetConfirmTool()._execute(
+                "user-abc", session, uuids=["u1"]
+            )
+
+        assert isinstance(response, MemoryForgetConfirmResponse)
+        assert response.deleted_uuids == ["u1"]
+        assert [f.code for f in response.failures] == [
+            MemoryForgetFailureCode.CLEANUP_ERROR
+        ]
+        assert "no longer recalled" in response.message
+        assert "RuntimeError: down" in response.message
 
 
 class TestBuildConfirmMessage:
@@ -380,6 +411,33 @@ class TestMarkEdgesSuperseded:
         assert "{uuid: $uuid}" in query
         assert "group_id" not in query
         assert "group_id" not in driver.execute_query.call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_expected_status_makes_the_write_conditional(self) -> None:
+        """The ratification sweep's guard: only an edge still in that status
+        and unexpired is touched, so a forget made since it was listed is
+        kept, and the edge is reported failed."""
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)  # no longer tentative
+
+        deleted, failed = await mark_edges_superseded(
+            driver, ["u1"], reason="unratified", expected_status="tentative"
+        )
+
+        assert (deleted, failed) == ([], ["u1"])
+        query = driver.execute_query.call_args.args[0]
+        assert "WHERE e.status = $expected_status AND e.expired_at IS NULL" in query
+        assert driver.execute_query.call_args.kwargs["expected_status"] == "tentative"
+
+    @pytest.mark.asyncio
+    async def test_without_expected_status_the_write_is_unconditional(self) -> None:
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([{"uuid": "u1"}], None, None)
+
+        await mark_edges_superseded(driver, ["u1"], reason="stale_fact")
+
+        assert "WHERE" not in driver.execute_query.call_args.args[0]
+        assert "expected_status" not in driver.execute_query.call_args.kwargs
 
 
 class TestInvalidateEntityDirectNeighbors:

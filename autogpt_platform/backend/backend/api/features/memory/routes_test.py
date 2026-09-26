@@ -187,6 +187,17 @@ class TestForgetFact:
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 500
 
+    def test_failed_clean_up_is_500_not_success(self) -> None:
+        """Retracted, but the episode redaction did not land. Recall hides
+        the text regardless; the page still must not show a finished forget,
+        and a retry finishes it."""
+        failure = MemoryForgetFailure.cleanup_error("edge-1", RuntimeError("down"))
+        result = ForgetResult(deleted=["edge-1"], failures=[failure])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 500
+        assert "try again" in resp.json()["detail"]
+
     def test_expert_forget_uses_expert_scope(self, test_user_id) -> None:
         retract = AsyncMock(return_value=ForgetResult(deleted=["edge-1"]))
         with (

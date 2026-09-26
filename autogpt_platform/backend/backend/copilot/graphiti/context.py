@@ -8,14 +8,8 @@ from graphiti_core.nodes import EpisodicNode
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 
 from .config import graphiti_config
-from .recall import (
-    GLOBAL_SCOPE,
-    episode_scope,
-    recent_episodes,
-    render,
-    render_episode,
-    search_facts,
-)
+from .recall import recent_episodes, search_facts
+from .recall_render import GLOBAL_SCOPE, episode_scope, render, render_episode
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)

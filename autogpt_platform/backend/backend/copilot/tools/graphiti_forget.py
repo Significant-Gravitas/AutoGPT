@@ -16,8 +16,9 @@ from graphiti_core.edges import EntityEdge
 
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
-from backend.copilot.graphiti.recall import fact_text, fact_validity, search_facts
+from backend.copilot.graphiti.recall import search_facts
 from backend.copilot.graphiti.recall_forget import retract
+from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
@@ -333,6 +334,7 @@ async def mark_edges_superseded(
     new_status: Literal["superseded", "contradicted"] = "superseded",
     user_id: str | None = None,
     group_id: str | None = None,
+    expected_status: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Retract edges AND set the custom audit-trail ``status`` property.
 
@@ -349,34 +351,29 @@ async def mark_edges_superseded(
     user's edges. ``None`` keeps the unscoped match (current
     ratification behavior).
 
+    ``expected_status`` makes the write conditional on the edge still
+    carrying that status unexpired, so a change made since the caller read
+    it (a user's forget) is not overwritten; an edge that no longer matches
+    is reported failed.
+
     Returns ``(succeeded_uuids, failed_uuids)``.
     """
     deleted = []
     failed = []
     user_log = (user_id or "?")[:12]
-    edge_match = (
-        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
-        if group_id is not None
-        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
+    query = _supersede_query(
+        scoped=group_id is not None, guarded=expected_status is not None
     )
-    query = f"""
-                {edge_match}
-                SET e.expired_at = $now,
-                    e.status = $new_status,
-                    e.expiration_reason = $reason
-                RETURN e.uuid AS uuid
-                """
+    params: dict[str, str] = {"new_status": new_status, "reason": reason}
+    if group_id is not None:
+        params["group_id"] = group_id
+    if expected_status is not None:
+        params["expected_status"] = expected_status
     for uuid in uuids:
         try:
-            params: dict[str, str] = {
-                "uuid": uuid,
-                "new_status": new_status,
-                "reason": reason,
-                "now": _now_iso(),
-            }
-            if group_id is not None:
-                params["group_id"] = group_id
-            records, _, _ = await driver.execute_query(query, **params)
+            records, _, _ = await driver.execute_query(
+                query, uuid=uuid, now=_now_iso(), **params
+            )
             if records:
                 deleted.append(uuid)
             else:
@@ -390,6 +387,27 @@ async def mark_edges_superseded(
             )
             failed.append(uuid)
     return deleted, failed
+
+
+def _supersede_query(*, scoped: bool, guarded: bool) -> str:
+    """``mark_edges_superseded``'s Cypher, with its ``group_id`` match and its
+    ``expected_status`` guard when asked for."""
+    edge_match = (
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid, group_id: $group_id}]->()"
+        if scoped
+        else "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()"
+    )
+    guard = (
+        "WHERE e.status = $expected_status AND e.expired_at IS NULL" if guarded else ""
+    )
+    return f"""
+                {edge_match}
+                {guard}
+                SET e.expired_at = $now,
+                    e.status = $new_status,
+                    e.expiration_reason = $reason
+                RETURN e.uuid AS uuid
+                """
 
 
 async def invalidate_entity_direct_neighbors(

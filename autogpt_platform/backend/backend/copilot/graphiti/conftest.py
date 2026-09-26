@@ -32,10 +32,10 @@ The fixtures connect using ``GraphitiConfig`` defaults
 
 import socket
 import uuid
-from collections.abc import Iterable
+from collections.abc import Awaitable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, cast
 
 import pytest
 import pytest_asyncio
@@ -256,7 +256,9 @@ async def scope_graph(
         yield driver, scope
     finally:
         try:
-            await driver._get_graph(None).delete()
+            # falkordb's async ``Graph.delete`` is typed as its sync twin;
+            # the same cast ``falkordb_driver.py`` uses for ``query``.
+            await cast(Awaitable[None], driver._get_graph(None).delete())
         except Exception as exc:
             if "empty key" not in str(exc).lower():
                 raise

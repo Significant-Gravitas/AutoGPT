@@ -127,8 +127,9 @@ class TestFetchInternal:
             await fetch_warm_context("user-1", "hello", expert_id="expert-1")
 
         expert_scope = MemoryScope.for_expert("user-1", "expert-1")
-        assert search_mock.await_args.args[0] == expert_scope
-        assert recent_mock.await_args.args[0] == expert_scope
+        for read in (search_mock, recent_mock):
+            assert read.await_args is not None
+            assert read.await_args.args[0] == expert_scope
 
     @pytest.mark.asyncio
     async def test_returns_context_with_edges(self, spawn_hits) -> None:
@@ -160,11 +161,10 @@ class TestFetchInternal:
             await context._fetch(MemoryScope.for_user("abc"), "hello world")
 
         search_mock.assert_awaited_once()
-        assert search_mock.await_args.args == (
-            MemoryScope.for_user("abc"),
-            "hello world",
-        )
-        kwargs = search_mock.await_args.kwargs
+        search = search_mock.await_args
+        assert search is not None
+        assert search.args == (MemoryScope.for_user("abc"), "hello world")
+        kwargs = search.kwargs
         assert kwargs["recipe"] is EDGE_HYBRID_SEARCH_CROSS_ENCODER
         assert kwargs["limit"] == context.graphiti_config.context_max_facts
         recent_mock.assert_awaited_once_with(MemoryScope.for_user("abc"), 5)

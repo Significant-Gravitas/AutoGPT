@@ -1,8 +1,10 @@
 """Unit tests for the recall policy's read side (``recall.py``).
 
-The live-graph counterpart is ``recall_integration_test.py``; these pin the
-policy itself — which statuses survive, what the search is asked for, how a
-retired fact renders — against mocks.
+The live-graph counterparts are ``recall_integration_test.py`` and
+``recall_forget_integration_test.py``; these pin the policy itself — which
+facts are live or forgotten, which episodes stay recallable, what the search
+and the episode reads are asked for — against mocks. Rendering is pinned in
+``recall_render_test.py``.
 """
 
 from datetime import datetime, timezone
@@ -10,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphiti_core.edges import EntityEdge
-from graphiti_core.nodes import EpisodeType, EpisodicNode
+from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config import EdgeReranker, SearchResults
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 from graphiti_core.search.search_filters import ComparisonOperator
+from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
 from . import recall
-from .memory_model import MemoryEnvelope, MemoryKind, SourceKind
 from .scope import MemoryScope
 
 _NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
@@ -27,11 +29,11 @@ def _fact(
     uuid: str = "e1",
     *,
     status: str | None = "active",
+    reason: str | None = None,
     expired_at: datetime | None = None,
-    valid_at: datetime | None = None,
     invalid_at: datetime | None = None,
-    fact: str = "Alice works on Atlas",
 ) -> EntityEdge:
+    attributes = {"status": status, "expiration_reason": reason}
     return EntityEdge(
         uuid=uuid,
         group_id=_SCOPE.group_id,
@@ -39,24 +41,10 @@ def _fact(
         target_node_uuid="atlas",
         created_at=_NOW,
         name="works_on",
-        fact=fact,
+        fact="Alice works on Atlas",
         expired_at=expired_at,
-        valid_at=valid_at,
         invalid_at=invalid_at,
-        attributes={} if status is None else {"status": status},
-    )
-
-
-def _episode(content: str = "talked about coffee", uuid: str = "ep1") -> EpisodicNode:
-    return EpisodicNode(
-        uuid=uuid,
-        name=uuid,
-        group_id=_SCOPE.group_id,
-        source=EpisodeType.text,
-        source_description="chat",
-        content=content,
-        created_at=_NOW,
-        valid_at=_NOW,
+        attributes={k: v for k, v in attributes.items() if v is not None},
     )
 
 
@@ -72,6 +60,12 @@ def _episode_record(uuid: str, content: str) -> dict:
         "valid_at": _NOW.isoformat(),
         "entity_edges": [],
     }
+
+
+def _driver_returning(records: list[dict]) -> AsyncMock:
+    driver = AsyncMock()
+    driver.execute_query.return_value = (records, [], None)
+    return driver
 
 
 class TestLiveFactPredicate:
@@ -110,6 +104,75 @@ class TestLiveFactPredicate:
     ) -> None:
         fact = _fact(status=status, expired_at=expired_at)
         assert recall.is_live(fact, include_tentative=include_tentative) is live
+
+
+class TestForgottenFactPredicate:
+    def test_cypher(self) -> None:
+        assert recall.forgotten_fact_predicate("f") == (
+            "(f.status = 'retracted'"
+            " OR f.expiration_reason = 'user_signal'"
+            " OR (f.expired_at IS NOT NULL AND f.invalid_at IS NULL"
+            " AND f.expiration_reason IS NULL))"
+        )
+
+    @pytest.mark.parametrize(
+        ("status", "reason", "expired_at", "invalid_at", "forgotten"),
+        [
+            ("active", None, None, None, False),
+            (None, None, None, None, False),
+            ("retracted", "user_signal", _NOW, None, True),
+            ("retracted", "settings_page", _NOW, None, True),
+            ("superseded", "user_signal", _NOW, None, True),  # dream, user's word
+            ("superseded", "stale_fact", _NOW, None, False),  # dream's own call
+            ("active", None, _NOW, _NOW, False),  # graphiti's contradiction
+            ("active", None, _NOW, None, True),  # the pre-policy forget
+            ("superseded", None, _NOW, None, True),  # ...once backfilled a status
+        ],
+    )
+    def test_is_forgotten(
+        self,
+        status: str | None,
+        reason: str | None,
+        expired_at: datetime | None,
+        invalid_at: datetime | None,
+        forgotten: bool,
+    ) -> None:
+        fact = _fact(
+            status=status, reason=reason, expired_at=expired_at, invalid_at=invalid_at
+        )
+        assert recall.is_forgotten(fact) is forgotten
+        assert not (forgotten and recall.is_live(fact)), "a forgotten fact is live"
+
+
+class TestRecallableEpisodePredicate:
+    def test_cypher(self) -> None:
+        assert recall.recallable_episode_predicate("ep", "gone") == (
+            "ep.redacted_at IS NULL"
+            " AND none(x IN coalesce(ep.entity_edges, []) WHERE x IN gone)"
+        )
+
+    def test_clause_collects_every_forgotten_fact(self) -> None:
+        clause = recall.forgotten_facts_clause("gone")
+        assert clause.startswith("OPTIONAL MATCH ()-[forgotten_fact:RELATES_TO]->()")
+        assert recall.forgotten_fact_predicate("forgotten_fact") in clause
+        assert clause.rstrip().endswith("WITH collect(forgotten_fact.uuid) AS gone")
+
+    @pytest.mark.parametrize(
+        ("entity_edges", "redacted", "recallable"),
+        [
+            (["e1", "e2"], False, True),
+            (["e1", "gone-1"], False, False),  # one forgotten fact hides it all
+            ([], True, False),  # stamped by a forget
+            ([], False, True),
+        ],
+    )
+    def test_is_recallable_episode(
+        self, entity_edges: list[str], redacted: bool, recallable: bool
+    ) -> None:
+        assert (
+            recall.is_recallable_episode(entity_edges, {"gone-1"}, redacted=redacted)
+            is recallable
+        )
 
 
 class TestSearchFacts:
@@ -188,12 +251,11 @@ class TestSearchFacts:
 
 class TestRecentEpisodes:
     @pytest.mark.asyncio
-    async def test_skips_redacted_episodes_and_returns_oldest_first(self) -> None:
-        driver = AsyncMock()
-        driver.execute_query.return_value = (
-            [_episode_record("newest", "b"), _episode_record("older", "a")],
-            [],
-            None,
+    async def test_asks_for_recallable_episodes_and_returns_oldest_first(
+        self,
+    ) -> None:
+        driver = _driver_returning(
+            [_episode_record("newest", "b"), _episode_record("older", "a")]
         )
         open_driver = MagicMock(return_value=driver)
         with patch.object(recall, "open_driver", open_driver):
@@ -202,10 +264,12 @@ class TestRecentEpisodes:
         open_driver.assert_called_once_with(_SCOPE)
         query = driver.execute_query.await_args.args[0]
         kwargs = driver.execute_query.await_args.kwargs
-        assert "e.redacted_at IS NULL" in query
+        assert query.startswith(recall.forgotten_facts_clause())
+        assert recall.recallable_episode_predicate("e") in query
         assert "ORDER BY e.valid_at DESC" in query
         assert kwargs["group_id"] == _SCOPE.group_id
         assert kwargs["limit"] == 5
+        assert kwargs["source"] is None, "recall reads every source"
         assert [ep.uuid for ep in episodes] == ["older", "newest"]
         driver.close.assert_awaited_once()
 
@@ -220,86 +284,46 @@ class TestRecentEpisodes:
         driver.close.assert_awaited_once()
 
 
-class TestRender:
-    def test_live_fact_shows_its_validity(self) -> None:
-        fact = _fact(valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
-        assert recall.render(fact) == (
-            "Alice works on Atlas (valid: 2025-01-01 00:00:00+00:00 — present)"
+class TestPreviousEpisodeUuids:
+    @pytest.mark.asyncio
+    async def test_graphitis_own_pick_through_the_policy_oldest_first(
+        self,
+    ) -> None:
+        """graphiti's ``retrieve_episodes`` window (same source, up to the
+        new episode's time, ``RELEVANT_SCHEMA_LIMIT`` newest) with the
+        recallable-episode test added."""
+        driver = _driver_returning(
+            [_episode_record("newest", "b"), _episode_record("older", "a")]
         )
 
-    def test_live_fact_with_an_end_date(self) -> None:
-        fact = _fact(invalid_at=datetime(2025, 6, 1, tzinfo=timezone.utc))
-        assert recall.render(fact) == (
-            "Alice works on Atlas (valid: unknown — 2025-06-01 00:00:00+00:00)"
+        uuids = await recall.previous_episode_uuids(
+            driver, _SCOPE.group_id, _NOW, EpisodeType.message
         )
 
-    @pytest.mark.parametrize("status", ["retracted", "superseded", "contradicted"])
-    def test_retired_fact_is_labelled_never_present(self, status: str) -> None:
-        fact = _fact(status=status, expired_at=_NOW)
-        rendered = recall.render(fact)
-        assert rendered == f"Alice works on Atlas ({status} 2026-09-26 12:00:00+00:00)"
-        assert "present" not in rendered
+        assert uuids == ["older", "newest"]
+        query = driver.execute_query.await_args.args[0]
+        assert recall.recallable_episode_predicate("e") in query
+        assert "($source IS NULL OR e.source = $source)" in query
+        assert driver.execute_query.await_args.kwargs == {
+            "group_id": _SCOPE.group_id,
+            "reference_time": _NOW,
+            "source": "message",
+            "limit": RELEVANT_SCHEMA_LIMIT,
+        }
 
-    def test_expired_fact_with_a_live_status_is_labelled_expired(self) -> None:
-        # What graphiti's own contradiction handling leaves behind: expired,
-        # status never changed.
-        fact = _fact(status="active", expired_at=_NOW)
-        assert recall.render(fact) == (
-            "Alice works on Atlas (expired 2026-09-26 12:00:00+00:00)"
+    @pytest.mark.asyncio
+    async def test_a_failed_read_means_no_earlier_episodes_not_graphitis(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        driver = AsyncMock()
+        driver.execute_query.side_effect = RuntimeError("falkordb down")
+
+        uuids = await recall.previous_episode_uuids(
+            driver, _SCOPE.group_id, _NOW, EpisodeType.text
         )
 
-    def test_retired_status_without_a_timestamp(self) -> None:
-        fact = _fact(status="retracted")
-        assert (
-            recall.render(fact) == "Alice works on Atlas (retracted at an unknown time)"
-        )
-
-    def test_fact_text_falls_back_to_the_relation_name(self) -> None:
-        assert recall.fact_text(_fact(fact="")) == "works_on"
-
-
-class TestRenderEpisode:
-    def test_timestamp_and_body(self) -> None:
-        assert recall.render_episode(_episode("talked about coffee")) == (
-            "[2026-09-26 12:00:00+00:00] talked about coffee"
-        )
-
-    def test_body_cut_to_display_length(self) -> None:
-        body = "x" * recall.EPISODE_DISPLAY_CHARS
-        assert recall.render_episode(_episode("x" * 1000)) == (
-            f"[2026-09-26 12:00:00+00:00] {body}"
-        )
-
-
-class TestEpisodeScope:
-    @pytest.mark.parametrize(
-        "content",
-        ["plain conversation text", "[1, 2, 3]", '"just a string"', "null"],
-    )
-    def test_non_envelope_bodies_are_global(self, content: str) -> None:
-        assert recall.episode_scope(_episode(content)) == recall.GLOBAL_SCOPE
-
-    def test_envelope_scope_is_read(self) -> None:
-        envelope = MemoryEnvelope(content="project note", scope="project:crm")
-        episode = _episode(envelope.model_dump_json())
-        assert recall.episode_scope(episode) == "project:crm"
-
-    def test_envelope_without_scope_is_global(self) -> None:
-        assert recall.episode_scope(_episode('{"content": "x"}')) == "real:global"
-
-    def test_long_envelope_is_parsed_whole(self) -> None:
-        """An envelope longer than the display cut is still parsed: scoping
-        the truncated body would leak a project memory into global recall."""
-        envelope = MemoryEnvelope(
-            content="x" * 600,
-            source_kind=SourceKind.user_asserted,
-            scope="project:crm",
-            memory_kind=MemoryKind.fact,
-        )
-        body = envelope.model_dump_json()
-        assert len(body) > recall.EPISODE_DISPLAY_CHARS
-
-        assert recall.episode_scope(_episode(body)) == "project:crm"
+        assert uuids == [], "None would let graphiti pick, forgotten text included"
+        assert "extracting without earlier episodes" in caplog.text
 
 
 class TestRecordHit:

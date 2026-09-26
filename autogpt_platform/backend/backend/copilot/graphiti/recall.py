@@ -1,23 +1,28 @@
 """The recall policy: the one place memory is read back for the assistant.
 
-Warm context, ``memory_search``, ``memory_forget_search`` and the settings
-fact list read facts and episodes through this module, and every forget goes
-through ``retract`` (``recall_forget.py``), so a fact one path forgot cannot
-come back through another.
+Warm context, ``memory_search``, ``memory_forget_search``, the settings fact
+list, the dream gather and ingestion's extraction context read through this
+module's functions or predicates, and every forget goes through ``retract``
+(``recall_forget.py``), so a fact one path forgot cannot come back through
+another. ``recall_render.py`` writes out what recall returns.
 
 A fact (a ``RELATES_TO`` edge) is live while ``expired_at`` is unset and its
 ``status`` is ``active`` or ``tentative``; an edge with no ``status`` predates
-the ``MemoryFact`` edge type and counts as ``active``. An episode stays
-recallable until a forget stamps ``redacted_at`` on it, which happens once
-none of the facts extracted from it is live, so its raw text cannot bring a
-forgotten fact back.
+the ``MemoryFact`` edge type and counts as ``active``. A forgotten fact
+(``forgotten_fact_predicate``) is never live. An episode is recallable while
+no forget has stamped ``redacted_at`` on it and none of the facts extracted
+from it is forgotten: one forgotten fact hides the whole text, since nothing
+records which sentence it came from. The episode's other facts stay live.
 """
 
 import asyncio
+import logging
 from datetime import datetime, timezone
+from typing import Any
 
+from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.edges import EntityEdge
-from graphiti_core.nodes import EpisodicNode, get_episodic_node_from_record
+from graphiti_core.nodes import EpisodeType, EpisodicNode, get_episodic_node_from_record
 from graphiti_core.search.search_config import SearchConfig
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
 from graphiti_core.search.search_filters import (
@@ -25,7 +30,7 @@ from graphiti_core.search.search_filters import (
     DateFilter,
     SearchFilters,
 )
-from pydantic import BaseModel, ValidationError
+from graphiti_core.search.search_utils import RELEVANT_SCHEMA_LIMIT
 
 from backend.copilot.dream.ratification_hits import record_memory_hit
 
@@ -34,20 +39,12 @@ from .falkordb_driver import open_driver
 from .memory_model import MemoryStatus
 from .scope import MemoryScope
 
-# Scope of an episode that is not a ``MemoryEnvelope`` (plain conversation).
-GLOBAL_SCOPE = "real:global"
-# Episode bodies are cut to this many characters when rendered.
-EPISODE_DISPLAY_CHARS = 500
+logger = logging.getLogger(__name__)
+
+# The ``expiration_reason`` a user's forget records (``recall_forget.retract``).
+USER_FORGET_REASON = "user_signal"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
-_RETIRED_STATUSES = frozenset(
-    status.value
-    for status in (
-        MemoryStatus.superseded,
-        MemoryStatus.contradicted,
-        MemoryStatus.retracted,
-    )
-)
 
 # The ``expired_at`` half of the live test, applied inside every graphiti
 # search method so a retired fact never takes one of the ``limit`` slots. The
@@ -84,6 +81,75 @@ def fact_status(fact: EntityEdge) -> str | None:
     return None if status is None else str(status)
 
 
+def forgotten_fact_predicate(alias: str = "e") -> str:
+    """The forgotten-fact test as a Cypher ``WHERE`` fragment on edge ``alias``.
+
+    A user forgot the fact: it is ``retracted``, its ``expiration_reason``
+    is ``USER_FORGET_REASON`` (a dream demotion made on the user's word
+    records that too), or it has the ``legacy_forget_predicate`` shape.
+    """
+    return (
+        f"({alias}.status = '{MemoryStatus.retracted.value}'"
+        f" OR {alias}.expiration_reason = '{USER_FORGET_REASON}'"
+        f" OR ({legacy_forget_predicate(alias)}))"
+    )
+
+
+def legacy_forget_predicate(alias: str = "e") -> str:
+    """What a forget left before this policy: ``expired_at`` and nothing else.
+
+    graphiti sets ``invalid_at`` whenever it expires an edge and a dream
+    demotion always records a reason, so no other writer leaves this shape.
+    ``migrations/backfill_legacy_forgets.py`` restamps these edges as
+    retractions, after which this clause can go.
+    """
+    return (
+        f"{alias}.expired_at IS NOT NULL AND {alias}.invalid_at IS NULL"
+        f" AND {alias}.expiration_reason IS NULL"
+    )
+
+
+def is_forgotten(fact: EntityEdge) -> bool:
+    """The forgotten-fact test for an edge graphiti returned."""
+    reason = fact.attributes.get("expiration_reason")
+    legacy = fact.expired_at is not None and fact.invalid_at is None
+    return (
+        fact_status(fact) == MemoryStatus.retracted.value
+        or reason == USER_FORGET_REASON
+        or (legacy and reason is None)
+    )
+
+
+def forgotten_facts_clause(var: str = "forgotten") -> str:
+    """Cypher that opens a query by binding ``var`` to every forgotten fact's
+    uuid, for ``recallable_episode_predicate`` to test episodes against.
+
+    One pass over the facts, not one per episode.
+    """
+    return (
+        "OPTIONAL MATCH ()-[forgotten_fact:RELATES_TO]->()\n"
+        f"WHERE {forgotten_fact_predicate('forgotten_fact')}\n"
+        f"WITH collect(forgotten_fact.uuid) AS {var}\n"
+    )
+
+
+def recallable_episode_predicate(alias: str = "e", forgotten: str = "forgotten") -> str:
+    """The recallable-episode test as a Cypher ``WHERE`` fragment on episode
+    ``alias``; the query must open with ``forgotten_facts_clause(forgotten)``."""
+    return (
+        f"{alias}.redacted_at IS NULL"
+        f" AND none(x IN coalesce({alias}.entity_edges, []) WHERE x IN {forgotten})"
+    )
+
+
+def is_recallable_episode(
+    entity_edges: list[str], forgotten: set[str], *, redacted: bool
+) -> bool:
+    """The recallable-episode test in Python: not ``redacted`` and citing no
+    uuid in ``forgotten`` among its ``entity_edges``."""
+    return not redacted and forgotten.isdisjoint(entity_edges)
+
+
 async def search_facts(
     scope: MemoryScope,
     query: str,
@@ -114,71 +180,64 @@ async def search_facts(
 
 
 async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
-    """The ``n`` newest unredacted episodes, oldest first.
+    """The ``n`` newest recallable episodes, oldest first.
 
-    graphiti's ``retrieve_episodes`` plus the ``redacted_at`` filter it has
+    graphiti's ``retrieve_episodes`` plus the recallable-episode test it has
     no way to express.
     """
     driver = open_driver(scope)
     try:
-        result = await driver.execute_query(
-            _RECENT_EPISODES_QUERY,
-            group_id=scope.group_id,
-            reference_time=datetime.now(timezone.utc),
-            limit=n,
+        records = await _recallable_episodes(
+            driver, scope.group_id, datetime.now(timezone.utc), n
         )
     finally:
         await driver.close()
-    records = result[0] if result else []
     return [get_episodic_node_from_record(record) for record in reversed(records)]
 
 
-def render(fact: EntityEdge) -> str:
-    """One recall line for ``fact``: its text and when it holds.
+async def previous_episode_uuids(
+    driver: GraphDriver,
+    group_id: str,
+    reference_time: datetime,
+    source: EpisodeType,
+) -> list[str]:
+    """The earlier episodes ``add_episode`` may show its extraction prompts.
 
-    A retired fact (expired, or in a status recall skips) is labelled with
-    how and when it was retired, never as valid until "present". Recall never
-    returns one; the label keeps any other caller honest.
-    """
-    text = fact_text(fact)
-    if is_live(fact):
-        valid_from, valid_to = fact_validity(fact)
-        return f"{text} (valid: {valid_from} — {valid_to})"
-    retired_at = str(fact.expired_at) if fact.expired_at else "at an unknown time"
-    return f"{text} ({_retired_label(fact)} {retired_at})"
-
-
-def fact_text(fact: EntityEdge) -> str:
-    """The fact sentence, or the relation name when extraction left none."""
-    return fact.fact or fact.name
-
-
-def fact_validity(fact: EntityEdge) -> tuple[str, str]:
-    """``(valid_from, valid_to)`` in valid time; "present" means no end yet.
-
-    Only meaningful for a live fact; ``render`` labels a retired one instead.
-    """
-    valid_from = str(fact.valid_at) if fact.valid_at else "unknown"
-    valid_to = str(fact.invalid_at) if fact.invalid_at else "present"
-    return valid_from, valid_to
-
-
-def render_episode(episode: EpisodicNode) -> str:
-    """``[created_at] body``, the body cut to ``EPISODE_DISPLAY_CHARS``."""
-    return f"[{episode.created_at}] {episode.content[:EPISODE_DISPLAY_CHARS]}"
-
-
-def episode_scope(episode: EpisodicNode) -> str:
-    """The ``MemoryEnvelope`` scope an episode was stored under.
-
-    An episode that is not an envelope (plain conversation, or JSON that is
-    not an object) belongs to ``GLOBAL_SCOPE``. Reads the full body: an
-    envelope cut to display length is no longer valid JSON.
+    graphiti's own pick (``retrieve_episodes``: the ``RELEVANT_SCHEMA_LIMIT``
+    newest of the same source up to ``reference_time``) cannot see a forget,
+    so ingestion passes this one: the same pick of recallable episodes,
+    oldest first. Never raises: on a failed read extraction gets no earlier
+    episodes, not graphiti's unfiltered pick, and the write still happens.
     """
     try:
-        return _EnvelopeScope.model_validate_json(episode.content).scope
-    except ValidationError:
-        return GLOBAL_SCOPE
+        records = await _recallable_episodes(
+            driver, group_id, reference_time, RELEVANT_SCHEMA_LIMIT, source.value
+        )
+    except Exception:
+        logger.warning(
+            f"Prior-episode read failed for group {group_id[:12]}; "
+            "extracting without earlier episodes",
+            exc_info=True,
+        )
+        return []
+    return [str(record["uuid"]) for record in reversed(records)]
+
+
+async def _recallable_episodes(
+    driver: GraphDriver,
+    group_id: str,
+    reference_time: datetime,
+    limit: int,
+    source: str | None = None,
+) -> list[dict[str, Any]]:
+    result = await driver.execute_query(
+        _RECALLABLE_EPISODES_QUERY,
+        group_id=group_id,
+        reference_time=reference_time,
+        source=source,
+        limit=limit,
+    )
+    return result[0] if result else []
 
 
 async def record_hit(scope: MemoryScope, edge_uuids: list[str]) -> None:
@@ -195,27 +254,22 @@ async def record_hit(scope: MemoryScope, edge_uuids: list[str]) -> None:
     )
 
 
-class _EnvelopeScope(BaseModel):
-    scope: str = GLOBAL_SCOPE
-
-
 def _statuses(include_tentative: bool) -> tuple[MemoryStatus, ...]:
     return _LIVE_STATUSES if include_tentative else (MemoryStatus.active,)
 
 
-def _retired_label(fact: EntityEdge) -> str:
-    status = fact_status(fact)
-    return status if status in _RETIRED_STATUSES else "expired"
-
-
-# graphiti's ``retrieve_episodes`` query with the redaction filter added.
+# graphiti's ``retrieve_episodes`` query (group, ``reference_time`` cut-off,
+# optional source, newest first) with the recallable-episode test added.
 # ``valid_at`` is stored as an ISO string, so the comparison is lexical, as
 # in graphiti.
-_RECENT_EPISODES_QUERY = """
+_RECALLABLE_EPISODES_QUERY = (
+    forgotten_facts_clause()
+    + f"""
 MATCH (e:Episodic)
 WHERE e.group_id = $group_id
   AND e.valid_at <= $reference_time
-  AND e.redacted_at IS NULL
+  AND ($source IS NULL OR e.source = $source)
+  AND {recallable_episode_predicate("e")}
 RETURN e.uuid AS uuid, e.name AS name, e.group_id AS group_id,
        e.created_at AS created_at, e.source AS source,
        e.source_description AS source_description, e.content AS content,
@@ -223,3 +277,4 @@ RETURN e.uuid AS uuid, e.name AS name, e.group_id AS group_id,
 ORDER BY e.valid_at DESC
 LIMIT $limit
 """
+)
