@@ -558,7 +558,18 @@ async def _sync_hired_routines(template_id: str, entry: RosterEntry) -> int:
     return refreshed
 
 
-async def _resolve_roster_preloads(roster: list[RosterEntry]) -> dict[str, str]:
+async def _resolve_roster_preloads(
+    roster: list[RosterEntry], *, skip_missing: bool = False
+) -> dict[str, str]:
+    """Active store listing version per preload slug.
+
+    A slug with no official listing fails the whole seed before any template
+    is touched, which is right where the marketplace is loaded (every
+    deploy). *skip_missing* is for a database that has no store assets at
+    all, a fresh self-hosted install or a preview: the roster still lands,
+    minus the workflows it cannot resolve, which ``_sync_preloads`` already
+    handles by leaving that template's preload rows alone.
+    """
     slugs = {preload["slug"] for entry in roster for preload in entry["preloads"]}
     resolved = {
         slug: version_id
@@ -566,11 +577,17 @@ async def _resolve_roster_preloads(roster: list[RosterEntry]) -> dict[str, str]:
         if (version_id := await _resolve_active_version_id(slug)) is not None
     }
     missing = sorted(slugs - resolved.keys())
-    if missing:
+    if missing and skip_missing:
+        logger.warning(
+            f"Skipping {len(missing)} roster preload(s) with no official store "
+            f"listing: {', '.join(missing)}. Load marketplace store assets and "
+            "publish again to install them."
+        )
+    elif missing:
         raise RuntimeError(
             f"Official creator '{OFFICIAL_CREATOR_USERNAME}' is missing roster "
             f"listings for: {', '.join(missing)}. Load marketplace store assets "
-            "before publishing the expert roster."
+            "before publishing the expert roster, or pass skip_missing_preloads."
         )
     return resolved
 
@@ -625,15 +642,19 @@ async def seed_roster(
     *,
     retired_keys: Iterable[str] = (),
     dry_run: bool = False,
+    skip_missing_preloads: bool = False,
 ) -> dict[str, list[str]]:
     """Upsert the roster templates with their preloads, routines and bundled
     skills, keyed by catalog key. Returns what changed, by key.
 
     Every preload and skill slug is resolved before any template is touched,
     so a bad roster fails whole. A dry run resolves and reports without
-    writing.
+    writing. *skip_missing_preloads* installs the roster without the store
+    workflows this database does not have (see ``_resolve_roster_preloads``).
     """
-    resolved_versions = await _resolve_roster_preloads(roster)
+    resolved_versions = await _resolve_roster_preloads(
+        roster, skip_missing=skip_missing_preloads
+    )
     resolved_skills = await _resolve_roster_skills(roster, dry_run=dry_run)
     summary: dict[str, list[str]] = {"created": [], "updated": [], "retired": []}
     for entry in roster:

@@ -384,3 +384,31 @@ async def test_publish_serialises_on_the_advisory_lock(tmp_path: Path, monkeypat
     await _publish(tmp_path)
 
     assert seen, "publish ran without holding an advisory lock"
+
+
+async def test_missing_preloads_fail_the_roster_unless_skipped(tmp_path: Path):
+    """A preload with no official store listing fails the roster before any
+    template is written. A fresh self-hosted database has none of those
+    listings, so the publisher can be told to land the roster without them."""
+    key = _key()
+    # A slug no store asset ever loads, so the outcome does not depend on
+    # what another suite left in the shared database.
+    workflow = f"no-such-workflow-{key}"
+    text = expert_yaml(key, ["cold-email"]).replace(
+        "preloads: []", f"preloads:\n- slug: {workflow}\n  cron: null"
+    )
+    write_catalog(tmp_path, {"cold-email": {}}, experts={key: text})
+
+    with pytest.raises(RuntimeError, match=workflow):
+        await _publish(tmp_path)
+    assert await prisma.models.Expert.prisma().count(where={"templateKey": key}) == 0
+
+    summary = await _publish(tmp_path, skip_missing_preloads=True)
+
+    assert summary.experts["created"] == [key]
+    template = await prisma.models.Expert.prisma().find_unique(
+        where={"templateKey": key}, include={"Workflows": True, "BundledSkills": True}
+    )
+    assert template is not None
+    assert template.Workflows == []
+    assert len(template.BundledSkills or []) == 1

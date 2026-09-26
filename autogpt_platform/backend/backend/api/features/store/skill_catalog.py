@@ -83,6 +83,7 @@ async def publish_catalog(
     revision: str,
     dry_run: bool = False,
     seed_experts: bool = True,
+    skip_missing_preloads: bool = False,
 ) -> PublishSummary:
     """Make the marketplace serve *loaded*. Idempotent: publishing the same
     release twice changes nothing the second time.
@@ -115,7 +116,10 @@ async def publish_catalog(
         summary.orphaned = await _orphaned(tx, loaded)
     if seed_experts:
         summary.experts = await expert_seed.seed_roster(
-            loaded.experts, retired_keys=loaded.retired_experts, dry_run=dry_run
+            loaded.experts,
+            retired_keys=loaded.retired_experts,
+            dry_run=dry_run,
+            skip_missing_preloads=skip_missing_preloads,
         )
     if not dry_run:
         summary.release_id = await _record_release(loaded, summary)

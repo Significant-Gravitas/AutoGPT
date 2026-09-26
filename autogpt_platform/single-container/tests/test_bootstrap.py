@@ -45,6 +45,18 @@ class InterruptedMigrationPolicyTest(unittest.TestCase):
             result.stdout.index("prisma migrate deploy"),
         )
 
+    def test_publishes_the_skills_catalog_after_migrating(self) -> None:
+        result = self._run("declare -f main; declare -f publish_skills_catalog")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(
+            result.stdout.index("migrate_database"),
+            result.stdout.index("publish_skills_catalog"),
+        )
+        self.assertIn("--skip-missing-preloads", result.stdout)
+        # Best-effort: an offline box must still boot.
+        self.assertNotIn("fatal", result.stdout.split("publish_skills_catalog ()")[1])
+
     def test_query_selects_only_unfinished_migrations(self) -> None:
         result = self._run("declare -f report_interrupted_migration")
 

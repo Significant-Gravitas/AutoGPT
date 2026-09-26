@@ -23,6 +23,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import httpx
+
 from backend.api.features.store.skill_catalog import (
     CatalogConflictError,
     publish_catalog,
@@ -59,6 +61,15 @@ def main() -> None:
         action="store_true",
         help="publish skills only; leave the expert roster templates alone",
     )
+    parser.add_argument(
+        "--skip-missing-preloads",
+        action="store_true",
+        help=(
+            "install the roster even when its preload workflows have no store "
+            "listing here (fresh self-hosted installs and previews); the "
+            "missing workflows are skipped, not the experts"
+        ),
+    )
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
@@ -71,7 +82,9 @@ async def _run(args: argparse.Namespace) -> int:
         try:
             source = _source(args, Path(tmp))
             loaded = load_release(source.root)
-        except CatalogError as exc:
+        except (CatalogError, httpx.HTTPError, OSError) as exc:
+            # A bad checkout, no route to GitHub, or an unreadable path: say
+            # so and stop before touching the database.
             print(f"error: {exc}", file=sys.stderr)
             return 2
         logger.info(
@@ -86,6 +99,7 @@ async def _run(args: argparse.Namespace) -> int:
                 revision=source.revision,
                 dry_run=args.dry_run,
                 seed_experts=not args.skip_experts,
+                skip_missing_preloads=args.skip_missing_preloads,
             )
         except CatalogConflictError as exc:
             print(f"error: {exc}", file=sys.stderr)
