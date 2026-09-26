@@ -1,6 +1,9 @@
 """Dev roster seed for Experts.
 
 Run with: poetry run python -m backend.api.features.experts.seed
+Deploys run it through ``deploy_seed`` (``poetry run seed-experts``), which
+checks the schema and the roster's workflows first and seeds the skills
+catalog before the roster.
 
 Upserts the thirty-two roster templates (Maria, Jules, Nadia, Remy, Mina,
 Theo, Quinn, Max, Frankie, Harper, Vera, Ellis, Devon, Riley, Jordan, Sasha,
