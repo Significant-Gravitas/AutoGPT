@@ -1,9 +1,11 @@
 """Dream-pass billing tests — pre-flight check + per-phase cost log.
 
-Covers the two billing seams the orchestrator uses:
+Covers the billing seams the orchestrator uses:
   * check_dream_budget — paywall, rate-limit cap, Redis brown-out
   * record_phase_cost — provider tag mapping, dream metadata,
     block_name, graph_exec_id correlation, no-op on empty phase
+  * priced_phase_usage — catalog list price, batch discount, unpriced
+    model left unknown
 """
 
 from __future__ import annotations
@@ -240,6 +242,22 @@ async def test_record_phase_cost_writes_dream_metadata():
     assert metadata["dream_pass_id"] == "pass-xyz"
     assert metadata["dream_phase"] == "consolidate"
     assert metadata["execution_path"] == "anthropic_batch"
+    assert metadata["discount_applied"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_record_phase_cost_records_no_discount_on_the_sync_path():
+    spy = AsyncMock()
+    with patch.object(billing_mod, "persist_and_record_usage", new=spy):
+        await billing_mod.record_phase_cost(
+            user_id="u1",
+            pass_id="pass-xyz",
+            phase_usage=PhaseUsage(
+                phase="consolidate", model="m", input_tokens=1, cost_usd=0.001
+            ),
+            execution_path="sync_baseline",
+        )
+    assert spy.await_args.kwargs["extra_metadata"]["discount_applied"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -273,3 +291,44 @@ async def test_record_phase_cost_logs_token_only_phase_even_without_cost():
             execution_path="sync_baseline",
         )
     spy.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# priced_phase_usage
+# ---------------------------------------------------------------------------
+
+
+def _sonnet_5_usage() -> PhaseUsage:
+    return PhaseUsage(
+        phase="consolidate",
+        model="anthropic/claude-sonnet-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        cache_read_tokens=200_000,
+        cache_creation_tokens=10_000,
+    )
+
+
+# Sonnet 5's catalog card: $3 in, $15 out, $0.30 cache read, $3.75 cache
+# write per Mtok, every bucket billed on its own.
+_SONNET_5_LIST_COST = 3.0 + 1.5 + 0.06 + 0.0375
+
+
+def test_priced_phase_usage_charges_the_list_price_on_the_sync_path():
+    priced = billing_mod.priced_phase_usage(_sonnet_5_usage(), "sync_baseline")
+    assert priced.cost_usd == pytest.approx(_SONNET_5_LIST_COST)
+    assert priced.model_dump(exclude={"cost_usd"}) == _sonnet_5_usage().model_dump(
+        exclude={"cost_usd"}
+    )
+
+
+def test_priced_phase_usage_halves_the_list_price_on_the_batch_path():
+    priced = billing_mod.priced_phase_usage(_sonnet_5_usage(), "anthropic_batch")
+    assert priced.cost_usd == pytest.approx(_SONNET_5_LIST_COST / 2)
+
+
+def test_priced_phase_usage_leaves_an_unpriced_model_unknown():
+    """No catalog price means an unknown cost, never a zero one: the row
+    logs tokens and charges nothing."""
+    usage = PhaseUsage(phase="recombine", model="vendor/no-such-model", input_tokens=10)
+    assert billing_mod.priced_phase_usage(usage, "sync_baseline").cost_usd is None

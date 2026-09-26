@@ -102,12 +102,18 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=64000,
                 price_tier=2,
+                # Anthropic list price $1/$5 per Mtok; cache read 0.1x input
+                # ($0.10), cache write (5m) 1.25x input ($1.25).
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=150.0,
                     output_credits_per_1m=750.0,
                     cache_read_credits_per_1m=15.0,
                     cache_creation_credits_per_1m=188.0,
+                    provider_input_usd_per_1m=1.00,
+                    provider_output_usd_per_1m=5.00,
+                    provider_cache_read_usd_per_1m=0.10,
+                    provider_cache_creation_usd_per_1m=1.25,
                 ),
             ),
             CatalogModel(
@@ -192,6 +198,8 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_json_output=True,
                 supports_reasoning=True,
+                # Anthropic list price $5/$25 per Mtok; cache read $0.50,
+                # cache write (5m) $6.25.
                 cost=CatalogModelCost(
                     run_credits=14,
                     input_credits_per_1m=750.0,
@@ -200,6 +208,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=938.0,
                     provider_input_usd_per_1m=5.00,
                     provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -225,6 +235,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=750.0,
                     provider_input_usd_per_1m=4.00,
                     provider_output_usd_per_1m=20.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=5.00,
                 ),
             ),
             CatalogModel(
@@ -286,6 +298,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=563.0,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
+                    provider_cache_read_usd_per_1m=0.30,
+                    provider_cache_creation_usd_per_1m=3.75,
                 ),
             ),
             CatalogModel(
@@ -1297,10 +1311,16 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1047576,
                 max_output_tokens=32768,
                 price_tier=1,
+                # OpenAI list price $0.40/$1.60 per Mtok, cached input $0.10;
+                # OpenAI bills nothing for writing the cache.
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=60.0,
                     output_credits_per_1m=240.0,
+                    provider_input_usd_per_1m=0.40,
+                    provider_output_usd_per_1m=1.60,
+                    provider_cache_read_usd_per_1m=0.10,
+                    provider_cache_creation_usd_per_1m=0.0,
                 ),
             ),
             CatalogModel(

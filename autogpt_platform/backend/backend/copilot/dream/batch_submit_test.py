@@ -2,29 +2,35 @@
 
 Covers the orphan-prevention guard (a paid provider batch must be
 cancelled when the BatchExecutor enqueue fails afterwards — otherwise it
-runs to completion with no callback to consume it) and the dream-lock
+runs to completion with no callback to consume it), the dream-lock
 ownership token riding on the persisted input bundle so the batch
-callback can compare-and-delete the lock hours later.
+callback can compare-and-delete the lock hours later, and what a phase
+submits: the native model spelling and a forced tool carrying its schema.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.dream.batch_submit import (
     INPUT_TTL_SECONDS,
     input_bundle_key,
     persist_input_bundle,
+    phase_models_for_config,
     read_input_bundle,
     read_lock_token,
     submit_phase,
 )
 from backend.copilot.dream.fetch import DreamInput
+from backend.copilot.dream.schemas import ConsolidationOutput
 from backend.copilot.graphiti.scope import DREAM_LOCK_KEY_PREFIX, MemoryScope
 from backend.util.llm.providers import BatchSubmissionRef
+from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
 
 
 def _bundle(expert_id: str | None = None) -> DreamInput:
@@ -246,3 +252,65 @@ async def test_read_lock_token_none_when_bundle_corrupted(fake_redis):
     string_store[input_bundle_key("p3")] = "not json {{{"
 
     assert await read_lock_token("p3") is None
+
+
+@pytest.mark.asyncio
+async def test_submitted_phase_tool_carries_the_phase_schema(fake_redis):
+    """The forced tool is built Anthropic-shaped (``input_schema``). The
+    provider's tool conversion read only ``parameters``, so every phase
+    went out with an empty schema and the model had to guess the shape."""
+    create = AsyncMock(return_value=SimpleNamespace(id="msgbatch_schema"))
+    client = SimpleNamespace(
+        messages=SimpleNamespace(batches=SimpleNamespace(create=create))
+    )
+    with patch(
+        "backend.util.llm.providers.anthropic.AsyncAnthropic", return_value=client
+    ), patch(
+        "backend.copilot.dream.batch_submit.enqueue_pending",
+        AsyncMock(return_value=None),
+    ):
+        await submit_phase(
+            user_id="u1",
+            pass_id="p1",
+            job_id="j1",
+            phase="consolidate",
+            phase_models={"consolidate": "claude-sonnet-5"},
+            api_key="sk-test",
+            input_bundle=_bundle(),
+        )
+
+    params = create.call_args.kwargs["requests"][0]["params"]
+    expected = pydantic_to_anthropic_tool(
+        ConsolidationOutput, tool_name="emit_consolidation", description=""
+    )["input_schema"]
+    (tool,) = params["tools"]
+    assert tool["name"] == "emit_consolidation"
+    assert tool["input_schema"]["properties"] == expected["properties"]
+    assert tool["input_schema"]["required"] == expected.get("required", [])
+    assert tool["input_schema"]["properties"]["facts"]["items"]["properties"]
+    assert params["tool_choice"] == force_tool_choice("emit_consolidation")
+    assert params["model"] == "claude-sonnet-5"
+
+
+def test_phase_models_take_the_native_anthropic_spelling():
+    """The batch path submits to Anthropic directly even when chat runs on
+    OpenRouter, so the OpenRouter spellings in config are converted."""
+    config = ChatConfig.model_construct(
+        fast_standard_model="anthropic/claude-sonnet-5",
+        fast_advanced_model="anthropic/claude-opus-5.5",
+    )
+    assert phase_models_for_config(config) == {
+        "consolidate": "claude-sonnet-5",
+        "recombine": "claude-opus-5-5",
+        "sanitize": "claude-sonnet-5",
+    }
+
+
+def test_phase_models_refuse_a_non_anthropic_model():
+    """Refused at submit rather than failing in the batch results hours later."""
+    config = ChatConfig.model_construct(
+        fast_standard_model="openai/gpt-4.1-mini",
+        fast_advanced_model="anthropic/claude-opus-5.5",
+    )
+    with pytest.raises(ValueError, match="requires an Anthropic model"):
+        phase_models_for_config(config)

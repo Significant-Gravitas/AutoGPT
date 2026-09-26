@@ -50,9 +50,8 @@ from .batch_submit import (
     read_lock_token,
     submit_phase,
 )
-from .billing import record_phase_cost
+from .billing import priced_phase_usage, record_phase_cost
 from .locks import release_dream_lock
-from .model_pricing import compute_cost_usd
 from .schemas import (
     DreamOperations,
     DreamOperationsSnapshot,
@@ -950,11 +949,10 @@ async def _log_all_phase_costs(
     whatever phases landed (matches the documented "partial pass
     charges for completed phases" semantic in ``dream/billing.py``).
 
-    Cost is computed via ``dream/model_pricing.compute_cost_usd`` —
-    the dream rate card — so the batch path uses the same native-
-    Anthropic token convention (additive cache buckets, not subtracted)
-    as the sync path. The ``execution_path="anthropic_batch"`` arg
-    applies the 50% batch discount there.
+    Each phase is priced by ``billing.priced_phase_usage`` from its
+    model's catalog price card (``backend/copilot/price_card.py``), the
+    card the sync path falls back to as well: Anthropic's additive cache
+    buckets, less the batch path's half-price discount.
 
     No-ops on per-phase failure — apply already wrote the user-facing
     memory operations; a cost-log blip shouldn't take that down.
@@ -984,14 +982,6 @@ async def _log_all_phase_costs(
             output_tokens = int(row.get("output_tokens") or 0)
             cache_read_tokens = int(row.get("cache_read_tokens") or 0)
             cache_creation_tokens = int(row.get("cache_creation_tokens") or 0)
-            cost_usd = compute_cost_usd(
-                model=phase_model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_creation_tokens=cache_creation_tokens,
-                execution_path="anthropic_batch",
-            )
             usage = PhaseUsage(
                 phase=phase,  # type: ignore[arg-type]
                 model=phase_model,
@@ -999,12 +989,11 @@ async def _log_all_phase_costs(
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_creation_tokens=cache_creation_tokens,
-                cost_usd=cost_usd,
             )
             await record_phase_cost(
                 user_id=user_id,
                 pass_id=pass_id,
-                phase_usage=usage,
+                phase_usage=priced_phase_usage(usage, "anthropic_batch"),
                 execution_path="anthropic_batch",
             )
         except Exception:

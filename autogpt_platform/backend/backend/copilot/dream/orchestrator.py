@@ -29,7 +29,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
-from .billing import check_dream_budget, record_phase_cost
+from .billing import check_dream_budget, priced_phase_usage, record_phase_cost
 from .fetch import (
     DreamInput,
     EpisodeRow,
@@ -50,7 +50,6 @@ from .locks import (
     DreamLockHeld,
     dream_lock,
 )
-from .model_pricing import compute_cost_usd, execution_path_discount
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
     MAX_PROPOSALS_PER_PASS,
@@ -59,7 +58,7 @@ from .prompts import (
     build_recombine_prompt,
     build_sanitize_prompt,
 )
-from .routing import ExecutionPath, resolve_dream_execution_path
+from .routing import ExecutionPath, batch_discount, resolve_dream_execution_path
 from .schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -581,34 +580,26 @@ async def _run_sanitize(
 def _phase_usage_from_completion(
     phase: str, completion_usage: CompletionUsage, execution_path: ExecutionPath
 ) -> PhaseUsage:
-    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, computing
-    cost from the rate card when the provider didn't supply one.
+    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, pricing it
+    from the catalog price card when the provider didn't.
 
-    Provider-supplied cost (OpenRouter ``usage.cost``) wins when
-    present; otherwise we fall back to ``model_pricing.compute_cost_usd``.
-    Either way the execution-path discount has been applied: OpenRouter
-    spot prices are already post-discount (they ARE the rate we paid),
-    and the rate-card fallback explicitly multiplies the discount in.
+    Provider-supplied cost (OpenRouter ``usage.cost``) wins when present:
+    it is what we were billed. Otherwise ``billing.priced_phase_usage``
+    prices the tokens at the model's catalog list rate, less the
+    execution path's batch discount.
     """
-    cost = completion_usage.cost_usd
-    if cost is None:
-        cost = compute_cost_usd(
-            model=completion_usage.model,
-            input_tokens=completion_usage.input_tokens,
-            output_tokens=completion_usage.output_tokens,
-            cache_read_tokens=completion_usage.cache_read_tokens,
-            cache_creation_tokens=completion_usage.cache_creation_tokens,
-            execution_path=execution_path,
-        )
-    return PhaseUsage(
+    usage = PhaseUsage(
         phase=phase,  # type: ignore[arg-type]
         model=completion_usage.model,
         input_tokens=completion_usage.input_tokens,
         output_tokens=completion_usage.output_tokens,
         cache_read_tokens=completion_usage.cache_read_tokens,
         cache_creation_tokens=completion_usage.cache_creation_tokens,
-        cost_usd=cost,
+        cost_usd=completion_usage.cost_usd,
     )
+    if usage.cost_usd is not None:
+        return usage
+    return priced_phase_usage(usage, execution_path)
 
 
 def _aggregate_usage(
@@ -632,7 +623,7 @@ def _aggregate_usage(
         total_cache_read_tokens=sum(p.cache_read_tokens for p in phases),
         total_cache_creation_tokens=sum(p.cache_creation_tokens for p in phases),
         total_cost_usd=total_cost,
-        discount_applied=execution_path_discount(execution_path),
+        discount_applied=batch_discount(execution_path),
     )
 
 
@@ -745,7 +736,7 @@ async def _execute_dream_pass_async(
     # batch path ship dark and roll out per-cohort. When on, phase 1 submits
     # via call_provider(execution_mode="batch"); the BatchExecutor polls and
     # dream's batch_callbacks chain phases 2 → 3 + apply when results land
-    # (~50% off the rate card, see model_pricing.execution_path_discount).
+    # (half the list price, see routing.batch_discount).
     #
     # ``transport_name`` short-circuits to sync_baseline for transports that
     # can't honour a batch path (local backends have no batch API;

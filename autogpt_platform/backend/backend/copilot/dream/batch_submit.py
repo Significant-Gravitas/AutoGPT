@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.model_normalize import normalize_model_for_anthropic
 from backend.executor.batch_executor import (
     INITIAL_POLL_DELAY_SECONDS,
     PendingEntry,
@@ -102,20 +103,6 @@ PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
 }
 
 
-def _to_native_anthropic_model(model: str) -> str:
-    """``anthropic/claude-opus-4.7`` → ``claude-opus-4-7``.
-
-    The batch path always submits to Anthropic's native Batches API
-    (direct key), regardless of the chat transport, so strip the
-    OpenRouter vendor prefix AND convert dots to hyphens — native
-    Anthropic rejects both the prefix and the dot-separated version,
-    and the dream rate card only carries the hyphenated id.
-    """
-    if "/" in model:
-        model = model.split("/", 1)[1]
-    return model.replace(".", "-")
-
-
 def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     """Per-phase model map (native-Anthropic form) for the batch path.
 
@@ -124,11 +111,17 @@ def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     thinking) for recombine. Built once at submit and threaded through
     the batch payload so the model used to *submit* a phase is the exact
     model used to *price* it — no single-model fan-out across phases.
+
+    The batch path always submits to Anthropic's native Batches API,
+    whatever the chat transport, so every model takes the native spelling
+    (``normalize_model_for_anthropic``), which raises for a non-Anthropic
+    model rather than submitting a batch that fails hours later.
     """
+    standard = normalize_model_for_anthropic(config.fast_standard_model)
     return {
-        "consolidate": _to_native_anthropic_model(config.fast_standard_model),
-        "recombine": _to_native_anthropic_model(config.fast_advanced_model),
-        "sanitize": _to_native_anthropic_model(config.fast_standard_model),
+        "consolidate": standard,
+        "recombine": normalize_model_for_anthropic(config.fast_advanced_model),
+        "sanitize": standard,
     }
 
 

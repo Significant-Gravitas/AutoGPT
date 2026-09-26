@@ -94,9 +94,9 @@ def _entry(
         "job_id": job_id,
         "phase": phase,
         "phase_models": {
-            "consolidate": "claude-sonnet-4-6",
-            "recombine": "claude-opus-4-7",
-            "sanitize": "claude-sonnet-4-6",
+            "consolidate": "claude-sonnet-5",
+            "recombine": "claude-opus-5-5",
+            "sanitize": "claude-sonnet-5",
         },
         "custom_ids": [custom_id],
         "phase_for_custom_id": {custom_id: phase},
@@ -393,7 +393,7 @@ class TestPhaseChaining:
         self, fake_redis
     ):
         """Phase 3 is terminal: apply runs, all three phases logged at
-        anthropic_batch path (50% discount in the rate card), JobStatus
+        anthropic_batch path (half the catalog list price), JobStatus
         flips to complete."""
         from backend.copilot.dream.batch_callbacks import _write_phase_to_state
         from backend.copilot.dream.batch_submit import persist_input_bundle
@@ -481,9 +481,20 @@ class TestPhaseChaining:
             call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].model
             for call in record_cost.await_args_list
         }
-        assert models_by_phase["consolidate"] == "claude-sonnet-4-6"
-        assert models_by_phase["recombine"] == "claude-opus-4-7"
-        assert models_by_phase["sanitize"] == "claude-sonnet-4-6"
+        assert models_by_phase["consolidate"] == "claude-sonnet-5"
+        assert models_by_phase["recombine"] == "claude-opus-5-5"
+        assert models_by_phase["sanitize"] == "claude-sonnet-5"
+        # ...and priced from that model's catalog card at half the list
+        # price: each ``_row`` carries 10 input + 20 output tokens.
+        costs_by_phase = {
+            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].cost_usd
+            for call in record_cost.await_args_list
+        }
+        sonnet_5_cost = (10 * 3.0 + 20 * 15.0) / 1_000_000 / 2
+        opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
+        assert costs_by_phase["consolidate"] == pytest.approx(sonnet_5_cost)
+        assert costs_by_phase["recombine"] == pytest.approx(opus_5_5_cost)
+        assert costs_by_phase["sanitize"] == pytest.approx(sonnet_5_cost)
 
     @pytest.mark.asyncio
     async def test_expert_terminal_result_applies_and_releases_in_expert_scope(

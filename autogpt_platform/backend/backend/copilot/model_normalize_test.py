@@ -3,7 +3,10 @@
 import pytest
 
 from .config import ChatConfig
-from .model_normalize import normalize_model_for_transport
+from .model_normalize import (
+    normalize_model_for_anthropic,
+    normalize_model_for_transport,
+)
 
 
 def _make_cfg(**kwargs) -> ChatConfig:
@@ -87,6 +90,16 @@ class TestNormalizeModelForTransport:
         with pytest.raises(ValueError, match="Anthropic model slug"):
             normalize_model_for_transport("gpt-4o-mini", cfg)
 
+    def test_direct_anthropic_error_names_the_transport(self):
+        cfg = _make_cfg(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        with pytest.raises(ValueError, match="'direct_anthropic' transport requires"):
+            normalize_model_for_transport("openai/gpt-4o-mini", cfg)
+
     def test_local_transport_passes_bare_slug_unchanged(self):
         # Local backends (Ollama, vLLM, …) use operator-chosen slugs
         # like ``llama3.1:8b-instruct-q4_K_M`` that don't fit the
@@ -102,3 +115,34 @@ class TestNormalizeModelForTransport:
             normalize_model_for_transport("llama3.1:8b-instruct-q4_K_M", cfg)
             == "llama3.1:8b-instruct-q4_K_M"
         )
+
+
+class TestNormalizeModelForAnthropic:
+    """The native-Anthropic rule on its own: no config read, so it holds
+    under the OpenRouter chat transport too (the dream batch path)."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("anthropic/claude-opus-5.5", "claude-opus-5-5"),
+            ("anthropic/claude-sonnet-5", "claude-sonnet-5"),
+            ("claude-sonnet-4.6", "claude-sonnet-4-6"),
+            ("claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"),
+        ],
+    )
+    def test_strips_prefix_and_dots(self, raw, expected):
+        assert normalize_model_for_anthropic(raw) == expected
+
+    def test_is_idempotent(self):
+        once = normalize_model_for_anthropic("anthropic/claude-opus-5.5")
+        assert normalize_model_for_anthropic(once) == once
+
+    def test_rejects_non_anthropic_vendor(self):
+        with pytest.raises(
+            ValueError, match="The native Anthropic API requires an Anthropic model"
+        ):
+            normalize_model_for_anthropic("openai/gpt-4.1-mini")
+
+    def test_rejects_bare_non_claude_slug(self):
+        with pytest.raises(ValueError, match="Anthropic model slug"):
+            normalize_model_for_anthropic("gpt-4o-mini")

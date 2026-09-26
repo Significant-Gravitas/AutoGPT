@@ -71,6 +71,11 @@ class CatalogModelCost(BaseModel):
     # Not the billing source; the credits fields above are what users pay.
     provider_input_usd_per_1m: float | None = Field(default=None, ge=0)
     provider_output_usd_per_1m: float | None = Field(default=None, ge=0)
+    # The provider's prompt-cache list prices (USD per 1M tokens), billed
+    # on top of the uncached input, never instead of it. Read by the
+    # background-inference price card (``backend/copilot/price_card.py``).
+    provider_cache_read_usd_per_1m: float | None = Field(default=None, ge=0)
+    provider_cache_creation_usd_per_1m: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _provider_usd_both_or_neither(self) -> "CatalogModelCost":
@@ -83,6 +88,24 @@ class CatalogModelCost(BaseModel):
             raise ValueError(
                 "provider_input_usd_per_1m and provider_output_usd_per_1m "
                 "must be set together"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _provider_cache_usd_needs_base_price(self) -> "CatalogModelCost":
+        # A cache price alone would price the cache buckets of a call while
+        # its plain input and output stayed unpriced.
+        has_cache_price = (
+            self.provider_cache_read_usd_per_1m is not None
+            or self.provider_cache_creation_usd_per_1m is not None
+        )
+        if has_cache_price and (
+            self.provider_input_usd_per_1m is None
+            or self.provider_output_usd_per_1m is None
+        ):
+            raise ValueError(
+                "provider cache USD prices require provider_input_usd_per_1m "
+                "and provider_output_usd_per_1m"
             )
         return self
 

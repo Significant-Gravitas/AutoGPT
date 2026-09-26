@@ -23,8 +23,10 @@ pinning a provider:
     subscription Anthropic, direct Anthropic, and OpenRouter all
     land at the same call site without per-transport branches here.
   * ``response_format={"type":"json_object"}`` is supported across
-    OpenAI, OpenRouter, and Ollama (forced JSON works on every
-    transport this dispatcher accepts).
+    OpenAI, OpenRouter, and Ollama. The native Anthropic API ignores
+    it, so on the ``anthropic`` provider the output comes from one
+    forced tool built from the response model instead, the way the
+    batch path gets it (``structured_output.py``).
   * The Anthropic batch path in the orchestrator (see
     ``plans/idempotent-launching-moth.md`` component E) layers in
     *below* this wrapper via ``call_provider(execution_mode="batch")``
@@ -39,8 +41,13 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
+from backend.copilot.transport_routing import (
+    ProviderRoutingKwargs,
+    routing_kwargs_for_chat_transport,
+)
 from backend.util.llm.providers import ProviderLiteral, ProviderResponse, call_provider
+
+from .structured_output import StructuredRequest, structured_payload, structured_request
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +102,12 @@ async def structured_completion(
     max_output_tokens: int = 4096,
     timeout_seconds: float | None = None,
 ) -> StructuredCompletion[T]:
-    """Call the LLM in JSON mode and parse into ``response_model``.
+    """Call the LLM for structured output and parse into ``response_model``.
+
+    JSON mode on every provider but the native Anthropic API, which gets
+    ``model`` in its native spelling and one forced tool built from
+    ``response_model`` (see ``structured_output.py``); the tool call's
+    arguments are parsed, or the message text when there is none.
 
     Returns a ``StructuredCompletion`` carrying both the parsed value
     and a ``CompletionUsage`` block so the dream orchestrator can roll
@@ -115,16 +127,64 @@ async def structured_completion(
     routing = routing_kwargs_for_chat_transport()
     if not routing.api_key and routing.provider != "ollama":
         raise DreamLLMError(_missing_api_key_message(routing.provider))
+    try:
+        request = structured_request(routing.provider, model, response_model)
+    except ValueError as exc:
+        raise DreamLLMError(str(exc)) from exc
 
+    response = await _call_provider_sync(
+        routing,
+        request,
+        messages=messages,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        timeout_seconds=timeout_seconds,
+    )
+    usage = _usage_from_provider_response(response, request.model)
+
+    content = structured_payload(response)
+    if not content:
+        raise DreamLLMError("LLM returned empty content", usage)
+
+    # Everything below this point is post-billing: the provider already
+    # charged for the tokens it sent, so every failure carries the usage out.
+    try:
+        payload = _parse_json_with_prose_fallback(content)
+        return StructuredCompletion(
+            value=response_model.model_validate(payload),
+            usage=usage,
+        )
+    except DreamLLMError as exc:
+        exc.usage = usage
+        raise
+    except ValidationError as exc:
+        raise DreamLLMError(
+            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
+        ) from exc
+
+
+async def _call_provider_sync(
+    routing: ProviderRoutingKwargs,
+    request: StructuredRequest,
+    *,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_output_tokens: int,
+    timeout_seconds: float | None,
+) -> ProviderResponse:
+    """One sync ``call_provider`` round trip; any failure is a ``DreamLLMError``
+    with no usage, since no response came back to bill."""
     try:
         response = await call_provider(
             provider=routing.provider,
-            model=model,
+            model=request.model,
             api_key=routing.api_key,
             messages=messages,
             max_tokens=max_output_tokens,
             temperature=temperature,
-            force_json_output=True,
+            force_json_output=request.force_json_output,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
             timeout_seconds=timeout_seconds,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
@@ -147,28 +207,7 @@ async def structured_completion(
             "structured_completion expected a sync ProviderResponse but got a "
             f"{type(response).__name__} — execution_mode must stay 'sync' here."
         )
-
-    usage = _usage_from_provider_response(response, model)
-
-    content = (response.content or "").strip()
-    if not content:
-        raise DreamLLMError("LLM returned empty content", usage)
-
-    # Everything below this point is post-billing: the provider already
-    # charged for the tokens it sent, so every failure carries the usage out.
-    try:
-        payload = _parse_json_with_prose_fallback(content)
-        return StructuredCompletion(
-            value=response_model.model_validate(payload),
-            usage=usage,
-        )
-    except DreamLLMError as exc:
-        exc.usage = usage
-        raise
-    except ValidationError as exc:
-        raise DreamLLMError(
-            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
-        ) from exc
+    return response
 
 
 def _usage_from_provider_response(
