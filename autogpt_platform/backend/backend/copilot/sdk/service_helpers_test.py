@@ -27,16 +27,16 @@ from backend.util.prompt import (
 from ..model import ChatMessage, ChatSession
 from ..model_router import ResolvedModel
 from ..transcript_builder import TranscriptBuilder
-from .compaction import CompactionStats
+from .compaction import CompactionStats, CompactionTracker
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _BARE_MESSAGE_TOKEN_FLOOR,
-    _RETRY_TARGET_TOKENS,
     ReducedContext,
     _build_query_message,
     _compaction_target_tokens,
     _compress_messages,
     _compression_model,
+    _context_limit_without_compaction,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
     _is_tool_only_message,
@@ -46,6 +46,7 @@ from .service import (
     _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _retry_reduced_context,
+    _retry_target_tokens,
     _TokenUsage,
     _will_compact,
 )
@@ -239,19 +240,19 @@ class TestReduceContext:
     async def test_drop_returns_target_tokens_attempt_1(self) -> None:
         ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=1)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[0]
+        assert ctx.target_tokens == _retry_target_tokens(None)[0]
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_2(self) -> None:
         ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=2)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[1]
+        assert ctx.target_tokens == _retry_target_tokens(None)[1]
 
     @pytest.mark.asyncio
     async def test_drop_clamps_attempt_beyond_limits(self) -> None:
         ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=99)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[-1]
+        assert ctx.target_tokens == _retry_target_tokens(None)[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -1314,10 +1315,15 @@ class TestCompactionTargetTokens:
         self, model, window, pct, expected
     ) -> None:
         with (
-            patch("backend.util.prompt.get_context_window", return_value=window),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=window,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=pct,
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = pct
             assert _compaction_target_tokens(model) == expected
 
     def test_moonshot_uses_cli_default_threshold(self) -> None:
@@ -1325,27 +1331,82 @@ class TestCompactionTargetTokens:
         # entirely), so our target should mirror the CLI's ~93% default
         # regardless of the configured pct value.
         with (
-            patch("backend.util.prompt.get_context_window", return_value=262_144),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=262_144,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=50,  # ignored for moonshot
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = 50  # ignored
             # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
             assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
 
-    def test_unknown_model_falls_back_to_default_threshold(self) -> None:
-        from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD
+    def test_unknown_model_uses_pin_not_flat_fallback(self) -> None:
+        # Regression: unknown models used to fall back to a flat 120K that
+        # had no relationship to the applied pin. Now the pin resolvers
+        # (which never return None) drive the target.
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=200_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=50,
+            ),
+        ):
+            assert _compaction_target_tokens("unknown/model") == 80_000
 
-        with patch("backend.util.prompt.get_context_window", return_value=None):
-            assert _compaction_target_tokens("unknown/model") == DEFAULT_TOKEN_THRESHOLD
+    def test_codex_route_reaches_both_resolvers(self) -> None:
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=272_000,
+            ) as mock_pin,
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=90,
+            ) as mock_pct,
+        ):
+            # min(272000*90//100, 272000-13000) - 20000 = 224800
+            assert _compaction_target_tokens("gpt-6-astra", codex_route=True) == 224_800
+        assert mock_pin.call_args.kwargs["codex_route"] is True
+        assert mock_pct.call_args.kwargs["codex_route"] is True
+
+    def test_codex_route_keeps_pct_trigger_for_moonshot_shaped_slug(self) -> None:
+        # ``build_sdk_env`` runs the 90% trigger on the Codex route even for a
+        # moonshot-shaped slug (it still runs on Codex infra there), so the
+        # retry target must use the same threshold, not the CLI default.
+        with (
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=272_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=90,
+            ),
+        ):
+            assert (
+                _compaction_target_tokens("moonshotai/kimi-k2.6", codex_route=True)
+                == 224_800
+            )
 
     def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
         # PCT=1 on a 50K window → CLI threshold = 500 → target would be
         # negative without the floor.
         with (
-            patch("backend.util.prompt.get_context_window", return_value=50_000),
-            patch("backend.copilot.sdk.service.config") as mock_cfg,
+            patch(
+                "backend.copilot.sdk.context_window.pinned_context_window",
+                return_value=50_000,
+            ),
+            patch(
+                "backend.copilot.sdk.context_window.autocompact_pct",
+                return_value=1,
+            ),
         ):
-            mock_cfg.claude_agent_autocompact_pct_override = 1
             assert _compaction_target_tokens("anthropic/foo") == 10_000
 
     def test_resolve_env_model_prefers_moonshot_fallback(self) -> None:
@@ -1401,7 +1462,7 @@ class TestCompactionTargetTokens:
             ),
             patch(
                 "backend.copilot.sdk.service._compaction_target_tokens",
-                side_effect=lambda m: 12345 if "kimi" in m else 99999,
+                side_effect=lambda m, **kwargs: 12345 if "kimi" in m else 99999,
             ),
         ):
             await _reduce_context(
@@ -1415,6 +1476,35 @@ class TestCompactionTargetTokens:
 
         # Target derived from the RUNTIME model, not the compactor model.
         assert captured["target_tokens"] == 12345
+
+    @pytest.mark.asyncio
+    async def test_reduce_context_forwards_codex_route(self) -> None:
+        """The retry target must resolve against the applied pin, so the
+        Codex route has to reach the target function."""
+        from backend.copilot.sdk.service import _reduce_context
+
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        with (
+            patch(
+                "backend.copilot.sdk.service.compact_transcript",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.sdk.service._compaction_target_tokens",
+                return_value=11,
+            ) as mock_target,
+        ):
+            await _reduce_context(
+                transcript,
+                False,
+                "sess",
+                "/tmp",
+                "[t]",
+                runtime_model="gpt-6-astra",
+                codex_route=True,
+            )
+        assert mock_target.call_args.kwargs["codex_route"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -1866,6 +1956,10 @@ def _limit(model: str = "gpt-4o") -> int:
     return get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
 
 
+# The budget the turn would hand ``_will_compact``; the tests size their
+# payloads against ``_limit`` so the two stay in step.
+_TARGET = get_compression_target("gpt-4o")
+
 _FILLER = "the quick brown fox jumps over the lazy dog "
 
 
@@ -1897,16 +1991,21 @@ def _band_history(
 
 class TestWillCompact:
     def test_false_for_short_history(self):
-        assert _will_compact([_msg("user", "hi")], "gpt-4o").expected is False
+        assert (
+            _will_compact(
+                [_msg("user", "hi")], "gpt-4o", target_tokens=_TARGET
+            ).expected
+            is False
+        )
 
     def test_false_for_empty_history(self):
-        assert _will_compact([], "gpt-4o").expected is False
+        assert _will_compact([], "gpt-4o", target_tokens=_TARGET).expected is False
 
     def test_true_when_history_exceeds_the_compression_target(self):
         # get_compression_target for gpt-4o is well under 1M tokens; a
         # megabyte of prose comfortably clears it.
         big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
-        forecast = _will_compact(big, "gpt-4o")
+        forecast = _will_compact(big, "gpt-4o", target_tokens=_TARGET)
         assert forecast.expected is True
         # The size rides along so the client can pace its progress curve
         # against the real size of the work instead of a constant floor.
@@ -1918,7 +2017,7 @@ class TestWillCompact:
             _msg("reasoning", "word " * 200_000),
             _msg("user", "hi"),
         ]
-        assert _will_compact(rows, "gpt-4o").expected is False
+        assert _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected is False
 
     def test_counts_tool_call_arguments(self):
         """Tool-call payloads must be counted, not silently dropped.
@@ -1946,7 +2045,7 @@ class TestWillCompact:
             ),
             _msg("user", "ship it"),
         ]
-        assert _will_compact(rows, "gpt-4o").expected is True
+        assert _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected is True
 
     def test_tokenizer_failure_degrades_to_a_false_negative(self):
         """The prediction is cosmetic; nothing it does may kill the stream.
@@ -1957,12 +2056,18 @@ class TestWillCompact:
         ``emit_pre_query_end`` covers with a self-contained row.
         """
         over_threshold = _band_history(1.1)
-        assert _will_compact(over_threshold, "gpt-4o").expected is True
+        assert (
+            _will_compact(over_threshold, "gpt-4o", target_tokens=_TARGET).expected
+            is True
+        )
         with patch(
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=RuntimeError("tiktoken download failed"),
         ):
-            assert _will_compact(over_threshold, "gpt-4o").expected is False
+            assert (
+                _will_compact(over_threshold, "gpt-4o", target_tokens=_TARGET).expected
+                is False
+            )
 
     def test_huge_history_skips_the_tokenizer_entirely(self):
         """The expensive path must not run where it costs the most.
@@ -1976,7 +2081,7 @@ class TestWillCompact:
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=AssertionError("tokenizer must not run on a huge history"),
         ):
-            forecast = _will_compact(huge, "gpt-4o")
+            forecast = _will_compact(huge, "gpt-4o", target_tokens=_TARGET)
         assert forecast.expected is True
         # No estimate was taken, but the client still needs something to pace
         # against, so the character count stands in for one.
@@ -1988,7 +2093,9 @@ class TestWillCompact:
             "backend.copilot.sdk.service.estimate_token_count",
             side_effect=AssertionError("tokenizer must not run on a tiny history"),
         ):
-            assert _will_compact(small, "gpt-4o").expected is False
+            assert (
+                _will_compact(small, "gpt-4o", target_tokens=_TARGET).expected is False
+            )
 
 
 def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
@@ -2010,7 +2117,7 @@ class TestExpectPreQueryCompaction:
         # Scenario A compresses nothing, so the pre-check must stay False
         # even though the cumulative history exceeds the target.
         messages = _big_history()
-        assert _will_compact(messages, "gpt-4o").expected is True
+        assert _will_compact(messages, "gpt-4o", target_tokens=_TARGET).expected is True
         assert (
             _expect_pre_query_compaction(
                 messages,
@@ -2018,6 +2125,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=len(messages) - 1,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2030,6 +2138,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=False,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2051,6 +2160,7 @@ class TestExpectPreQueryCompaction:
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
                 prior_messages=small_prior,
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2063,6 +2173,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=False,
                 transcript_msg_count=0,
                 session_msg_ceiling=1,
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2103,6 +2214,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2117,6 +2229,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2135,6 +2248,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2149,6 +2263,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=1,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2167,6 +2282,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=102,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is True
 
@@ -2182,6 +2298,7 @@ class TestExpectPreQueryCompaction:
                 use_resume=True,
                 transcript_msg_count=200,
                 session_msg_ceiling=len(messages),
+                target_tokens=_TARGET,
             )
         ).expected is False
 
@@ -2316,6 +2433,7 @@ class TestPredictorMatchesCompressor:
             transcript_msg_count=case["transcript_msg_count"],
             session_msg_ceiling=ceiling,
             prior_messages=case["prior_messages"],
+            target_tokens=_TARGET,
         )
 
         # Spy on the compressor: run the real pre-check against the slice
@@ -2339,7 +2457,7 @@ class TestPredictorMatchesCompressor:
         )
 
         would_compact = any(
-            _will_compact(slice_, _compression_model()).expected
+            _will_compact(slice_, _compression_model(), target_tokens=_TARGET).expected
             for slice_ in compressed_slices
         )
 
@@ -2381,7 +2499,10 @@ class TestWillCompactThresholdMatchesCompressContext:
         result = await compress_context(payload, model="gpt-4o", client=None)
 
         assert result.was_compacted is expected
-        assert _will_compact(rows, "gpt-4o").expected is result.was_compacted
+        assert (
+            _will_compact(rows, "gpt-4o", target_tokens=_TARGET).expected
+            is result.was_compacted
+        )
 
     @pytest.mark.asyncio
     async def test_threshold_reads_the_compressors_own_constants(self):
@@ -2574,6 +2695,7 @@ class TestSeedTranscript:
             0,
             "[test]",
             ceiling,
+            seed_target=30_000,
         )
 
         assert [(m.role, m.content) for m in seen[0]] == [
@@ -2610,3 +2732,43 @@ class TestCompressionFailureIsReportedAsADrop:
         assert stats.dropped is True
         assert stats.messages_before == 3
         assert stats.tokens_after is None
+
+
+class TestContextLimitWithoutCompaction:
+    def test_first_attempt_with_nothing_attempted(self):
+        alarm = _context_limit_without_compaction(0, CompactionTracker())
+        assert alarm is not None
+        assert "before any compaction was attempted" in alarm
+
+    @pytest.mark.asyncio
+    async def test_first_attempt_after_a_cycle_that_did_not_land(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(tokens_before=191_536, messages_before=92),
+            after_source="no_summary_line",
+        )
+        alarm = _context_limit_without_compaction(0, tracker)
+        assert alarm is not None
+        assert "1 compaction attempt(s) and none landed" in alarm
+        assert "sdk_internal" in alarm
+
+    @pytest.mark.asyncio
+    async def test_quiet_once_a_compaction_landed(self):
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        await tracker.emit_end_if_ready(
+            ChatSession.new(user_id="test-user", dry_run=False),
+            CompactionStats(
+                tokens_before=191_536,
+                tokens_after=31_000,
+                messages_before=92,
+                messages_after=12,
+            ),
+            after_source="read",
+        )
+        assert _context_limit_without_compaction(0, tracker) is None
+
+    def test_quiet_on_our_own_retries(self):
+        assert _context_limit_without_compaction(1, CompactionTracker()) is None

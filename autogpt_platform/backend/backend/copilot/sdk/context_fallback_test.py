@@ -575,10 +575,12 @@ class TestCompressMessages:
 
 
 class TestRetryTargetTokens:
-    def test_first_retry_uses_first_slot(self):
-        from backend.copilot.sdk.service import _RETRY_TARGET_TOKENS
+    def test_first_retry_is_a_quarter_of_the_pinned_window(self):
+        from backend.copilot.sdk.context_window import pinned_context_window
+        from backend.copilot.sdk.service import _retry_target_tokens, config
 
-        assert _RETRY_TARGET_TOKENS[0] == 50_000
+        window = pinned_context_window(config, None, codex_route=False)
+        assert _retry_target_tokens(None)[0] == window // 4
 
     def test_second_retry_lowered_to_bare_message_floor(self):
         """The second retry's target must be at or below the bare-message
@@ -589,15 +591,20 @@ class TestRetryTargetTokens:
         for SENTRY-1207's persistent ``Prompt is too long``)."""
         from backend.copilot.sdk.service import (
             _BARE_MESSAGE_TOKEN_FLOOR,
-            _RETRY_TARGET_TOKENS,
+            _retry_target_tokens,
         )
 
-        assert _RETRY_TARGET_TOKENS[1] <= _BARE_MESSAGE_TOKEN_FLOOR
+        assert _retry_target_tokens(None)[1] <= _BARE_MESSAGE_TOKEN_FLOOR
+        # ...on every route, not just the 200K one.
+        assert _retry_target_tokens("gpt-6-astra", codex_route=True)[1] <= (
+            _BARE_MESSAGE_TOKEN_FLOOR
+        )
 
     def test_second_slot_smaller_than_first(self):
-        from backend.copilot.sdk.service import _RETRY_TARGET_TOKENS
+        from backend.copilot.sdk.service import _retry_target_tokens
 
-        assert _RETRY_TARGET_TOKENS[1] < _RETRY_TARGET_TOKENS[0]
+        first, last = _retry_target_tokens(None)
+        assert last < first
 
 
 # ---------------------------------------------------------------------------

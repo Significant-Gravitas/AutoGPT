@@ -51,6 +51,12 @@ _ENV_VARS_TO_CLEAR = (
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _ENV_VARS_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
+    # pydantic-settings also reads backend/.env directly (``env_file``), so
+    # scrubbing the process env is not enough: a local-flavored developer
+    # file (CHAT_USE_LOCAL=true, Ollama key/URL, llama fast models) would
+    # otherwise leak in beneath it. Disable the file source so tests see
+    # field defaults plus their explicit constructor values only.
+    monkeypatch.setitem(ChatConfig.model_config, "env_file", None)
 
 
 def _make_direct_safe_config(**kwargs) -> ChatConfig:
@@ -434,6 +440,7 @@ class TestTransportProfile:
         assert p.cost_log_provider == "ollama"
         assert p.dispatch_provider == "ollama"
         assert p.supports_flex_tier is False
+        assert p.sdk_context_window == 200_000
 
     def test_openrouter_profile_shape(self):
         cfg = ChatConfig(
@@ -451,6 +458,7 @@ class TestTransportProfile:
         assert p.cost_log_provider == "open_router"
         assert p.dispatch_provider == "open_router"
         assert p.supports_flex_tier is True
+        assert p.sdk_context_window == 200_000
 
     def test_subscription_profile_shape(self):
         cfg = _make_direct_safe_config(use_claude_code_subscription=True)
@@ -463,6 +471,7 @@ class TestTransportProfile:
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
+        assert p.sdk_context_window == 200_000
 
     def test_direct_anthropic_profile_shape(self):
         cfg = _make_direct_safe_config(
@@ -475,6 +484,7 @@ class TestTransportProfile:
         assert p.cost_log_provider == "anthropic"
         assert p.dispatch_provider == "anthropic"
         assert p.supports_flex_tier is False
+        assert p.sdk_context_window == 1_000_000
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by

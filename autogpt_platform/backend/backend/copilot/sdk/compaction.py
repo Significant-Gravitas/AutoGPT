@@ -11,6 +11,7 @@ persistence, and the ``CompactionTracker`` state machine.
 import asyncio
 import json
 import logging
+import os
 import uuid
 from collections import Counter, deque
 from collections.abc import Iterable
@@ -19,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.copilot.sdk.langfuse_events import emit_compaction_event
 from backend.util.prompt import estimate_token_count_str
 
 from ..constants import (
@@ -375,7 +377,18 @@ class CompactionTracker:
         self._pending_transcript_paths: deque[str] = deque()
         self._attempted_sources: list[str] = []
         self._completed_sources: list[str] = []
+        # SDK-internal cycles that ended without a readable summary, by
+        # ``after_source``.  A cycle *ends* when the next message arrives
+        # whether or not the CLI wrote anything, so ``completed_count``
+        # alone cannot tell a compaction that landed from one that did not.
+        self._failed_cycle_sources: list[str] = []
         self._pre_query_tool_call_id: str = ""
+        # The turn's Langfuse trace id, set by the service once the turn
+        # span is open so every compaction event is pinned to that trace
+        # instead of whatever span happens to be current when a cycle
+        # closes. ``None`` (span never opened) falls back to the ambient
+        # context inside ``emit_compaction_event``.
+        self.trace_id: str | None = None
 
     @property
     def attempt_count(self) -> int:
@@ -392,6 +405,16 @@ class CompactionTracker:
     @property
     def completed_sources(self) -> tuple[str, ...]:
         return tuple(self._completed_sources)
+
+    @property
+    def failed_cycle_count(self) -> int:
+        """SDK-internal cycles that ended with no readable summary."""
+        return len(self._failed_cycle_sources)
+
+    @property
+    def landed_count(self) -> int:
+        """Compactions that actually reduced the context."""
+        return self.completed_count - self.failed_cycle_count
 
     def get_observability_metadata(self) -> dict[str, Any]:
         if not self._attempted_sources and not self._completed_sources:
@@ -471,6 +494,13 @@ class CompactionTracker:
         if stats is None or not stats.dropped:
             self._completed_sources.append("pre_query")
         _persist(session, tc_id, output)
+        emit_compaction_event(
+            path="pre_query",
+            stats=stats,
+            after_source="compress_result",
+            trace_id=self.trace_id,
+            log_prefix="[SDK]",
+        )
         events.append(_progress("rebuilding", stats))
         return events
 
@@ -556,7 +586,11 @@ class CompactionTracker:
         return []
 
     async def emit_end_if_ready(
-        self, session: ChatSession, stats: "CompactionStats | None" = None
+        self,
+        session: ChatSession,
+        stats: "CompactionStats | None" = None,
+        *,
+        after_source: str | None = None,
     ) -> CompactionResult:
         """If compaction is in progress, emit end events and persist.
 
@@ -566,7 +600,10 @@ class CompactionTracker:
 
         *stats* is the measured before/after (see
         :func:`sdk_compaction_stats`); it lands in the persisted output and
-        rides the ``rebuilding`` phase.
+        rides the ``rebuilding`` phase. *after_source* names how the
+        post-compaction read resolved (see
+        :func:`transcript.read_compacted_entries_detailed`) and rides the
+        Langfuse event so a missing after-count stays diagnosable.
         """
         # Yield so pending hook tasks can set compact_start
         await asyncio.sleep(0)
@@ -596,7 +633,30 @@ class CompactionTracker:
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._completed_sources.append("sdk_internal")
+        if after_source is not None and after_source != "read":
+            # The hook fired, but the CLI's transcript holds no summary we
+            # can read: the context is unchanged, the trigger fires again
+            # at the next boundary, and the turn ends "Prompt is too long"
+            # once it reaches the ceiling.  ERROR so it reaches Sentry —
+            # on dev this reading was the cascade's only fingerprint.
+            self._failed_cycle_sources.append(after_source)
+            logger.error(
+                "[SDK] CLI compaction wrote no readable summary "
+                "(after_source=%s, tokens_before=%s, transcript=%s, "
+                "failed_cycles=%d)",
+                after_source,
+                stats.tokens_before if stats is not None else None,
+                os.path.basename(transcript_path) if transcript_path else "",
+                len(self._failed_cycle_sources),
+            )
         _persist(session, persist_id, output)
+        emit_compaction_event(
+            path="sdk_internal",
+            stats=stats,
+            after_source=after_source,
+            trace_id=self.trace_id,
+            log_prefix="[SDK]",
+        )
         done_events.append(_progress("rebuilding", stats))
         return CompactionResult(
             events=done_events, just_ended=True, transcript_path=transcript_path

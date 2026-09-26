@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk.context_window import CodexEngineWindow
 
 # ---------------------------------------------------------------------------
 # Helpers — build a ChatConfig with explicit field values so tests don't
@@ -22,14 +23,24 @@ def _make_config(**overrides) -> ChatConfig:
     defaults = {
         "use_claude_code_subscription": False,
         "use_openrouter": False,
+        # Explicit: init kwargs beat both process env and the .env file,
+        # so a local-flavored developer .env can't flip the transport.
+        "use_local": False,
         "api_key": None,
         "base_url": None,
+        # Fast tiers pinned like the thinking tiers: the direct-Anthropic
+        # vendor validator rejects non-anthropic slugs, and a
+        # local-flavored .env would otherwise leak llama slugs in here.
+        "fast_standard_model": "anthropic/claude-sonnet-5",
+        "fast_advanced_model": "anthropic/claude-opus-4-8",
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
         # Pinned: both are settable from the environment, and a developer's
         # .env otherwise rewrites what build_sdk_env() is asked to emit.
         "claude_agent_autocompact_pct_override": 50,
-        "claude_agent_context_window": 200_000,
+        # Unset so the route's engine default applies; tests for the
+        # explicit override pass a value via overrides.
+        "claude_agent_context_window": None,
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
@@ -705,3 +716,298 @@ class TestContextWindowPin:
             _make_config(claude_agent_context_window=99_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
+
+    def test_window_defaults_to_none(self):
+        """Unset means the route's engine default, not 200K everywhere."""
+        assert _make_config().claude_agent_context_window is None
+
+    def test_direct_anthropic_defaults_to_claude_engine_window(self):
+        """The operator-keyed Anthropic route runs Claude models: 1M, no gate."""
+        cfg = _make_config(use_openrouter=False)
+        assert cfg.transport.name == "direct_anthropic"
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "1000000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_subscription_pins_200k_to_protect_the_plan_limit(self, _mock_validate):
+        """Subscription turns draw on the subscriber's own plan: a 700K chat
+        resends 700K every turn, so the route is held to 200K with the 1M
+        gate set even though the engine would run 1M."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        assert cfg.transport.name == "subscription"
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
+        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+
+    def test_openrouter_platform_default_stays_200k(self):
+        """The platform route keeps today's behaviour: 200K pin, gate set."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        assert cfg.transport.name == "openrouter"
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
+        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+
+    def test_openrouter_moonshot_default_capped_at_sku_window(self):
+        """Kimi K2.5 really serves 262,144 — below the platform pin, so the
+        lower of the two (the pin) applies and the gate stays set."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model="moonshotai/kimi-k2.5",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="moonshotai/kimi-k2.5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
+        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+
+    @pytest.mark.parametrize(
+        "config_overrides, env_kwargs, model",
+        [
+            ({"use_openrouter": False}, {}, "anthropic/claude-sonnet-5"),
+            (
+                {"use_claude_code_subscription": True},
+                {},
+                "anthropic/claude-sonnet-5",
+            ),
+            (
+                {
+                    "use_openrouter": True,
+                    "api_key": "sk-or-test",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                {},
+                "anthropic/claude-sonnet-5",
+            ),
+            (
+                {
+                    "use_openrouter": True,
+                    "api_key": "sk-or-test",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                {
+                    "codex_gateway_url": "http://127.0.0.1:9",
+                    "codex_gateway_token": "codex-test-token",
+                },
+                "gpt-6-astra",
+            ),
+        ],
+    )
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_explicit_window_wins_on_every_route(
+        self, _mock_validate, config_overrides, env_kwargs, model
+    ):
+        """An operator pin beats every engine default, Codex included."""
+        cfg = _make_config(claude_agent_context_window=300_000, **config_overrides)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model, **env_kwargs)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "300000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+
+
+class TestCodexRouteContext:
+    """The Codex route mirrors the Codex engine: 272K window, 90% trigger.
+
+    The gateway speaks for the connected account, so the deployment-wide
+    profile — including ``local`` — is bypassed, not read.
+    """
+
+    _GATEWAY_KWARGS = {
+        "codex_gateway_url": "http://127.0.0.1:9",
+        "codex_gateway_token": "codex-test-token",
+    }
+
+    def _codex_config(self, **overrides):
+        defaults = {
+            "use_openrouter": True,
+            "api_key": "sk-or-test",
+            "base_url": "https://openrouter.ai/api/v1",
+        }
+        defaults.update(overrides)
+        return _make_config(**defaults)
+
+    def test_codex_route_pins_the_account_window(self):
+        """When the account advertises a window for the routed model, the
+        pin, the ceiling and the trigger all follow it."""
+        cfg = self._codex_config()
+        engine = CodexEngineWindow(
+            context_window=400_000, auto_compact_token_limit=200_000
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                model="gpt-6-astra", codex_engine=engine, **self._GATEWAY_KWARGS
+            )
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "400000"
+        assert result.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS") == "400000"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-sol"])
+    def test_codex_route_pins_engine_default(self, model):
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model, **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
+    def test_codex_route_wins_over_local_profile(self):
+        """The gateway speaks Anthropic's wire protocol even when the
+        configured transport doesn't — the local profile is bypassed."""
+        cfg = _make_config(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://host:11434/v1",
+        )
+        assert cfg.transport.name == "local"
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="gpt-5.6-terra", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
+    def test_codex_unlisted_slug_falls_back_to_engine_default(self):
+        """Unknown slugs take 272K too — the same fallback codex-rs uses."""
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="gpt-9.9-zzz", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
+    def test_codex_moonshot_slug_still_gets_engine_trigger(self):
+        """A moonshot-shaped slug over the gateway runs on Codex infra, not
+        the Moonshot endpoint — the Moonshot skip must not apply."""
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="moonshotai/kimi-k2.5", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
+
+    def test_codex_zero_pct_still_omits_override(self):
+        """The 0 kill-switch omits the trigger var on the Codex route too."""
+        cfg = self._codex_config(claude_agent_autocompact_pct_override=0)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="gpt-6-astra", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "272000"
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+    def test_codex_route_lifts_the_model_window_assumption(self):
+        """The pin is clamped to the window the CLI assumes for an
+        unrecognised slug, so it only bites once MAX_CONTEXT_TOKENS moves
+        that assumption.  Measured on CLI 2.1.274: without this, pins of
+        200K/272K/1M produce identical compaction schedules."""
+        cfg = self._codex_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="gpt-6-astra", **self._GATEWAY_KWARGS)
+
+        assert result.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS") == "272000"
+        assert result["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == (
+            result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"]
+        )
+
+    def test_non_codex_routes_leave_the_model_table_alone(self):
+        """Off the Codex route the CLI knows the model, and raising its
+        ceiling would push the client-side length guard past what the
+        provider accepts — a provider 400 mid-turn instead of a clean
+        local refusal."""
+        with patch("backend.copilot.sdk.env.config", _make_config()):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                session_id="s1", user_id="u1", sdk_cwd="/tmp", model="claude-opus-4-8"
+            )
+
+        assert "CLAUDE_CODE_MAX_CONTEXT_TOKENS" not in result
+
+
+class TestDescribeSdkContext:
+    def test_codex_route_summary(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="codex",
+            model="gpt-6-astra",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "272000",
+                "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "90",
+            },
+        )
+        assert line == (
+            "route=codex model=gpt-6-astra window=272000 "
+            "trigger_pct=90 disable_1m_context=false"
+        )
+
+    def test_platform_route_with_kill_switch_and_default_trigger(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="openrouter",
+            model="anthropic/claude-sonnet-4-6",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+                "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+            },
+        )
+        assert line == (
+            "route=openrouter model=anthropic/claude-sonnet-4-6 window=200000 "
+            "trigger_pct=<cli-default> disable_1m_context=true"
+        )
+
+    def test_never_leaks_secrets(self):
+        from backend.copilot.sdk.env import describe_sdk_context
+
+        line = describe_sdk_context(
+            route="openrouter",
+            model="m",
+            sdk_env={
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+                "ANTHROPIC_AUTH_TOKEN": "sk-or-very-secret",
+                "ANTHROPIC_CUSTOM_HEADERS": "x-user-id: u-secret",
+            },
+        )
+        assert "sk-or-very-secret" not in line
+        assert "u-secret" not in line

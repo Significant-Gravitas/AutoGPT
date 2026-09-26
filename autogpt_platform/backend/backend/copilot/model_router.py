@@ -85,6 +85,10 @@ class ResolvedCodexModel(NamedTuple):
     model: str
     effort: CodexReasoningEffort | None
     source: CodexRoutingSource
+    # The account's advertised window for ``model``, when the payload carried
+    # one; the SDK env pins to it instead of the engine constant.
+    context_window: int | None = None
+    auto_compact_token_limit: int | None = None
 
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
@@ -428,6 +432,8 @@ def _resolved_codex_model(
         model.model,
         _codex_effort(model, mode, tier),
         source,
+        model.context_window,
+        model.auto_compact_token_limit,
     )
 
 

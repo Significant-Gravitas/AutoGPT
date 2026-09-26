@@ -59,6 +59,8 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.env import describe_sdk_context
+from backend.copilot.sdk.langfuse_events import emit_turn_usage_event
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
@@ -71,12 +73,16 @@ from backend.util.exceptions import NotFoundError
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.prompt import (
-    DEFAULT_COMPRESSION_RESERVE,
-    estimate_token_count,
-    get_compression_target,
-)
+from backend.util.prompt import DEFAULT_COMPRESSION_RESERVE, estimate_token_count
 from backend.util.settings import Settings
+
+from backend.copilot.sdk.context_window import (
+    BARE_MESSAGE_TOKEN_FLOOR,
+    CodexEngineWindow,
+    compaction_target_tokens,
+    retry_target_tokens,
+    seed_target_tokens,
+)
 
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
@@ -197,6 +203,7 @@ from ..transcript import (
     next_uncovered_sequence,
     projects_base,
     read_compacted_entries,
+    read_compacted_entries_detailed,
     strip_for_upload,
     upload_transcript,
     validate_transcript,
@@ -365,21 +372,25 @@ async def _open_sdk_compaction_row(
 
 async def _measure_sdk_compaction(
     ctx: "_StreamContext", state: "_RetryState"
-) -> tuple[bool, list[dict] | None, CompactionStats | None]:
+) -> tuple[bool, list[dict] | None, CompactionStats | None, str | None]:
     """Read what the CLI kept after compacting and size the row's payoff.
 
     Runs before the row closes so the settled output carries the numbers.
-    Returns ``(measured, compacted, stats)``: ``measured`` is False when no
-    cycle was pending, and the compacted entries are handed back so the
-    caller can sync the transcript builder without a second read.
+    Returns ``(measured, compacted, stats, after_source)``: ``measured``
+    is False when no cycle was pending, and the compacted entries are
+    handed back so the caller can sync the transcript builder without a
+    second read. ``after_source`` names how the post-compaction read
+    resolved so a missing after-count stays diagnosable downstream.
     """
     # Let a PreCompact hook that raced this message land before we look —
     # ``emit_end_if_ready`` yields for the same reason.
     await asyncio.sleep(0)
     path = ctx.compaction.pending_transcript_path
     if path is None:
-        return False, None, None
-    compacted = await asyncio.to_thread(read_compacted_entries, path)
+        return False, None, None, None
+    compacted, after_source = await asyncio.to_thread(
+        read_compacted_entries_detailed, path
+    )
     stats = await asyncio.to_thread(
         sdk_compaction_stats,
         state.transcript_builder.entries_as_dicts(),
@@ -387,7 +398,7 @@ async def _measure_sdk_compaction(
         model=_compression_model(),
         start=ctx.compaction.start_stats,
     )
-    return True, compacted, stats
+    return True, compacted, stats, after_source
 
 
 async def _consume_sdk_until_done(
@@ -710,8 +721,12 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
-        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
+        measured, compacted, end_stats, after_source = await _measure_sdk_compaction(
+            ctx, state
+        )
+        compact_result = await ctx.compaction.emit_end_if_ready(
+            ctx.session, end_stats, after_source=after_source
+        )
         if compact_result.events:
             # Compaction events end with StreamFinishStep; open blocks must
             # close before it (see ``SDKResponseAdapter.end_open_blocks``).
@@ -1244,6 +1259,29 @@ def _friendly_error_text(raw: str) -> str:
     return f"SDK stream error: {raw}"
 
 
+def _context_limit_without_compaction(
+    attempt: int, compaction: "CompactionTracker"
+) -> str | None:
+    """Why a first-attempt context-limit error is alarming, or None.
+
+    The CLI is meant to compact well before the ceiling.  Reaching it on
+    the first attempt with nothing landed means one of two things, and the
+    message says which: the trigger fired but no summary was ever written
+    (something answered its compaction request wrongly), or it never fired
+    at all (the pin sits past the model's real window, or the threshold is
+    above the ceiling).  Later attempts are our own retries and expected.
+    """
+    if attempt != 0 or compaction.landed_count > 0:
+        return None
+    if compaction.attempt_count > 0:
+        return (
+            f"context limit reached after {compaction.attempt_count} compaction "
+            f"attempt(s) and none landed "
+            f"({', '.join(compaction.attempt_sources)})"
+        )
+    return "context limit reached before any compaction was attempted"
+
+
 def _is_prompt_too_long(err: BaseException) -> bool:
     """Return True if *err* indicates the prompt exceeds the model's limit.
 
@@ -1298,10 +1336,10 @@ class ReducedContext(NamedTuple):
     resume_file: str | None
     transcript_lost: bool
     tried_compaction: bool
-    # Token budget for history compression on the DB-message fallback path.
-    # None means "use model-aware default".  Halved on each retry so
-    # compress_context applies progressively more aggressive reduction
-    # (LLM summarize → content truncate → middle-out delete → first/last trim).
+    # Token budget for history compression on the DB-message fallback path,
+    # from ``retry_target_tokens``; None until a retry has set it.  Smaller
+    # each retry so compress_context applies progressively more aggressive
+    # reduction (LLM summarize → truncate → middle-out delete → trim).
     target_tokens: int | None = None
 
 
@@ -1417,61 +1455,54 @@ class _StreamContext:
     tool_display: SDKToolDisplayBridge | None = None
 
 
-# Per-retry token budgets for the no-transcript (use_resume=False) path.
-# When there is no CLI native session to --resume, context is built from DB
-# messages via _format_conversation_context.  For large sessions this text
-# can exceed the model context window; each retry halves the token budget so
-# compress_context applies progressively more aggressive reduction:
-#   LLM summarize → content truncate → middle-out delete → first/last trim.
-# Index 0 = first retry, 1 = second retry; last value applies beyond that.
-_RETRY_TARGET_TOKENS: tuple[int, ...] = (50_000, 5_000)
-
 # Below this token budget the model context is so tight that injecting any
 # conversation history would likely exceed the limit regardless of content.
 # _build_query_message returns the bare message when target_tokens falls to
 # or below this floor, giving the user a response instead of a hard error.
-_BARE_MESSAGE_TOKEN_FLOOR: int = 5_000
-
-# Tight token budget for seeding the transcript builder on turns where no
-# CLI native session exists.  Kept below _RETRY_TARGET_TOKENS[0] so the
-# seeded JSONL upload stays compact and future gap injections are small.
-_SEED_TARGET_TOKENS: int = 30_000
-
-# Headroom subtracted from the CLI's autocompact threshold when sizing our
-# own retry-path compaction target.  Without this gap the post-compact
-# context would land just under the CLI's threshold and the next assistant
-# message would tip it back over → CLI immediately re-compacts → cascade.
-_COMPACTION_HEADROOM_TOKENS: int = 20_000
+# The retry budgets end on this value on purpose (``retry_target_tokens``).
+_BARE_MESSAGE_TOKEN_FLOOR: int = BARE_MESSAGE_TOKEN_FLOOR
 
 
-def _compaction_target_tokens(model: str) -> int:
-    """Compaction target consistent with the CLI's autocompact threshold.
+def _compaction_target_tokens(
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
+) -> int:
+    """Output budget for the copilot's own compressors on this turn.
 
-    Mirrors the bundled CLI's formula for autocompact:
-    ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
-    so post-compaction context sits comfortably below the CLI's trigger and
-    a follow-up assistant message doesn't immediately re-trigger.
-    Floors at 10K to preserve at least some history budget.
-
-    Deliberately a *different* window from the one the CLI subprocess is
-    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
-    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
-    this path feeds our own estimate-based compressor, which needs that
-    margin.  The 20K headroom absorbs the max-output reserve the CLI also
-    subtracts and this formula does not.
+    Window and pct come from the SAME resolvers that pin the subprocess
+    (``sdk/context_window.py``), never from the catalog: a target derived
+    from a different window than the pin is a second threshold authority
+    and will either fire early forever or land over the pin.
     """
-    from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
+    return compaction_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
 
-    window = get_context_window(model)
-    if window is None:
-        return DEFAULT_TOKEN_THRESHOLD
-    pct = config.claude_agent_autocompact_pct_override
-    cli_buffer = 13_000  # the CLI's own summary buffer
-    if pct > 0 and not _is_moonshot_model(model):
-        cli_threshold = min(window * pct // 100, window - cli_buffer)
-    else:
-        cli_threshold = window - cli_buffer
-    return max(10_000, cli_threshold - _COMPACTION_HEADROOM_TOKENS)
+
+def _retry_target_tokens(
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
+) -> tuple[int, int]:
+    """Per-retry budgets for the no-transcript path, from the same pin."""
+    return retry_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
+
+
+def _seed_target_tokens(
+    model: str | None,
+    *,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
+) -> int:
+    """Transcript-seed budget for a turn with no CLI session, from the same pin."""
+    return seed_target_tokens(
+        config, model, codex_route=codex_route, codex_engine=codex_engine
+    )
 
 
 async def _reduce_context(
@@ -1482,6 +1513,8 @@ async def _reduce_context(
     log_prefix: str,
     attempt: int = 1,
     runtime_model: str | None = None,
+    codex_route: bool = False,
+    codex_engine: CodexEngineWindow | None = None,
 ) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
@@ -1498,9 +1531,15 @@ async def _reduce_context(
     ``transcript_lost`` is True when the transcript was dropped (caller
     should set ``skip_transcript_upload``).
     """
+    # The compactor LLM is fixed (config.thinking_standard_model); every
+    # budget below is sized against the RUNTIME model, the one whose CLI
+    # autocompact threshold the retry has to land under.
+    target_model = runtime_model or config.thinking_standard_model
     # Token budget for the DB fallback on this attempt (no-transcript path).
-    idx = max(0, attempt - 1)
-    retry_target = _RETRY_TARGET_TOKENS[min(idx, len(_RETRY_TARGET_TOKENS) - 1)]
+    budgets = _retry_target_tokens(
+        target_model, codex_route=codex_route, codex_engine=codex_engine
+    )
+    retry_target = budgets[min(max(0, attempt - 1), len(budgets) - 1)]
 
     # First retry: try compacting our transcript builder state.
     # Note: the CLI native --resume file is not updated with the compacted
@@ -1508,15 +1547,13 @@ async def _reduce_context(
     # retry runs without --resume.  The compacted builder state is still
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
-        # The compactor LLM is fixed (config.thinking_standard_model); the
-        # token target is sized against the RUNTIME model since that's the
-        # one whose CLI autocompact threshold we're trying to land below.
-        target_model = runtime_model or config.thinking_standard_model
         compacted = await compact_transcript(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
-            target_tokens=_compaction_target_tokens(target_model),
+            target_tokens=_compaction_target_tokens(
+                target_model, codex_route=codex_route, codex_engine=codex_engine
+            ),
         )
         if (
             compacted
@@ -2909,8 +2946,13 @@ def _payload_chars(rows: list[ChatMessage]) -> int:
     return total
 
 
-def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecast:
+def _will_compact(
+    messages: list[ChatMessage], model: str, *, target_tokens: int
+) -> _CompactionForecast:
     """Cheap pre-check: would ``_compress_messages`` do real work?
+
+    ``target_tokens`` is the same pin-derived budget handed to
+    ``_build_query_message``; ``model`` only picks the tokenizer.
 
     Mirrors ``compress_context``'s early-return condition (``prompt.py``:
     ``original_count + reserve <= target_tokens``) so the UI can open a
@@ -2936,7 +2978,7 @@ def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecas
     try:
         # ``estimated > limit`` is ``estimated + reserve > target``, the
         # negation of the compressor's early return.
-        limit = get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
+        limit = target_tokens - DEFAULT_COMPRESSION_RESERVE
         if chars <= limit * _MIN_CHARS_PER_TOKEN:
             return _NO_COMPACTION
         if chars > limit * _MAX_CHARS_PER_TOKEN:
@@ -2967,7 +3009,7 @@ def _expect_pre_query_compaction(
     transcript_msg_count: int,
     session_msg_ceiling: int,
     prior_messages: "list[ChatMessage] | None" = None,
-    target_tokens: int | None = None,
+    target_tokens: int,
 ) -> _CompactionForecast:
     """Predict whether ``_build_query_message`` will compress on this turn.
 
@@ -3002,10 +3044,10 @@ def _expect_pre_query_compaction(
     if not use_resume:
         if session_msg_ceiling <= 1:
             return _NO_COMPACTION
-        if target_tokens is not None and target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
+        if target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
             return _NO_COMPACTION
         source = prior_messages if prior_messages is not None else prior
-        return _will_compact(source, model)
+        return _will_compact(source, model, target_tokens=target_tokens)
     if transcript_msg_count <= 0:
         # ``use_resume`` with no covered rows compresses nothing.
         return _NO_COMPACTION
@@ -3018,14 +3060,16 @@ def _expect_pre_query_compaction(
             for m in prior
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
-        return _will_compact(window_gap, model)
+        return _will_compact(window_gap, model, target_tokens=target_tokens)
     if transcript_msg_count < session_msg_ceiling - 1:
         if transcript_msg_count > len(prior):
             return _NO_COMPACTION
         if prior[transcript_msg_count - 1].role != "assistant":
             # Misaligned watermark — _build_query_message skips the gap.
             return _NO_COMPACTION
-        return _will_compact(prior[transcript_msg_count:], model)
+        return _will_compact(
+            prior[transcript_msg_count:], model, target_tokens=target_tokens
+        )
     # Scenario A: --resume covers the full context; nothing is compressed.
     return _NO_COMPACTION
 
@@ -3067,9 +3111,10 @@ async def _compress_messages(
     `_compress_messages` and `compact_transcript` share this helper so
     client acquisition and error handling are consistent.
 
-    ``target_tokens`` sets a hard ceiling for the compressed output so
-    callers can enforce a tighter budget on retries.  When ``None``,
-    ``compress_context`` uses the model-aware default.
+    ``target_tokens`` sets a hard ceiling for the compressed output.  The
+    turn always passes the pin-derived budget (``_compaction_target_tokens``
+    or a retry budget); ``None`` is only for callers outside the turn, and
+    lets ``compress_context`` fall back to its own model-aware default.
 
     See also:
         `_run_compression` — shared compression with timeout guards.
@@ -4294,6 +4339,7 @@ async def _seed_transcript(
     transcript_msg_count: int,
     log_prefix: str,
     msg_ceiling: int,
+    seed_target: int,
 ) -> tuple[str, bool, int]:
     """Seed the transcript builder from compressed DB messages.
 
@@ -4318,7 +4364,7 @@ async def _seed_transcript(
         return "", transcript_covers_prefix, transcript_msg_count
 
     _prior = session.messages[: msg_ceiling - 1]
-    _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
+    _comp, _, _ = await _compress_messages(_prior, seed_target)
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
 
@@ -4332,7 +4378,7 @@ async def _seed_transcript(
         " for next-turn upload (seed_target_tokens=%d)",
         log_prefix,
         len(_comp),
-        _SEED_TARGET_TOKENS,
+        seed_target,
     )
     return _seeded, True, len(_prior)
 
@@ -5036,11 +5082,27 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
+            resolved_codex = await resolve_codex_model_route(
                 # This turn is on the SDK engine by definition.
                 "thinking",
                 tier_name,
                 credential_lease,
+            )
+            sdk_model, codex_effort, routing_source = (
+                resolved_codex.model,
+                resolved_codex.effort,
+                resolved_codex.source,
+            )
+            # The account's advertised window for this model, when it sent
+            # one: the pin and every budget derived from it follow the
+            # account rather than the engine constant.
+            codex_engine = (
+                CodexEngineWindow(
+                    context_window=resolved_codex.context_window,
+                    auto_compact_token_limit=(resolved_codex.auto_compact_token_limit),
+                )
+                if resolved_codex.context_window is not None
+                else None
             )
             if isinstance(credential_lease, CodexCredentialLease):
                 codex_gateway = CodexAnthropicGateway(
@@ -5061,6 +5123,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 model, session_id, user_id
             )
             fallback_model = _resolve_fallback_model()
+            codex_engine = None
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -5071,7 +5134,26 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             model=_resolve_env_model(sdk_model, fallback_model),
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
+            codex_engine=codex_engine,
         )
+        # What this turn's subprocess was pinned to (window/trigger/flags —
+        # never secrets). Without this the pin is unobservable anywhere:
+        # Langfuse sees tokens, never the env vars that shaped them.
+        context_summary = describe_sdk_context(
+            route="codex" if codex_gateway else config.transport.name,
+            model=sdk_model,
+            sdk_env=sdk_env,
+            window_source=(
+                (
+                    "explicit"
+                    if config.claude_agent_context_window is not None
+                    else "account" if codex_engine else "engine-default"
+                )
+                if codex_gateway
+                else None
+            ),
+        )
+        logger.info(f"{log_prefix} SDK context: {context_summary}")
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -5235,6 +5317,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         try:
             _lf_span = get_client().start_as_current_span(name="copilot-sdk-turn")
             _lf_span.__enter__()
+            # Pin compaction events to this trace explicitly; the cycle
+            # that emits them closes deep inside the awaited message loop.
+            compaction.trace_id = get_client().get_current_trace_id()
         except Exception:
             logger.debug("Failed to open Langfuse parent span", exc_info=True)
             _lf_span = None
@@ -5416,6 +5501,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
+        # One budget for the forecast and the build alike, sized from the
+        # window this turn's subprocess is pinned to — never the catalog.
+        pre_query_target = _compaction_target_tokens(
+            sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
+        )
         forecast = _expect_pre_query_compaction(
             session.messages,
             _compression_model(),
@@ -5423,6 +5513,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_msg_count=transcript_msg_count,
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
+            target_tokens=pre_query_target,
         )
         if forecast.expected:
             for ev in compaction.emit_pre_query_start(forecast.tokens_before):
@@ -5443,6 +5534,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_id,
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
+            target_tokens=pre_query_target,
             expect_compaction=forecast.expected,
         )
 
@@ -5500,6 +5592,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 transcript_msg_count,
                 log_prefix,
                 pre_compaction_msg_count,
+                _seed_target_tokens(
+                    sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
+                ),
             )
 
         tried_compaction = False
@@ -5602,6 +5697,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix,
                     attempt=attempt,
                     runtime_model=sdk_model,
+                    codex_route=is_codex_transport,
+                    codex_engine=codex_engine,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume
@@ -5827,6 +5924,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 stream_err = e
                 is_context_error = _is_prompt_too_long(e)
                 is_transient = is_transient_api_error(str(e))
+                if is_context_error:
+                    alarm = _context_limit_without_compaction(attempt, compaction)
+                    if alarm is not None:
+                        # ERROR so it reaches Sentry with the pin that
+                        # shaped the turn; the warning below is the
+                        # ordinary retry bookkeeping.
+                        logger.error("%s %s (%s)", log_prefix, alarm, context_summary)
                 logger.warning(
                     "%s Stream error (attempt %d/%d, context_error=%s, "
                     "transient=%s, events_yielded=%d): %s",
@@ -6179,6 +6283,37 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 extra_metadata={"billing_mode": "user_subscription"},
                 execution_path="codex_claude_sdk",
             )
+            # The reconcile event below covers OpenRouter turns only; Codex
+            # turns would otherwise leave no usage on their Langfuse trace.
+            # Re-derived (not reused from above): on early exits the gateway
+            # was never built and that local is unbound.
+            gateway_usage = (
+                _codex_gateway_usage(codex_gateway)
+                if codex_gateway is not None
+                else None
+            )
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                codex_input_tokens=(
+                    gateway_usage.input_tokens if gateway_usage else None
+                ),
+                codex_cached_input_tokens=(
+                    gateway_usage.cached_input_tokens if gateway_usage else None
+                ),
+                codex_boundary_peak_estimate=(
+                    codex_gateway.peak_boundary_estimate
+                    if codex_gateway is not None
+                    else None
+                ),
+                log_prefix=log_prefix,
+            )
         elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
@@ -6250,6 +6385,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # OpenRouter when ``openrouter_active``, Anthropic
                 # otherwise.
                 provider=("open_router" if config.openrouter_active else "anthropic"),
+            )
+            # Sync path only — when the reconcile fires it emits the
+            # authoritative usage event itself (with the real OpenRouter
+            # bill), so emitting here too would double-report the turn.
+            emit_turn_usage_event(
+                trace_id=langfuse_trace_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+                cost_usd=turn_cost_usd,
+                model=effective_model,
+                provider=("open_router" if config.openrouter_active else "anthropic"),
+                log_prefix=log_prefix,
             )
 
         # --- Persist session messages ---

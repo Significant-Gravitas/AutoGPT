@@ -55,6 +55,25 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # Ollama's OpenAI shim — no ``anthropic/`` slugs there).
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-5-5"
 
+# Context windows (tokens) the SDK subprocess is pinned to (see
+# ``sdk/context_window.py``). Non-platform routes are held to their coding
+# engine's default window; the platform (openrouter) route keeps the CLI's
+# own default.
+# What the CLI assumes any Claude model's window to be once 1M is gated off.
+CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+# Claude Code's default window on native-1M models (Sonnet 5, Opus 5,
+# Fable 5/5.1, Opus 4.7+). The CLI clamps lower for models or plans
+# without 1M, so pinning this is safe on older models too.
+CLAUDE_ENGINE_CONTEXT_WINDOW = 1_000_000
+# Codex's default window for every listed model (gpt-6-astra, the gpt-5.6
+# family, gpt-5.5/5.4): ``context_window`` in the bundled codex-rs models
+# catalog (max 872K). Unknown slugs fall back to this too, exactly like
+# codex-rs itself.
+CODEX_ENGINE_CONTEXT_WINDOW = 272_000
+# Codex compacts at 90% of its window; the Codex route mirrors that
+# trigger instead of the Anthropic-tuned default below.
+CODEX_ENGINE_AUTOCOMPACT_PCT = 90
+
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
 CopilotLlmAuthProvider = Literal["platform", "codex", "microsoft_365_copilot"]
 
@@ -123,6 +142,12 @@ class TransportProfile(BaseModel):
     # discount to chase). Read by graphiti's flex-client builder to fall
     # back to the sync client when the active transport can't honour it.
     supports_flex_tier: bool
+    # Window (tokens) pinned on the SDK subprocess
+    # (``CLAUDE_CODE_AUTO_COMPACT_WINDOW``) when
+    # ``claude_agent_context_window`` is unset — the route's coding-engine
+    # default. An explicit ``claude_agent_context_window`` wins on every
+    # route. Unused on ``local`` (no SDK there).
+    sdk_context_window: int
 
 
 _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
@@ -135,6 +160,13 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         cost_log_provider="anthropic",
         dispatch_provider="anthropic",
         supports_flex_tier=False,
+        # Held to 200K on purpose although the engine would run 1M: these
+        # turns draw on the subscriber's own plan, and a chat sitting at
+        # 700K resends 700K every turn — a handful of messages drains a
+        # usage window. A pin *below* the CLI's model table is the one that
+        # takes effect (one above it is clamped away), so this is the lever
+        # that keeps a long chat from eating the plan limit.
+        sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
     ),
     "openrouter": TransportProfile(
         name="openrouter",
@@ -145,6 +177,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         cost_log_provider="open_router",
         dispatch_provider="open_router",
         supports_flex_tier=True,
+        sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
     ),
     "direct_anthropic": TransportProfile(
         name="direct_anthropic",
@@ -155,6 +188,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         cost_log_provider="anthropic",
         dispatch_provider="anthropic",
         supports_flex_tier=False,
+        sdk_context_window=CLAUDE_ENGINE_CONTEXT_WINDOW,
     ),
     "local": TransportProfile(
         name="local",
@@ -165,6 +199,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
         cost_log_provider="ollama",
         dispatch_provider="ollama",
         supports_flex_tier=False,
+        sdk_context_window=CLI_DEFAULT_CONTEXT_WINDOW,
     ),
 }
 
@@ -546,15 +581,19 @@ class ChatConfig(BaseSettings):
         "is injected, once per tree. Below 1.0 on purpose: the instruction is "
         "only useful while there is still budget to act on it.",
     )
-    claude_agent_context_window: int = Field(
-        default=200_000,
+    claude_agent_context_window: int | None = Field(
+        default=None,
         ge=100_000,
         le=1_000_000,
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="Context window the SDK subprocess is held to, in tokens "
-        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). "
-        "Moonshot routes use the lower of this and the SKU's catalog window; "
-        "Anthropic routes take it as given.",
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see "
+        "``sdk/context_window.py``). None (default) means the route's "
+        "default: 1M on direct_anthropic (the operator's own key), 200K on "
+        "subscription (the subscriber's plan limit is the constraint, not "
+        "the engine), 272K on the Codex route, 200K on the platform "
+        "(openrouter) route. An explicit value wins on every route. Moonshot "
+        "routes use the lower of the resolved pin and the SKU's catalog window.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
@@ -563,8 +602,10 @@ class ChatConfig(BaseSettings):
         description="Auto-compaction trigger threshold as a percentage of the "
         "CLI's perceived window (sets ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` on the "
         "SDK subprocess). The CLI caps at its default (~93% of window); values "
-        "above that have no effect. 50 (= 100K of a 200K window) keeps Anthropic "
-        "context creation costs down. Set to 0 to omit the env var entirely "
+        "above that have no effect. 50 (100K of the platform route's 200K "
+        "window, 500K of a 1M Claude-engine window) keeps Anthropic context "
+        "creation costs down. The Codex route ignores this and compacts at "
+        "the engine's 90% trigger instead. Set to 0 to omit the env var entirely "
         "and let the CLI use its default ~93% threshold — useful when the "
         "post-compaction floor (system prompt + tool defs ≈ 65-110K) is close "
         "to the trigger and a more aggressive value causes back-to-back "

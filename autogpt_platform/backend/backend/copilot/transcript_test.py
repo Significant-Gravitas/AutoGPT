@@ -5,12 +5,14 @@ Covers pure helper functions that are not exercised by the SDK re-export tests.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from backend.util import json
 
+from . import transcript as transcript_module
 from .transcript import (
     TranscriptDownload,
     _build_path_from_parts,
@@ -23,6 +25,8 @@ from .transcript import (
     _transcript_to_messages,
     detect_gap,
     extract_context_messages,
+    read_compacted_entries,
+    read_compacted_entries_detailed,
     strip_for_upload,
     validate_transcript,
 )
@@ -1867,3 +1871,82 @@ class TestExtractContextMessages:
             "user",  # gap user-6
             "assistant",  # gap assistant-7
         ]
+
+
+# ---------------------------------------------------------------------------
+# read_compacted_entries_detailed — after-count discriminator (step 0a)
+# ---------------------------------------------------------------------------
+
+
+def _write_session(path, lines) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+    return str(path)
+
+
+class TestReadCompactedEntriesDetailed:
+    def test_read_returns_summary_and_tail(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        session = tmp_path / "projects" / "sess.jsonl"
+        _write_session(
+            session,
+            [
+                '{"role": "user", "content": "before"}',
+                '{"role": "assistant", "isCompactSummary": true, "content": "sum"}',
+                '{"role": "user", "content": "after"}',
+            ],
+        )
+        entries, source = read_compacted_entries_detailed(str(session))
+        assert source == "read"
+        assert entries is not None
+        assert [e["content"] for e in entries] == ["sum", "after"]
+
+    def test_no_summary_line(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        session = tmp_path / "projects" / "sess.jsonl"
+        _write_session(session, ['{"role": "user", "content": "hi"}'])
+        entries, source = read_compacted_entries_detailed(str(session))
+        assert (entries, source) == (None, "no_summary_line")
+
+    def test_unreadable_file(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        session = tmp_path / "projects" / "sess.jsonl"
+        _write_session(session, ['{"role": "user", "content": "hi"}'])
+
+        # Fail the read at the module's own ``Path.read_text`` boundary rather
+        # than via ``chmod(0o000)``: a privileged process (root in a container)
+        # reads a mode-000 file anyway and the test would land on
+        # ``no_summary_line`` instead of the branch it is meant to exercise.
+        def _unreadable(self: Path, *args: object, **kwargs: object) -> str:
+            raise OSError(13, "Permission denied", str(self))
+
+        monkeypatch.setattr(transcript_module.Path, "read_text", _unreadable)
+        entries, source = read_compacted_entries_detailed(str(session))
+        assert (entries, source) == (None, "unreadable")
+
+    def test_empty_path(self) -> None:
+        assert read_compacted_entries_detailed("") == (None, "no_path")
+
+    def test_outside_base(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
+        elsewhere = tmp_path / "elsewhere" / "sess.jsonl"
+        _write_session(elsewhere, ['{"role": "user", "content": "hi"}'])
+        entries, source = read_compacted_entries_detailed(str(elsewhere))
+        assert (entries, source) == (None, "outside_base")
+
+    def test_legacy_wrapper_unchanged(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+        session = tmp_path / "projects" / "sess.jsonl"
+        _write_session(
+            session,
+            [
+                '{"role": "assistant", "isCompactSummary": true, "content": "sum"}',
+                '{"role": "user", "content": "after"}',
+            ],
+        )
+        entries = read_compacted_entries(str(session))
+        assert entries is not None
+        assert [e["content"] for e in entries] == ["sum", "after"]
+        assert (
+            read_compacted_entries(str(tmp_path / "projects" / "missing.jsonl")) is None
+        )

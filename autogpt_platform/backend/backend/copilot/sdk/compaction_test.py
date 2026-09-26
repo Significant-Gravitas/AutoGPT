@@ -2,6 +2,8 @@
 CompactionTracker state machine."""
 
 import json as stdlib_json
+import logging
+from unittest.mock import patch
 
 import pytest
 
@@ -827,3 +829,110 @@ class TestSdkCompactionStats:
 
     def test_empty_transcript_has_no_counts(self):
         assert transcript_stats([], model="gpt-4o") == CompactionStats()
+
+
+# ---------------------------------------------------------------------------
+# Langfuse compaction events
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionLangfuseEvents:
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    def test_pre_query_end_emits_event(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        stats = CompactionStats(tokens_before=128_000, tokens_after=31_000)
+        tracker.emit_pre_query_end(session, stats)
+        mock_emit.assert_called_once()
+        kwargs = mock_emit.call_args.kwargs
+        assert kwargs["path"] == "pre_query"
+        assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "compress_result"
+
+    @pytest.mark.asyncio
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    async def test_sdk_internal_end_emits_event(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact()
+        tracker.emit_start_if_ready()
+        stats = CompactionStats(tokens_before=128_000, tokens_after=31_000)
+        result = await tracker.emit_end_if_ready(
+            session, stats, after_source="no_summary_line"
+        )
+        assert result.just_ended is True
+        mock_emit.assert_called_once()
+        kwargs = mock_emit.call_args.kwargs
+        assert kwargs["path"] == "sdk_internal"
+        assert kwargs["stats"] is stats
+        assert kwargs["after_source"] == "no_summary_line"
+
+    @pytest.mark.asyncio
+    @patch("backend.copilot.sdk.compaction.emit_compaction_event")
+    async def test_no_emit_when_nothing_ends(self, mock_emit):
+        tracker = CompactionTracker()
+        session = _make_session()
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is False
+        mock_emit.assert_not_called()
+
+
+class TestNoSummaryAlarm:
+    """A cycle that ends with no readable summary is an ERROR, not a debug
+    line: on dev the ``after_source`` reading was the only fingerprint of
+    the compaction cascade, and it never reached Sentry."""
+
+    @pytest.mark.asyncio
+    async def test_unreadable_summary_is_an_error_and_does_not_count_as_landed(
+        self, caplog
+    ):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/tmp/projects/abc/session.jsonl")
+        with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.compaction"):
+            result = await tracker.emit_end_if_ready(
+                session,
+                CompactionStats(tokens_before=191_536, messages_before=92),
+                after_source="no_summary_line",
+            )
+        assert result.just_ended is True
+        errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(errors) == 1
+        assert "no readable summary" in errors[0].getMessage()
+        assert "after_source=no_summary_line" in errors[0].getMessage()
+        assert "tokens_before=191536" in errors[0].getMessage()
+        assert "transcript=session.jsonl" in errors[0].getMessage()
+        assert tracker.completed_count == 1
+        assert tracker.failed_cycle_count == 1
+        assert tracker.landed_count == 0
+
+    @pytest.mark.asyncio
+    async def test_read_summary_is_quiet_and_lands(self, caplog):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/tmp/session.jsonl")
+        with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.compaction"):
+            await tracker.emit_end_if_ready(
+                session,
+                CompactionStats(
+                    tokens_before=191_536,
+                    tokens_after=31_000,
+                    messages_before=92,
+                    messages_after=12,
+                ),
+                after_source="read",
+            )
+        assert not [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert tracker.failed_cycle_count == 0
+        assert tracker.landed_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unknown_source_is_quiet(self, caplog):
+        """A cycle the caller could not classify (``after_source=None``)
+        keeps today's behaviour: no alarm, counted as completed."""
+        tracker = CompactionTracker()
+        tracker.on_compact("/tmp/session.jsonl")
+        with caplog.at_level(logging.ERROR, logger="backend.copilot.sdk.compaction"):
+            await tracker.emit_end_if_ready(_make_session(), None)
+        assert not [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert tracker.landed_count == 1
