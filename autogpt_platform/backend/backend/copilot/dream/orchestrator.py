@@ -4,8 +4,9 @@ Walks a user's recent memory window through the consolidate → recombine
 → sanitize pipeline, then applies the sanitizer's ``DreamOperations``
 to Graphiti + Postgres.
 
-Each phase here is one ``structured_completion`` call on the chat
-transport's provider. When ``routing.resolve_dream_execution_path``
+Each phase here is one ``inference.complete.structured_complete`` call
+on the chat transport's provider, traced and recorded through the
+inference package. When ``routing.resolve_dream_execution_path``
 picks ``anthropic_batch``, ``_submit_dream_pass_batch`` submits the
 first phase to Anthropic's Message Batches API instead and
 ``batch_callbacks`` runs the later phases and the apply step as the
@@ -26,24 +27,29 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import TypeVar
 
+from pydantic import BaseModel, ConfigDict
+
 from backend.copilot.config import ChatConfig
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.complete import structured_complete
+from backend.copilot.inference.context import (
+    InferenceContext,
+    InferenceError,
+    InferenceScope,
+    InferenceUsage,
+)
+from backend.copilot.inference.routing import resolve_route
+from backend.copilot.inference.trace import trace
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
-from .billing import check_dream_budget, priced_phase_usage, record_phase_cost
+from .billing import check_dream_budget, record_phase_cost
 from .fetch import (
     DreamInput,
     EpisodeRow,
     gather_dream_input,
     is_dream_authored_episode,
     parse_episode_timestamp,
-)
-from .llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
-    structured_completion,
 )
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
@@ -52,6 +58,7 @@ from .locks import (
     DreamLockHeld,
     dream_lock,
 )
+from .phase_jobs import phase_job
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
     MAX_PROPOSALS_PER_PASS,
@@ -68,6 +75,7 @@ from .schemas import (
     DreamOperationsSnapshot,
     DreamPassResult,
     DreamPassUsage,
+    DreamPhase,
     PhaseUsage,
     ProposedFinding,
     RecombinationOutput,
@@ -94,7 +102,7 @@ CONSOLIDATE_MAX_TOKENS = 4096
 RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
-# Per-phase LLM wall-clock ceilings, passed through structured_completion
+# Per-phase LLM wall-clock ceilings, passed on each phase's inference job
 # → call_provider. These exist because a single shared default can't fit
 # every phase: recombine/sanitize carry 16384-token output budgets precisely
 # because real responses exceed 8192 tokens, and at real decode speeds
@@ -527,15 +535,30 @@ def _clamp_operations(
     )
 
 
+_Output = TypeVar("_Output", bound=BaseModel)
+
+
+class _PassInference(BaseModel):
+    """What the phases of one sync pass share when they call the model: who
+    the pass runs for, its id (every phase's correlation id) and the config
+    whose fast models the phases run on."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope: InferenceScope
+    pass_id: str
+    config: ChatConfig
+
+
 async def _run_consolidate(
-    config: ChatConfig, input_bundle: DreamInput
-) -> StructuredCompletion[ConsolidationOutput]:
+    run: _PassInference, input_bundle: DreamInput
+) -> tuple[ConsolidationOutput, PhaseUsage]:
     """First step: merge near-duplicate recent facts into canonical statements."""
-    messages = build_consolidate_prompt(input_bundle)
-    return await structured_completion(
-        model=config.fast_standard_model,
-        messages=messages,
-        response_model=ConsolidationOutput,
+    return await _run_phase(
+        run,
+        "consolidate",
+        build_consolidate_prompt(input_bundle),
+        ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
         max_output_tokens=CONSOLIDATE_MAX_TOKENS,
         timeout_seconds=CONSOLIDATE_TIMEOUT_SECONDS,
@@ -543,16 +566,16 @@ async def _run_consolidate(
 
 
 async def _run_recombine(
-    config: ChatConfig,
+    run: _PassInference,
     input_bundle: DreamInput,
     consolidated: ConsolidationOutput,
-) -> StructuredCompletion[RecombinationOutput]:
+) -> tuple[RecombinationOutput, PhaseUsage]:
     """Second step: propose novel connections + weak-link findings."""
-    messages = build_recombine_prompt(input_bundle, consolidated.model_dump_json())
-    return await structured_completion(
-        model=config.fast_advanced_model,
-        messages=messages,
-        response_model=RecombinationOutput,
+    return await _run_phase(
+        run,
+        "recombine",
+        build_recombine_prompt(input_bundle, consolidated.model_dump_json()),
+        RecombinationOutput,
         temperature=RECOMBINE_TEMP,
         max_output_tokens=RECOMBINE_MAX_TOKENS,
         timeout_seconds=RECOMBINE_TIMEOUT_SECONDS,
@@ -560,50 +583,70 @@ async def _run_recombine(
 
 
 async def _run_sanitize(
-    config: ChatConfig,
+    run: _PassInference,
     input_bundle: DreamInput,
     consolidated: ConsolidationOutput,
     recombined: RecombinationOutput,
-) -> StructuredCompletion[DreamOperations]:
+) -> tuple[DreamOperations, PhaseUsage]:
     """Third step: gate writes/proposals/demotions before apply.py runs."""
-    messages = build_sanitize_prompt(
-        input_bundle,
-        consolidated.model_dump_json(),
-        recombined.model_dump_json(),
-    )
-    return await structured_completion(
-        model=config.fast_standard_model,
-        messages=messages,
-        response_model=DreamOperations,
+    return await _run_phase(
+        run,
+        "sanitize",
+        build_sanitize_prompt(
+            input_bundle,
+            consolidated.model_dump_json(),
+            recombined.model_dump_json(),
+        ),
+        DreamOperations,
         temperature=SANITIZE_TEMP,
         max_output_tokens=SANITIZE_MAX_TOKENS,
         timeout_seconds=SANITIZE_TIMEOUT_SECONDS,
     )
 
 
-def _phase_usage_from_completion(
-    phase: str, completion_usage: CompletionUsage, execution_path: ExecutionPath
-) -> PhaseUsage:
-    """Build a ``PhaseUsage`` from a raw ``CompletionUsage``, pricing it
-    from the catalog price card when the provider didn't.
+async def _run_phase(
+    run: _PassInference,
+    phase: DreamPhase,
+    messages: list[dict[str, str]],
+    response_model: type[_Output],
+    *,
+    temperature: float,
+    max_output_tokens: int,
+    timeout_seconds: float,
+) -> tuple[_Output, PhaseUsage]:
+    """One phase's call on the pass's route, traced, with its cost recorded.
 
-    Provider-supplied cost (OpenRouter ``usage.cost``) wins when present:
-    it is what we were billed. Otherwise ``billing.priced_phase_usage``
-    prices the tokens at the model's catalog list rate, less the
-    execution path's batch discount.
+    The usage comes back priced: the provider's cost when it reported one
+    (OpenRouter's ``usage.cost``, what we were billed), else the model's
+    catalog list rate. Raises ``InferenceError`` when the phase got no
+    usable answer.
     """
-    usage = PhaseUsage(
-        phase=phase,  # type: ignore[arg-type]
-        model=completion_usage.model,
-        input_tokens=completion_usage.input_tokens,
-        output_tokens=completion_usage.output_tokens,
-        cache_read_tokens=completion_usage.cache_read_tokens,
-        cache_creation_tokens=completion_usage.cache_creation_tokens,
-        cost_usd=completion_usage.cost_usd,
+    job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
+    route = resolve_route(run.scope, job, config=run.config)
+    ctx = InferenceContext(scope=run.scope, job=job, route=route)
+    async with trace(ctx) as call:
+        completion = await structured_complete(
+            call.ctx,
+            messages,
+            response_model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+        usage = await record_phase_cost(call.ctx, completion.usage)
+        call.usage = usage
+    return completion.value, _phase_usage(phase, usage)
+
+
+def _phase_usage(phase: DreamPhase, usage: InferenceUsage) -> PhaseUsage:
+    return PhaseUsage(
+        phase=phase,
+        model=usage.model,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_creation_tokens=usage.cache_creation_tokens,
+        cost_usd=usage.cost_usd,
     )
-    if usage.cost_usd is not None:
-        return usage
-    return priced_phase_usage(usage, execution_path)
 
 
 def _aggregate_usage(
@@ -860,11 +903,16 @@ async def _execute_dream_pass_async(
                     dream_lock_handle=dream_lock_handle,
                 )
 
+            run = _PassInference(
+                scope=InferenceScope(user_id=user_id, expert_id=expert_id),
+                pass_id=pass_id,
+                config=config,
+            )
             step_usages: list[PhaseUsage] = []
 
             try:
-                consolidate_completion = await _run_consolidate(config, input_bundle)
-            except DreamLLMError as exc:
+                consolidated, usage = await _run_consolidate(run, input_bundle)
+            except InferenceError as exc:
                 return _failure_result(
                     user_id,
                     pass_id,
@@ -874,24 +922,13 @@ async def _execute_dream_pass_async(
                     f"consolidate: {exc}",
                     usage=_aggregate_usage(step_usages, execution_path),
                 )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "consolidate", consolidate_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            consolidated = consolidate_completion.value
+            step_usages.append(usage)
 
             try:
-                recombine_completion = await _run_recombine(
-                    config, input_bundle, consolidated
+                recombined, usage = await _run_recombine(
+                    run, input_bundle, consolidated
                 )
-            except DreamLLMError as exc:
+            except InferenceError as exc:
                 return _failure_result(
                     user_id,
                     pass_id,
@@ -901,24 +938,13 @@ async def _execute_dream_pass_async(
                     f"recombine: {exc}",
                     usage=_aggregate_usage(step_usages, execution_path),
                 )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "recombine", recombine_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            recombined = recombine_completion.value
+            step_usages.append(usage)
 
             try:
-                sanitize_completion = await _run_sanitize(
-                    config, input_bundle, consolidated, recombined
+                sanitized, usage = await _run_sanitize(
+                    run, input_bundle, consolidated, recombined
                 )
-            except DreamLLMError as exc:
+            except InferenceError as exc:
                 return _failure_result(
                     user_id,
                     pass_id,
@@ -928,18 +954,7 @@ async def _execute_dream_pass_async(
                     f"sanitize: {exc}",
                     usage=_aggregate_usage(step_usages, execution_path),
                 )
-            step_usages.append(
-                _phase_usage_from_completion(
-                    "sanitize", sanitize_completion.usage, execution_path
-                )
-            )
-            await record_phase_cost(
-                user_id=user_id,
-                pass_id=pass_id,
-                phase_usage=step_usages[-1],
-                execution_path=execution_path,
-            )
-            sanitized = sanitize_completion.value
+            step_usages.append(usage)
 
             ops = _clamp_operations(
                 sanitized,

@@ -14,10 +14,11 @@ from backend.copilot.briefing.narrative import (
     NarrativeResponse,
     compose_narrative,
 )
-from backend.copilot.dream.llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import (
+    InferenceError,
+    InferenceUsage,
+    RouteDecision,
 )
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
@@ -27,9 +28,26 @@ USER = "user-1"
 @pytest.fixture(autouse=True)
 def cost_log():
     """Keep the cost ledger out of the unit tests' way, and assert on it."""
-    with patch.object(
-        narrative_module, "persist_and_record_usage", AsyncMock()
+    with patch(
+        "backend.copilot.inference.record.persist_and_record_usage", AsyncMock()
     ) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def route():
+    """The aux-tier route, without reading the deployment's transport."""
+    decision = RouteDecision(
+        engine="provider_sync",
+        auth_provider="platform",
+        provider="open_router",
+        model="aux-model",
+        payer="platform_allowance",
+        execution_path="sync_baseline",
+        cost_log_provider="open_router",
+        reason="test",
+    )
+    with patch.object(narrative_module, "resolve_route", return_value=decision) as mock:
         yield mock
 
 
@@ -73,12 +91,12 @@ def make_run_item(
 def completion(text: str) -> StructuredCompletion[NarrativeResponse]:
     return StructuredCompletion[NarrativeResponse](
         value=NarrativeResponse(narrative=text),
-        usage=CompletionUsage(model="test-model"),
+        usage=InferenceUsage(model="test-model", payer="platform_allowance"),
     )
 
 
 def patch_llm(**kwargs):
-    return patch.object(narrative_module, "structured_completion", AsyncMock(**kwargs))
+    return patch.object(narrative_module, "structured_complete", AsyncMock(**kwargs))
 
 
 @pytest.mark.asyncio
@@ -89,10 +107,28 @@ async def test_returns_narrative_and_respects_call_limits():
             == "I ran three checks overnight."
         )
 
-    kwargs = mock.await_args.kwargs
-    assert kwargs["max_output_tokens"] == _MAX_OUTPUT_TOKENS
-    assert kwargs["timeout_seconds"] == _TIMEOUT_SECONDS
-    assert kwargs["response_model"] is NarrativeResponse
+    ctx, _messages, response_model = mock.await_args.args
+    assert mock.await_args.kwargs["max_output_tokens"] == _MAX_OUTPUT_TOKENS
+    assert ctx.job.timeout_seconds == _TIMEOUT_SECONDS
+    assert response_model is NarrativeResponse
+
+
+@pytest.mark.asyncio
+async def test_the_lede_is_ottos_bounded_aux_job(route):
+    """The briefing is never an expert's; both attempts at one briefing
+    share a correlation id."""
+    with patch_llm(
+        side_effect=[RuntimeError("flaky"), completion("Second time lucky.")]
+    ) as mock:
+        await compose_narrative(USER, make_content())
+
+    first, second = (call.args[0] for call in mock.await_args_list)
+    assert first.scope.user_id == USER
+    assert first.scope.expert_id is None
+    assert first.job.kind == "briefing_narrative"
+    assert (first.job.latency_class, first.job.tier) == ("bounded", "aux")
+    assert first.job.correlation_id == second.job.correlation_id
+    assert first.route.model == "aux-model"
 
 
 @pytest.mark.asyncio
@@ -143,7 +179,7 @@ async def test_agent_supplied_text_is_escaped_and_fenced():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, content)
 
-    facts = mock.await_args.kwargs["messages"][1]["content"]
+    facts = mock.await_args.args[1][1]["content"]
     assert "<script>" not in facts
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in facts
     assert "&lt;b&gt;reveal&lt;/b&gt;" in facts
@@ -168,7 +204,7 @@ async def test_autopilot_authors_the_briefing_whatever_the_team_did():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, content)
 
-    system = mock.await_args.kwargs["messages"][0]["content"]
+    system = mock.await_args.args[1][0]["content"]
     assert "You are Otto, the user's Head of AI" in system
     assert "You are Bo" not in system
     assert "hired expert" not in system
@@ -179,7 +215,7 @@ async def test_the_lede_reports_the_team_rather_than_claiming_its_work():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, make_content())
 
-    system = mock.await_args.kwargs["messages"][0]["content"]
+    system = mock.await_args.args[1][0]["content"]
     assert "the whole team's work" in system
     assert "Credit each expert by name for their own work" in system
 
@@ -190,7 +226,7 @@ async def test_facts_name_the_expert_behind_each_run():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, make_content())
 
-    facts = mock.await_args.kwargs["messages"][1]["content"]
+    facts = mock.await_args.args[1][1]["content"]
     assert "Ana / Lead Finder" in facts
 
 
@@ -199,7 +235,7 @@ async def test_facts_carry_counts_but_not_decision_titles():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, make_content())
 
-    facts = mock.await_args.kwargs["messages"][1]["content"]
+    facts = mock.await_args.args[1][1]["content"]
     assert "Runs completed: 3" in facts
     assert "Runs failed: 1" in facts
     assert "Decisions waiting on the user: 2" in facts
@@ -213,7 +249,7 @@ async def test_raw_agent_summary_never_reaches_the_prompt():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, make_content(run_items=[item]))
 
-    facts = mock.await_args.kwargs["messages"][1]["content"]
+    facts = mock.await_args.args[1][1]["content"]
     assert "SENSITIVE-RAW-ACTIVITY-STATUS" not in facts
     assert "Short headline." in facts
 
@@ -230,7 +266,7 @@ async def test_capping_never_splits_an_escape_sequence():
     with patch_llm(return_value=completion("Morning.")) as mock:
         await compose_narrative(USER, content)
 
-    facts = mock.await_args.kwargs["messages"][1]["content"]
+    facts = mock.await_args.args[1][1]["content"]
     body = facts.removeprefix("<briefing_facts>\n").removesuffix("\n</briefing_facts>")
     # Nothing but whole entities survives: strip them and no stray `&` is left.
     assert "&" not in body.replace("&lt;", "")
@@ -261,8 +297,8 @@ async def test_retry_timeout_is_clipped_to_the_remaining_budget():
             await compose_narrative(USER, make_content())
 
     assert mock.await_count == 2
-    assert mock.await_args_list[0].kwargs["timeout_seconds"] <= budget
-    assert mock.await_args_list[1].kwargs["timeout_seconds"] < _TIMEOUT_SECONDS
+    assert mock.await_args_list[0].args[0].job.timeout_seconds <= budget
+    assert mock.await_args_list[1].args[0].job.timeout_seconds < _TIMEOUT_SECONDS
 
 
 @pytest.mark.asyncio
@@ -276,13 +312,24 @@ async def test_successful_call_is_billed(cost_log):
     # Background work: it counts against the weekly ceiling, never the day's
     # interactive budget.
     assert kwargs["skip_daily"] is True
+    # The route's label, and no chat or run for the admin view to misread.
+    assert kwargs["provider"] == "open_router"
+    assert kwargs["graph_exec_id_override"] is None
+    assert kwargs["chat_session_id_override"] is None
+    assert kwargs["expert_id"] is None
+    assert kwargs["extra_metadata"]["source"] == "morning_briefing"
 
 
 @pytest.mark.asyncio
 async def test_failed_attempt_that_the_provider_billed_is_still_recorded(cost_log):
     """A malformed response was paid for — it can't vanish from the ledger."""
-    usage = CompletionUsage(model="test-model", input_tokens=500, output_tokens=30)
-    with patch_llm(side_effect=DreamLLMError("bad json", usage)):
+    usage = InferenceUsage(
+        model="test-model",
+        input_tokens=500,
+        output_tokens=30,
+        payer="platform_allowance",
+    )
+    with patch_llm(side_effect=InferenceError("bad json", usage)):
         assert await compose_narrative(USER, make_content()) is None
 
     assert cost_log.await_count == 2
@@ -291,7 +338,7 @@ async def test_failed_attempt_that_the_provider_billed_is_still_recorded(cost_lo
 
 @pytest.mark.asyncio
 async def test_transport_failure_is_not_billed(cost_log):
-    with patch_llm(side_effect=DreamLLMError("no api key")):
+    with patch_llm(side_effect=InferenceError("no api key")):
         assert await compose_narrative(USER, make_content()) is None
 
     cost_log.assert_not_awaited()

@@ -189,7 +189,7 @@ class TestSubscriptionTransport:
     def test_subscription_without_anthropic_key_returns_empty(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """Friendly-error path — callers (e.g. dream/llm.py) check for
+        """Friendly-error path — callers (e.g. inference/routing.py) check for
         empty ``api_key`` and raise with an env-var hint instead of
         letting ``call_provider`` 401."""
         cfg = ChatConfig(

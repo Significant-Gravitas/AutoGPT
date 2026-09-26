@@ -413,6 +413,33 @@ class TestPlatformCostLogging:
         entry = mock_log.call_args[0][0]
         assert (entry.graph_exec_id, entry.chat_session_id) == expected
 
+    @pytest.mark.parametrize("expert_id", ["expert-1", None])
+    @pytest.mark.asyncio
+    async def test_the_expert_the_spend_ran_for_reaches_the_row(self, expert_id):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                expert_id=expert_id,
+            )
+            await asyncio.sleep(0)
+        assert mock_log.call_args[0][0].expert_id == expert_id
+
     @pytest.mark.asyncio
     async def test_logs_cost_entry_without_cost_usd(self):
         """When cost_usd is None, tracking_type should be 'tokens'."""

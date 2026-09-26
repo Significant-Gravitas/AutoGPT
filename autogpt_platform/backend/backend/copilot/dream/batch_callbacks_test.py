@@ -434,12 +434,12 @@ class TestPhaseChaining:
             }
         )
         mark_complete = AsyncMock()
-        record_cost = AsyncMock()
+        persist = AsyncMock()
         release_lock = AsyncMock()
         with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
             "backend.copilot.dream.job_status.mark_complete", mark_complete
         ), patch(
-            "backend.copilot.dream.batch_callbacks.record_phase_cost", record_cost
+            "backend.copilot.inference.record.persist_and_record_usage", persist
         ), patch(
             "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
         ):
@@ -471,25 +471,32 @@ class TestPhaseChaining:
         # terminal handler must release it with the ownership token the
         # input bundle carried — compare-and-delete, never a blind DEL.
         release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), "tok-u1")
-        # One cost-log row per phase (consolidate, recombine, sanitize)
-        assert record_cost.await_count == 3
-        for call in record_cost.await_args_list:
-            assert call.kwargs["execution_path"] == "anthropic_batch"
+        # One cost-log row per phase (consolidate, recombine, sanitize), in
+        # the dream's row shape, on the Anthropic batch route.
+        assert persist.await_count == 3
+        rows = {
+            call.kwargs["extra_metadata"]["dream_phase"]: call.kwargs
+            for call in persist.await_args_list
+        }
+        assert list(rows) == ["consolidate", "recombine", "sanitize"]
+        for phase, row in rows.items():
+            assert row["provider"] == "anthropic"
+            assert row["block_name_override"] == f"copilot:dream:{phase}"
+            assert row["graph_exec_id_override"] == "p1"
+            assert row["expert_id"] is None
+            assert row["skip_daily"] is True
+            assert row["extra_metadata"]["execution_path"] == "anthropic_batch"
+            assert row["extra_metadata"]["discount_applied"] == 0.5
+            assert row["extra_metadata"]["dream_pass_id"] == "p1"
         # Each phase is priced with ITS OWN model — recombine uses the
         # advanced (opus) model, not phase 1's standard model.
-        models_by_phase = {
-            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].model
-            for call in record_cost.await_args_list
-        }
+        models_by_phase = {phase: row["model"] for phase, row in rows.items()}
         assert models_by_phase["consolidate"] == "claude-sonnet-5"
         assert models_by_phase["recombine"] == "claude-opus-5-5"
         assert models_by_phase["sanitize"] == "claude-sonnet-5"
         # ...and priced from that model's catalog card at half the list
         # price: each ``_row`` carries 10 input + 20 output tokens.
-        costs_by_phase = {
-            call.kwargs["phase_usage"].phase: call.kwargs["phase_usage"].cost_usd
-            for call in record_cost.await_args_list
-        }
+        costs_by_phase = {phase: row["cost_usd"] for phase, row in rows.items()}
         sonnet_5_cost = (10 * 2.0 + 20 * 10.0) / 1_000_000 / 2
         opus_5_5_cost = (10 * 4.0 + 20 * 20.0) / 1_000_000 / 2
         assert costs_by_phase["consolidate"] == pytest.approx(sonnet_5_cost)
@@ -534,12 +541,13 @@ class TestPhaseChaining:
             }
         )
         release_lock = AsyncMock()
+        persist = AsyncMock()
         with (
             patch("backend.copilot.dream.apply.apply_operations", apply),
             patch("backend.copilot.dream.job_status.mark_complete", new=AsyncMock()),
             patch(
-                "backend.copilot.dream.batch_callbacks.record_phase_cost",
-                new=AsyncMock(),
+                "backend.copilot.inference.record.persist_and_record_usage",
+                new=persist,
             ),
             patch(
                 "backend.copilot.dream.batch_callbacks.release_dream_lock",
@@ -555,6 +563,12 @@ class TestPhaseChaining:
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
+        # The expert's pass is charged to its owner and attributed to it.
+        assert persist.await_count == 3
+        for call in persist.await_args_list:
+            assert call.kwargs["user_id"] == "u1"
+            assert call.kwargs["expert_id"] == "expert-1"
+            assert call.kwargs["extra_metadata"]["expert_id"] == "expert-1"
 
     @pytest.mark.asyncio
     async def test_redispatch_after_charge_does_not_double_bill(self, fake_redis):
