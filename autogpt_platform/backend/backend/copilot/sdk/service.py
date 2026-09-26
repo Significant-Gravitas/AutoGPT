@@ -70,6 +70,12 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
+from backend.util.llm.provider_billing import (
+    PROVIDER_UNAVAILABLE_CODE,
+    PROVIDER_UNAVAILABLE_MESSAGE,
+    is_provider_out_of_credits,
+    report_provider_out_of_credits,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -509,6 +515,25 @@ async def _consume_sdk_until_done(
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
+
+        # Checked before the message reaches the adapter, which would
+        # otherwise stream the provider's "buy more credits" text as the reply.
+        refusal = _platform_out_of_credits_refusal(sdk_msg, ctx)
+        if refusal is not None:
+            report_provider_out_of_credits(
+                provider=config.effective_transport,
+                model=state.observed_model or getattr(state.options, "model", None),
+                surface="copilot_sdk",
+                error=refusal,
+                session_id=ctx.session_id,
+            )
+            # Not yielded here: the consumer stops at the first StreamError and
+            # closes this generator, so the outer loop yields it only after
+            # the history marker carrying this message is written.
+            loop_state.stream_error_msg = PROVIDER_UNAVAILABLE_MESSAGE
+            loop_state.stream_error_code = PROVIDER_UNAVAILABLE_CODE
+            loop_state.ended_with_stream_error = True
+            break
 
         # Log AssistantMessage API errors (e.g. invalid_request)
         # so we can debug Anthropic API 400s surfaced by the CLI.
@@ -1178,6 +1203,13 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+# Handled-error codes whose StreamError the outer retry loop yields itself,
+# after it has persisted the history marker, rather than the attempt.
+_OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
+    {"transient_api_error", PROVIDER_UNAVAILABLE_CODE}
+)
+
+
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
 # the backoff retry from firing because ``_next_transient_backoff`` returns
@@ -1242,6 +1274,29 @@ def _friendly_error_text(raw: str) -> str:
             return friendly
     # Fallback: sanitize but keep the original text for debugging
     return f"SDK stream error: {raw}"
+
+
+def _platform_out_of_credits_refusal(
+    sdk_msg: object, ctx: "_StreamContext"
+) -> str | None:
+    """The CLI's text for a billing refusal on the platform's own account.
+
+    The CLI reports a provider error as an ``AssistantMessage`` carrying
+    ``error`` (content is the provider's wording) and/or an error
+    ``ResultMessage``. A Codex turn runs on the user's own subscription, whose
+    limit is theirs to hear about, so it is left to the gateway's envelope.
+    """
+    if ctx.codex_gateway is not None:
+        return None
+    if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
+        text = f"{sdk_msg.error} {sdk_msg.content}"
+    elif isinstance(sdk_msg, ResultMessage) and (
+        sdk_msg.is_error or sdk_msg.subtype in ("error", "error_during_execution")
+    ):
+        text = str(sdk_msg.result or "")
+    else:
+        return None
+    return text if is_provider_out_of_credits(text) else None
 
 
 def _is_prompt_too_long(err: BaseException) -> bool:
@@ -1913,11 +1968,14 @@ def _classify_final_failure(
     attempts_exhausted: bool,
     transient_exhausted: bool,
     stream_err: BaseException | None,
+    platform_route: bool = True,
 ) -> _FinalFailure | None:
     """Pick the display message, stream code, and retryable flag for the exit.
 
     Returns ``None`` when no failure was recorded (success path) — the caller
     should skip both the history marker and the SSE yield in that case.
+    ``platform_route`` is False on a Codex turn, whose billing refusal is the
+    user's own limit and keeps the provider's wording.
     """
     if interrupted.handled_error is not None:
         return _FinalFailure(
@@ -1938,6 +1996,16 @@ def _classify_final_failure(
         return _FinalFailure(
             display_msg=FRIENDLY_TRANSIENT_MSG,
             code="transient_api_error",
+            retryable=True,
+        )
+    if (
+        stream_err is not None
+        and platform_route
+        and is_provider_out_of_credits(stream_err)
+    ):
+        return _FinalFailure(
+            display_msg=PROVIDER_UNAVAILABLE_MESSAGE,
+            code=PROVIDER_UNAVAILABLE_CODE,
             retryable=True,
         )
     if stream_err is not None:
@@ -4283,7 +4351,9 @@ async def _run_stream_attempt(
             "Stream error handled",
             error_msg=loop_state.stream_error_msg,
             code=loop_state.stream_error_code,
-            already_yielded=(loop_state.stream_error_code != "transient_api_error"),
+            already_yielded=(
+                loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
+            ),
         )
 
 
@@ -5915,8 +5985,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the re-yield in that case.
         if ended_with_stream_error:
             failure = _classify_final_failure(
-                interrupted, attempts_exhausted, transient_exhausted, stream_err
+                interrupted,
+                attempts_exhausted,
+                transient_exhausted,
+                stream_err,
+                platform_route=stream_ctx.codex_gateway is None,
             )
+            if (
+                failure is not None
+                and failure.code == PROVIDER_UNAVAILABLE_CODE
+                and interrupted.handled_error is None
+            ):
+                report_provider_out_of_credits(
+                    provider=config.effective_transport,
+                    model=state.observed_model if state is not None else None,
+                    surface="copilot_sdk",
+                    error=stream_err or "",
+                    session_id=session_id,
+                )
             if failure is not None:
                 provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
