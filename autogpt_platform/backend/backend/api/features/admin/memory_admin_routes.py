@@ -123,7 +123,7 @@ class GraphNode(BaseModel):
     name: str | None = None
     summary: str | None = None
     # Set on the tombstone a hard forget leaves of an episode; its text is
-    # gone and only the stamp is shown.
+    # gone, and only its title and this stamp are shown.
     hard_deleted_at: str | None = None
 
 

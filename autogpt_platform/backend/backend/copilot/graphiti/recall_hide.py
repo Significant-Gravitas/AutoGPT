@@ -8,9 +8,7 @@ contradiction candidate in its own prompts. The ``name`` goes too because
 graphiti picks an edge's attribute prompt by it, and that prompt lists
 every stored property of the edge, ``fact_redacted`` included; no edge type
 is named ``[forgotten]``, so the prompt never runs for a forgotten edge. An
-audit copy, once written, is never replaced, and a repeat that finds the
-text gone from the edge takes it from ``Hiding.recovered`` (the forget
-stash).
+audit copy, once written, is never replaced by the placeholder.
 
 graphiti also keeps what it read out of the sentence on entities: a summary
 built from fact sentences, and typed attributes (``Person.role``) it sends
@@ -30,7 +28,6 @@ import logging
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
-from pydantic import BaseModel
 
 from .memory_model import ForgetResult, MemoryForgetFailure
 from .recall import FORGOTTEN_FACT, forgotten_facts_clause, recallable_episode_predicate
@@ -44,33 +41,22 @@ _CORE_ENTITY_FIELDS = frozenset(
 )
 
 
-class Hiding(BaseModel):
-    """What one forget hides: its edges, the audit text a repeat may have to
-    put back (``[uuid, fact_redacted, name_redacted]``), and entities to
-    scrub beyond the edges' endpoints (those of an edge a hard forget
-    deleted)."""
-
-    uuids: list[str]
-    recovered: list[list[str | None]] = []
-    entities: list[str] = []
-
-
 async def hide(
     driver: GraphDriver,
     group_id: str,
-    hiding: Hiding,
+    uuids: list[str],
     now: str,
     result: ForgetResult,
 ) -> bool:
     """Scrub the retracted facts' text, then redact every episode citing
     one; False when a write failed, each edge then carrying a
     ``cleanup_error`` (recall hides the text regardless)."""
-    if not hiding.uuids:
+    if not uuids:
         return True
     try:
-        await scrub(driver, hiding)
+        await scrub(driver, uuids)
         records = await driver.execute_query(
-            REDACT_EPISODES_QUERY, uuids=hiding.uuids, now=now
+            REDACT_EPISODES_QUERY, uuids=uuids, now=now
         )
     except Exception as exc:
         logger.warning(
@@ -78,26 +64,22 @@ async def hide(
             exc_info=True,
         )
         result.failures.extend(
-            MemoryForgetFailure.cleanup_error(uuid, exc) for uuid in hiding.uuids
+            MemoryForgetFailure.cleanup_error(uuid, exc) for uuid in uuids
         )
         return False
     result.redacted_episodes = [row["uuid"] for row in _rows(records)]
     return True
 
 
-async def scrub(driver: GraphDriver, hiding: Hiding) -> None:
+async def scrub(driver: GraphDriver, uuids: list[str]) -> None:
     """Move the facts' text to their audit copies, then clear what graphiti
     read out of it onto entities and communities."""
     rows = _rows(
         await driver.execute_query(
-            SCRUB_FACTS_QUERY,
-            uuids=hiding.uuids,
-            placeholder=FORGOTTEN_FACT,
-            recovered=hiding.recovered,
+            SCRUB_FACTS_QUERY, uuids=uuids, placeholder=FORGOTTEN_FACT
         )
     )
-    ends = rows[0]["ends"] if rows else []
-    await scrub_entities(driver, hiding.uuids, [*ends, *hiding.entities])
+    await scrub_entities(driver, uuids, rows[0]["ends"] if rows else [])
 
 
 async def scrub_entities(
@@ -125,20 +107,17 @@ def _rows(result: Any) -> list[dict[str, Any]]:
     return result[0] if result else []
 
 
-# ``sentence`` and ``relation`` are, in order: the audit copy already
-# written, the edge's own text unless it already reads the placeholder, and
-# the text the stash kept. So a repeat changes nothing, and a repeat after
-# something else wiped the audit copies still writes the original text.
+# ``sentence`` and ``relation`` are the audit copy already written, else the
+# edge's own text unless it already reads the placeholder: a repeat changes
+# nothing, and never files the placeholder as the original.
 SCRUB_FACTS_QUERY = """
 MATCH (source)-[e:RELATES_TO]->(target)
 WHERE e.uuid IN $uuids
 WITH e, source, target,
      coalesce(e.fact_redacted,
-              CASE WHEN e.fact <> $placeholder THEN e.fact END,
-              [r IN $recovered WHERE r[0] = e.uuid | r[1]][0]) AS sentence,
+              CASE WHEN e.fact <> $placeholder THEN e.fact END) AS sentence,
      coalesce(e.name_redacted,
-              CASE WHEN e.name <> $placeholder THEN e.name END,
-              [r IN $recovered WHERE r[0] = e.uuid | r[2]][0]) AS relation
+              CASE WHEN e.name <> $placeholder THEN e.name END) AS relation
 SET e.fact_redacted = sentence,
     e.name_redacted = relation,
     e.fact = $placeholder,

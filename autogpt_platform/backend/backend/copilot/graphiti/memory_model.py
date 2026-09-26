@@ -56,6 +56,10 @@ class MemoryForgetFailureCode(str, Enum):
     """The fact was forgotten, but the clean-up after it (redacting or
     deleting what it came from) failed. Recall keeps the text hidden anyway,
     and forgetting it again is safe."""
+    BUSY = "busy"
+    """Memory was being written for the whole wait (another writer, usually an
+    ingestion, held the graph's write lock, ``graphiti/scope_lock.py``):
+    nothing was forgotten, and trying again shortly is safe."""
 
 
 # Reason given when a forget matched no edge: the UUID is stale, already
@@ -63,6 +67,13 @@ class MemoryForgetFailureCode(str, Enum):
 FORGET_NO_MATCH_REASON = (
     "No matching edge found — it may already be deleted, or the UUID is not a "
     "forgettable edge (RELATES_TO, MENTIONS, HAS_MEMBER)."
+)
+
+
+# Reason given when a forget found memory busy for its whole wait.
+FORGET_BUSY_REASON = (
+    "Memory is being updated right now, so nothing was forgotten. "
+    "Try again in a moment."
 )
 
 
@@ -84,6 +95,14 @@ class MemoryForgetFailure(BaseModel):
             uuid=uuid,
             code=MemoryForgetFailureCode.NO_MATCH,
             reason=FORGET_NO_MATCH_REASON,
+        )
+
+    @classmethod
+    def busy(cls, uuid: str) -> "MemoryForgetFailure":
+        return cls(
+            uuid=uuid,
+            code=MemoryForgetFailureCode.BUSY,
+            reason=FORGET_BUSY_REASON,
         )
 
     @classmethod

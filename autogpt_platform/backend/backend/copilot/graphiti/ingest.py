@@ -18,9 +18,8 @@ from graphiti_core.nodes import EpisodeType
 from .client import ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .recall import previous_episode_uuids
-from .recall_ingest import keep_forgotten
-from .recall_ingest_plan import IngestRun, snapshot_forgotten
 from .scope import MemoryScope
+from .scope_lock import INGEST_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -148,10 +147,11 @@ CUSTOM_EXTRACTION_INSTRUCTIONS = """
 
 # Cypher that overwrites exactly the five envelope-sourced MemoryFact
 # props on a known set of edge uuids. group_id predicate is tenant
-# defense-in-depth (mirrors apply._apply_demotions).
+# defense-in-depth (mirrors apply._apply_demotions); the forgotten test
+# keeps it off a fact a forget reached first.
 _STAMP_EDGE_METADATA_QUERY = """
 MATCH ()-[e:RELATES_TO]->()
-WHERE e.uuid IN $uuids AND e.group_id = $gid
+WHERE e.uuid IN $uuids AND e.group_id = $gid AND e.forgotten_at IS NULL
 SET e.status = $status,
     e.source_kind = $source_kind,
     e.scope = $scope,
@@ -293,31 +293,15 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
             # up front so it is signalled in the finally below even if the
             # graph write raises. See ``IngestionCompletion``.
             completion: IngestionCompletion | None = payload.pop("_completion", None)
+            retried = bool(payload.pop("_lock_retried", False))
+            requeued = False
             try:
                 if payload.get("group_id") != group_id:
                     raise MemoryScopeViolationError(
                         "Ingestion payload memory group mismatch"
                     )
-                client = await get_graphiti_client(group_id)
-                # This is the write path, so materializing the graph is
-                # intended here — unlike driver construction, which must
-                # never create one. Once per group per loop.
-                await ensure_indices_once(group_id, client)
-                # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
-                # pop it before the **payload spread. Present only for dream
-                # writes; None for conversation turns / memory-store calls.
-                edge_metadata = payload.pop("_edge_metadata", None)
-                result = await _add_episode(client, group_id, payload)
-                # graphiti's attribute extraction fills MemoryFact fields from
-                # the episode text, not the envelope, so dream metadata
-                # (source_kind/provenance/exact status) doesn't survive. Stamp
-                # it deterministically onto the edges THIS episode newly
-                # created — see ``_stamp_edge_metadata`` for the dedup-safety
-                # invariant that prevents clobbering user-authored edges.
-                if edge_metadata:
-                    await _stamp_edge_metadata(
-                        client, group_id, result, edge_metadata, user_id
-                    )
+                if not await _write_locked(user_id, group_id, payload):
+                    requeued = _requeue_once(queue, payload, completion, retried)
             except MemoryScopeViolationError:
                 logger.error(
                     "MEMORY ISOLATION VIOLATION: ingestion payload for user %s "
@@ -337,8 +321,9 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 queue.task_done()
                 # Signal completion for the enqueuer's drain barrier even on
                 # failure — a failed write is still "no longer pending", and
-                # leaving it outstanding would hang the caller's wait.
-                if completion is not None:
+                # leaving it outstanding would hang the caller's wait. A
+                # requeued episode completes when its retry is processed.
+                if completion is not None and not requeued:
                     completion.complete_one()
     except asyncio.CancelledError:
         logger.debug("Ingestion worker cancelled for user %s", user_id[:12])
@@ -362,6 +347,53 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     )
 
 
+async def _write_locked(user_id: str, group_id: str, payload: dict[str, Any]) -> bool:
+    """Write one episode holding the graph's write lock (``scope_lock.py``),
+    so no forget lands between what graphiti reads and what it saves over
+    it; False, writing nothing, when another writer kept it for the wait."""
+    wait = INGEST_LOCK_WAIT_SECONDS
+    async with graph_write_lock(group_id, wait_seconds=wait) as lock:
+        if lock is LockState.BUSY:
+            return False
+        client = await get_graphiti_client(group_id)
+        # This is the write path, so materializing the graph is intended
+        # here — unlike driver construction, which must never create one.
+        # Once per group per loop.
+        await ensure_indices_once(group_id, client)
+        # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) — pop it
+        # before the **payload spread. Present only for dream writes.
+        edge_metadata = payload.pop("_edge_metadata", None)
+        result = await _add_episode(client, group_id, payload)
+        # graphiti's attribute extraction fills MemoryFact fields from the
+        # episode text, not the envelope, so dream metadata doesn't survive:
+        # stamp it onto the edges THIS episode newly created (see
+        # ``_stamp_edge_metadata`` for the dedup-safety invariant).
+        if edge_metadata:
+            await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+    return True
+
+
+def _requeue_once(
+    queue: asyncio.Queue,
+    payload: dict[str, Any],
+    completion: IngestionCompletion | None,
+    retried: bool,
+) -> bool:
+    """Put an episode that found the graph locked at the back of the queue,
+    once; True when it was put back."""
+    group = str(payload.get("group_id"))[:20]
+    if retried:
+        logger.warning(f"Graph {group} still locked; dropping the episode")
+        return False
+    try:
+        queue.put_nowait({**payload, "_lock_retried": True, "_completion": completion})
+    except asyncio.QueueFull:
+        logger.warning(f"Graph {group} locked and its queue full; episode dropped")
+        return False
+    logger.warning(f"Graph {group} locked by another writer; requeued once")
+    return True
+
+
 async def _add_episode(
     client: Graphiti, group_id: str, payload: dict[str, Any]
 ) -> AddEpisodeResults:
@@ -372,30 +404,21 @@ async def _add_episode(
     only inside ``Episodic.content``; this is the single wire-in for every
     caller of the worker. The earlier episodes are the ones graphiti would
     show its extraction prompts, minus those a forget hid: left to pick
-    them itself it would show a forgotten episode again. And graphiti can
-    undo a forget, one made before the episode or while it ran:
-    ``recall_ingest.keep_forgotten`` repairs that afterwards.
+    them itself it would show a forgotten episode again. The caller holds
+    the graph's write lock, and graphiti's model client never lets a new
+    statement merge into a forgotten edge (``recall_ingest.py``), so the
+    write leaves every forget as it found it.
     """
     previous = await previous_episode_uuids(
         client.driver, group_id, payload["reference_time"], payload["source"]
     )
-    run = IngestRun(
-        group_id=group_id,
-        started_at=datetime.now(timezone.utc),
-        reference_time=payload["reference_time"],
-        previous=previous,
-        instructions=payload.get("custom_extraction_instructions"),
-    )
-    forgotten = await snapshot_forgotten(client.driver)
-    result = await client.add_episode(
+    return await client.add_episode(
         **payload,
         previous_episode_uuids=previous,
         entity_types=ENTITY_TYPES,
         edge_types=EDGE_TYPES,
         edge_type_map=EDGE_TYPE_MAP,
     )
-    await keep_forgotten(client, run, forgotten, result)
-    return result
 
 
 async def enqueue_conversation_turn(

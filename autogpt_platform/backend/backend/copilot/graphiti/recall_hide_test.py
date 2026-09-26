@@ -13,7 +13,6 @@ import pytest
 from . import recall_hide
 from .memory_model import ForgetResult, MemoryForgetFailureCode
 from .recall import FORGOTTEN_FACT, forgotten_facts_clause, recallable_episode_predicate
-from .recall_hide import Hiding
 
 _GROUP = "user_abc"
 _NOW = "2026-09-26T12:00:00+00:00"
@@ -45,19 +44,14 @@ class TestHide:
             [],
             [{"uuid": "ep1"}],
         )
-        hiding = Hiding(uuids=["u1"], recovered=[["u1", "sentence", "MemoryFact"]])
         result = ForgetResult()
 
-        assert await recall_hide.hide(driver, _GROUP, hiding, _NOW, result)
+        assert await recall_hide.hide(driver, _GROUP, ["u1"], _NOW, result)
 
         assert result.redacted_episodes == ["ep1"] and result.failures == []
         facts, keys, entities, redact = driver.execute_query.await_args_list
         assert facts.args == (recall_hide.SCRUB_FACTS_QUERY,)
-        assert facts.kwargs == {
-            "uuids": ["u1"],
-            "placeholder": FORGOTTEN_FACT,
-            "recovered": [["u1", "sentence", "MemoryFact"]],
-        }
+        assert facts.kwargs == {"uuids": ["u1"], "placeholder": FORGOTTEN_FACT}
         assert keys.kwargs == {"uuids": ["u1"], "entities": ["alice", "atlas"]}
         assert entities.kwargs == {
             "entities": [
@@ -66,17 +60,6 @@ class TestHide:
         }
         assert redact.args == (recall_hide.REDACT_EPISODES_QUERY,)
         assert redact.kwargs == {"uuids": ["u1"], "now": _NOW}
-
-    @pytest.mark.asyncio
-    async def test_entities_beyond_the_endpoints_are_scrubbed_too(self) -> None:
-        """A hard forget's endpoints, when its edge is gone."""
-        driver = _driver([{"ends": []}], [], [])
-
-        await recall_hide.hide(
-            driver, _GROUP, Hiding(uuids=["u1"], entities=["bob"]), _NOW, ForgetResult()
-        )
-
-        assert driver.execute_query.await_args_list[1].kwargs["entities"] == ["bob"]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -90,9 +73,7 @@ class TestHide:
         driver = _driver(*results)
         result = ForgetResult()
 
-        hidden = await recall_hide.hide(
-            driver, _GROUP, Hiding(uuids=["u1", "u2"]), _NOW, result
-        )
+        hidden = await recall_hide.hide(driver, _GROUP, ["u1", "u2"], _NOW, result)
 
         assert hidden is False
         assert [(f.uuid, f.code) for f in result.failures] == [
@@ -105,21 +86,18 @@ class TestHide:
     async def test_nothing_retracted_means_nothing_to_hide(self) -> None:
         driver = _driver()
 
-        assert await recall_hide.hide(
-            driver, _GROUP, Hiding(uuids=[]), _NOW, ForgetResult()
-        )
+        assert await recall_hide.hide(driver, _GROUP, [], _NOW, ForgetResult())
         driver.execute_query.assert_not_awaited()
 
 
 class TestScrubQuery:
     def test_an_audit_copy_is_never_replaced_by_the_placeholder(self) -> None:
         """The audit copy already written wins, then the edge's own text
-        unless it reads the placeholder, then the text the stash kept."""
+        unless it already reads the placeholder."""
         query = recall_hide.SCRUB_FACTS_QUERY
         assert (
             "coalesce(e.fact_redacted,\n"
-            "              CASE WHEN e.fact <> $placeholder THEN e.fact END,\n"
-            "              [r IN $recovered WHERE r[0] = e.uuid | r[1]][0]) AS sentence"
+            "              CASE WHEN e.fact <> $placeholder THEN e.fact END) AS sentence"
             in query
         )
         assert "CASE WHEN e.name <> $placeholder THEN e.name END" in query

@@ -11,8 +11,8 @@ Facts are listed and counted with the recall policy's live-fact test
 soft ``retract`` (``graphiti/recall_forget.py``): the edge is marked
 ``retracted`` and stops being served but stays for audit, and every episode
 it came from stops being recalled. A forget whose clean-up failed answers 500,
-not success, so the caller retries. The scope erase hard-deletes every node
-and edge in the scope's graph, raw episode text included.
+not success, and one that found memory busy answers 409; both retry. The
+scope erase hard-deletes every node and edge in the scope's graph.
 """
 
 import logging
@@ -219,6 +219,8 @@ async def _forget_fact_impl(
     # world change), so the fact and its episode text stop being recalled.
     result = await retract(scope, [fact_uuid])
     codes = {failure.code for failure in result.failures}
+    if MemoryForgetFailureCode.BUSY in codes:  # every uuid busy, nothing written
+        raise HTTPException(status_code=409, detail=result.failures[0].reason)
     if MemoryForgetFailureCode.CLEANUP_ERROR in codes:
         # Recall already hides the fact and its text, but the redaction did
         # not land; a retry finishes it, so this is not reported as done.

@@ -11,10 +11,11 @@ import asyncio
 import json
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from graphiti_core import Graphiti
+from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.nodes import EpisodeType
 from pytest_mock import MockerFixture
 
@@ -24,6 +25,7 @@ from backend.copilot.tools import graphiti_search
 from . import ingest, recall
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_fake_redis import FakeRedis
+from .recall_ingest import ForgetAwareLLMClient
 from .scope import MemoryScope
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -54,6 +56,12 @@ def patch_recall_boundaries(
     enabled = mocker.AsyncMock(return_value=True)
     mocker.patch.object(memory_routes, "is_enabled_for_user", enabled)
     mocker.patch.object(graphiti_search, "is_enabled_for_user", enabled)
+
+
+def model_of(client: Graphiti) -> LLMClient:
+    """The scripted model under ``client``'s forget-aware wrapper
+    (``recall_ingest.ForgetAwareLLMClient``), to patch or inspect."""
+    return cast(ForgetAwareLLMClient, client.llm_client).inner
 
 
 def capture_spawned_tasks(mocker: MockerFixture) -> list[asyncio.Task]:

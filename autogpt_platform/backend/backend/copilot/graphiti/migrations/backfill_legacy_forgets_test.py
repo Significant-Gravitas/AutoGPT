@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.graphiti.recall import legacy_forget_predicate
-from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, Hiding
+from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY
 
 from . import backfill_legacy_forgets as backfill
 
@@ -40,7 +40,7 @@ class TestBackfillGraph:
         with patch.object(backfill, "scrub", scrub):
             await backfill.backfill_graph(driver, apply=True)
 
-        scrub.assert_awaited_once_with(driver, Hiding(uuids=["e1", "e2"]))
+        scrub.assert_awaited_once_with(driver, ["e1", "e2"])
         count, redact, restamp = driver.execute_query.await_args_list
         assert count.args[0] == backfill.COUNT_QUERY
         assert redact.args[0] == REDACT_EPISODES_QUERY

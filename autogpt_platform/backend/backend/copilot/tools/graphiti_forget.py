@@ -12,6 +12,7 @@ The demotion helpers below are the dream's writers. They write only over
 live facts, so a demotion can never overwrite a user's forget.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -19,7 +20,11 @@ from typing import Any, Literal
 from graphiti_core.edges import EntityEdge
 
 from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.memory_model import MemoryForgetFailure
+from backend.copilot.graphiti.memory_model import (
+    ForgetResult,
+    MemoryForgetFailure,
+    MemoryForgetFailureCode,
+)
 from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
@@ -33,6 +38,10 @@ from .models import (
     MemoryForgetConfirmResponse,
     ToolResponseBase,
 )
+
+# A forget that found memory busy (another writer, usually an ingestion,
+# holding the graph's write lock) is tried once more after this long.
+_BUSY_RETRY_SECONDS = 5
 
 # Cap on how many per-UUID failure reasons are inlined into the confirm
 # message. Keeps a wholesale-failure batch from blowing past the tool-output
@@ -233,7 +242,7 @@ class MemoryForgetConfirmTool(BaseTool):
         # A soft forget is a *system* retraction, not a world change: the
         # edge keeps its ``invalid_at``. See ``retract``.
         try:
-            result = await retract(memory_scope, uuids, hard=hard_delete)
+            result = await _retract_once_more_if_busy(memory_scope, uuids, hard_delete)
         except Exception:
             logger.warning(
                 "Memory forget failed for user %s", user_id[:12], exc_info=True
@@ -251,6 +260,19 @@ class MemoryForgetConfirmTool(BaseTool):
             failed_uuids=[f.uuid for f in result.failures],
             failures=result.failures,
         )
+
+
+async def _retract_once_more_if_busy(
+    scope: MemoryScope, uuids: list[str], hard: bool
+) -> ForgetResult:
+    """``retract``, tried again once after ``_BUSY_RETRY_SECONDS`` when
+    memory was busy; a forget that finds it busy writes nothing, so the
+    retry is safe."""
+    result = await retract(scope, uuids, hard=hard)
+    if not any(f.code == MemoryForgetFailureCode.BUSY for f in result.failures):
+        return result
+    await asyncio.sleep(_BUSY_RETRY_SECONDS)
+    return await retract(scope, uuids, hard=hard)
 
 
 def _build_confirm_message(
@@ -299,8 +321,8 @@ async def mark_edges_superseded(
 ) -> tuple[list[str], list[str]]:
     """Retract edges AND set the custom audit-trail ``status`` property.
 
-    Intended for the dream pass (P0.3 stale-fact deprecation): retract
-    the edge (``expired_at`` only, as ``recall_forget.retract`` does) and
+    Intended for the dream pass (P0.3 stale-fact deprecation): retire
+    the edge (``expired_at``; ``invalid_at`` is left alone) and
     stamp ``status='superseded'`` (or ``'contradicted'``) plus
     ``expiration_reason=<reason>`` so the demotion is queryable from
     search (``WHERE e.status = 'superseded'``).

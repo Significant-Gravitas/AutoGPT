@@ -5,10 +5,12 @@ graphiti resolves a newly extracted fact against every edge between the same
 entities, the forgotten one included. Before a forget scrubbed the edge's
 sentence, its exact-text match merged the new statement into the retracted
 edge: the user got no live fact and the new episode was hidden with the old
-one. The scrub stops that match; graphiti's model can still call the new fact
-a duplicate of the forgotten edge, or a contradiction of it, and
-``recall_ingest`` puts the edge back and gives the fact a new live edge.
-The unit sibling is ``recall_ingest_test.py``.
+one. The scrub stops that match, and whatever graphiti's model answers,
+a forgotten edge is neither a duplicate nor a contradiction of the new
+fact (``recall_ingest.ForgetAwareLLMClient``): graphiti saves it as a new
+live edge in the same ``add_episode``, with no second extraction. The unit
+sibling is ``recall_ingest_test.py``; ``recall_reteach_integration_test.py``
+states several facts at once.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -34,6 +36,7 @@ from .recall_integration_fixtures import (
     episode_row,
     ingest_through_the_worker,
     live_facts,
+    model_of,
     patch_recall_boundaries,
     recalled_episodes,
     recalled_facts,
@@ -100,19 +103,20 @@ async def _state_again(
     build: BuildClient,
     fact: Fact,
     resolution: dict[str, list[int]] | None = None,
-) -> tuple[str, list[str]]:
-    """``fact`` stated in a new chat turn: the new episode's uuid and every
-    message graphiti sent its model for it."""
+) -> tuple[str, list[str], list[str]]:
+    """``fact`` stated in a new chat turn: the new episode's uuid, every
+    message graphiti sent its model for it, and the answer each call asked
+    for."""
     client = build(driver, _responses(fact, _AGAIN_VALID_AT, resolution))
-    answer = client.llm_client._generate_response
-    with patch.object(
-        client.llm_client, "_generate_response", side_effect=answer
-    ) as generate:
+    model = model_of(client)
+    answer = model._generate_response
+    with patch.object(model, "_generate_response", side_effect=answer) as generate:
         episode = await ingest_through_the_worker(
             driver, scope, client, [fact], session_id="s-again"
         )
-    sent = [m.content for call in generate.await_args_list for m in call.args[0]]
-    return episode, sent
+    calls = generate.await_args_list
+    sent = [m.content for call in calls for m in call.args[0]]
+    return episode, sent, [call.args[1].__name__ for call in calls]
 
 
 async def _assert_live_again(
@@ -144,9 +148,10 @@ async def test_a_fact_taught_again_after_a_forget_is_live_again(
     driver, scope = scope_graph
     forgotten = await _learn_then_forget(driver, scope, stub_graphiti_client)
 
-    episode, _ = await _state_again(driver, scope, stub_graphiti_client, ALICE)
+    episode, _, asked = await _state_again(driver, scope, stub_graphiti_client, ALICE)
 
     await _assert_live_again(driver, scope, forgotten, episode, ALICE[2])
+    assert asked.count("ExtractedEdges") == 1, "no second extraction"
 
 
 @pytest.mark.integration
@@ -158,12 +163,13 @@ async def test_a_fact_resolved_into_a_forgotten_one_gets_its_own_live_edge(
     driver, scope = scope_graph
     forgotten = await _learn_then_forget(driver, scope, stub_graphiti_client)
 
-    episode, sent = await _state_again(
+    episode, sent, asked = await _state_again(
         driver, scope, stub_graphiti_client, ALICE, _RESOLUTIONS[resolution]
     )
 
     assert any(FORGOTTEN_FACT in message for message in sent), "not offered"
     await _assert_live_again(driver, scope, forgotten, episode, ALICE[2])
+    assert asked.count("ExtractedEdges") == 1, "no second extraction"
 
 
 @pytest.mark.integration
@@ -177,10 +183,11 @@ async def test_a_new_fact_merged_into_a_forgotten_one_never_shows_its_sentence(
     driver, scope = scope_graph
     forgotten = await _learn_then_forget(driver, scope, stub_graphiti_client)
 
-    episode, sent = await _state_again(
+    episode, sent, asked = await _state_again(
         driver, scope, stub_graphiti_client, _REWORDED, _RESOLUTIONS["duplicate"]
     )
 
     assert any(FORGOTTEN_FACT in message for message in sent), "not offered"
     assert [message for message in sent if ALICE[2] in message] == []
     await _assert_live_again(driver, scope, forgotten, episode, _REWORDED[2])
+    assert asked.count("ExtractedEdges") == 1, "no second extraction"

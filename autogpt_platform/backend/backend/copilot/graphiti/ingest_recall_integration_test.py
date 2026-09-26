@@ -37,6 +37,7 @@ from .recall_integration_fixtures import (
     ingest_facts,
     ingest_through_the_worker,
     live_facts,
+    model_of,
     rows,
     scripted_responses,
     stop_ingestion_workers,
@@ -96,7 +97,7 @@ async def test_extraction_is_never_shown_a_forgotten_episode(
     )
     await retract(scope, [edges[ALICE[2]]])
     client = stub_graphiti_client(driver, scripted_responses([BOB]))
-    generate = mocker.spy(client.llm_client, "_generate_response")
+    generate = mocker.spy(model_of(client), "_generate_response")
     add_episode = mocker.spy(client, "add_episode")
     mocker.patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client))
 
@@ -128,7 +129,7 @@ async def test_no_later_prompt_carries_a_forgotten_sentence(
 
     assert set((await _summaries(driver)).values()) == {""}, "summaries blanked"
     client = stub_graphiti_client(driver, scripted_responses([BOB]))
-    generate = mocker.spy(client.llm_client, "_generate_response")
+    generate = mocker.spy(model_of(client), "_generate_response")
     await ingest_through_the_worker(driver, scope, client, [BOB], session_id="s-bob")
 
     calls = generate.call_args_list

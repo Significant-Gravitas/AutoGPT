@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from graphiti_core.edges import EntityEdge
 
-from backend.copilot.graphiti import recall_stash
+from backend.copilot.graphiti import scope_lock
 from backend.copilot.graphiti.memory_model import (
     ForgetResult,
     MemoryForgetFailure,
@@ -43,11 +43,11 @@ async def _enabled(_user_id: str) -> bool:
 
 
 @pytest.fixture(autouse=True)
-def forget_stash(mocker) -> FakeRedis:
-    """The real ``retract`` stashes each forget; keep that in memory."""
+def lock_redis(mocker) -> FakeRedis:
+    """The real ``retract`` takes the graph's write lock; keep it in memory."""
     redis = FakeRedis()
     mocker.patch.object(
-        recall_stash, "get_redis_async", mocker.AsyncMock(return_value=redis)
+        scope_lock, "get_redis_async", mocker.AsyncMock(return_value=redis)
     )
     return redis
 

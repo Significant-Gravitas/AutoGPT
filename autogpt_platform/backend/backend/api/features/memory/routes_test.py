@@ -10,7 +10,11 @@ from redis.exceptions import ResponseError
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.graphiti.client import derive_memory_group_id
-from backend.copilot.graphiti.memory_model import ForgetResult, MemoryForgetFailure
+from backend.copilot.graphiti.memory_model import (
+    FORGET_BUSY_REASON,
+    ForgetResult,
+    MemoryForgetFailure,
+)
 from backend.copilot.graphiti.recall import live_fact_predicate
 from backend.copilot.graphiti.scope import MemoryScope
 
@@ -204,6 +208,15 @@ class TestForgetFact:
             resp = client.delete("/memory/facts/edge-1")
         assert resp.status_code == 500
         assert "try again" in resp.json()["detail"]
+
+    def test_memory_being_written_is_409_and_nothing_forgotten(self) -> None:
+        """An ingestion held the graph's write lock for the whole wait: the
+        forget wrote nothing, and the page can try again."""
+        result = ForgetResult(failures=[MemoryForgetFailure.busy("edge-1")])
+        with patch(f"{_MOCK_MODULE}.retract", AsyncMock(return_value=result)):
+            resp = client.delete("/memory/facts/edge-1")
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == FORGET_BUSY_REASON
 
     def test_expert_forget_uses_expert_scope(self, test_user_id) -> None:
         retract = AsyncMock(return_value=ForgetResult(deleted=["edge-1"]))

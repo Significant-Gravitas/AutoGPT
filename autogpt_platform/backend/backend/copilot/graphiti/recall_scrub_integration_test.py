@@ -35,6 +35,7 @@ from .recall_integration_fixtures import (
     Fact,
     ingest_through_the_worker,
     live_facts,
+    model_of,
     patch_recall_boundaries,
     rows,
     scripted_responses,
@@ -95,10 +96,9 @@ async def _hello(
     """A later episode that only mentions Alice; every message graphiti sent
     its model for it."""
     client = build(driver, _alice_a_person([], role=None))
-    answer = client.llm_client._generate_response
-    with patch.object(
-        client.llm_client, "_generate_response", side_effect=answer
-    ) as generate:
+    model = model_of(client)
+    answer = model._generate_response
+    with patch.object(model, "_generate_response", side_effect=answer) as generate:
         await ingest_through_the_worker(
             driver,
             scope,

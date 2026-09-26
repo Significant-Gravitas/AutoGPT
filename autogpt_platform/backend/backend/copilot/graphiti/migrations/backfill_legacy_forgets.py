@@ -38,7 +38,7 @@ from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.copilot.graphiti.memory_model import MemoryStatus
 from backend.copilot.graphiti.recall import USER_FORGET_REASON, legacy_forget_predicate
-from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, Hiding, scrub
+from backend.copilot.graphiti.recall_hide import REDACT_EPISODES_QUERY, scrub
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ async def backfill_graph(driver: AutoGPTFalkorDriver, *, apply: bool) -> LegacyF
     found = _GraphForgets.model_validate(records[0]) if records else _GraphForgets()
     if not apply or not found.edges:
         return found
-    await scrub(driver, Hiding(uuids=found.uuids))
+    await scrub(driver, found.uuids)
     await driver.execute_query(
         REDACT_EPISODES_QUERY,
         uuids=found.uuids,
