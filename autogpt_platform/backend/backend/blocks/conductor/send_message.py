@@ -153,6 +153,12 @@ class ConductorSendMessageBlock(Block):
 
         if not input_data.wait_for_reply:
             return
+        if not message_id:
+            raise BlockExecutionError(
+                message="Cannot wait for the agent: Conductor returned no messageId",
+                block_name=self.name,
+                block_id=self.id,
+            )
         try:
             waited = await self._wait(
                 credentials,
