@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
 from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from_exec_id
+from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
+from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
 from backend.data.execution import (
     ExecutionContext,
@@ -260,6 +262,15 @@ async def process_review_action(
         )
         auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
+    # Read before the answer lands: a turn it wakes claims the held calls.
+    chat_rule_keys = (
+        await held_subject_keys(
+            chat_session_id, [r.node_exec_id for r in request.reviews if r.chat_rule]
+        )
+        if chat_session_id is not None
+        else {}
+    )
+
     # Process all reviews
     updated_reviews = await process_all_reviews_for_execution(
         user_id=user_id,
@@ -344,6 +355,16 @@ async def process_review_action(
         for review in updated_reviews.values()
         if review.status == ReviewStatus.REJECTED
     )
+
+    if chat_session_id is not None and chat_rule_keys:
+        await set_chat_rules(
+            chat_session_id,
+            user_id,
+            updated_reviews,
+            {review.node_exec_id: review.chat_rule for review in request.reviews},
+            chat_rule_keys,
+            {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
+        )
 
     # A held call finishes on its own: the answer starts the chat's next turn.
     if chat_session_id is not None and updated_reviews:

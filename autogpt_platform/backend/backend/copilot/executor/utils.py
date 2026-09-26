@@ -542,7 +542,9 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
-    envelope = await _admitted_turn_envelope(turn_id, user_id, permissions, spawn)
+    envelope = await _admitted_turn_envelope(
+        turn_id, session_id, user_id, permissions, spawn
+    )
 
     # Everything after the admit above runs inside the try: the tree's node
     # counter is already incremented, so an exception from ``create_session``
@@ -605,6 +607,7 @@ async def dispatch_turn(
 
 async def _admitted_turn_envelope(
     turn_id: str,
+    session_id: str,
     user_id: str | None,
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
@@ -630,7 +633,7 @@ async def _admitted_turn_envelope(
             "over. Start it again from the top."
         )
     if spawner is None:
-        envelope = root_envelope(turn_id)
+        envelope = root_envelope(turn_id, session_id=session_id)
     else:
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions

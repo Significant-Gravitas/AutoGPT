@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -114,6 +115,7 @@ class PostToFacebookBlock(Block):
             input_schema=PostToFacebookBlock.Input,
             output_schema=PostToFacebookBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

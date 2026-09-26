@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
@@ -28,8 +28,13 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sharing.models import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
+from .classifier import DecidedBy
 from .headline import Headline, headline_for
 from .policy import DEFAULT_MODE, effect_for, is_irreversible
+from .references import Reference, listed_ids, resolve_references
+
+if TYPE_CHECKING:
+    from .subject import Subject as GateSubject
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,8 @@ class Subject(BaseModel):
     name: str
     effect: str
     irreversible: bool = False
+    # A block's fields are labelled from its own input schema.
+    block_id: str | None = None
 
 
 class FieldLabel(BaseModel):
@@ -62,20 +69,29 @@ class GateReviewPayload(BaseModel):
     arguments: dict[str, Any]
     clipped: list[str] = []
     fields: list[FieldLabel] = []
+    # What the call's ids name, as they were when it was held.
+    references: list[Reference] = []
+    # Ids per argument before clipping, so a long list still says "+N more".
+    reference_totals: dict[str, int] = {}
     tool_call_id: str = ""
     turn: int = 0
     mode: str | None = None
     subject: Subject
     reason: str = ""
     reason_kind: ReasonKind = "mode"
-    # The gate records no chat-scoped rule yet, so none is offered.
+    # Which supervisor stage decided a ``supervisor`` card.
+    decided_by: DecidedBy | None = None
+    # Only a card naming a subject can set a rule on it.
     chat_rules_allowed: list[Literal["allow", "judge"]] = []
     headline: Headline
+    # A money card's estimate, spend so far and ceiling.
+    spend: dict[str, int] | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
 # card's turn normally runs it within seconds.
 APPROVAL_TTL = timedelta(hours=1)
+_SPEND = "spend"
 
 
 def node_id_for(tool_name: str) -> str:
@@ -103,13 +119,23 @@ def review_id_for(
 def review_payload(
     tool_name: str,
     args: dict[str, Any],
+    subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
     *,
     reason: str = "",
     reason_kind: ReasonKind = "mode",
+    decided_by: DecidedBy | None = None,
     mode: str | None = None,
     tool_call_id: str = "",
     turn: int = 0,
+    references: list[Reference] | None = None,
 ) -> dict[str, Any]:
+    """The subject is kept as decided when the card opened: what the user saw,
+    not a recomputation over a tree that may have moved since."""
+    # A block's card lists the block's own inputs, each clipped on its own.
+    if subject is not None and subject.key.startswith("block:"):
+        block_input = args.get("input")
+        args = block_input if isinstance(block_input, dict) else {}
     redacted = _redact_secret_keys(args)
     # Per value, never the whole blob: a long first argument must not push
     # the one that matters off the card while the approval still binds it.
@@ -120,19 +146,34 @@ def review_payload(
         arguments=shown,
         clipped=[key for key in shown if shown[key] is not redacted[key]],
         fields=_field_labels(tool_name, shown),
+        references=references or [],
+        reference_totals={
+            key: len(listed_ids(args.get(key)))
+            for key in {ref.key for ref in references or []}
+        },
         tool_call_id=tool_call_id,
         turn=turn,
         mode=mode,
-        subject=Subject(
-            key=tool_name,
-            name=_label(tool_name),
-            effect=effect_for(tool_name).value,
-            irreversible=is_irreversible(tool_name, args),
-        ),
+        subject=_payload_subject(tool_name, args, subject),
         reason=" ".join(reason.split())[:300],
         reason_kind=reason_kind,
-        headline=headline_for(tool_name, args),
+        decided_by=decided_by,
+        # A money card rules on nothing: reads never consult a chat rule.
+        chat_rules_allowed=(
+            ["allow", "judge"] if subject is not None and spend is None else []
+        ),
+        headline=(
+            Headline(ask="Run", object=subject.name)
+            if subject is not None
+            else headline_for(tool_name, args, references)
+        ),
+        spend=spend,
     ).model_dump()
+
+
+def is_spend_card(review: PendingHumanReviewModel) -> bool:
+    """The card asked because the turn was over its spend ceiling."""
+    return isinstance(review.payload, dict) and review.payload.get(_SPEND) is not None
 
 
 async def find_decision(
@@ -194,22 +235,40 @@ async def open_review(
     tool_name: str,
     args: dict[str, Any],
     reason: str,
+    subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
-) -> bool:
-    """Park the call for approval. False means nothing was recorded."""
-    payload = review_payload(
-        tool_name,
-        args,
-        reason=reason,
-        reason_kind=reason_kind,
-        mode=session.metadata.autopilot_mode or DEFAULT_MODE,
-        tool_call_id=tool_call_id,
-        turn=turn_of(session),
-    )
-    return await open_review_row(
-        review_id, user_id, session, payload, headline_for(tool_name, args).text
-    )
+    decided_by: DecidedBy | None = None,
+) -> Headline | None:
+    """Park the call for approval; the card's headline, or None if nothing was
+    recorded."""
+    try:
+        references = await resolve_references(tool_name, args, user_id, session)
+        payload = review_payload(
+            tool_name,
+            args,
+            subject,
+            spend,
+            reason=reason,
+            reason_kind=reason_kind,
+            decided_by=decided_by,
+            mode=session.metadata.autopilot_mode or DEFAULT_MODE,
+            tool_call_id=tool_call_id,
+            turn=turn_of(session),
+            references=references,
+        )
+    except Exception:
+        logger.warning(
+            f"Gate could not build a review for {tool_name} in session "
+            f"{session.session_id}",
+            exc_info=True,
+        )
+        return None
+    headline = Headline.model_validate(payload["headline"])
+    if not await open_review_row(review_id, user_id, session, payload, headline.text):
+        return None
+    return headline
 
 
 async def open_review_row(
@@ -244,6 +303,32 @@ def turn_of(session: ChatSession) -> int:
     return sum(1 for m in session.messages if m.role == "user")
 
 
+def payload_headline(payload: dict[str, Any]) -> str:
+    return Headline.model_validate(payload["headline"]).text
+
+
+def _payload_subject(
+    tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
+) -> Subject:
+    if subject is None:
+        return Subject(
+            key=tool_name,
+            name=_label(tool_name),
+            effect=effect_for(tool_name).value,
+            irreversible=is_irreversible(tool_name, args),
+        )
+    # ``block:<id>`` or ``workflow:<graph id>``.
+    kind, _, ident = subject.key.partition(":")
+    return Subject(
+        kind=kind or "tool",
+        key=subject.key,
+        name=subject.name,
+        effect=subject.effect.value,
+        irreversible=subject.irreversible,
+        block_id=ident if kind == "block" else None,
+    )
+
+
 def _label(tool_name: str) -> str:
     label = tool_name.replace("_", " ")
     return label[:1].upper() + label[1:]
@@ -267,7 +352,10 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
 
 
 def _humanize(key: str) -> str:
-    words = key.removesuffix("_id").replace("_", " ").strip()
+    # agent_ids -> "Agents": the card shows names there, not ids.
+    plural = key.endswith("_ids")
+    words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words += "s" if plural else ""
     return words[:1].upper() + words[1:]
 
 

@@ -138,6 +138,9 @@ class TestStartChatTurn:
         assert create_call.kwargs["source_platform"] == "discord"
         mock_stream_registry.create_session.assert_awaited_once()
         mock_enqueue.assert_awaited_once()
+        # Its paid reads count against, and ask on, this chat's spend ceiling.
+        envelope = mock_enqueue.await_args.kwargs["envelope"]
+        assert envelope.tainted and envelope.spend_session_id == "sess-new"
 
     @pytest.mark.asyncio
     async def test_stale_session_id_falls_back_to_fresh_session(self):

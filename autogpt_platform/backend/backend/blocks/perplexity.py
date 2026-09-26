@@ -9,6 +9,7 @@ from pydantic import SecretStr, field_validator
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -168,6 +169,7 @@ class PerplexityBlock(Block):
                     ],
                 }
             },
+            effect=BlockEffect.READ,
         )
         self.execution_stats = NodeExecutionStats()
 

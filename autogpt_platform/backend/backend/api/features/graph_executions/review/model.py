@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 from functools import cache
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -156,6 +156,21 @@ class ReviewItem(BaseModel):
         description=(
             "If true and this review is approved, future executions of this same "
             "block (node) will be automatically approved. This only affects approved reviews."
+        ),
+    )
+    chat_rule: Literal["allow", "judge"] | None = Field(
+        default=None,
+        description=(
+            "AutoPilot cards naming a subject only: once approved, the subject "
+            "runs ('allow') or goes to the supervisor ('judge') for the rest of "
+            "the chat instead of asking."
+        ),
+    )
+    chat_rule_scope: Literal["chat", "expert", "team"] = Field(
+        default="chat",
+        description=(
+            "Where chat_rule holds: this chat, every chat with this chat's "
+            "Expert (or Otto), or every Expert on the user's team."
         ),
     )
 

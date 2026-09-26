@@ -3,6 +3,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaOutput,
     BlockType,
@@ -112,6 +113,7 @@ class PostToGMBBlock(Block):
             input_schema=PostToGMBBlock.Input,
             output_schema=PostToGMBBlock.Output,
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

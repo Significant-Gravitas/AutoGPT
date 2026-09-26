@@ -61,7 +61,7 @@ test("the headline names the action and its argument is not repeated below", asy
         { key: "color", label: "Color" },
       ],
       headline: {
-        ask: "Create folder",
+        ask: "Create library folder",
         object: "Q3 reports",
         object_key: "name",
       },
@@ -70,7 +70,7 @@ test("the headline names the action and its argument is not repeated below", asy
   renderQueue();
 
   const heading = await screen.findByRole("heading", {
-    name: "Create folder Q3 reports",
+    name: "Create library folder Q3 reports",
   });
   expect(heading).toBeDefined();
   expect(screen.getByText("Color")).toBeDefined();
@@ -163,8 +163,10 @@ test("the approve menu offers the rules the server allows", async () => {
   await userEvent.click(
     await screen.findByRole("button", { name: "More ways to approve" }),
   );
-  expect(await screen.findByText("Approve for this chat")).toBeDefined();
-  expect(screen.queryByText(/judge from now on/)).toBeNull();
+  expect(
+    await screen.findByText("Approve Gmail Send from now on"),
+  ).toBeDefined();
+  expect(screen.queryByText(/^Let Otto judge/)).toBeNull();
   expect(screen.queryByText(/Always allow/)).toBeNull();
 });
 

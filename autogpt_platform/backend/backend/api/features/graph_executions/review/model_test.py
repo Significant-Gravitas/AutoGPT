@@ -3,8 +3,9 @@ from datetime import datetime, timezone
 import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
+from pydantic import ValidationError
 
-from .model import PendingHumanReviewModel
+from .model import PendingHumanReviewModel, ReviewItem
 
 
 def _row(instructions: str) -> PendingHumanReview:
@@ -43,3 +44,10 @@ def test_a_block_review_carries_its_block_and_action(instructions, block_id, act
 
     assert review.block_id == block_id
     assert review.action == action
+
+
+@pytest.mark.parametrize("rule", ["ask", "bogus"])
+def test_an_answer_can_only_allow_or_judge_for_the_chat(rule):
+    """Reject is the ask; nothing else may ride on an approval."""
+    with pytest.raises(ValidationError):
+        ReviewItem(node_exec_id="n", approved=True, chat_rule=rule)
