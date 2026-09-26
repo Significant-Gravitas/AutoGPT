@@ -342,11 +342,13 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    claims = _mock_client_message_claims(mocker)
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
         session=mock_session,
         owns_active_expert=mock_owns_active_expert,
+        claims=claims,
     )
 
 
@@ -655,6 +657,159 @@ def test_stream_chat_scopes_client_message_id_to_owner_and_session(
         "sess-1",
         "client-click-id",
     )
+
+
+# ─── Client message id idempotency (SECRT-2695) ───────────────────────
+
+
+class _ClaimRedis:
+    """The client-message claim's SET NX / EXISTS / DELETE, plus the LLEN a
+    duplicate's response reads the buffer length with."""
+
+    def __init__(self) -> None:
+        self.keys: set[str] = set()
+
+    async def set(
+        self, key: str, value: str, nx: bool = False, ex: int | None = None
+    ) -> bool | None:
+        if nx and key in self.keys:
+            return None
+        self.keys.add(key)
+        return True
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.keys)
+
+    async def delete(self, key: str) -> int:
+        if key not in self.keys:
+            return 0
+        self.keys.discard(key)
+        return 1
+
+    async def llen(self, key: str) -> int:
+        return 0
+
+
+def _mock_client_message_claims(mocker: pytest_mock.MockerFixture) -> _ClaimRedis:
+    redis = _ClaimRedis()
+    mocker.patch(
+        "backend.copilot.pending_messages.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=redis,
+    )
+    return redis
+
+
+def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    """Run the real ``queue_pending_for_http`` down to the Redis push."""
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.incr_with_ttl",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    return mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+
+def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The same send arriving three times starts one turn. The copies that
+    land once the turn is running used to be buffered as follow-ups, each
+    one becoming another user message and another turn."""
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    in_flight = mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    in_flight.return_value = True
+    for _ in range(2):
+        assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+
+    mocks.enqueue.assert_awaited_once()
+    push.assert_not_awaited()
+
+
+def test_stream_chat_retransmits_of_a_queued_send_are_buffered_once(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A stale tab posts to /stream while another tab's turn runs, so the
+    send is queued. Its copies must neither queue again nor, once the turn
+    has drained it, start a turn of their own."""
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    in_flight = mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    for _ in range(3):
+        assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    in_flight.return_value = False
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+
+    push.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+
+
+def test_stream_chat_distinct_message_ids_are_each_queued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Two clicks with the same text are two messages."""
+    _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    for message_id in ("click-1", "click-2"):
+        response = client.post(
+            "/sessions/sess-1/stream",
+            json={"message": "hello", "message_id": message_id},
+        )
+        assert response.status_code == 200
+
+    assert push.await_count == 2
+
+
+def test_stream_chat_refused_send_can_be_retried_with_the_same_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A send the server turned away was never accepted, so its id must not
+    stay claimed: the retry would be dropped as a duplicate of nothing."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    mocker.patch.object(
+        chat_routes.turn_queue,
+        "try_enqueue_turn",
+        new_callable=AsyncMock,
+        side_effect=chat_routes.turn_queue.InflightCapExceeded(),
+    )
+    body = {"message": "hello", "message_id": "client-click-id"}
+
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 429
+    assert mocks.claims.keys == set()
+
+    mocks.enqueue.side_effect = None
+    assert client.post("/sessions/sess-1/stream", json=body).status_code == 200
+    assert mocks.enqueue.await_count == 2
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -2278,6 +2433,37 @@ def test_queue_pending_message_returns_200_when_turn_in_flight(
     data = response.json()
     assert data["buffer_length"] == 1
     assert "turn_in_flight" in data
+
+
+def test_queue_pending_message_same_message_id_is_buffered_once(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A retransmitted follow-up is queued once, and a copy that lands after
+    the turn ended is answered as accepted rather than 409 (which would send
+    the client to POST /stream with the message all over again)."""
+    _mock_stream_queue_internals(mocker)
+    _mock_client_message_claims(mocker)
+    push = mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    body = {"message": "follow-up", "message_id": "client-click-id"}
+
+    for _ in range(2):
+        response = client.post("/sessions/sess-1/messages/pending", json=body)
+        assert response.status_code == 200
+        assert response.json()["turn_in_flight"] is True
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    response = client.post("/sessions/sess-1/messages/pending", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["turn_in_flight"] is True
+    push.assert_awaited_once()
 
 
 def test_queue_pending_message_session_not_found_returns_404(

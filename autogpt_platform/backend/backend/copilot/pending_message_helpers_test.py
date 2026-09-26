@@ -284,6 +284,123 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
     queue_mock.assert_awaited_once()
 
 
+# ── queue_pending_for_http: client message id (SECRT-2695) ──────────
+
+
+def _mock_queue_claims(
+    monkeypatch: pytest.MonkeyPatch, *, claimed: bool
+) -> tuple[AsyncMock, AsyncMock]:
+    claim = AsyncMock(return_value=claimed)
+    release = AsyncMock()
+    monkeypatch.setattr(helpers_module, "claim_client_message", claim)
+    monkeypatch.setattr(helpers_module, "release_client_message", release)
+    monkeypatch.setattr(helpers_module, "peek_pending_count", AsyncMock(return_value=1))
+    return claim, release
+
+
+async def _queue_with_client_id() -> QueuePendingMessageResponse:
+    return await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+        folder_ids=None,
+        expert_id=None,
+        client_message_id="scoped-msg-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_skips_retransmit_of_an_accepted_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retransmit is answered as accepted without a second push or a
+    rate tick, and says the turn is in flight so the client does not fall
+    back to POST /stream."""
+    _mock_queue_claims(monkeypatch, claimed=False)
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    rate_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
+
+    result = await _queue_with_client_id()
+
+    assert result.turn_in_flight is True
+    assert result.buffer_length == 1
+    queue_mock.assert_not_awaited()
+    rate_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_keeps_the_claim_once_the_push_lands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim, release = _mock_queue_claims(monkeypatch, claimed=True)
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(
+            return_value=QueuePendingMessageResponse(
+                buffer_length=1,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+
+    await _queue_with_client_id()
+
+    claim.assert_awaited_once_with("sess-1", "scoped-msg-1")
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_releases_the_claim_when_the_push_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The turn ended before the push: the route falls through to start a
+    turn with the same id, which needs the claim back."""
+    _, release = _mock_queue_claims(monkeypatch, claimed=True)
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(
+            return_value=QueuePendingMessageResponse(
+                buffer_length=0,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=False,
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _queue_with_client_id()
+
+    assert exc_info.value.status_code == 409
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_releases_the_claim_when_the_push_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, release = _mock_queue_claims(monkeypatch, claimed=True)
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(side_effect=ConnectionError("down")),
+    )
+
+    with pytest.raises(ConnectionError):
+        await _queue_with_client_id()
+
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1")
+
+
 @pytest.mark.asyncio
 async def test_check_pending_call_rate_at_limit(
     monkeypatch: pytest.MonkeyPatch,
