@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.api.features.experts.avatar_catalog import PRESETS
+from backend.api.features.experts.avatar_catalog import DEFAULT_AVATAR_URL
 from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
@@ -124,11 +124,6 @@ class RaiseExpertTool(BaseTool):
                     "enum": COLOR_TOKENS,
                     "description": "Avatar/chat accent token.",
                 },
-                "avatar_category": {
-                    "type": "string",
-                    "enum": list(PRESETS),
-                    "description": "Starting clay avatar palette. Saved independently of name and role; omit for warm stone.",
-                },
                 "about": {
                     "type": "string",
                     "description": (
@@ -164,7 +159,6 @@ class RaiseExpertTool(BaseTool):
         job_title: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_category: str = "content",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -184,10 +178,6 @@ class RaiseExpertTool(BaseTool):
                     + ", ".join(COLOR_TOKENS)
                 ),
                 session_id=session_id,
-            )
-        if avatar_category not in PRESETS:
-            return ErrorResponse(
-                message="Invalid avatar_category", session_id=session_id
             )
         try:
             params = _RaiseParams(
@@ -252,7 +242,9 @@ class RaiseExpertTool(BaseTool):
             job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
-            avatar_url=PRESETS[avatar_category].url,
+            # A raised Expert starts on the General fallback; its owner picks or
+            # generates a reviewed appearance from the Team page afterwards.
+            avatar_url=DEFAULT_AVATAR_URL,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
