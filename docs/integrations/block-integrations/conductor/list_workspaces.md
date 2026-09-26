@@ -1,6 +1,6 @@
 # Conductor List Workspaces
 <!-- MANUAL: file_description -->
-Lists Conductor workspaces with optional project, state, name, repository, creator and activity filters. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Lists Conductor workspaces with optional project, state, name, repository, creator and activity filters. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor List Workspaces

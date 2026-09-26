@@ -1,6 +1,6 @@
 # Conductor Account
 <!-- MANUAL: file_description -->
-One-call overview of a Conductor account: identity, projects (repositories), sections and routines. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+One-call overview of a Conductor account: identity, projects (repositories), sections and routines. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Get Account

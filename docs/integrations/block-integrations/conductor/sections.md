@@ -1,6 +1,6 @@
 # Conductor Sections
 <!-- MANUAL: file_description -->
-Creates or deletes a Conductor cloud section, the sidebar groups that organise workspaces. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Creates or deletes a Conductor cloud section, the sidebar groups that organise workspaces. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Manage Section

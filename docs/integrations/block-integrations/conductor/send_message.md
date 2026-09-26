@@ -1,6 +1,6 @@
 # Conductor Send Message
 <!-- MANUAL: file_description -->
-Sends a prompt to a Conductor agent session and, by default, waits for the agent to finish and returns its reply. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Sends a prompt to a Conductor agent session and, by default, waits for the agent to finish and returns its reply. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Send Message

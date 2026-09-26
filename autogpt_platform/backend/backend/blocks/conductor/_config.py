@@ -8,6 +8,6 @@ conductor = (
         "Cloud coding-agent workspaces: create workspaces, prompt agents, "
         "read transcripts and manage preview URLs, sections and routines"
     )
-    .with_api_key("CONDUCTOR_API_KEY", "Conductor API Key")
+    .with_supported_auth_types("api_key")
     .build()
 )

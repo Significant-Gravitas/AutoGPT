@@ -1,6 +1,6 @@
 # Conductor Create Session
 <!-- MANUAL: file_description -->
-Starts a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally waits for the reply. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Starts a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally waits for the reply. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Create Session

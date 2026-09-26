@@ -1,6 +1,6 @@
 # Conductor Get Session
 <!-- MANUAL: file_description -->
-Reads a Conductor agent session: details, whether the agent is idle, working or errored, and recent transcript messages. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Reads a Conductor agent session: details, whether the agent is idle, working or errored, and recent transcript messages. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Get Session

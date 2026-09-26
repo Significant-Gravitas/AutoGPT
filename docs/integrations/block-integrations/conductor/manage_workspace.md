@@ -1,6 +1,6 @@
 # Conductor Manage Workspace
 <!-- MANUAL: file_description -->
-Renames, archives, unarchives or sleeps a Conductor workspace, shares or stops its public preview URL, or moves it into a section. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Renames, archives, unarchives or sleeps a Conductor workspace, shares or stops its public preview URL, or moves it into a section. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Manage Workspace

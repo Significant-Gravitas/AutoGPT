@@ -1,6 +1,6 @@
 # Conductor Create Workspace
 <!-- MANUAL: file_description -->
-Creates a Conductor cloud workspace for a project or repository, optionally starts its agent with a prompt and waits for the reply. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Creates a Conductor cloud workspace for a project or repository, optionally starts its agent with a prompt and waits for the reply. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Create Workspace

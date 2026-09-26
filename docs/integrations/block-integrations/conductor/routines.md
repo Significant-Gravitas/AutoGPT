@@ -1,6 +1,6 @@
 # Conductor Routines
 <!-- MANUAL: file_description -->
-Creates a Conductor routine (a saved prompt that runs a fresh agent whenever its webhook is called) or rotates a routine's webhook secret. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Creates a Conductor routine (a saved prompt that runs a fresh agent whenever its webhook is called) or rotates a routine's webhook secret. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Manage Routine

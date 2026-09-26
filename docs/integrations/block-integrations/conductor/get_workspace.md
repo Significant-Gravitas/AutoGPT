@@ -1,6 +1,6 @@
 # Conductor Get Workspace
 <!-- MANUAL: file_description -->
-Everything about one Conductor workspace: details, status, shared preview URL and its agent sessions. Needs a `CONDUCTOR_API_KEY` credential, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys). Every Conductor block uses the same key.
+Everything about one Conductor workspace: details, status, shared preview URL and its agent sessions. Requires your own Conductor API key, created at [app.conductor.build/users/api-keys](https://app.conductor.build/users/api-keys) and added through AutoGPT’s credentials UI. Select that credential for each Conductor block; no server-wide default key is used.
 <!-- END MANUAL -->
 
 ## Conductor Get Workspace
