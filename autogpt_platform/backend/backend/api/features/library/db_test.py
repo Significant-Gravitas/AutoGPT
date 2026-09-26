@@ -172,14 +172,18 @@ async def test_list_library_agents_is_hidden_filter(
 
 
 @pytest.mark.asyncio
-async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
-    """Search must match the snapshotted LibraryAgent name/description (shown on
-    the card for downloaded agents) as well as the underlying graph's values."""
-    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+async def test_list_library_agents_search_uses_full_text_search(mocker):
+    """Search must use Postgres full-text search (search filter) instead of
+    ILIKE (contains) for better relevance and performance."""
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
     mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mock_find_many = mocker.AsyncMock(return_value=[])
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
     mock_library_agent.return_value.find_many = mock_find_many
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
 
@@ -191,24 +195,97 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     await db.list_library_agents("test-user", search_term="Published Title")
 
     where = mock_find_many.call_args.kwargs["where"]
-    assert {"name": {"contains": "Published Title", "mode": "insensitive"}} in where[
-        "OR"
-    ]
-    assert {
-        "description": {"contains": "Published Title", "mode": "insensitive"}
-    } in where["OR"]
+    assert {"name": {"search": "Published Title"}} in where["OR"]
+    assert {"description": {"search": "Published Title"}} in where["OR"]
     assert {
         "AgentGraph": {
-            "is": {"name": {"contains": "Published Title", "mode": "insensitive"}}
+            "is": {"name": {"search": "Published Title"}}
         }
     } in where["OR"]
     assert {
         "AgentGraph": {
             "is": {
-                "description": {"contains": "Published Title", "mode": "insensitive"}
+                "description": {"search": "Published Title"}
             }
         }
     } in where["OR"]
+    # Ensure legacy ILIKE filters are not used
+    for clause in where["OR"]:
+        if "contains" in clause or (isinstance(clause, dict) and "contains" in str(clause)):
+            raise AssertionError(f"Legacy contains filter found: {clause}")
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_search_normalizes_tsquery_operators(mocker):
+    """Search terms containing tsquery operators (AND, OR, NOT, etc.) should
+    be sanitized before reaching Prisma's search filter."""
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="test & (OR | NOT)")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    expected = "test OR NOT"
+    # Check all four search clauses have the normalized term
+    assert where["OR"][0]["name"]["search"] == expected
+    assert where["OR"][1]["description"]["search"] == expected
+    assert where["OR"][2]["AgentGraph"]["is"]["name"]["search"] == expected
+    assert where["OR"][3]["AgentGraph"]["is"]["description"]["search"] == expected
+
+
+def test_normalize_search_term():
+    """_normalize_search_term strips tsquery operators and collapses whitespace."""
+    assert db._normalize_search_term("hello world") == "hello world"
+    assert db._normalize_search_term("test & OR | NOT") == "test OR NOT"
+    assert db._normalize_search_term("a (b | c) * d") == "a b c d"
+    assert db._normalize_search_term("  lots   of   spaces  ") == "lots of spaces"
+    assert db._normalize_search_term("it's a test") == "it's a test"
+    assert db._normalize_search_term(":::") == ""
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_empty_normalized_preserves_folder_filter(mocker):
+    """When search_term normalizes to empty, folder_id/include_root_only
+    should still be applied (search mode inactive)."""
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    # Only tsquery operators -> normalizes to empty string
+    await db.list_library_agents("test-user", search_term="& | *", folder_id="folder-123")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    # Search filter should NOT be added (normalized is empty)
+    assert "OR" not in where
+    # But folder filter SHOULD be applied
+    assert where["folderId"] == "folder-123"
 
 
 @pytest.mark.asyncio(loop_scope="session")
