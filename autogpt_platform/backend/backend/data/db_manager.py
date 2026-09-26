@@ -55,7 +55,6 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
-from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
@@ -362,12 +361,6 @@ class DatabaseManager(AppService):
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
-
-    # ============ Credential Swap Proxy ============ #
-    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
-    # database access of its own; see backend/copilot/swap_credentials.py.
-    get_swap_bindings = _(get_swap_bindings)
-    resolve_swap_credential = _(resolve_swap_credential)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)

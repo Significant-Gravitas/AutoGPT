@@ -24,10 +24,11 @@ class Settings:
     listen_port: int = field(
         default_factory=lambda: int(os.getenv("SWAP_PROXY_LISTEN_PORT", "1080"))
     )
-    # The backend's internal service (DatabaseManager), e.g. http://host:8005
+    # The backend's swap service (backend/copilot/swap_service.py), which
+    # answers the two calls in source.py and nothing else.
     backend_url: str = field(
         default_factory=lambda: os.getenv(
-            "SWAP_PROXY_BACKEND_URL", "http://localhost:8005"
+            "SWAP_PROXY_BACKEND_URL", "http://localhost:8012"
         )
     )
     # Where the CA the proxy signs with is mounted (``mitmproxy-ca.pem``: key
