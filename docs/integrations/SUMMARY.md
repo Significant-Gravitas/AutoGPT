@@ -104,6 +104,8 @@
 * [Jina Fact Checker](block-integrations/jina/fact_checker.md)
 * [Jina Search](block-integrations/jina/search.md)
 * [Linear Comment](block-integrations/linear/comment.md)
+* [Linear Issue Lifecycle](block-integrations/linear/issue_lifecycle.md)
+* [Linear Issue Update](block-integrations/linear/issue_update.md)
 * [Linear Issues](block-integrations/linear/issues.md)
 * [Linear Projects](block-integrations/linear/projects.md)
 * [LLM](block-integrations/llm.md)

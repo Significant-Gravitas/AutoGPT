@@ -713,11 +713,14 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Linear Archive Issue](block-integrations/linear/issue_lifecycle.md#linear-archive-issue) | Archives a Linear issue, removing it from active views while retaining it in the archive |
 | [Linear Create Comment](block-integrations/linear/comment.md#linear-create-comment) | Creates a new comment on a Linear issue |
 | [Linear Create Issue](block-integrations/linear/issues.md#linear-create-issue) | Creates a new issue on Linear |
+| [Linear Delete Issue](block-integrations/linear/issue_lifecycle.md#linear-delete-issue) | Deletes a Linear issue using Linear's recoverable trash behavior |
 | [Linear Get Project Issues](block-integrations/linear/issues.md#linear-get-project-issues) | Gets issues from a Linear project filtered by status and assignee |
 | [Linear Search Issues](block-integrations/linear/issues.md#linear-search-issues) | Searches for issues on Linear |
 | [Linear Search Projects](block-integrations/linear/projects.md#linear-search-projects) | Searches for projects on Linear |
+| [Linear Update Issue](block-integrations/linear/issue_update.md#linear-update-issue) | Updates a Linear issue's title, description, status, priority, assignee, labels, due date, or estimate |
 
 ## Hardware
 
