@@ -5,11 +5,22 @@ import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getGetV2ListStoreCategoriesMockHandler } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { ExpertTemplate } from "@/app/api/__generated__/models/expertTemplate";
 import {
-  BUILTIN_EXPERT_AVATARS,
-  EXPERT_AVATARS,
+  EXPERT_PALETTE,
+  MANAGED_IDENTITIES,
 } from "@/components/molecules/ExpertAvatar/helpers";
 import { ExpertCard } from "../ExpertsSection/components/ExpertCard";
 import { CategoryFilter } from "./CategoryFilter";
+
+const CATEGORIES = [
+  "marketing",
+  "sales",
+  "finance",
+  "support",
+  "operations",
+  "research",
+  "content",
+  "development",
+] as const;
 
 const meta = {
   title: "Marketplace/CategoryColors",
@@ -26,10 +37,10 @@ const meta = {
     msw: {
       handlers: [
         getGetV2ListStoreCategoriesMockHandler(
-          EXPERT_AVATARS.map((avatar) => ({
-            value: avatar.id,
-            label: avatar.id[0].toUpperCase() + avatar.id.slice(1),
-            description: avatar.label,
+          CATEGORIES.map((value) => ({
+            value,
+            label: value[0].toUpperCase() + value.slice(1),
+            description: EXPERT_PALETTE[value].label,
           })),
         ),
       ],
@@ -39,6 +50,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** The expert shelf under each category filter. Filtering changes which
+ *  cards show and which tag they wear; every card keeps its own artwork and
+ *  its own family color. */
 export const Experts: Story = {
   render: function Render() {
     return <CategoryGallery />;
@@ -46,18 +60,20 @@ export const Experts: Story = {
 };
 
 function CategoryGallery() {
-  const [category, setCategory] = useState<string | null>("finance");
-  const avatars = BUILTIN_EXPERT_AVATARS.filter(
-    (avatar) => !category || Object.keys(avatar.variants).includes(category),
+  const [category, setCategory] = useState<string | null>(null);
+  const experts = MANAGED_IDENTITIES.filter(
+    (identity) =>
+      identity.categories.length > 0 &&
+      (!category || identity.categories.includes(category)),
   );
   return (
     <div className="w-full max-w-6xl p-4">
       <CategoryFilter selected={category} onSelect={setCategory} />
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {avatars.map((avatar) => (
+        {experts.map((identity) => (
           <ExpertCard
-            key={avatar.id}
-            expert={exampleExpert(avatar)}
+            key={identity.id}
+            expert={exampleExpert(identity)}
             category={category}
             isHired={false}
           />
@@ -68,14 +84,15 @@ function CategoryGallery() {
 }
 
 function exampleExpert(
-  avatar: (typeof BUILTIN_EXPERT_AVATARS)[number],
+  identity: (typeof MANAGED_IDENTITIES)[number],
 ): ExpertTemplate {
   return {
-    id: avatar.id,
-    name: avatar.name,
-    avatar_url: avatar.url,
-    role: avatar.primary_category,
-    categories: Object.keys(avatar.variants),
+    id: identity.id,
+    name: identity.name,
+    avatar_url: identity.url,
+    role: identity.visual_category,
+    job_title: identity.job_title,
+    categories: identity.categories,
     tagline: null,
     bio: null,
     skills: [],

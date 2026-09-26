@@ -1,24 +1,58 @@
 import { expect, test } from "vitest";
-import { getExpertTopicHex } from "./colors";
+import { getCategoryHex, getExpertTopicHex } from "./colors";
+
+const MARIA = "/autogpt-characters/v1.1/expert-maria/neutral/128.webp";
 
 test.each([
-  ["Marketing", "#C45F36"],
-  ["Social & Content Repurposing", "#C45F36"],
-  ["Sales", "#D5AB24"],
-  ["Operations", "#98AFC6"],
-  ["Finance", "#A5B09A"],
-  ["Research", "#AAA77A"],
-  ["Development", "#777570"],
-  ["Support", "#C45B88"],
-  ["Content", "#B5ADA0"],
-  ["General purpose", "#B5ADA0"],
-  ["Head of AI", "#B6A4C8"],
-  ["Code Review & QA", "#777570"],
-])("uses the design-system color for %s", (role, hex) => {
-  expect(getExpertTopicHex(role)).toBe(hex);
+  ["marketing", "#C47F5C"],
+  ["sales", "#C9A35B"],
+  ["finance", "#A5B09A"],
+  ["support", "#CB9182"],
+  ["operations", "#98AFC6"],
+  ["research", "#AAA77A"],
+  ["content", "#81AAA6"],
+  ["development", "#777570"],
+  ["general", "#B5ADA0"],
+  ["otto", "#B6A4C8"],
+])("uses the design-system material anchor for %s", (category, hex) => {
+  expect(getCategoryHex(category)).toBe(hex);
+  expect(getCategoryHex(category.toUpperCase())).toBe(hex);
 });
 
-test("stored categories take priority over a broad role guess", () => {
-  expect(getExpertTopicHex("Marketing writer", ["Content"])).toBe("#B5ADA0");
-  expect(getExpertTopicHex("Unknown", ["other", "finance"])).toBe("#A5B09A");
+test("a managed identity keeps its own family whatever the filter or category edit says", () => {
+  expect(getExpertTopicHex({ avatarUrl: MARIA, categories: ["content"] })).toBe(
+    "#C47F5C",
+  );
+  expect(
+    getExpertTopicHex({
+      avatarUrl: "/experts/clay/v4/quinn-finance.png",
+      categories: ["finance", "research"],
+    }),
+  ).toBe("#AAA77A");
+});
+
+test("a custom appearance takes the first stored category and General without one", () => {
+  expect(
+    getExpertTopicHex({
+      avatarUrl: "https://cdn.test/mine.png",
+      categories: ["Support", "operations"],
+    }),
+  ).toBe("#CB9182");
+  expect(
+    getExpertTopicHex({
+      avatarUrl: "https://cdn.test/mine.png",
+      categories: ["other", "finance"],
+    }),
+  ).toBe("#A5B09A");
+  expect(
+    getExpertTopicHex({ avatarUrl: null, categories: [], role: "Marketing" }),
+  ).toBe("#B5ADA0");
+  expect(getExpertTopicHex({ role: "Head of AI" })).toBe("#B6A4C8");
+});
+
+test("the role never picks a specialist color", () => {
+  expect(getExpertTopicHex({ role: "Sales coach", categories: null })).toBe(
+    "#B5ADA0",
+  );
+  expect(getCategoryHex("Sales coach")).toBeUndefined();
 });

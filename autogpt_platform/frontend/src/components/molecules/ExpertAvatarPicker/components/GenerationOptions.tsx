@@ -1,37 +1,31 @@
-import { ExpertAvatarRequestAccentPlacement } from "@/app/api/__generated__/models/expertAvatarRequestAccentPlacement";
-import { ExpertAvatarRequestAccentCount } from "@/app/api/__generated__/models/expertAvatarRequestAccentCount";
-import { Select } from "@/components/atoms/Select/Select";
-import { ExpertAvatarRequestShape } from "@/app/api/__generated__/models/expertAvatarRequestShape";
-import { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
-import type { ExpertAvatarRequestShade } from "@/app/api/__generated__/models/expertAvatarRequestShade";
-import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { ExpertAvatarRequestBase } from "@/app/api/__generated__/models/expertAvatarRequestBase";
-import { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
+import { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
+import { ExpertAvatarRequestExpression } from "@/app/api/__generated__/models/expertAvatarRequestExpression";
 import { ExpertAvatarRequestInlay } from "@/app/api/__generated__/models/expertAvatarRequestInlay";
-import { EXPERT_AVATARS } from "../../ExpertAvatar/helpers";
+import { ExpertAvatarRequestShape } from "@/app/api/__generated__/models/expertAvatarRequestShape";
+import { ExpertAvatarRequestTilt } from "@/app/api/__generated__/models/expertAvatarRequestTilt";
+import { Select } from "@/components/atoms/Select/Select";
+import { getCategoryHex } from "../../ExpertAvatar/colors";
 
 interface Props {
-  shape: ExpertAvatarRequestShape;
-  expression: ExpertAvatarRequestExpression;
   category: ExpertAvatarRequestCategory;
   setCategory: (value: ExpertAvatarRequestCategory) => void;
-  shade: NonNullable<ExpertAvatarRequestShade>;
-  base: ExpertAvatarRequestBase;
-  tilt: ExpertAvatarRequestTilt;
-  inlay: ExpertAvatarRequestInlay;
-  accentPlacement: ExpertAvatarRequestAccentPlacement;
-  accentCount: ExpertAvatarRequestAccentCount;
-  setAccentPlacement: (value: ExpertAvatarRequestAccentPlacement) => void;
-  setAccentCount: (value: ExpertAvatarRequestAccentCount) => void;
-  isBusy: boolean;
+  shape: ExpertAvatarRequestShape;
   setShape: (value: ExpertAvatarRequestShape) => void;
-  setExpression: (value: ExpertAvatarRequestExpression) => void;
-  setShade: (value: NonNullable<ExpertAvatarRequestShade>) => void;
+  base: ExpertAvatarRequestBase;
   setBase: (value: ExpertAvatarRequestBase) => void;
+  tilt: ExpertAvatarRequestTilt;
   setTilt: (value: ExpertAvatarRequestTilt) => void;
+  inlay: ExpertAvatarRequestInlay;
   setInlay: (value: ExpertAvatarRequestInlay) => void;
+  expression: ExpertAvatarRequestExpression;
+  setExpression: (value: ExpertAvatarRequestExpression) => void;
+  isBusy: boolean;
 }
 
+/** What a generated candidate may vary. The category fixes the one material
+ *  color; the cream section always sits on the lower form; everything else
+ *  about the material and face is locked by the design system. */
 export function GenerationOptions(props: Props) {
   return (
     <div className="grid w-full grid-cols-2 gap-3">
@@ -43,14 +37,7 @@ export function GenerationOptions(props: Props) {
         disabled={props.isBusy}
       />
       <Choice
-        label="Shade"
-        value={props.shade}
-        values={["standard", "light", "dark"]}
-        onChange={props.setShade}
-        disabled={props.isBusy}
-      />
-      <Choice
-        label="Shape"
+        label="Head"
         value={props.shape}
         values={Object.values(ExpertAvatarRequestShape)}
         onChange={props.setShape}
@@ -71,24 +58,10 @@ export function GenerationOptions(props: Props) {
         disabled={props.isBusy}
       />
       <Choice
-        label="Accent shape"
+        label="Cream section"
         value={props.inlay}
         values={Object.values(ExpertAvatarRequestInlay)}
         onChange={props.setInlay}
-        disabled={props.isBusy}
-      />
-      <Choice
-        label="Accent placement"
-        value={props.accentPlacement}
-        values={Object.values(ExpertAvatarRequestAccentPlacement)}
-        onChange={props.setAccentPlacement}
-        disabled={props.isBusy}
-      />
-      <Choice
-        label="Accents per part"
-        value={props.accentCount}
-        values={Object.values(ExpertAvatarRequestAccentCount)}
-        onChange={props.setAccentCount}
         disabled={props.isBusy}
       />
       <Choice
@@ -128,11 +101,7 @@ function Choice<T extends string>({
             <span
               aria-hidden
               className="size-3 shrink-0 rounded-full border border-border"
-              style={{
-                backgroundColor: EXPERT_AVATARS.find(
-                  (color) => color.id === value,
-                )?.hex,
-              }}
+              style={{ backgroundColor: getCategoryHex(value) }}
             />
           ) : undefined,
         label: value[0].toUpperCase() + value.slice(1),
