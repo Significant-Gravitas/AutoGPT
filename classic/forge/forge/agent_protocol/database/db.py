@@ -344,6 +344,7 @@ class AgentDB:
         output: Optional[str] = None,
         additional_input: Optional[Dict[str, Any]] = None,
         additional_output: Optional[Dict[str, Any]] = None,
+        is_last: Optional[bool] = None,
     ) -> Step:
         if self.debug_enabled:
             logger.debug(
@@ -362,6 +363,8 @@ class AgentDB:
                         step.additional_input = additional_input
                     if output is not None:
                         step.output = output
+                    if is_last is not None:
+                        step.is_last = is_last
                     if additional_output is not None:
                         step.additional_output = additional_output
                     session.commit()

@@ -237,10 +237,16 @@ async def test_updating_step(agent_db: AgentDB):
     step_input = {"type": "python/code"}
     request = StepRequestBody(input="test_input debug", additional_input=step_input)
     created_step = await agent_db.create_step(created_task.task_id, request)
-    await agent_db.update_step(created_task.task_id, created_step.step_id, "completed")
+    await agent_db.update_step(
+        created_task.task_id,
+        created_step.step_id,
+        status="completed",
+        is_last=True,
+    )
 
     step = await agent_db.get_step(created_task.task_id, created_step.step_id)
     assert step.status.value == "completed"
+    assert step.is_last
 
 
 @pytest.mark.asyncio

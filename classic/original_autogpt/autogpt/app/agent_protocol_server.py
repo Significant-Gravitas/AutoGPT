@@ -31,10 +31,12 @@ from forge.agent_protocol.models import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
+from forge.config.workspace_settings import AgentPermissions, WorkspaceSettings
 from forge.file_storage import FileStorage
 from forge.llm.providers import ModelProviderBudget, MultiProvider
 from forge.models.action import ActionErrorResult, ActionSuccessResult
-from forge.utils.const import ASK_COMMAND, FINISH_COMMAND
+from forge.permissions import CommandPermissionManager
+from forge.utils.const import ASK_COMMAND
 from forge.utils.exceptions import AgentFinished, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,9 @@ class AgentProtocolServer:
             app_config=self.app_config,
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
+            permission_manager=self._get_permission_manager(
+                task_agent_id(task.task_id)
+            ),
         )
         await task_agent.file_manager.save_state()
 
@@ -188,6 +193,7 @@ class AgentProtocolServer:
             app_config=self.app_config,
             file_storage=self.file_storage,
             llm_provider=self._get_task_llm_provider(task),
+            permission_manager=self._get_permission_manager(task_agent_id(task_id)),
         )
 
         if user_id := (task.additional_input or {}).get("user_id"):
@@ -224,11 +230,7 @@ class AgentProtocolServer:
         step = await self.db.create_step(
             task_id=task_id,
             input=step_request,
-            is_last=(
-                last_proposal is not None
-                and last_proposal.use_tool.name == FINISH_COMMAND
-                and execute_approved
-            ),
+            is_last=False,
         )
         agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
@@ -241,8 +243,21 @@ class AgentProtocolServer:
             )
 
             if last_proposal.use_tool.name == ASK_COMMAND:
-                tool_result = ActionSuccessResult(outputs=user_input)
-                agent.event_history.register_result(tool_result)
+                assert agent.permission_manager is not None
+                perm_result = agent.permission_manager.check_command(
+                    last_proposal.use_tool.name,
+                    last_proposal.use_tool.arguments,
+                )
+                if not perm_result.allowed:
+                    feedback = (
+                        perm_result.feedback
+                        or f"Permission denied for command '{ASK_COMMAND}'. "
+                        "Try a different approach."
+                    )
+                    tool_result = await agent.do_not_execute(last_proposal, feedback)
+                else:
+                    tool_result = ActionSuccessResult(outputs=user_input)
+                    agent.event_history.register_result(tool_result)
             elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,
@@ -267,6 +282,7 @@ class AgentProtocolServer:
                         task_id=task_id,
                         step_id=step.step_id,
                         output=last_proposal.use_tool.arguments["reason"],
+                        is_last=True,
                         additional_output=additional_output,
                     )
                     await agent.file_manager.save_state()
@@ -447,6 +463,25 @@ class AgentProtocolServer:
             headers={
                 "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
+        )
+
+    def _get_permission_manager(self, agent_id: str) -> CommandPermissionManager:
+        """Create a permission manager for the given agent.
+
+        Server mode uses no interactive prompt function, so any command not
+        explicitly allowed or denied by workspace/agent policy is denied.
+        """
+        workspace = self.app_config.workspace
+        workspace_settings = WorkspaceSettings.load_or_create(workspace)
+        agent_dir = self.app_config.app_data_dir / "agents" / agent_id
+        agent_permissions = AgentPermissions.load_or_create(agent_dir)
+        return CommandPermissionManager(
+            workspace=workspace,
+            agent_dir=agent_dir,
+            workspace_settings=workspace_settings,
+            agent_permissions=agent_permissions,
+            prompt_fn=None,
+            on_auto_approve=None,
         )
 
     def _get_task_agent_file_workspace(self, task_id: str | int) -> FileStorage:
