@@ -9,8 +9,9 @@ primitives:
   Redis lock is acquired, before phase 1 runs. Refuses the pass when
   the user is paywalled (``NO_TIER`` + ``ENABLE_PLATFORM_PAYMENT``) or
   has already exhausted their daily/weekly cap.
-* :func:`record_phase_cost` — per-phase charge, through the one record
-  every background call uses (``backend/copilot/inference/record.py``).
+* :func:`record_phase_cost` — per-phase charge, through the inference
+  package's record (``backend/copilot/inference/record.py``), which the
+  briefing lede and ``consult_teammate`` record through as well.
   Called after each of consolidate / recombine / sanitize completes, on
   the sync path and from the batch callbacks alike. The record prices a
   phase the provider did not price from the catalog price card, at the

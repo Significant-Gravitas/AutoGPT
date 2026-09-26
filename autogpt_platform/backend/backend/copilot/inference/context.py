@@ -1,8 +1,9 @@
 """What one background LLM call is: who it runs for, the job it does, the
 route it takes and what it used.
 
-A chat turn carries all of this in its session. A background call (a dream
-phase, the briefing's lede, a consult, an eval judge) has no session, so it
+A chat turn carries all of this in its session. The background calls this
+package serves (a dream phase, the briefing's lede, a consult, an eval judge;
+see ``__init__.py`` for the ones not moved yet) have no session, so each
 builds an ``InferenceContext`` up front and hands it to
 ``complete.structured_complete``, ``trace.trace`` and ``record.record``, which
 read attribution, routing and accounting off it instead of each caller

@@ -1,12 +1,13 @@
-"""One cost row per background LLM call, whatever the job.
+"""One cost row per background LLM call made through this package.
 
-Every background call is charged and logged the same way: one
-``persist_and_record_usage`` call under its route's provider label and
-credential, attributed to the scope's expert, with the job's correlation id
-where the admin cost view reads it. A call the provider did not price is
+Each call recorded here is charged and logged the same way, whatever its
+job: one ``persist_and_record_usage`` call under its route's provider label
+and credential, attributed to the scope's expert, with the job's correlation
+id where the admin cost view reads it. A call the provider did not price is
 priced here from the catalog price card (``copilot/price_card.py``), at the
 route's discount; a model with no catalog price keeps an unknown cost and
-logs its tokens without a charge.
+logs its tokens without a charge. A call that reported no usage at all
+writes no row.
 """
 
 from typing import Any, Literal
@@ -89,9 +90,16 @@ async def record(
 
     *metadata* adds the caller's own keys; the record's keys win over them.
     *session* is the chat a consult ran in, whose usage list the tokens join.
-    Returns *usage* as priced. No row and no charge when the call used no
-    tokens and has no cost.
+    Returns *usage* as priced.
+
+    A call with no tokens in any bucket and no provider cost writes no row,
+    charges nothing and comes back unpriced: the provider reported no usage
+    (OpenRouter can omit it), so the cost is unknown, not a known zero. This
+    is the guard ``persist_and_record_usage`` applies, checked before the
+    catalog would price zero tokens at $0.
     """
+    if _reported_no_usage(usage):
+        return usage
     priced = price(usage, ctx.route)
     accounting = _ACCOUNTING[ctx.job.kind]
     graph_exec_id, chat_session_id = _correlation_columns(ctx.job, accounting)
@@ -136,6 +144,16 @@ def price(usage: InferenceUsage, route: RouteDecision) -> InferenceUsage:
         discount=batch_discount(route.execution_path),
     )
     return usage.model_copy(update={"cost_usd": cost, "cost_source": "catalog"})
+
+
+def _reported_no_usage(usage: InferenceUsage) -> bool:
+    buckets = (
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cache_read_tokens,
+        usage.cache_creation_tokens,
+    )
+    return usage.cost_usd is None and all(tokens <= 0 for tokens in buckets)
 
 
 def _correlation_columns(

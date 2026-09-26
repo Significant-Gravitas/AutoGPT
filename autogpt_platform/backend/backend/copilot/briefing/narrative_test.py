@@ -88,10 +88,17 @@ def make_run_item(
     )
 
 
-def completion(text: str) -> StructuredCompletion[NarrativeResponse]:
+def completion(
+    text: str, *, input_tokens: int = 0, output_tokens: int = 0
+) -> StructuredCompletion[NarrativeResponse]:
     return StructuredCompletion[NarrativeResponse](
         value=NarrativeResponse(narrative=text),
-        usage=InferenceUsage(model="test-model", payer="platform_allowance"),
+        usage=InferenceUsage(
+            model="test-model",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            payer="platform_allowance",
+        ),
     )
 
 
@@ -303,7 +310,9 @@ async def test_retry_timeout_is_clipped_to_the_remaining_budget():
 
 @pytest.mark.asyncio
 async def test_successful_call_is_billed(cost_log):
-    with patch_llm(return_value=completion("Morning.")):
+    with patch_llm(
+        return_value=completion("Morning.", input_tokens=500, output_tokens=30)
+    ):
         await compose_narrative(USER, make_content())
 
     kwargs = cost_log.await_args.kwargs
@@ -318,6 +327,16 @@ async def test_successful_call_is_billed(cost_log):
     assert kwargs["chat_session_id_override"] is None
     assert kwargs["expert_id"] is None
     assert kwargs["extra_metadata"]["source"] == "morning_briefing"
+
+
+@pytest.mark.asyncio
+async def test_a_response_that_reported_no_usage_writes_no_cost_row(cost_log):
+    """OpenRouter can omit usage. No tokens and no cost is no row, as before
+    the seam, rather than a $0 call priced from the catalog."""
+    with patch_llm(return_value=completion("Morning.")):
+        assert await compose_narrative(USER, make_content()) == "Morning."
+
+    cost_log.assert_not_awaited()
 
 
 @pytest.mark.asyncio

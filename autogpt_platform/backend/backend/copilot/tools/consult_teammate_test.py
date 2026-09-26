@@ -244,6 +244,31 @@ class TestExecute:
         assert result.verdict == "insufficient"
         assert billed.await_args.kwargs["prompt_tokens"] == 11
 
+    async def test_a_verdict_whose_response_reported_no_usage_writes_no_row(self):
+        """OpenRouter can omit usage. No tokens and no cost is no cost row and
+        no empty usage on the chat, as before the seam, rather than a $0 call
+        priced from the catalog."""
+        no_usage = InferenceUsage(model="aux", payer="platform_allowance")
+        session = _session()
+        with patch(
+            "backend.copilot.tools.consult_teammate.resolve_target_expert",
+            AsyncMock(return_value=_expert()),
+        ), patch(
+            _COMPLETE,
+            AsyncMock(
+                return_value=StructuredCompletion(
+                    value=_verdict("pass", "Covered.", []), usage=no_usage
+                )
+            ),
+        ), patch(
+            _PERSIST, AsyncMock()
+        ) as billed:
+            result = await self._run(session=session)
+        assert isinstance(result, ConsultVerdictResponse)
+        assert result.verdict == "pass"
+        billed.assert_not_awaited()
+        assert session.usage == []
+
     async def test_dry_run_never_calls_the_provider(self):
         completion = AsyncMock()
         with patch(

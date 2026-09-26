@@ -1,11 +1,11 @@
 """The route a background call takes, and the platform key it is made with.
 
-Today every background call follows the deployment's chat transport
+Today each call routed here follows the deployment's chat transport
 (``copilot/transport_routing.py``): its provider, the platform's own key for
 it, and the fast model of the job's tier. Nothing is per user yet; the scope
 is taken so a later resolver can be. The dream's Anthropic batch path is still
 chosen by the orchestrator (``dream/routing.py``); ``anthropic_batch_route``
-only describes it, so its cost rows are recorded like any other call's.
+only describes it, so its cost rows are recorded like the sync calls'.
 """
 
 from backend.copilot.config import ChatConfig
@@ -42,11 +42,15 @@ def resolve_route(
     backend bills nobody, so its calls are paid ``local``; everything else
     comes out of the platform allowance.
 
-    Raises ``InferenceError`` when the model cannot go to the provider (a
-    non-Anthropic model on the Anthropic API): the call fails exactly as it
-    would have at dispatch.
+    Raises ``InferenceError`` when the platform has no key for the
+    transport's provider, or when the model cannot go to that provider (a
+    non-Anthropic model on the Anthropic API). The key is checked first, as
+    the callers' old ``structured_completion`` did, so a subscription install
+    without ``ANTHROPIC_API_KEY`` is told about the key and the OAuth token
+    before anything about its models.
     """
     transport = routing_kwargs_for_chat_transport()
+    _require_platform_key(transport)
     if job.pinned_model:
         model, source = job.pinned_model, "the job's pinned model"
     else:
@@ -92,9 +96,15 @@ def platform_credentials(route: RouteDecision) -> ProviderRoutingKwargs:
             f"The platform's key is for {transport.provider!r}, "
             f"not the route's provider {route.provider!r}."
         )
-    if not transport.api_key and route.provider != "ollama":
-        raise InferenceError(_missing_api_key_message(route.provider))
+    _require_platform_key(transport)
     return transport
+
+
+def _require_platform_key(transport: ProviderRoutingKwargs) -> None:
+    """Refuse a transport the platform has no key for; a local backend takes
+    none."""
+    if not transport.api_key and transport.provider != "ollama":
+        raise InferenceError(_missing_api_key_message(transport.provider))
 
 
 def _tier_model(config: ChatConfig, tier: InferenceTier) -> str:

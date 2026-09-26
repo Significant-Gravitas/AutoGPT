@@ -618,8 +618,8 @@ async def _run_phase(
 
     The usage comes back priced: the provider's cost when it reported one
     (OpenRouter's ``usage.cost``, what we were billed), else the model's
-    catalog list rate. Raises ``InferenceError`` when the phase got no
-    usable answer.
+    catalog list rate; unknown when the response reported no usage at all.
+    Raises ``InferenceError`` when the phase got no usable answer.
     """
     job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
     route = resolve_route(run.scope, job, config=run.config)

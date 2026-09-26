@@ -1,5 +1,6 @@
-"""``resolve_route`` reproduces what every background caller did on its own:
-the chat transport's provider and platform key, and the model the caller's
+"""``resolve_route`` reproduces what each migrated caller (the dream phases,
+the briefing lede, consult_teammate, the style judge) did on its own: the chat
+transport's provider and platform key, and the model the caller's
 ``ChatConfig`` field names, in the native spelling on the Anthropic API.
 
 Each case builds the transport's real ``ChatConfig`` and runs the real
@@ -7,11 +8,14 @@ Each case builds the transport's real ``ChatConfig`` and runs the real
 ``copilot/transport_routing_test.py``), so a change on either side shows up.
 """
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.sdk import env as sdk_env
+from backend.util import settings as settings_mod
 
 from .context import InferenceError, InferenceJob, InferenceScope
 from .routing import anthropic_batch_route, platform_credentials, resolve_route
@@ -45,6 +49,23 @@ _ANTHROPIC_SDK_MODELS = {
 
 _SCOPE = InferenceScope(user_id="u1", expert_id="e1")
 
+# What the callers' old ``dream/llm.structured_completion`` raised for an
+# install whose transport dispatches to Anthropic without an Anthropic key,
+# word for word.
+_OLD_MISSING_ANTHROPIC_KEY = (
+    "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
+    "enable the dream pass under subscription / direct-Anthropic "
+    "mode. The Claude Code OAuth token cannot be used for direct "
+    "Messages API calls (see "
+    "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
+)
+
+
+def _config(**settings: Any) -> ChatConfig:
+    """A config built from these settings alone: no developer ``.env``
+    (``_env_file=None``) can pick the transport or the models under test."""
+    return ChatConfig(_env_file=None, **settings)
+
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,10 +76,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _use_transport(
     monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig, anthropic_api_key: str = ""
 ) -> ChatConfig:
-    from backend.copilot.sdk import env
-    from backend.util import settings as settings_mod
-
-    monkeypatch.setattr(env, "config", cfg)
+    monkeypatch.setattr(sdk_env, "config", cfg)
     fake = MagicMock()
     fake.secrets.anthropic_api_key = anthropic_api_key
     fake.secrets.open_router_api_key = ""
@@ -69,7 +87,7 @@ def _use_transport(
 def _openrouter(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
     return _use_transport(
         monkeypatch,
-        ChatConfig(
+        _config(
             use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
@@ -81,7 +99,7 @@ def _openrouter(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
 def _direct_anthropic(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
     return _use_transport(
         monkeypatch,
-        ChatConfig(
+        _config(
             use_openrouter=False,
             api_key=None,
             base_url=None,
@@ -95,9 +113,7 @@ def _direct_anthropic(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
 def _subscription_with_key(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
     return _use_transport(
         monkeypatch,
-        ChatConfig(
-            use_claude_code_subscription=True, **_ANTHROPIC_SDK_MODELS, **_MODELS
-        ),
+        _config(use_claude_code_subscription=True, **_ANTHROPIC_SDK_MODELS, **_MODELS),
         anthropic_api_key="ant-key-platform",
     )
 
@@ -105,7 +121,7 @@ def _subscription_with_key(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
 def _local(monkeypatch: pytest.MonkeyPatch) -> ChatConfig:
     return _use_transport(
         monkeypatch,
-        ChatConfig(
+        _config(
             use_local=True,
             api_key="ollama-placeholder",
             base_url="http://localhost:11434/v1",
@@ -272,19 +288,48 @@ class TestPlatformCredentials:
     def test_missing_anthropic_key_names_the_env_var(self, monkeypatch):
         cfg = _use_transport(
             monkeypatch,
-            ChatConfig(
+            _config(
                 use_claude_code_subscription=True, **_ANTHROPIC_SDK_MODELS, **_MODELS
             ),
         )
-        route = resolve_route(_SCOPE, _job(), config=cfg)
         with pytest.raises(InferenceError, match="ANTHROPIC_API_KEY") as exc_info:
-            platform_credentials(route)
+            resolve_route(_SCOPE, _job(), config=cfg)
         # User-facing self-serve docs: the anchor must match the real heading
         # slug in docs/platform/copilot-local-llm.md ("### Subscription mode
         # caveat").
         assert "docs/platform/copilot-local-llm.md#subscription-mode-caveat" in str(
             exc_info.value
         )
+
+    @pytest.mark.parametrize(
+        "openrouter_key",
+        [
+            {"aux_api_key": "or-aux-key"},
+            {"use_openrouter": True, "api_key": "or-chat-key"},
+        ],
+        ids=["aux-api-key", "chat-api-key"],
+    )
+    def test_the_missing_key_is_reported_before_a_model_the_api_cannot_take(
+        self, monkeypatch, openrouter_key
+    ):
+        """A subscription install with an OpenRouter key for its titles, an
+        OpenAI title model and no Anthropic key: two things are wrong with the
+        aux route, and the old ``structured_completion`` named the key first,
+        with the OAuth explanation. The route still does, word for word."""
+        cfg = _use_transport(
+            monkeypatch,
+            _config(
+                use_claude_code_subscription=True,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                **{**_MODELS, "title_model": "openai/gpt-4o-mini"},
+                **openrouter_key,
+            ),
+        )
+        job = _job("aux", kind="briefing_narrative", phase=None)
+        with pytest.raises(InferenceError) as exc_info:
+            resolve_route(_SCOPE, job, config=cfg)
+        assert str(exc_info.value) == _OLD_MISSING_ANTHROPIC_KEY
 
     def test_a_local_backend_needs_no_key(self, monkeypatch):
         cfg = _local(monkeypatch)

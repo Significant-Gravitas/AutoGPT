@@ -1,4 +1,5 @@
-"""``record`` is the one call from a background job into the cost ledger."""
+"""``record`` is the one call from each migrated background job (dream phase,
+briefing lede, consult) into the cost ledger."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -211,6 +212,50 @@ async def test_a_local_backend_is_never_priced_at_cloud_rates(persist):
     assert kwargs["cost_usd"] is None
     assert kwargs["provider"] == "ollama"
     assert kwargs["extra_metadata"]["billing_mode"] == "local"
+
+
+_NO_TOKENS = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+}
+
+
+@pytest.mark.parametrize(
+    "kind", ["dream", "briefing_narrative", "consult", "eval_judge"]
+)
+@pytest.mark.asyncio
+async def test_a_call_that_reported_no_usage_writes_no_row(persist, kind):
+    """The provider sent no usage (OpenRouter can omit it): no tokens, no
+    cost. The catalog would make a known $0 call of it, so nothing is written
+    and the cost stays unknown, whatever the job."""
+    usage = _usage(None, **_NO_TOKENS)
+
+    recorded = await record(_ctx(kind, None), usage, block_name="b")
+
+    persist.assert_not_awaited()
+    assert recorded is usage
+    assert (recorded.cost_usd, recorded.cost_source) == (None, "none")
+
+
+@pytest.mark.asyncio
+async def test_cache_only_usage_is_still_recorded_and_priced(persist):
+    usage = _usage(None, **{**_NO_TOKENS, "cache_read_tokens": 1_000_000})
+
+    recorded = await record(_ctx(), usage, block_name="b")
+
+    # Sonnet 5 reads its cache at $0.20 per Mtok.
+    assert persist.await_args.kwargs["cost_usd"] == pytest.approx(0.2)
+    assert recorded.cost_source == "catalog"
+
+
+@pytest.mark.asyncio
+async def test_a_cost_the_provider_stated_is_recorded_even_at_zero(persist):
+    """Only unreported usage is skipped: a figure the provider stated, even
+    $0 with no tokens, is known and gets its row."""
+    await record(_ctx(), _usage(0.0, **_NO_TOKENS), block_name="b")
+    assert persist.await_args.kwargs["cost_usd"] == 0.0
 
 
 def test_price_leaves_a_priced_usage_alone():

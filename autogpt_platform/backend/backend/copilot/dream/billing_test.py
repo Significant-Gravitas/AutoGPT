@@ -276,8 +276,10 @@ async def test_record_phase_cost_leaves_an_unpriced_model_unknown():
 @pytest.mark.parametrize(
     "usage,rows",
     [
-        # Zero tokens and no cost (a skipped phase): no row, no charge.
-        (_usage("vendor/no-such-model"), 0),
+        # Zero tokens and no cost (a skipped phase, or a response that carried
+        # no usage): no row and no charge, even for a model the catalog
+        # prices, which would otherwise log a $0 call.
+        (_usage("claude-sonnet-5"), 0),
         # Tokens but no known cost: the row logs for analytics, and the
         # rate-limit counter is left alone.
         (_usage("vendor/no-such-model", input_tokens=10, output_tokens=5), 1),
