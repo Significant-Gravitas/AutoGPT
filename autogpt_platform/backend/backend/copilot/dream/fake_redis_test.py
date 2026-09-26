@@ -24,6 +24,8 @@ async def test_set_honours_nx_xx_and_ttl_arguments():
     assert await redis.set("k", "v3", xx=True, px=5000) is True
     assert await redis.get("k") == "v3"
     assert await redis.ttl("k") == 5
+    assert await redis.set("k", "v4") is True
+    assert await redis.ttl("k") == -1
     assert await redis.set("b", b"bytes") is True
     assert await redis.get("b") == "bytes"
 
@@ -51,7 +53,8 @@ async def test_hash_commands():
     assert await redis.hgetall("h") == {"a": "x", "b": "y"}
     assert await redis.hdel("h", "a", "zzz") == 1
     assert await redis.exists("h") == 1
-    assert await redis.delete("h") == 1
+    assert await redis.hdel("h", "b") == 1
+    assert await redis.exists("h") == 0
     assert await redis.hgetall("h") == {}
 
 

@@ -74,6 +74,9 @@ class FakeAsyncRedis:
             self.ttls[key] = int(ex)
         elif px is not None:
             self.ttls[key] = int(px) // 1000
+        else:
+            # A plain SET drops any expiry the key had, as Redis does.
+            self.ttls.pop(key, None)
         return True
 
     async def delete(self, *keys: str) -> int:
@@ -131,7 +134,12 @@ class FakeAsyncRedis:
 
     async def hdel(self, name: str, *keys: str) -> int:
         bucket = self.hashes.get(name, {})
-        return sum(1 for key in keys if bucket.pop(key, None) is not None)
+        removed = sum(1 for key in keys if bucket.pop(key, None) is not None)
+        if not bucket:
+            # Redis removes a hash once its last field is gone.
+            self.hashes.pop(name, None)
+            self.ttls.pop(name, None)
+        return removed
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
         keys = [self._s(a) for a in args[:numkeys]]
