@@ -8,7 +8,7 @@ the caller's remaining wall-clock budget.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from ._api import PAGE_SIZE, ConductorClient
@@ -17,9 +17,6 @@ Rows = list[dict[str, Any]]
 # Returns the seconds left before the caller's deadline; None means unbounded.
 Remaining = Callable[[], float] | None
 
-# A request started close to the deadline still gets this long to answer, so
-# the final poll of a wait is a real one rather than an instant timeout.
-REQUEST_TIMEOUT_FLOOR_SECONDS = 1.0
 # Upper bound on the exponential search for the transcript end (2**40 rows).
 MAX_PROBES = 40
 
@@ -59,7 +56,18 @@ async def fetch_tail(
     count: int,
     remaining: Remaining = None,
 ) -> tuple[Rows, bool]:
-    """The newest `count` rows, oldest first, and whether older rows exist.
+    """The newest `count` rows, oldest first, and whether older rows exist."""
+    rows, start = await fetch_tail_at(client, session_id, count, remaining)
+    return rows, start > 0
+
+
+async def fetch_tail_at(
+    client: ConductorClient,
+    session_id: str,
+    count: int,
+    remaining: Remaining = None,
+) -> tuple[Rows, int]:
+    """The newest `count` rows, oldest first, and the offset of the first one.
 
     A transcript that fits in one page costs one request. Otherwise the end is
     located with `limit=1` probes (exponential then binary search, stopping
@@ -72,20 +80,43 @@ async def fetch_tail(
     )
     rows = list(first.get("data") or [])
     if not first.get("hasMore"):
-        return rows, False
+        return rows, 0
     low, high = await _bracket_end(client, session_id, len(rows), count, remaining)
     start = max(0, low + 1 - count)
     rows = await _fetch_from(client, session_id, start, high - start, remaining)
-    return rows[-count:], start + len(rows) > count
+    return rows[-count:], start + max(0, len(rows) - count)
+
+
+async def fetch_before(
+    client: ConductorClient,
+    session_id: str,
+    end: int,
+    count: int,
+    remaining: Remaining = None,
+) -> tuple[Rows, int]:
+    """Up to `count` rows ending just before offset `end`, oldest first, and
+    the offset of the first one. Transcripts are append-only, so offsets of
+    older rows are stable."""
+    start = max(0, end - count)
+    rows = await _fetch_from(client, session_id, start, end - start, remaining)
+    return rows, start
 
 
 async def bounded(
-    coro: Awaitable[dict[str, Any]], remaining: Remaining
+    coro: Coroutine[Any, Any, dict[str, Any]], remaining: Remaining
 ) -> dict[str, Any]:
-    """Await one request, capped by the remaining budget when there is one."""
+    """Await one request, capped by the remaining budget when there is one.
+
+    Once the budget is spent no request is started: the coroutine is closed
+    and TimeoutError is raised, so a wait never outlives its deadline by
+    a chain of late requests.
+    """
     if remaining is None:
         return await coro
-    timeout = max(remaining(), REQUEST_TIMEOUT_FLOOR_SECONDS)
+    timeout = remaining()
+    if timeout <= 0:
+        coro.close()
+        raise TimeoutError("deadline passed before the request was started")
     return await asyncio.wait_for(coro, timeout=timeout)
 
 

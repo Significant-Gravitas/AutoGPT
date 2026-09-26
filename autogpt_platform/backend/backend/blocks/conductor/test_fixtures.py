@@ -10,12 +10,15 @@ row ``id``, so it is not a valid ``after`` cursor.
 Named ``test_*`` so the block loader skips it; it defines no tests itself.
 """
 
+import contextlib
 import inspect
+from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
 from pydantic import SecretStr
 
+from backend.blocks.conductor import _transcript
 from backend.blocks.conductor._api import PAGE_SIZE, ConductorClient
 from backend.data.execution import ExecutionContext
 from backend.sdk import APIKeyCredentials
@@ -242,3 +245,24 @@ def fake_clock(step: float = 1.0):
         now[0] += seconds
 
     return monotonic, sleep, now
+
+
+@contextlib.contextmanager
+def wait_clock(step: float = 1.0, sleeps: list[float] | None = None):
+    """Run the wait loop on a fake clock, recording each sleep in `sleeps`.
+
+    Only the loop's own `time` and `asyncio` names are replaced, so asyncio's
+    event-loop clock (which `wait_for` timers use) keeps running on real time.
+    """
+    monotonic, fake_sleep, now = fake_clock(step)
+
+    async def sleep(seconds):
+        if sleeps is not None:
+            sleeps.append(seconds)
+        await fake_sleep(seconds)
+
+    with (
+        mock.patch.object(_transcript, "time", SimpleNamespace(monotonic=monotonic)),
+        mock.patch.object(_transcript, "asyncio", SimpleNamespace(sleep=sleep)),
+    ):
+        yield now

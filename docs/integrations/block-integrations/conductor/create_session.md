@@ -10,7 +10,7 @@ Start a new agent session (chat) in an existing Conductor workspace, optionally 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it polls the session status (bounded by `timeout_seconds`), correlates the transcript rows with the prompt's turn, and returns them in `messages` with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept).
+The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-blank `model`, `effort`, `name` or `message`. When `message` is given the returned `initial_message_id` identifies the prompt; with `wait_for_reply` the block waits the same way as Send Message: it reads the transcript and then the session status on every poll (a wall-clock bound of `timeout_seconds`, reported through `timed_out`), correlates the rows with the prompt's turn, treats the session as done only once it is idle after the turn progressed past its startup events, and returns the rows in `messages` with their visible agent text joined into `reply` (`truncated` is set when the turn exceeded the 1000 rows kept or its start was older than the rows read).
 <!-- END MANUAL -->
 
 ### Inputs
