@@ -1,6 +1,9 @@
 "use client";
 
-import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
+import {
+  getExpertCategory,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -40,7 +43,7 @@ export function ExpertAvatarButton({ expert }: Props) {
             <fieldset disabled={isPending} className="min-w-0">
               <ExpertAvatarPicker
                 name={expert.name}
-                color={expert.color ?? null}
+                category={getExpertCategory(expert.role, expert.categories)}
                 avatarUrl={expert.avatar_url}
                 onPick={saveAvatar}
               />

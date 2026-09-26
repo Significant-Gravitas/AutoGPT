@@ -79,6 +79,7 @@ async def test_rate_limit_and_unavailable_redis_fail_closed(monkeypatch):
         await avatar_jobs.reserve_generation("owner")
     assert error.value.status_code == 429
     assert error.value.headers == {"Retry-After": "120"}
+    assert str(avatar_jobs.DAILY_LIMIT) in error.value.detail
     redis.eval.side_effect = ConnectionError()
     with pytest.raises(HTTPException) as error:
         await avatar_jobs.reserve_generation("owner")

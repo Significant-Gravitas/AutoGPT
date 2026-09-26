@@ -6,6 +6,7 @@ export const BEAT_KEYS = [
   "role",
   "jobTitle",
   "name",
+  "category",
   "avatar",
   "about",
   "voice",
@@ -46,6 +47,7 @@ export function buildFlowItems(
     role: RAISE_PROMPTS.roleQuestion,
     jobTitle: RAISE_PROMPTS.jobTitleQuestion,
     name: RAISE_PROMPTS.nameQuestion,
+    category: RAISE_PROMPTS.categoryQuestion(draft.name),
     avatar: RAISE_PROMPTS.avatarQuestion(draft.name),
     about: RAISE_PROMPTS.aboutQuestion(draft.name),
     voice: RAISE_PROMPTS.voiceQuestion(draft.name),
@@ -90,7 +92,8 @@ export function beatTriggers(
     role: draft.hasStarted,
     jobTitle: draft.role !== null,
     name: draft.jobTitle !== null,
-    avatar: draft.name !== "",
+    category: draft.name !== "",
+    avatar: draft.category !== null,
     about: draft.avatarUrl !== null,
     voice: draft.about !== null,
     budget: draft.voiceLabel !== null,
@@ -104,6 +107,7 @@ function beatAnswers(draft: RaiseDraft): Record<BeatKey, boolean> {
     role: draft.role !== null,
     jobTitle: draft.jobTitle !== null,
     name: draft.name !== "",
+    category: draft.category !== null,
     avatar: draft.avatarUrl !== null,
     about: draft.about !== null,
     voice: draft.voiceLabel !== null,
@@ -128,9 +132,11 @@ export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
       return { jobTitle: null };
     case "name":
       return { name: "" };
+    case "category":
+      // The color is answered in the same beat, so going back re-opens both.
+      return { category: null, color: null };
     case "avatar":
-      // Colour is answered in the same beat, so going back re-opens both.
-      return { avatarUrl: null, color: null };
+      return { avatarUrl: null };
     case "about":
       return { about: null };
     case "voice":

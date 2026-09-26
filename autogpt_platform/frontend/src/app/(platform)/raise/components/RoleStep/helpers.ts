@@ -1,6 +1,11 @@
+import { getExpertCategory } from "@/components/molecules/ExpertAvatar/colors";
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
+
 export interface RoleOption {
   id: string;
   label: string;
+  // The avatar category — and so the color — a role suggests.
+  category: ExpertAvatarRequestCategory;
   // Seeds the name step, so suggestions fit the job the expert was hired for.
   nameSuggestions: string[];
   jobTitleSuggestions: string[];
@@ -15,6 +20,7 @@ export const CUSTOM_ROLE_MAX_LENGTH = 100;
 export const ROLE_OPTIONS: RoleOption[] = [
   {
     id: "marketer",
+    category: "marketing",
     label: "Marketer",
     nameSuggestions: ["Echo", "Reach", "Nova"],
     jobTitleSuggestions: [
@@ -25,6 +31,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "sales",
+    category: "sales",
     label: "Sales",
     nameSuggestions: ["Pitch", "Ace", "Rain"],
     jobTitleSuggestions: [
@@ -35,6 +42,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "developer",
+    category: "development",
     label: "Developer",
     nameSuggestions: ["Ada", "Turing", "Bit"],
     jobTitleSuggestions: [
@@ -45,6 +53,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "researcher",
+    category: "research",
     label: "Researcher",
     nameSuggestions: ["Kepler", "Curie", "Juno"],
     jobTitleSuggestions: [
@@ -55,12 +64,14 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "writer",
+    category: "content",
     label: "Writer",
     nameSuggestions: ["Quill", "Hemingway", "Ink"],
     jobTitleSuggestions: ["Content Writer", "Copywriter", "Technical Writer"],
   },
   {
     id: "analyst",
+    category: "finance",
     label: "Analyst",
     nameSuggestions: ["Tally", "Vector", "Sigma"],
     jobTitleSuggestions: [
@@ -71,12 +82,14 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "recruiter",
+    category: "operations",
     label: "Recruiter",
     nameSuggestions: ["Scout", "Hire", "Vera"],
     jobTitleSuggestions: ["Recruiter", "Talent Sourcer", "Hiring Coordinator"],
   },
   {
     id: "support",
+    category: "support",
     label: "Support",
     nameSuggestions: ["Remy", "Aide", "Piper"],
     jobTitleSuggestions: [
@@ -87,6 +100,7 @@ export const ROLE_OPTIONS: RoleOption[] = [
   },
   {
     id: "operations",
+    category: "operations",
     label: "Operations",
     nameSuggestions: ["Cadence", "Clockwork", "Sol"],
     jobTitleSuggestions: [
@@ -120,6 +134,12 @@ export function roleOptionsForSelection(selectedRole: string | null) {
   const preset = findRoleOption(selectedRole);
   if (preset) return [preset];
   return [{ id: selectedRole, label: selectedRole }];
+}
+
+/** The category the category beat lands on before the user touches it: the one
+ *  a preset role stands for, or the topic a typed role reads like. */
+export function suggestedCategoryFor(role: string | null) {
+  return findRoleOption(role)?.category ?? getExpertCategory(role);
 }
 
 export function nameSuggestionsFor(roleId: string | null) {

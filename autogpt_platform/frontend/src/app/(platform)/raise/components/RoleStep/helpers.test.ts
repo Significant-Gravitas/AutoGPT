@@ -6,6 +6,7 @@ import {
   normalizeCustomRole,
   roleLabelFor,
   roleOptionsForSelection,
+  suggestedCategoryFor,
 } from "./helpers";
 
 describe("RoleStep helpers", () => {
@@ -21,6 +22,18 @@ describe("RoleStep helpers", () => {
     expect(roleOptionsForSelection("UX Designer")).toEqual([
       { id: "UX Designer", label: "UX Designer" },
     ]);
+  });
+
+  test("suggestedCategoryFor maps a preset role to its own category", () => {
+    expect(suggestedCategoryFor("marketer")).toBe("marketing");
+    expect(suggestedCategoryFor("developer")).toBe("development");
+    expect(suggestedCategoryFor("analyst")).toBe("finance");
+  });
+
+  test("suggestedCategoryFor reads a typed role, falling back to content", () => {
+    expect(suggestedCategoryFor("Invoice chaser")).toBe("finance");
+    expect(suggestedCategoryFor("Unicorn wrangler")).toBe("content");
+    expect(suggestedCategoryFor(null)).toBe("content");
   });
 
   test("normalizeCustomRole trims whitespace", () => {

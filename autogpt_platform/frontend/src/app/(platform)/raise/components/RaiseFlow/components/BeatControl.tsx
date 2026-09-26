@@ -7,6 +7,7 @@ import type { useRaisePage } from "../../../useRaisePage";
 import { AboutStep } from "../../AboutStep/AboutStep";
 import { AvatarStep } from "../../AvatarStep/AvatarStep";
 import { BudgetStep } from "../../BudgetStep/BudgetStep";
+import { CategoryStep } from "../../CategoryStep/CategoryStep";
 import {
   interactiveCardClassFor,
   selectedCardClassFor,
@@ -56,10 +57,20 @@ export function BeatControl({ beat, flow }: Props) {
           onSubmit={flow.submitName}
         />
       );
+    case "category":
+      return (
+        <CategoryStep
+          selectedCategory={flow.category}
+          suggested={flow.suggestedCategory}
+          color={flow.color}
+          onPick={flow.pickCategory}
+        />
+      );
     case "avatar":
       return (
         <AvatarStep
           name={flow.name}
+          category={flow.category ?? flow.suggestedCategory}
           color={flow.color}
           avatarUrl={flow.avatarUrl || null}
           onPick={flow.pickAvatar}

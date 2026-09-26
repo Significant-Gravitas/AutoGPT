@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { getExpertTopicHex } from "./colors";
+import { getExpertCategory, getExpertTopicHex } from "./colors";
 
 test.each([
   ["Marketing", "#C45F36"],
@@ -21,4 +21,17 @@ test.each([
 test("stored categories take priority over a broad role guess", () => {
   expect(getExpertTopicHex("Marketing writer", ["Content"])).toBe("#B5ADA0");
   expect(getExpertTopicHex("Unknown", ["other", "finance"])).toBe("#A5B09A");
+});
+
+test.each([
+  ["Growth Marketing Lead", "marketing"],
+  ["Deal desk analyst", "sales"],
+  ["Head of AI", "content"],
+  ["Unicorn wrangler", "content"],
+])("generates a %s avatar in the %s category", (role, category) => {
+  expect(getExpertCategory(role)).toBe(category);
+});
+
+test("a stored category outranks the role guess for generation too", () => {
+  expect(getExpertCategory("Marketing writer", ["finance"])).toBe("finance");
 });

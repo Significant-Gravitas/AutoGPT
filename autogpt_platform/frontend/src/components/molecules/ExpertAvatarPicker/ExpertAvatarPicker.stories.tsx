@@ -6,7 +6,7 @@ import { ExpertAvatarPicker } from "./ExpertAvatarPicker";
 const meta = {
   title: "Molecules/ExpertAvatarPicker",
   component: ExpertAvatarPicker,
-  args: { name: "Nova", color: null, onPick: fn() },
+  args: { name: "Nova", category: "finance", onPick: fn() },
   decorators: [
     (Story) => (
       <div className="w-full max-w-lg">
@@ -39,7 +39,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Catalog: Story = {};
+/** The raise flow: one avatar, sculpted the moment the beat opens. */
+export const Generating: Story = { args: { autoGenerate: true } };
+
+/** The team page: the expert already has a face until it is regenerated. */
 export const ExistingAvatar: Story = {
-  args: { avatarUrl: "/experts/clay/v1/marketing.png", color: "rose-300" },
+  args: { category: "marketing", avatarUrl: "/experts/clay/v1/marketing.png" },
 };

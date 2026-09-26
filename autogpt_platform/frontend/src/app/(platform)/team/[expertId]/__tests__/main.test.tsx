@@ -1080,6 +1080,19 @@ describe("ExpertDetailPage", () => {
     expect(body).toEqual({ avatar_url: "https://cdn.example.com/maria.png" });
   });
 
+  test("the avatar dialog offers one regenerate control and no catalog", async () => {
+    render(<ExpertDetailPage />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Change Maria's appearance" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Regenerate" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("group", { name: "Avatar catalog" })).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
   test("a failed avatar upload leaves the expert untouched", async () => {
     const updateSpy = vi.fn();
     server.use(
