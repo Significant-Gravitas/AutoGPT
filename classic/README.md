@@ -4,7 +4,7 @@ AutoGPT Classic was an experimental project to demonstrate autonomous GPT-4 oper
 
 ## Project Status
 
-**This project is unsupported, and dependencies will not be updated.** It was an experiment that has concluded its initial research phase. If you want to use AutoGPT, you should use the [AutoGPT Platform](/autogpt_platform).
+**This project is unsupported, and dependencies will not be updated.** It was an experiment that has concluded its initial research phase. If you want to use AutoGPT, you should use the [AutoGPT Platform](../autogpt_platform).
 
 For those interested in autonomous AI agents, we recommend exploring more actively maintained alternatives or referring to this codebase for educational purposes only.
 
@@ -184,7 +184,7 @@ This codebase has **known vulnerabilities** and issues with its dependencies. It
 
 ## License
 
-This project segment is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project segment is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ## Documentation
 
