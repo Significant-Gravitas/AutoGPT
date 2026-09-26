@@ -162,6 +162,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=3750.0,
                     cache_read_credits_per_1m=75.0,
                     cache_creation_credits_per_1m=938.0,
+                    provider_input_usd_per_1m=5.00,
+                    provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -184,6 +188,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=3750.0,
                     cache_read_credits_per_1m=75.0,
                     cache_creation_credits_per_1m=938.0,
+                    provider_input_usd_per_1m=5.00,
+                    provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -269,6 +277,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=2250.0,
                     cache_read_credits_per_1m=45.0,
                     cache_creation_credits_per_1m=563.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
+                    provider_cache_read_usd_per_1m=0.30,
+                    provider_cache_creation_usd_per_1m=3.75,
                 ),
             ),
             CatalogModel(
@@ -1335,6 +1347,10 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=3,
                     input_credits_per_1m=375.0,
                     output_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=2.50,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=1.25,
+                    provider_cache_creation_usd_per_1m=0.00,
                 ),
             ),
             CatalogModel(
