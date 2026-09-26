@@ -13,6 +13,7 @@ from backend.api.features.library.model import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+from backend.copilot.context import get_current_envelope
 from backend.copilot.gate.subject import (
     NO_OP,
     Subject,
@@ -999,6 +1000,9 @@ class RunAgentTool(BaseTool):
                     and not gate_approved
                     and session.metadata.pauses_irreversible_actions
                 ),
+                # Keeps a graph containing an AutoPilotBlock inside this turn's
+                # tree rather than letting it start a fresh, unbounded one.
+                copilot_tree=get_current_envelope(),
             )
         except GraphValidationError as e:
             return await self._handle_graph_validation_race(

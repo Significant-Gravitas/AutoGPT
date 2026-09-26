@@ -396,6 +396,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         "backend.executor.utils.validate_and_construct_node_execution_input"
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
     mock_udb = mocker.patch("backend.executor.utils.user_db")
     mock_gdb = mocker.patch("backend.executor.utils.graph_db")
@@ -468,6 +469,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         trigger_ref=None,
         schedule_id=None,
         webhook_id=None,
+        copilot_tree=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -881,6 +883,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
         "backend.executor.utils.validate_and_construct_node_execution_input"
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
     mock_udb = mocker.patch("backend.executor.utils.user_db")
     mock_gdb = mocker.patch("backend.executor.utils.graph_db")
@@ -971,6 +974,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
 
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
     mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
     mock_get_event_bus = mocker.patch(
@@ -1039,6 +1043,9 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     )
 
     mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+    mock_execution_db.get_graph_execution_copilot_tree = mocker.AsyncMock(
+        return_value=None
+    )
     mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
         return_value=mock_graph_exec
     )
@@ -1181,6 +1188,9 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Mock execution_db to return different status based on which execution is queried
     mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+    mock_execution_db.get_graph_execution_copilot_tree = mocker.AsyncMock(
+        return_value=None
+    )
 
     # Track call count to simulate status transition
     call_count = {"count": 0}
@@ -2068,6 +2078,7 @@ async def test_add_graph_execution_paywall_blocks_paywalled_user(
         new=mocker.AsyncMock(return_value=True),
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_edb.create_graph_execution = mocker.AsyncMock()
 
     with pytest.raises(UserPaywalledError):
@@ -2096,6 +2107,7 @@ async def test_add_graph_execution_bypass_paywall_skips_check(
     mocker.patch("backend.executor.utils.workspace_db")
     mocker.patch("backend.executor.utils.onboarding_db")
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     # Force an early sentinel error AFTER the gate so we can verify the
     # gate was passed without simulating the whole requeue pipeline.
     mock_edb.get_graph_execution = mocker.AsyncMock(
@@ -2154,6 +2166,7 @@ def _mock_add_graph_execution_create_path(
     mock_validate.return_value = (mock_graph, [("node1", {"input1": "v"})], {}, set())
 
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_copilot_tree = mocker.AsyncMock(return_value=None)
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
     mock_edb.update_graph_execution_stats = mocker.AsyncMock(
         return_value=mock_graph_exec
@@ -2250,6 +2263,9 @@ def _mock_add_graph_execution_requeue_path(
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     execution_store = mocker.patch("backend.executor.utils.execution_db")
+    execution_store.get_graph_execution_copilot_tree = mocker.AsyncMock(
+        return_value=None
+    )
     execution_store.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
     execution_store.update_graph_execution_stats = mocker.AsyncMock(
         return_value=graph_exec

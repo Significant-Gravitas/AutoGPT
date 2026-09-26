@@ -15,6 +15,7 @@ from backend.blocks.autopilot import (
     _enqueue_for_recovery,
     _reset_recursion,
 )
+from backend.copilot.tree import TurnEnvelope
 from backend.data.execution import ExecutionContext
 
 
@@ -283,11 +284,15 @@ class TestRecoveryEnqueue:
                 outputs[name] = value
 
         assert "network error" in outputs.get("error", "")
+        # The 5th argument is the spawning turn's envelope, so recovery
+        # re-derives a child of it rather than re-rooting with full authority.
+        # A test context carries no tree, so it is None here.
         mock_enqueue.assert_awaited_once_with(
             "sess-recover",
             ctx.user_id,
             "do work",
             False,
+            None,
         )
 
     @pytest.mark.asyncio
@@ -435,3 +440,29 @@ async def test_a_recovered_turn_spends_against_its_own_chat():
         await _enqueue_for_recovery("sess-1", "user-1", "resume", dry_run=False)
     call = enqueue.await_args
     assert call is not None and call.kwargs["envelope"].spend_session_id == "sess-1"
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_graph_nested_turn_stays_in_its_spawners_tree_and_chat():
+    """Kills: recovery re-rooting a graph-nested turn, which would drop its
+    depth and tools and charge its own chat instead of the one that started it."""
+    spawner = TurnEnvelope(
+        tree_id="tree-1",
+        depth=1,
+        tools=frozenset({"run_sub_session"}),
+        spend_session_id="chat-origin",
+    )
+    enqueue = AsyncMock()
+    session = AsyncMock(return_value=MagicMock())
+    with (
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+        patch("backend.copilot.model.get_chat_session", session),
+    ):
+        await _enqueue_for_recovery(
+            "sess-1", "user-1", "resume", dry_run=False, spawner_envelope=spawner
+        )
+    call = enqueue.await_args
+    assert call is not None
+    envelope = call.kwargs["envelope"]
+    assert (envelope.tree_id, envelope.depth) == ("tree-1", 2)
+    assert envelope.spend_session_id == "chat-origin"
