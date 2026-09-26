@@ -51,8 +51,20 @@ def test_format_assistant_tool_calls():
         )
     ]
     result = _format_conversation_context(msgs)
-    # Assistant with no content and tool_calls omitted produces no lines
-    assert result is None
+    # What the agent *did* is part of the history it restarts from; the
+    # compressor budgets these arguments, so the renderer must show them.
+    assert result is not None
+    assert 'You called search: {"q": "test"}' in result
+
+
+def test_format_tool_result_is_rendered_as_the_compressor_left_it():
+    """No 500-character cut here: the compressor already sized this content,
+    and cutting it again made the compression budget a fiction."""
+    long_output = "x" * 5_000
+    msgs = [ChatMessage(role="tool", content=long_output)]
+    result = _format_conversation_context(msgs)
+    assert result is not None
+    assert f"Tool output: {long_output}" in result
 
 
 def test_format_tool_result():
