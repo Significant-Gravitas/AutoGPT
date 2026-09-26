@@ -389,18 +389,14 @@ class TestCompactTranscript:
                 ("assistant", "Hi there"),
             ]
         )
-        mock_result = type(
-            "CompressResult",
-            (),
-            {
-                "was_compacted": False,
-                "messages": [],
-                "original_token_count": 100,
-                "token_count": 100,
-                "messages_summarized": 0,
-                "messages_dropped": 0,
-            },
-        )()
+        mock_result = CompressResult(
+            was_compacted=False,
+            messages=[],
+            original_token_count=100,
+            token_count=100,
+            messages_summarized=0,
+            messages_dropped=0,
+        )
         with patch(
             "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
@@ -424,18 +420,14 @@ class TestCompactTranscript:
             {"role": "user", "content": "[summary]"},
             {"role": "assistant", "content": "Summarized response"},
         ]
-        mock_result = type(
-            "CompressResult",
-            (),
-            {
-                "was_compacted": True,
-                "messages": compacted_msgs,
-                "original_token_count": 500,
-                "token_count": 100,
-                "messages_summarized": 2,
-                "messages_dropped": 0,
-            },
-        )()
+        mock_result = CompressResult(
+            was_compacted=True,
+            messages=compacted_msgs,
+            original_token_count=500,
+            token_count=100,
+            messages_summarized=2,
+            messages_dropped=0,
+        )
         with patch(
             "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,

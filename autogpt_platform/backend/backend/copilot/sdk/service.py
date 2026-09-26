@@ -69,7 +69,11 @@ from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.prompt import DEFAULT_COMPRESSION_RESERVE, estimate_token_count
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    estimate_token_count,
+    get_compression_target,
+)
 from backend.util.settings import Settings
 
 from backend.copilot.sdk.context_window import (
@@ -1485,6 +1489,18 @@ def _retry_target_tokens(
     return retry_target_tokens(
         config, model, codex_route=codex_route, codex_engine=codex_engine
     )
+
+
+def _tail_budget_tokens(target_tokens: int | None, model: str) -> int:
+    """Recent history kept verbatim when the copilot compresses: a quarter of
+    the budget, never under 2K.  Sized in tokens, not messages, so eight 20K
+    tool results can neither crowd out the summary nor be cut blind.  With no
+    explicit target the budget is the same model default ``compress_context``
+    itself falls back to, so the tail is never chosen by message count."""
+    budget = (
+        target_tokens if target_tokens is not None else get_compression_target(model)
+    )
+    return max(2_000, budget // 4)
 
 
 def _seed_target_tokens(
@@ -3120,11 +3136,16 @@ async def _compress_messages(
     messages_dict = [_to_compress_dict(msg) for msg in messages]
 
     try:
+        model = _compression_model()
         result = await _run_compression(
             messages_dict,
-            _compression_model(),
+            model,
             "[SDK]",
             target_tokens=target_tokens,
+            keep_recent_tokens=_tail_budget_tokens(target_tokens, model),
+            # History is rendered as text (see _format_conversation_context),
+            # so a middle-out cut of a tool call's arguments is safe here.
+            truncate_tool_arguments=True,
         )
     except Exception as exc:
         # Both the LLM summarize path AND the truncation fallback inside
@@ -3266,11 +3287,15 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            # Omit tool_calls — any text representation gets mimicked
-            # by the model. Tool results below provide the context.
+            for call in msg.tool_calls or []:
+                function = call.get("function", {}) if isinstance(call, dict) else {}
+                name = function.get("name") or "tool"
+                lines.append(f"You called {name}: {function.get('arguments') or ''}")
         elif msg.role == "tool":
-            content = msg.content or ""
-            lines.append(f"Tool output: {content[:500]}")
+            # Rendered as the compressor left it.  Cutting every tool result
+            # to 500 characters here made the compression budget a fiction,
+            # and dropping tool calls entirely hid what the agent had done.
+            lines.append(f"Tool output: {msg.content or ''}")
 
     if not lines:
         return None
