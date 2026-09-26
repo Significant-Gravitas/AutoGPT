@@ -222,3 +222,44 @@ export function getEdgeColorFromOutputType(
 
   return defaultColor;
 }
+
+export function augmentOutputSchemaWithEdges(
+  outputSchema: RJSFSchema | undefined,
+  nodeId: string,
+  edges: any[],
+): Record<string, RJSFSchema> {
+  const properties = JSON.parse(JSON.stringify(outputSchema?.properties || {}));
+
+  // Filter for outgoing edges from this node that have a source handle
+  const outgoingEdges = edges.filter(
+    (e) => e.source === nodeId && e.sourceHandle,
+  );
+
+  outgoingEdges.forEach((edge) => {
+    const handleId = edge.sourceHandle!;
+    const segments = handleId.split("_#_");
+    if (segments.length <= 1) return; // Only process dynamic nested properties
+
+    let current = properties;
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const isLast = i === segments.length - 1;
+
+      if (!current[segment]) {
+        current[segment] = isLast
+          ? { title: segment } // Default to any type (displays as 'any')
+          : { type: "object", title: segment, properties: {} };
+      } else {
+        if (!isLast) {
+          current[segment].properties = current[segment].properties || {};
+        }
+      }
+
+      if (!isLast) {
+        current = current[segment].properties;
+      }
+    }
+  });
+
+  return properties;
+}
