@@ -88,12 +88,19 @@ from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
+from backend.copilot.integration_creds import (
+    grant_to_box,
+    placeholder_env,
+    placeholder_grants,
+    renew_box_grants,
+)
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
     create_sandbox,
     forget_sandbox,
+    proxy_address,
 )
 from backend.util.e2b_template import ensure_template, forget_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata, owned_by_user
@@ -368,7 +375,7 @@ async def _connect_pinned(
             "it; pinning it without credentials",
             sandbox_id,
         )
-    return await connect_sandbox(
+    sandbox = await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
         owner.egress_owner(swap_user_id),
@@ -376,6 +383,25 @@ async def _connect_pinned(
         api_key=api_key,
         timeout=timeout,
     )
+    if pin_egress and swap_user_id is not None:
+        await _keep_grants(sandbox_id)
+    return sandbox
+
+
+async def _keep_grants(sandbox_id: str) -> None:
+    """Renew the box's credential grants on a reconnect that will run work.
+
+    A grant lasts as long as a paused box can, but an expert's box can be
+    paused far longer and come back with the placeholders it was created
+    with; each reconnect restarts their clock.  Best effort: a failure costs
+    only those placeholders, and commands grant their own again.
+    """
+    if proxy_address() is None:
+        return
+    try:
+        await renew_box_grants(sandbox_id)
+    except Exception as exc:
+        logger.warning("[E2B] Could not renew the grants of %.12s: %s", sandbox_id, exc)
 
 
 def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
@@ -604,6 +630,27 @@ async def _release_turn(owner: SandboxOwner) -> bool:
         return False
 
 
+async def _placeholder_grants(egress_owner: EgressOwner) -> dict[str, str]:
+    """The credentials a new box starts with in its own environment, when it
+    egresses through the swap proxy: the user's default for each connected
+    provider (no chat's pick applies to the box itself).
+
+    Commands get their variables per call as well (``bash_exec``); these are
+    for what does not start through a command, the desktop's browser and
+    terminal among them.  Nothing without the proxy: the real token is never
+    put in the box's environment.
+    """
+    if proxy_address() is None or not egress_owner.swaps:
+        return {}
+    assert egress_owner.user_id is not None  # ``swaps`` requires one
+    try:
+        return await placeholder_grants(egress_owner.user_id)
+    except Exception as exc:
+        # Commands still get theirs; a box without them is no less safe.
+        logger.warning("[E2B] No placeholder env for %s: %s", egress_owner, exc)
+        return {}
+
+
 async def get_or_create_owner_sandbox(
     owner: SandboxOwner,
     api_key: str,
@@ -728,6 +775,8 @@ async def get_or_create_owner_sandbox(
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
+            box_grants = await _placeholder_grants(owner.egress_owner(user_id))
+            box_env = placeholder_env(box_grants) if box_grants else {}
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
@@ -746,6 +795,7 @@ async def get_or_create_owner_sandbox(
                                 template=template,
                                 mounts="attached" if mounts else "none",
                             ),
+                            **({"envs": box_env} if box_env else {}),
                         ),
                         timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
                     )
@@ -783,6 +833,17 @@ async def get_or_create_owner_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
+            if box_grants:
+                try:
+                    await grant_to_box(sandbox.sandbox_id, box_grants)
+                except Exception as exc:
+                    # Its own placeholders then resolve to nothing; commands
+                    # grant theirs again, so the box stays usable.
+                    logger.warning(
+                        "[E2B] Could not grant credentials to %.12s: %s",
+                        sandbox.sandbox_id,
+                        exc,
+                    )
             if mounts:
                 with contextlib.suppress(Exception):
                     await sandbox.commands.run(
