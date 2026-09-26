@@ -10,10 +10,9 @@ file; we'd rather fail loud on an unknown model than silently bill at
 zero. The OpenRouter path bypasses this entirely because OpenRouter
 already returns the real spot price as ``usage.cost``.
 
-When the Anthropic + OpenAI direct batch paths land (P0.1), the
-``batch_discount`` factor in ``ExecutionPathDiscount`` is multiplied
-into the computed cost so the savings flow through to the user via the
-shared cost ledger.
+On the Anthropic batch path the 50% discount from
+``execution_path_discount`` is multiplied into the computed cost so the
+savings flow through to the user via the shared cost ledger.
 """
 
 from __future__ import annotations

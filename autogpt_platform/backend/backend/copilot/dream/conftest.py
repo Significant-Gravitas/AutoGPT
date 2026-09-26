@@ -21,13 +21,13 @@ import pytest_asyncio
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def server():  # type: ignore[override]
+async def server():
     """No-op server stub — dream tests don't need the full backend."""
     return None
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
+async def graph_cleanup():
     """No-op graph cleanup stub."""
     yield
 
