@@ -21083,7 +21083,7 @@
           },
           "execution_path": {
             "type": "string",
-            "enum": ["sync_baseline", "anthropic_batch", "openai_batch"],
+            "enum": ["sync_baseline", "anthropic_batch"],
             "title": "Execution Path",
             "default": "sync_baseline"
           },
