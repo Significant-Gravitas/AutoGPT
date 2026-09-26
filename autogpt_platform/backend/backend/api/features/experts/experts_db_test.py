@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import itertools
 import re
 import uuid
@@ -7,9 +8,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import httpx
 import prisma.enums
 import prisma.errors
 import prisma.models
@@ -37,11 +40,12 @@ from backend.api.features.experts.models import (
     VoiceSample,
     encode_voice_preferences,
 )
+from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
-from backend.api.features.store import skill_seed
 from backend.api.features.store.categories import StoreCategory
-from backend.api.features.store.skill_db_test import _make_listing
+from backend.api.features.store.skill_catalog_checkout import catalog_checkout
+from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
@@ -330,6 +334,7 @@ def mock_embedding_functions():
 
 _seeded_template_ids: list[str] = []
 _seeded_user_ids: list[str] = []
+_seeded_skill_listing_ids: list[str] = []
 
 # The hire as production calls it: returns before its setup job has run.
 _hire_without_waiting = experts_db.hire_expert
@@ -375,17 +380,17 @@ async def delete_rows_this_test_seeded():
     await _delete_seeded_rows(template_ids, user_ids)
     _seeded_template_ids.clear()
     _seeded_user_ids.clear()
-    # _load_roster_store_assets seeds the real starter-skill catalog so
-    # bundled-skill resolution has something to find; skill_db_test.py's
-    # fixture requires that table empty, so undo the seed here. Re-seeding
-    # next call is an upsert, so this is cheap.
-    starter_slugs = [entry["slug"] for entry in skill_seed.STARTER_SKILLS]
+    # Roster seeds need a Skills Hub listing for every bundled slug, so
+    # _ensure_skill_listings creates the ones missing; skill_db_test.py's
+    # fixture requires that table empty, so undo exactly those here.
+    listing_ids = list(_seeded_skill_listing_ids)
     await prisma.models.SkillListingVersion.prisma().delete_many(
-        where={"SkillListing": {"is": {"slug": {"in": starter_slugs}}}}
+        where={"skillListingId": {"in": listing_ids}}
     )
     await prisma.models.SkillListing.prisma().delete_many(
-        where={"slug": {"in": starter_slugs}}
+        where={"id": {"in": listing_ids}}
     )
+    _seeded_skill_listing_ids.clear()
 
 
 async def _delete_seeded_rows(template_ids: list[str], user_ids: list[str]) -> None:
@@ -443,54 +448,185 @@ async def absorb_a_stale_event_loop(server: SpinTestServer):
             raise
 
 
-# Read at import, before any test can monkeypatch seed.ROSTER.
-LIVE_ROSTER_NAMES = frozenset(entry["name"] for entry in seed.ROSTER)
+@functools.cache
+def _load_catalog_roster() -> tuple[Path, tuple[seed.RosterEntry, ...]] | str:
+    """The shipped roster from the skills catalog checkout, loaded once.
+
+    Returns the checkout root and its entries, or why it could not be read:
+    the catalog is a separate repository, so a run without it (offline, or a
+    ref from before the roster moved there) skips the roster tests rather
+    than erroring.
+    """
+    try:
+        root = catalog_checkout().root
+        return root, tuple(load_roster(root))
+    except (RosterError, CatalogError, OSError, httpx.HTTPError) as exc:
+        return f"skills catalog roster unavailable: {exc}"
+
+
+@pytest.fixture(scope="session")
+def real_roster() -> list[seed.RosterEntry]:
+    """The roster the catalog ships (``experts/*.yml``). Read-only: tests
+    that seed it go through ``fixture_roster``."""
+    loaded = _load_catalog_roster()
+    if isinstance(loaded, str):
+        pytest.skip(loaded)
+    return list(loaded[1])
+
+
+@pytest.fixture(scope="session")
+def catalog_root(real_roster: list[seed.RosterEntry]) -> Path:
+    loaded = _load_catalog_roster()
+    assert not isinstance(loaded, str)
+    return loaded[0]
+
+
+@pytest.fixture(scope="session")
+def roster_by_name(real_roster: list[seed.RosterEntry]) -> dict[str, seed.RosterEntry]:
+    return {entry["name"]: entry for entry in real_roster}
+
+
+def _live_roster_keys_and_names() -> tuple[frozenset[str], frozenset[str]]:
+    loaded = _load_catalog_roster()
+    if isinstance(loaded, str):
+        # Without the catalog no test can get at the shipped entries either.
+        return frozenset(), frozenset()
+    return (
+        frozenset(entry["key"] for entry in loaded[1]),
+        frozenset(entry["name"] for entry in loaded[1]),
+    )
 
 
 @pytest.fixture(autouse=True)
 def refuse_to_seed_the_live_roster(monkeypatch):
-    """Fail a test that writes a roster template under its shipped name.
+    """Fail a test that writes a roster template under a shipped key or name.
 
-    ``seed._upsert_template`` resolves a template by name, so seeding the real
-    names against a shared database adopts the live roster rows and rewrites
-    them and every hire made from them — four sessions have done it by
-    accident. Tests that need the seed take ``fixture_roster``.
+    ``seed._find_template`` resolves a template by its catalog key, and falls
+    back to the display name for an unkeyed row, so seeding a real key or name
+    against a shared database adopts the live roster rows and rewrites them
+    and every hire made from them — four sessions have done it by accident.
+    Tests that need the seed take ``fixture_roster``.
     """
     upsert = seed._upsert_template
 
-    async def guarded(entry: seed.RosterEntry) -> prisma.models.Expert:
-        if entry["name"] in LIVE_ROSTER_NAMES:
+    async def guarded(
+        entry: seed.RosterEntry, previous: prisma.models.Expert | None
+    ) -> prisma.models.Expert:
+        live_keys, live_names = _live_roster_keys_and_names()
+        if entry["key"] in live_keys or entry["name"] in live_names:
             pytest.fail(
-                f"seeding '{entry['name']}' would rewrite the live roster template "
-                "and its hires; seed through the fixture_roster fixture"
+                f"seeding '{entry['key']}' ('{entry['name']}') would rewrite the "
+                "live roster template and its hires; seed through the "
+                "fixture_roster fixture"
             )
-        return await upsert(entry)
+        return await upsert(entry, previous)
 
     monkeypatch.setattr(seed, "_upsert_template", guarded)
 
 
-@pytest.fixture
-async def fixture_roster(monkeypatch):
-    """Point ``seed_roster`` at the shipped roster under non-colliding names.
+async def _make_listing(slug: str) -> prisma.models.SkillListing:
+    """A Skills Hub listing with an approved, available active version."""
+    listing = await prisma.models.SkillListing.prisma().create(
+        data={"slug": slug, "hasApprovedVersion": True}
+    )
+    version = await prisma.models.SkillListingVersion.prisma().create(
+        data={
+            "skillListingId": listing.id,
+            "name": slug.replace("-", " ").title(),
+            "description": f"{slug} description",
+            "body": "# body\n",
+            "triggers": ["t1"],
+            "categories": ["content"],
+            "requiredProviders": ["google"],
+            "isAvailable": True,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        }
+    )
+    updated = await prisma.models.SkillListing.prisma().update(
+        where={"id": listing.id},
+        data={"activeVersionId": version.id},
+        include={"ActiveVersion": True},
+    )
+    assert updated is not None
+    return updated
 
-    Only ``name`` differs from ``seed.ROSTER``, so a test still checks the
-    personas, preloads and copy we ship. Returns shipped name -> its entry.
+
+async def _ensure_skill_listings(slugs: set[str]) -> None:
+    """Give every slug a Skills Hub listing, as publishing the catalog would
+    before it seeds the roster. Only the listings created here are deleted at
+    teardown."""
+    existing = await prisma.models.SkillListing.prisma().find_many(
+        where={"slug": {"in": sorted(slugs)}}
+    )
+    have = {listing.slug for listing in existing}
+    for slug in sorted(slugs - have):
+        _seeded_skill_listing_ids.append((await _make_listing(slug)).id)
+
+
+def _roster_entry(**overrides: object) -> seed.RosterEntry:
+    """A complete roster entry under a unique key and name, so seeding it can
+    never adopt a live template."""
+    suffix = uuid.uuid4().hex[:8]
+    entry: seed.RosterEntry = {
+        "key": f"test-{suffix}",
+        "name": f"Maria {suffix}",
+        "role": "Marketing",
+        "job_title": "Marketing Generalist",
+        "tagline": "Does all of marketing.",
+        "avatar_url": "/experts/maria.svg",
+        "bio": "Maria is a generalist marketer.",
+        "bundled_skills": [],
+        "categories": ["marketing"],
+        "identity": "You are Maria, a generalist.",
+        "voice_preferences": "Clear and confident.",
+        "voice_samples": [],
+        "boundaries": "Never invent customer evidence.",
+        "day_one": [],
+        "preloads": [],
+        "routines": [],
+    }
+    return cast(seed.RosterEntry, {**entry, **overrides})
+
+
+async def _templates_by_key(keys: list[str]) -> dict[str, prisma.models.Expert]:
+    rows = await prisma.models.Expert.prisma().find_many(
+        where={"isTemplate": True, "templateKey": {"in": keys}}
+    )
+    return {row.templateKey: row for row in rows if row.templateKey is not None}
+
+
+async def _seeded_template_ids_of(roster: dict[str, seed.RosterEntry]) -> list[str]:
+    """The template ids ``seed_roster`` wrote for *roster*, in roster order."""
+    keys = [entry["key"] for entry in roster.values()]
+    templates = await _templates_by_key(keys)
+    return [templates[key].id for key in keys if key in templates]
+
+
+@pytest.fixture
+async def fixture_roster(server: SpinTestServer, real_roster):
+    """The shipped roster under non-colliding keys and names, with a Skills
+    Hub listing for every skill it bundles.
+
+    Only ``key`` and ``name`` differ from the catalog's files, so a test still
+    checks the personas, preloads and copy we ship. Pass the values to
+    ``seed.seed_roster``. Returns shipped name -> its entry.
     """
     suffix = uuid.uuid4().hex[:8]
 
     def rename(entry: seed.RosterEntry) -> seed.RosterEntry:
-        return {**entry, "name": f"{entry['name']} {suffix}"}
-
-    roster = {entry["name"]: rename(entry) for entry in seed.ROSTER}
-    monkeypatch.setattr(seed, "ROSTER", list(roster.values()))
-    yield roster
-    seeded = await prisma.models.Expert.prisma().find_many(
-        where={
-            "isTemplate": True,
-            "name": {"in": [entry["name"] for entry in roster.values()]},
+        return {
+            **entry,
+            "key": f"{entry['key']}-{suffix}",
+            "name": f"{entry['name']} {suffix}",
         }
+
+    roster = {entry["name"]: rename(entry) for entry in real_roster}
+    await _ensure_skill_listings(
+        {slug for entry in roster.values() for slug in entry["bundled_skills"]}
     )
-    _seeded_template_ids.extend(template.id for template in seeded)
+    yield roster
+    seeded = await _templates_by_key([entry["key"] for entry in roster.values()])
+    _seeded_template_ids.extend(template.id for template in seeded.values())
 
 
 @pytest.fixture
@@ -625,19 +761,18 @@ async def _seed_own_library_agent(
 
 async def _load_roster_store_assets() -> dict[str, str]:
     """Load the checked-in production store assets (StoreAgent_rows.csv plus
-    the matching graph JSONs) for every ROSTER preload slug into the test DB,
+    the matching graph JSONs) for every roster preload slug into the test DB,
     published under the official creator — the exact data ``load-store-agents``
     deploys. Idempotent: the loaders skip rows that already exist.
 
-    Also seeds the starter skills, because the roster bundles them and
-    ``_resolve_roster_skills`` fails the whole seed when a bundled slug has no
-    Skills Hub listing — the same ordering a deploy has to follow.
+    The bundled skills are not loaded here: ``fixture_roster`` gives each one
+    a Skills Hub listing, because ``_resolve_roster_skills`` fails the whole
+    seed when a bundled slug has none — the ordering a deploy follows too.
 
     Returns slug -> the CSV's StoreListingVersion id, the version a hire is
-    expected to install. A ROSTER slug with no checked-in asset fails here
+    expected to install. A roster slug with no checked-in asset fails here
     instead of being silently substituted by a synthetic listing.
     """
-    await skill_seed.seed_starter_skills()
     await store_assets.create_user_and_profile(db_client)
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
@@ -708,9 +843,9 @@ async def _seed_template(
     """Create an Expert roster template plus its preload and bundled-skill rows.
 
     The stored name gets a unique suffix so ad-hoc test templates never
-    collide with seed.ROSTER's real roster names — seed._upsert_template
-    resolves templates by name, and a bare "Maria" here would be silently
-    adopted and overwritten by test_seed_roster_round_trip.
+    collide with the catalog roster's real names — seed._find_template falls
+    back to the name for an unkeyed template, and a bare "Maria" here would be
+    silently adopted and overwritten by a seed of the real roster.
     """
     template = await prisma.models.Expert.prisma().create(
         data={
@@ -2813,7 +2948,8 @@ async def test_seed_roster_exposes_two_voice_samples_per_template(
     server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
-    ids = await seed.seed_roster()
+    await seed.seed_roster(list(fixture_roster.values()))
+    ids = await _seeded_template_ids_of(fixture_roster)
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
     for entry in fixture_roster.values():
         template = seeded[entry["name"]]
@@ -3664,7 +3800,14 @@ async def test_seed_roster_round_trip(
     server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
-    first_ids = await seed.seed_roster()
+    roster = list(fixture_roster.values())
+    first = await seed.seed_roster(roster)
+    assert first == {
+        "created": [entry["key"] for entry in roster],
+        "updated": [],
+        "retired": [],
+    }
+    first_ids = await _seeded_template_ids_of(fixture_roster)
     assert len(first_ids) == len(fixture_roster)
 
     templates = await experts_db.list_templates()
@@ -3677,7 +3820,10 @@ async def test_seed_roster_round_trip(
         assert template.job_title == entry["job_title"]
         assert template.identity == entry["identity"]
 
-    second_ids = await seed.seed_roster()
+    second = await seed.seed_roster(roster)
+    assert second["created"] == []
+    assert second["updated"] == [entry["key"] for entry in roster]
+    second_ids = await _seeded_template_ids_of(fixture_roster)
     assert first_ids == second_ids
 
     templates_after = await experts_db.list_templates()
@@ -3696,20 +3842,32 @@ async def test_seed_roster_archives_a_retired_template(
     instead of deleting it, and leaves every live template alone."""
     await _load_roster_store_assets()
     retired = await _seed_template(name="Retired", preload_listings=[])
-    monkeypatch.setattr(seed, "RETIRED_TEMPLATES", [retired.name])
+    retired_key = f"retired-{uuid.uuid4().hex[:8]}"
+    await prisma.models.Expert.prisma().update(
+        where={"id": retired.id}, data={"templateKey": retired_key}
+    )
+    legacy = await _seed_template(name="Legacy", preload_listings=[])
+    # A template seeded before keys existed is still retired by its name.
+    monkeypatch.setattr(seed, "RETIRED_TEMPLATES", [legacy.name])
 
-    ids = await seed.seed_roster()
+    summary = await seed.seed_roster(
+        list(fixture_roster.values()), retired_keys=[retired_key]
+    )
+    ids = await _seeded_template_ids_of(fixture_roster)
 
-    row = await prisma.models.Expert.prisma().find_unique(where={"id": retired.id})
-    assert row is not None and row.isArchived
+    assert summary["retired"] == sorted([retired_key, legacy.name])
+    for archived in (retired, legacy):
+        row = await prisma.models.Expert.prisma().find_unique(where={"id": archived.id})
+        assert row is not None and row.isArchived
     listed = {t.id for t in await experts_db.list_templates()}
     assert retired.id not in listed
+    assert legacy.id not in listed
     assert set(ids) <= listed
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, real_roster: list[seed.RosterEntry]
 ):
     resolve = AsyncMock(return_value=None)
     upsert = AsyncMock()
@@ -3717,61 +3875,79 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     monkeypatch.setattr(seed, "_upsert_template", upsert)
 
     with pytest.raises(RuntimeError, match="Load marketplace store assets"):
-        await seed.seed_roster()
+        await seed.seed_roster(real_roster)
 
     assert resolve.await_count == len(EXPECTED_ROSTER_PRELOAD_SLUGS)
     upsert.assert_not_awaited()
 
 
-def test_roster_preload_counts_and_scheduled_cadences():
+def test_roster_preload_counts_and_scheduled_cadences(
+    real_roster: list[seed.RosterEntry],
+):
     """Launch invariant, checked without a DB: every persona ships 2-4 preloads
     unless it is one we deliberately ship without workflows, and every
     scheduled cadence on the roster is one we declared — so a cron added to a
     persona that acts outside the platform fails here rather than firing
     unattended on someone's account."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
             assert entry["preloads"] == [], entry["name"]
         else:
             assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
 
     assert {
-        preload["slug"] for entry in seed.ROSTER for preload in entry["preloads"]
+        preload["slug"] for entry in real_roster for preload in entry["preloads"]
     } == EXPECTED_ROSTER_PRELOAD_SLUGS
     scheduled = {
         (entry["name"], preload["slug"], preload["cron"])
-        for entry in seed.ROSTER
+        for entry in real_roster
         for preload in entry["preloads"]
         if preload["cron"] is not None
     }
     assert scheduled == EXPECTED_ROSTER_SCHEDULES
 
 
-def test_roster_bundled_skills_are_seeded_starter_skills():
-    """Every bundled slug must exist in skill_seed.STARTER_SKILLS, or
-    seed_roster raises at _resolve_roster_skills against a real database."""
-    available = {entry["slug"] for entry in skill_seed.STARTER_SKILLS}
-    for entry in seed.ROSTER:
+def _catalog_package_slugs(root: Path) -> set[str]:
+    """Slugs the catalog lists in catalog.yml and ships a SKILL.md for."""
+    return {
+        entry["slug"]
+        for entry in load_catalog(root)
+        if (root / "skills" / entry["slug"] / "SKILL.md").is_file()
+    }
+
+
+def test_roster_bundled_skills_are_catalog_packages(
+    catalog_root: Path, real_roster: list[seed.RosterEntry]
+):
+    """Every bundled slug must be a package in the same catalog, or publishing
+    it leaves seed_roster raising at _resolve_roster_skills against a real
+    database. (load_release enforces this too, once release.json is built.)"""
+    available = _catalog_package_slugs(catalog_root)
+    for entry in real_roster:
         for slug in entry["bundled_skills"]:
             assert slug in available, (entry["name"], slug)
 
 
-def test_roster_bundled_skills_are_hub_slugs():
-    for entry in seed.ROSTER:
+def test_roster_bundled_skills_are_hub_slugs(real_roster: list[seed.RosterEntry]):
+    for entry in real_roster:
         for slug in entry["bundled_skills"]:
             assert _NAME_RE.match(slug), (entry["name"], slug)
 
 
-def test_operations_experts_bundle_their_eight_skills_in_work_order():
-    roster = {entry["name"]: entry for entry in seed.ROSTER}
+def test_operations_experts_bundle_their_eight_skills_in_work_order(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
+    roster = roster_by_name
 
     for name, skills in EXPECTED_OPERATIONS_SKILLS.items():
         assert roster[name]["bundled_skills"] == skills
         assert roster[name]["preloads"] == []
 
 
-def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
-    roster = {entry["name"]: entry for entry in seed.ROSTER}
+def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
+    roster = roster_by_name
     for name, expected_skills in EXPECTED_SKILLS_ONLY_ROSTER.items():
         assert roster[name]["bundled_skills"] == expected_skills
         assert roster[name]["preloads"] == []
@@ -3785,8 +3961,10 @@ def test_skills_only_roster_keeps_its_ordered_skill_sets_and_no_preloads():
     }
 
 
-def test_wave_three_experts_are_skills_only_with_ordered_packs():
-    roster = {entry["name"]: entry for entry in seed.ROSTER}
+def test_wave_three_experts_are_skills_only_with_ordered_packs(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
+    roster = roster_by_name
     for name, expected in EXPECTED_WAVE_THREE.items():
         entry = roster[name]
         assert entry["role"] == expected["role"]
@@ -3812,26 +3990,28 @@ def test_wave_three_covers_exactly_the_nine_new_experts():
     }
 
 
-def test_the_roster_is_the_expected_size_with_unique_names():
+def test_the_roster_is_the_expected_size_with_unique_names(
+    real_roster: list[seed.RosterEntry],
+):
     """Kept out of the wave-three test above so that adding an expert on either
     side edits the test about the roster rather than the one about dev's nine.
     Names must be unique: two entries sharing one is what forced the rename of
     this branch's Casey, Priya and Sasha when dev's wave three landed."""
     # 24 from dev's waves plus the eight generalists added on top; the senior
     # sales package was folded into Max rather than shipped as its own entry.
-    assert len(seed.ROSTER) == 32
-    names = [entry["name"] for entry in seed.ROSTER]
+    assert len(real_roster) == 32
+    names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
 
 
-def test_retired_templates_are_off_the_roster():
+def test_retired_templates_are_off_the_roster(real_roster: list[seed.RosterEntry]):
     """A name in both lists would be archived and re-upserted on every run."""
-    names = {entry["name"] for entry in seed.ROSTER}
+    names = {entry["name"] for entry in real_roster}
     assert not names & set(seed.RETIRED_TEMPLATES), names & set(seed.RETIRED_TEMPLATES)
 
 
-def test_every_wave_three_skill_is_a_registered_starter():
-    registered = {skill["slug"] for skill in skill_seed.STARTER_SKILLS}
+def test_every_wave_three_skill_is_a_catalog_package(catalog_root: Path):
+    registered = _catalog_package_slugs(catalog_root)
     for expected in EXPECTED_WAVE_THREE.values():
         assert set(expected["skills"]) <= registered
     slugs = [s for e in EXPECTED_WAVE_THREE.values() for s in e["skills"]]
@@ -3840,14 +4020,12 @@ def test_every_wave_three_skill_is_a_registered_starter():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_seed_resolves_bundled_skill_slugs_to_listing_ids(
-    server: SpinTestServer, hub_listing, monkeypatch
+    server: SpinTestServer, hub_listing
 ):
-    monkeypatch.setattr(
-        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": [hub_listing.slug]}]
-    )
+    roster = [_roster_entry(bundled_skills=[hub_listing.slug])]
     template = await _seed_template(name="Maria", preload_listings=[])
 
-    resolved = await seed._resolve_roster_skills()
+    resolved = await seed._resolve_roster_skills(roster)
     await seed._sync_bundled_skills(template.id, [resolved[hub_listing.slug]])
     rows = await prisma.models.ExpertSkillListing.prisma().find_many(
         where={"expertId": template.id}
@@ -3866,21 +4044,20 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
     server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(seed, "_resolve_roster_preloads", AsyncMock(return_value={}))
-    monkeypatch.setattr(
-        seed, "ROSTER", [{**seed.ROSTER[0], "bundled_skills": ["no-such-hub-skill"]}]
-    )
     upsert = AsyncMock()
     monkeypatch.setattr(seed, "_upsert_template", upsert)
 
     with pytest.raises(RuntimeError, match="no-such-hub-skill"):
-        await seed.seed_roster()
+        await seed.seed_roster([_roster_entry(bundled_skills=["no-such-hub-skill"])])
 
     upsert.assert_not_awaited()
 
 
-def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
+def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
+    real_roster: list[seed.RosterEntry],
+):
     """Day-one copy may describe draft work, but not an unattended cadence."""
-    day_one = {entry["name"]: entry["day_one"] for entry in seed.ROSTER}
+    day_one = {entry["name"]: entry["day_one"] for entry in real_roster}
 
     assert [(item.title, item.timing) for item in day_one["Maria"]] == [
         ("A brief before the draft", "day 1"),
@@ -3936,7 +4113,9 @@ def test_roster_day_one_promises_match_work_the_expert_can_do_on_request():
     ]
 
 
-def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
+def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
     expected = {
         "Mina": [
             "bookkeeping-getting-started",
@@ -3969,7 +4148,7 @@ def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
             "experiment-readout",
         ],
     }
-    by_name = {entry["name"]: entry for entry in seed.ROSTER}
+    by_name = roster_by_name
 
     for name, skills in expected.items():
         assert by_name[name]["bundled_skills"] == skills
@@ -3977,11 +4156,16 @@ def test_finance_and_analytics_roster_pack_is_skills_only_and_ordered():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
-    maria = next(entry for entry in seed.ROSTER if entry["name"] == "Maria")
+async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing(
+    roster_by_name: dict[str, seed.RosterEntry],
+):
+    maria = roster_by_name["Maria"]
     too_many = maria.copy()
-    # Not the shipped "Maria": refuse_to_seed_the_live_roster guards that name.
-    too_many["name"] = f"Maria {uuid.uuid4().hex[:8]}"
+    # Not the shipped "Maria": refuse_to_seed_the_live_roster guards that key
+    # and name.
+    suffix = uuid.uuid4().hex[:8]
+    too_many["key"] = f"maria-{suffix}"
+    too_many["name"] = f"Maria {suffix}"
     # One past the cap, however many rows the roster currently gives her —
     # deriving the list from len(maria["day_one"]) + 1 made this test pass
     # silently (and then fail on a MagicMock await) the moment her row count
@@ -3992,7 +4176,7 @@ async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing():
         patch.object(prisma.models.Expert, "prisma") as expert_client,
         pytest.raises(pydantic.ValidationError),
     ):
-        await seed._upsert_template(too_many)
+        await seed._upsert_template(too_many, None)
     expert_client.assert_not_called()
 
 
@@ -4011,7 +4195,8 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
     for slug, version_id in expected.items():
         assert await seed._resolve_active_version_id(slug) == version_id, slug
 
-    template_ids = await seed.seed_roster()
+    await seed.seed_roster(list(fixture_roster.values()))
+    template_ids = await _seeded_template_ids_of(fixture_roster)
     templates = {
         t.name: t for t in await experts_db.list_templates() if t.id in template_ids
     }
@@ -4491,6 +4676,7 @@ async def test_sync_preloads_updates_template_cadence(server: SpinTestServer):
     assert listing is not None
     template = await _seed_template(name="Frankie", preload_listings=[])
     entry: seed.RosterEntry = {
+        "key": f"test-{uuid.uuid4().hex[:8]}",
         "name": template.name,
         "role": template.role,
         "job_title": "Marketing Manager",
@@ -4540,6 +4726,7 @@ async def test_sync_preloads_drops_workflows_the_roster_reassigned(
 
     template = await _seed_template(name="Maria", preload_listings=[])
     entry: seed.RosterEntry = {
+        "key": f"test-{uuid.uuid4().hex[:8]}",
         "name": template.name,
         "role": template.role,
         "job_title": "Marketing Manager",
@@ -4588,6 +4775,7 @@ async def test_sync_preloads_keeps_rows_when_a_slug_does_not_resolve(
 
     template = await _seed_template(name="Maria", preload_listings=[])
     entry: seed.RosterEntry = {
+        "key": f"test-{uuid.uuid4().hex[:8]}",
         "name": template.name,
         "role": template.role,
         "job_title": "Marketing Manager",
@@ -4704,25 +4892,13 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
     through ``seed_roster`` so a future split back into two passes — one
     pushing presentation to everyone, one moving only the untouched — fails
     here rather than shipping half-migrated hires."""
-    entry: seed.RosterEntry = {
-        "name": f"Maria {uuid.uuid4().hex[:8]}",
-        "role": "Marketing",
-        "job_title": "Marketing Generalist",
-        "tagline": "Does all of marketing.",
-        "avatar_url": "/experts/maria.svg",
-        "bio": "Maria is a generalist marketer.",
-        "bundled_skills": [],
-        "categories": ["marketing"],
-        "identity": "You are Maria, a generalist.",
-        "voice_preferences": "Clear and confident.",
-        "voice_samples": [],
-        "boundaries": "Never invent customer evidence.",
-        "day_one": [],
-        "preloads": [],
-        "routines": [],
+    entry = _roster_entry()
+    assert await seed.seed_roster([entry]) == {
+        "created": [entry["key"]],
+        "updated": [],
+        "retired": [],
     }
-    monkeypatch.setattr(seed, "ROSTER", [entry])
-    (template_id,) = await seed.seed_roster()
+    template_id = (await _templates_by_key([entry["key"]]))[entry["key"]].id
     _seeded_template_ids.append(template_id)
     untouched = await experts_db.hire_expert(test_user.id, template_id, None)
     edited = await experts_db.hire_expert(other_user.id, template_id, None)
@@ -4730,20 +4906,14 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
         where={"id": edited.expert.id}, data={"role": "Webinars"}
     )
 
-    monkeypatch.setattr(
-        seed,
-        "ROSTER",
-        [
-            {
-                **entry,
-                "role": "SEO & Content",
-                "job_title": "SEO Content Writer",
-                "identity": "You are Maria, an SEO lead.",
-                "tagline": "Takes a keyword from brief to article.",
-                "bio": "Maria is an SEO and content strategist.",
-            }
-        ],
-    )
+    rescoped_entry: seed.RosterEntry = {
+        **entry,
+        "role": "SEO & Content",
+        "job_title": "SEO Content Writer",
+        "identity": "You are Maria, an SEO lead.",
+        "tagline": "Takes a keyword from brief to article.",
+        "bio": "Maria is an SEO and content strategist.",
+    }
     monkeypatch.setattr(
         seed,
         "RESCOPED_TEMPLATES",
@@ -4755,7 +4925,8 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
             }
         ],
     )
-    assert await seed.seed_roster() == [template_id]
+    assert (await seed.seed_roster([rescoped_entry]))["updated"] == [entry["key"]]
+    assert (await _templates_by_key([entry["key"]]))[entry["key"]].id == template_id
 
     moved = await prisma.models.Expert.prisma().find_unique(
         where={"id": untouched.expert.id}
@@ -4775,13 +4946,15 @@ async def test_seed_roster_rescopes_untouched_hires_and_spares_edited_ones(
     assert spared.tagline == entry["tagline"]
 
 
-def test_rescoped_templates_name_real_roster_entries():
-    """A rescope entry whose name drifts from ROSTER silently stops matching,
-    leaving the hires it was written for behind."""
-    names = {entry["name"] for entry in seed.ROSTER}
+def test_rescoped_templates_name_real_roster_entries(
+    real_roster: list[seed.RosterEntry],
+):
+    """A rescope entry whose name drifts from the roster silently stops
+    matching, leaving the hires it was written for behind."""
+    names = {entry["name"] for entry in real_roster}
     for rescope in seed.RESCOPED_TEMPLATES:
         assert rescope["name"] in names, rescope["name"]
-        entry = next(e for e in seed.ROSTER if e["name"] == rescope["name"])
+        entry = next(e for e in real_roster if e["name"] == rescope["name"])
         # The persona must actually move; the role may stay (Max kept "Sales"
         # when the senior package replaced his identity).
         assert rescope["old_identity"] != entry["identity"], rescope["name"]
@@ -4792,8 +4965,8 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     server: SpinTestServer, test_user
 ):
     """A re-seed must reach experts hired before the roster changed."""
-    # Unique name so _upsert_template resolves to this template and not to a
-    # same-named one left behind by another test in the shared session DB.
+    # Unique name so no same-named template left behind by another test in
+    # the shared session DB can be mistaken for this one.
     template = await _seed_template(
         name=f"Maria {uuid.uuid4().hex[:8]}", preload_listings=[]
     )
@@ -4807,22 +4980,18 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
         data={"skills": ["Customer interviews"], "avatarUrl": "/avatars/mine.svg"},
     )
 
-    entry: seed.RosterEntry = {
-        "name": template.name,
-        "role": template.role,
-        "job_title": "Marketing Manager",
-        "tagline": "Refreshed tagline",
-        "avatar_url": "/experts/maria.svg",
-        "bio": "Maria is a senior marketing strategist.",
-        "bundled_skills": [],
-        "categories": ["marketing"],
-        "identity": template.identity,
-        "voice_preferences": "Clear and confident.",
-        "boundaries": "Never invent customer evidence.",
-        "day_one": [ExpertDayOneItem(title="Social listening on your brand")],
-        "preloads": [],
-    }
-    refreshed_template = await seed._upsert_template(entry)
+    entry = _roster_entry(
+        name=template.name,
+        role=template.role,
+        job_title="Marketing Manager",
+        tagline="Refreshed tagline",
+        bio="Maria is a senior marketing strategist.",
+        identity=template.identity,
+        day_one=[ExpertDayOneItem(title="Social listening on your brand")],
+    )
+    refreshed_template = await seed._upsert_template(entry, template)
+    assert refreshed_template.id == template.id
+    assert refreshed_template.templateKey == entry["key"]
     assert refreshed_template.dayOne == [
         {"title": "Social listening on your brand", "description": "", "timing": ""}
     ]
@@ -4853,25 +5022,13 @@ async def test_seed_roster_keeps_an_owner_set_avatar(
     Driven through ``seed_roster`` rather than the helper, so a later pass
     that pushes avatars separately fails here rather than silently resetting
     every hire that ever set one."""
-    entry: seed.RosterEntry = {
-        "name": f"Maria {uuid.uuid4().hex[:8]}",
-        "role": "Marketing",
-        "job_title": "Marketing Generalist",
-        "tagline": "Does all of marketing.",
-        "avatar_url": "/experts/maria.svg",
-        "bio": "Maria is a generalist marketer.",
-        "bundled_skills": [],
-        "categories": ["marketing"],
-        "identity": "You are Maria, a generalist.",
-        "voice_preferences": "Clear and confident.",
-        "voice_samples": [],
-        "boundaries": "Never invent customer evidence.",
-        "day_one": [],
-        "preloads": [],
-        "routines": [],
+    entry = _roster_entry()
+    assert await seed.seed_roster([entry]) == {
+        "created": [entry["key"]],
+        "updated": [],
+        "retired": [],
     }
-    monkeypatch.setattr(seed, "ROSTER", [entry])
-    (template_id,) = await seed.seed_roster()
+    template_id = (await _templates_by_key([entry["key"]]))[entry["key"]].id
     _seeded_template_ids.append(template_id)
     hired = await experts_db.hire_expert(test_user.id, template_id, None)
     assert (
@@ -4880,18 +5037,13 @@ async def test_seed_roster_keeps_an_owner_set_avatar(
     )
     await experts_db.update_avatar(test_user.id, hired.expert.id, "/avatars/mine.svg")
 
-    monkeypatch.setattr(
-        seed,
-        "ROSTER",
-        [
-            {
-                **entry,
-                "avatar_url": "/experts/maria-refreshed.svg",
-                "tagline": "Takes a keyword from brief to article.",
-            }
-        ],
-    )
-    assert await seed.seed_roster() == [template_id]
+    refreshed_entry: seed.RosterEntry = {
+        **entry,
+        "avatar_url": "/experts/maria-refreshed.svg",
+        "tagline": "Takes a keyword from brief to article.",
+    }
+    assert (await seed.seed_roster([refreshed_entry]))["updated"] == [entry["key"]]
+    assert (await _templates_by_key([entry["key"]]))[entry["key"]].id == template_id
 
     refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert refreshed is not None
@@ -6063,7 +6215,8 @@ async def test_seed_roster_files_every_template_under_a_canonical_category(
     server: SpinTestServer, fixture_roster: dict[str, seed.RosterEntry]
 ):
     await _load_roster_store_assets()
-    ids = await seed.seed_roster()
+    await seed.seed_roster(list(fixture_roster.values()))
+    ids = await _seeded_template_ids_of(fixture_roster)
     seeded = {t.name: t for t in await experts_db.list_templates() if t.id in ids}
 
     for entry in fixture_roster.values():
@@ -6661,8 +6814,7 @@ async def test_a_roster_edit_never_rewrites_a_routine_that_is_running(
         )
 
     entry: seed.RosterEntry = {
-        **seed.ROSTER[0],
-        "name": template.name,
+        **_roster_entry(name=template.name),
         "routines": [
             {
                 "key": "queue-sweep",
@@ -6691,8 +6843,7 @@ async def test_a_roster_edit_refreshes_a_routine_offer_nobody_has_taken(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     entry: seed.RosterEntry = {
-        **seed.ROSTER[0],
-        "name": template.name,
+        **_roster_entry(name=template.name),
         "routines": [
             {
                 "key": "queue-sweep",

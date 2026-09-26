@@ -135,17 +135,15 @@ def test_palette_and_assignments_follow_the_design_system():
     assert len({i.url for i in CATALOG.identities}) == 34
 
 
-def test_each_builtin_seeds_its_own_managed_identity():
-    from backend.api.features.experts.seed import ROSTER
-
+def test_each_builtin_seeds_its_own_managed_identity(real_roster):
     by_name = {i.name: i for i in CATALOG.identities}
-    for entry in ROSTER:
+    for entry in real_roster:
         identity = by_name[entry["name"]]
         assert resolve_avatar_url(entry["avatar_url"]) == identity.url
         assert entry["categories"] == identity.categories
         assert entry["categories"][0] == identity.visual_category
         assert entry["job_title"] == identity.job_title
-    assert len({entry["avatar_url"] for entry in ROSTER}) == len(ROSTER)
+    assert len({entry["avatar_url"] for entry in real_roster}) == len(real_roster)
 
 
 def test_identity_resolution_only_moves_a_templates_own_old_defaults():

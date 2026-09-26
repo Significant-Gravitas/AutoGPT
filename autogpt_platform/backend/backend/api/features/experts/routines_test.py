@@ -9,7 +9,6 @@ account.
 
 from apscheduler.triggers.cron import CronTrigger
 
-from backend.api.features.experts import seed
 from backend.api.features.experts.routine_jobs import spread_cron
 from backend.api.features.experts.routines import _session_mode
 from backend.copilot.permissions import (
@@ -74,24 +73,24 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
 VALID_SESSION_MODES = {"FRESH", "PINNED", "THREAD"}
 
 
-def test_roster_routines_are_declared():
+def test_roster_routines_are_declared(real_roster):
     assert {
         (entry["name"], routine["key"])
-        for entry in seed.ROSTER
+        for entry in real_roster
         for routine in entry["routines"]
     } == EXPECTED_ROSTER_ROUTINES
 
 
-def test_roster_routine_keys_are_unique_per_expert():
+def test_roster_routine_keys_are_unique_per_expert(real_roster):
     """``ExpertRoutine`` is unique on (expertId, key), so a duplicate key would
     make the second row silently overwrite the first at seed time."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         keys = [routine["key"] for routine in entry["routines"]]
         assert len(keys) == len(set(keys)), entry["name"]
 
 
-def test_roster_routines_ship_a_cadence_and_a_valid_mode():
-    for entry in seed.ROSTER:
+def test_roster_routines_ship_a_cadence_and_a_valid_mode(real_roster):
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["crons"], (entry["name"], routine["key"])
             assert routine["session_mode"] in VALID_SESSION_MODES, (
@@ -100,10 +99,10 @@ def test_roster_routines_ship_a_cadence_and_a_valid_mode():
             )
 
 
-def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
+def test_roster_routine_crons_resolve_to_something_apscheduler_accepts(real_roster):
     """A malformed cron — or an ``H`` nobody resolved — would only surface when
     somebody switched the routine on, which is the worst place to find out."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for index, cron in enumerate(routine["crons"]):
                 assert len(cron.split()) == 5, (entry["name"], routine["key"], cron)
@@ -111,11 +110,11 @@ def test_roster_routine_crons_resolve_to_something_apscheduler_accepts():
                 CronTrigger.from_crontab(resolved, timezone="UTC")
 
 
-def test_roster_routines_spread_their_hour():
+def test_roster_routines_spread_their_hour(real_roster):
     """Every one of these is "at its scheduled hour" from its source package, so
     the minute is an artefact of writing it on the hour. Left literal, the five
     that say 9am would land on one account together."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             for cron in routine["crons"]:
                 assert cron.startswith("H "), (entry["name"], routine["key"], cron)
@@ -221,19 +220,19 @@ def test_an_ungranted_routine_does_not_get_a_shell():
     assert "bash_exec" not in routine_disabled_tools(granted=True)
 
 
-def test_roster_routines_ask_before_they_run():
+def test_roster_routines_ask_before_they_run(real_roster):
     """Every seeded routine is a proposal written for everybody, so each one has
     to name what it needs from this owner. A routine with no asks would schedule
     straight off the template, against guesses, unattended."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             assert routine["asks"], (entry["name"], routine["key"])
 
 
-def test_roster_routines_ask_for_a_timezone():
+def test_roster_routines_ask_for_a_timezone(real_roster):
     """Crons resolve in the owner's timezone and the suggested hour is a guess,
     so every routine has to settle when it actually runs."""
-    for entry in seed.ROSTER:
+    for entry in real_roster:
         for routine in entry["routines"]:
             asks = " ".join(routine["asks"]).lower()
             assert "timezone" in asks, (entry["name"], routine["key"])

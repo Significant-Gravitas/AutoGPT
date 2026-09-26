@@ -14,6 +14,8 @@ import prisma.enums
 import prisma.models
 import pydantic
 
+from backend.copilot.tools.skills import ParsedSkill, SkillFile, render_skill_markdown
+from backend.data.skill_package import SKILL_MD, file_sha256, package_tree_sha256
 from backend.util.models import Pagination
 
 from .categories import validate_canonical_categories
@@ -108,6 +110,81 @@ class InstalledSkill(pydantic.BaseModel):
             "the install has already succeeded."
         )
     )
+
+
+class ActiveSkillVersion(pydantic.BaseModel):
+    """What the marketplace serves for a slug right now: the version an
+    installed copy's baseline is compared against to know whether it is
+    behind, and the hash that says whether the copy was edited."""
+
+    listing_id: str
+    version_id: str
+    package_sha256: str | None = None
+    # Delisted, or its live version withdrawn: copies stay, nothing updates.
+    retired: bool = False
+
+
+class SkillVersionPackage(pydantic.BaseModel):
+    """One version's whole package as an install writes it: the SKILL.md
+    text verbatim plus every file beside it. What a fast-forward writes,
+    and what a merge uses as the update and as the baseline."""
+
+    version_id: str
+    listing_id: str
+    slug: str
+    version: int
+    package_sha256: str | None
+    skill_markdown: str
+    files: list[SkillFile]
+    required_providers: list[str] = []
+    # SHA-256s an earlier install already scanned clean; skips the rescan.
+    scanned_checksums: list[str] = []
+
+
+def legacy_skill_markdown(version: prisma.models.SkillListingVersion, slug: str) -> str:
+    """Exactly what an install wrote for a version with no ``skillMarkdown``:
+    the row's fields rendered through the same path the install used, under
+    the listing slug. Byte-stable on purpose: the hash backfill and every
+    later install of such a version depend on producing the same text."""
+    return render_skill_markdown(
+        ParsedSkill(
+            name=slug,
+            description=version.description.strip(),
+            body=version.body.strip(),
+            triggers=tuple(t.strip() for t in version.triggers if t.strip()),
+            version=str(version.version),
+            extra={
+                key: value
+                for key, value in (
+                    ("license", version.license),
+                    ("source", version.sourceRepo),
+                    ("source_url", version.sourceUrl),
+                )
+                if value is not None
+            },
+        )
+    )
+
+
+def legacy_package_sha256(version: prisma.models.SkillListingVersion, slug: str) -> str:
+    """The content hash of a pre-publisher version: its rendered SKILL.md plus
+    its files, by the catalog's tree formula."""
+    return package_sha256_of(
+        legacy_skill_markdown(version, slug),
+        [
+            (row.relativePath, row.sha256, row.isExecutable)
+            for row in version.Files or []
+        ],
+    )
+
+
+def package_sha256_of(skill_markdown: str, files: list[tuple[str, str, bool]]) -> str:
+    """The content hash of a package as installed: the SKILL.md text plus
+    ``(path, sha256, executable)`` per sibling. Creator-published versions
+    carry no stored hash, so their identity is computed from this whenever a
+    copy needs comparing."""
+    hashed = [(SKILL_MD, file_sha256(skill_markdown.encode("utf-8")), False)]
+    return package_tree_sha256(hashed + files)
 
 
 # A body's title is its first heading, so anything before one rules it out.

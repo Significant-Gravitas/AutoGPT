@@ -3,8 +3,11 @@ fingerprint whose components move when any of it does."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+from backend.api.features.experts.roster import RosterError
+from backend.api.features.store.skill_catalog_release import CatalogError
 from backend.copilot.config import ChatConfig
 from backend.copilot.expert_context import (
     build_expert_context,
@@ -35,6 +38,20 @@ from .assembly import (
 from .models import PROMPT_KINDS, PROMPTS_PER_EXPERT
 
 
+def _roster_names() -> tuple[list[str], str]:
+    """The catalog roster's names, read once at collection. The roster lives
+    in the separate skills-catalog repository, so when it cannot be read the
+    per-expert cases are simply not generated and the roster tests skip."""
+    try:
+        return [e.name for e in roster_experts()], ""
+    except (RosterError, CatalogError, OSError, httpx.HTTPError) as exc:
+        return [], f"skills catalog roster unavailable: {exc}"
+
+
+ROSTER_NAMES, _ROSTER_UNAVAILABLE = _roster_names()
+requires_roster = pytest.mark.skipif(not ROSTER_NAMES, reason=_ROSTER_UNAVAILABLE)
+
+
 def test_rubric_has_three_anchors_per_dimension():
     rubric = load_rubric()
     assert rubric.scale_min < rubric.scale_max
@@ -63,7 +80,7 @@ def test_the_baseline_says_what_produced_it():
     assert baseline.fingerprint == fingerprint(baseline.parts)
 
 
-@pytest.mark.parametrize("expert", [e.name for e in roster_experts()])
+@pytest.mark.parametrize("expert", ROSTER_NAMES)
 def test_every_expert_has_thirty_prompts_across_every_kind(expert: str):
     (fixture,) = load_fixtures([expert])
     assert len(fixture.prompts) == PROMPTS_PER_EXPERT
@@ -73,14 +90,16 @@ def test_every_expert_has_thirty_prompts_across_every_kind(expert: str):
     assert len(ids) == len(set(ids))
 
 
+@requires_roster
 def test_fixture_set_covers_the_whole_roster():
-    assert {f.expert for f in load_fixtures()} == {e.name for e in roster_experts()}, (
+    assert {f.expert for f in load_fixtures()} == set(ROSTER_NAMES), (
         "every roster expert needs its own fixtures/<name>.json. Copy a sibling "
         "and rewrite its 27 reference prompts; this one costs nothing. Procedure: "
         "'Adding or changing a roster expert' in backend/AGENTS.md."
     )
 
 
+@requires_roster
 @pytest.mark.asyncio
 async def test_expert_suffix_is_the_production_rendering():
     """The pure renderer and the DB-backed builder must emit the same block."""
@@ -95,6 +114,7 @@ async def test_expert_suffix_is_the_production_rendering():
     assert chat_system_prompt(expert).endswith(production)
 
 
+@requires_roster
 @pytest.mark.asyncio
 async def test_user_prefix_is_the_production_first_turn_context():
     """``build_expert_context`` (DB-backed) and the pure renderers must emit
@@ -120,6 +140,7 @@ async def test_user_prefix_is_the_production_first_turn_context():
     )
 
 
+@requires_roster
 def test_chat_prompt_is_base_plus_sdk_supplements_plus_suffix():
     expert = roster_experts(["Frankie"])[0]
     prompt = chat_system_prompt(expert)
@@ -131,6 +152,7 @@ def test_chat_prompt_is_base_plus_sdk_supplements_plus_suffix():
     assert "<expert_identity>" not in chat_system_prompt(None)
 
 
+@requires_roster
 def test_the_control_prompt_carries_autopilots_oversight_block():
     """``sdk/service.py`` appends it between the delegation and graphiti
     supplements, and it is non-empty only for a session with no expert — so
@@ -144,6 +166,7 @@ def test_the_control_prompt_carries_autopilots_oversight_block():
     )
 
 
+@requires_roster
 def test_the_baseline_records_which_delegation_state_it_measured():
     """hire-experts off renders a different team rule, drops the delegation
     supplement and hides the expert tools, so a score means nothing without
@@ -172,6 +195,7 @@ async def test_chat_model_comes_from_the_router_without_launchdarkly():
     assert routed.source == "env"
 
 
+@requires_roster
 def test_each_expert_is_installed_with_its_own_fixtures_workflows():
     """ROSTER order and the fixture files' alphabetical order differ, so
     zipping the two gives Max another expert's workflows and every assertion
@@ -183,6 +207,7 @@ def test_each_expert_is_installed_with_its_own_fixtures_workflows():
         ]
 
 
+@requires_roster
 def test_the_fingerprint_moves_when_the_harness_does(tmp_path):
     """A tool stub or a judge prompt decides a score as much as the prompts do,
     so an edit to one must not read as an unchanged baseline."""
@@ -205,6 +230,7 @@ def test_the_fingerprint_moves_when_the_harness_does(tmp_path):
         assert (STYLE_DIR / name).exists(), name
 
 
+@requires_roster
 def test_the_fingerprint_names_the_component_that_moved():
     experts = roster_experts()
     fixtures, rubric = load_fixtures(), load_rubric()

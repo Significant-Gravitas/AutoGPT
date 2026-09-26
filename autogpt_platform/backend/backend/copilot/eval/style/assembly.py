@@ -17,7 +17,9 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertWorkflowRef,
 )
-from backend.api.features.experts.seed import ROSTER, RosterEntry
+from backend.api.features.experts.roster import load_roster
+from backend.api.features.experts.roster_types import RosterEntry
+from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
@@ -63,10 +65,12 @@ class RoutedModel(BaseModel):
 
 
 def roster_experts(names: list[str] | None = None) -> list[Expert]:
+    """The catalog roster as hired copies. Reads ``SKILLS_CATALOG_PATH`` or
+    downloads the configured catalog ref into the local cache."""
     wanted = {n.lower() for n in names} if names else None
     return [
         roster_expert(entry)
-        for entry in ROSTER
+        for entry in load_roster(catalog_checkout().root)
         if wanted is None or entry["name"].lower() in wanted
     ]
 

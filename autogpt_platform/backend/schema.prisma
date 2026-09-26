@@ -1169,6 +1169,9 @@ model Expert {
   dayOne Json?
 
   isTemplate       Boolean  @default(false)
+  // Stable roster key from the skills catalog (`maria`, `alex`). Templates are
+  // resolved by this on every publish, never by display name. Null on hires.
+  templateKey      String?  @unique
   sourceTemplateId String?
   SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
   HiredCopies      Expert[] @relation("ExpertFromTemplate")
@@ -1942,18 +1945,18 @@ model PlatformCostLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId       String?
-  User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  graphExecId  String?
+  userId        String?
+  User          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  graphExecId   String?
   // The AutoPilot chat the cost came from, when it did not come from a graph run.
   chatSessionId String?
-  nodeExecId   String?
-  graphId      String?
-  nodeId       String?
-  blockId      String?
-  blockName    String?
-  provider     String
-  credentialId String?
+  nodeExecId    String?
+  graphId       String?
+  nodeId        String?
+  blockId       String?
+  blockName     String?
+  provider      String
+  credentialId  String?
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?
@@ -2351,6 +2354,18 @@ model SkillListingVersion {
   // scan; a later install writing the same bytes skips the scan.
   scannedSha256 String[] @default([])
 
+  // Content identity of the whole package: SHA-256 over the canonical JSON of
+  // the sorted `(path, sha256, executable)` file list, SKILL.md included. The
+  // same formula the skills catalog records as `tree_sha256`, so a package is
+  // identified identically in the repo, on this row and in a user's copy.
+  // A version with a hash is immutable; publishing re-uses it by hash.
+  // Null on creator submissions.
+  packageSha256 String?
+  // The SKILL.md exactly as published, installed byte-for-byte so a copy's
+  // checksum can be compared to the catalog's. Null on versions written
+  // before the catalog publisher, whose installs render from the fields.
+  skillMarkdown String?
+
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
@@ -2386,10 +2401,29 @@ model SkillListingVersion {
   Files SkillListingFile[]
 
   @@unique([skillListingId, version])
+  @@unique([skillListingId, packageSha256])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+// One publish of the skills catalog into this database: which commit, which
+// manifest, and what changed. Append-only audit log; rollback is publishing an
+// older commit, since versions are immutable and content-addressed.
+model SkillCatalogRelease {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  repository     String
+  revision       String
+  releaseKey     String
+  manifestSha256 String
+  // {created: [slug], updated: [slug], unchanged: n, retired: [slug],
+  //  experts: {created: [key], updated: [key], retired: [key]}}
+  summary        Json
+
+  @@index([createdAt])
 }
 
 /// One file beside a published version's SKILL.md, snapshotted at submit time
