@@ -368,6 +368,7 @@ class _patch_skills_path:
         self.skill_db = MagicMock()
         self.skill_db.get_active_versions = AsyncMock(return_value={})
         self.skill_db.get_version_packages = AsyncMock(return_value={})
+        self.skill_db.find_version_by_hash = AsyncMock(return_value=None)
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
             patch(

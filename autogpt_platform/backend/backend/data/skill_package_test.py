@@ -1,4 +1,5 @@
 from backend.data.skill_package import (
+    MAX_MERGE_LINES,
     PackageFile,
     merge_packages,
     merge_text,
@@ -143,3 +144,16 @@ def test_merge_packages_executable_bit_follows_the_changed_side():
     ours = {"s.py": PackageFile(content=b"x\n", executable=False)}
     theirs = {"s.py": PackageFile(content=b"x\n", executable=True)}
     assert merge_packages(base, ours, theirs).files["s.py"].executable is True
+
+
+def test_merge_text_over_the_line_cap_keeps_ours_as_a_conflict():
+    """The alignment is quadratic at worst and runs on a shared event loop,
+    so a huge file is not merged at all: the user's copy stays, flagged."""
+    base = "\n".join(str(i) for i in range(MAX_MERGE_LINES + 1))
+    ours = base + "\nmine"
+    theirs = "changed" + base[1:]
+
+    merged = merge_text(base, ours, theirs)
+
+    assert merged.text == ours
+    assert merged.conflicted

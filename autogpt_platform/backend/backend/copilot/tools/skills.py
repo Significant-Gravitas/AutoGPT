@@ -51,6 +51,7 @@ from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.skill_package import (
     SKILL_MD,
+    MergedPackage,
     PackageFile,
     merge_packages,
     package_tree_sha256,
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .skill_merge import merge_skill_markdown
 from .workdir import (
     read_workdir_bytes,
     remove_from_workdir,
@@ -190,9 +192,24 @@ UPDATE_RETIRED = "retired"
 # tell the model the bodies it may have read are stale.
 SKILLS_UPDATED_KEY = "copilot:skills_updated:{user_id}:{owner}"
 SKILLS_UPDATED_TTL_S = 7 * 24 * 3600
-# Copies one reconcile will rewrite. A cold turn right after a publish could
+# Names one notice carries; the rest wait for the next. More than the
+# owner's skill cap, so in practice one pop takes them all.
+_UPDATED_NOTICE_MAX = 500
+# Copies one reconcile will try. A cold turn right after a publish could
 # otherwise spend seconds fast-forwarding a whole bundle; the rest go next time.
 _RECONCILE_WRITE_BUDGET = 5
+# Copies that could not take the version they were last tried against, so a
+# cold turn does not fetch the same package and fail on it again: slug → the
+# version id it failed to take. A newer publish retries at once.
+SKILLS_UPDATE_BACKOFF_KEY = "copilot:skills_update_backoff:{user_id}:{owner}"
+SKILLS_UPDATE_BACKOFF_TTL_S = 6 * 3600
+
+
+class SkillChangedError(RuntimeError):
+    """A reconcile's write found the copy changed since it decided what to
+    write. The write is refused; the next cold turn compares again."""
+
+
 # Where a skill in an owner's folder came from.  Kept in the row's metadata
 # (server-written; the frontmatter is the author's to edit) so the per-owner
 # cap counts what the owner saved apart from what the platform installed.
@@ -814,6 +831,9 @@ class SkillWrite(NamedTuple):
     skill_markdown: str | None = None
     # For a marketplace install: what the copy is being installed from.
     baseline: SkillBaseline | None = None
+    # For a reconcile: the hash the folder had when this write was decided.
+    # The write is refused if the folder has moved since (an edit landed).
+    expected_package_sha256: str | None = None
 
 
 class StoredSkill(NamedTuple):
@@ -959,6 +979,7 @@ class _PreparedSkill(NamedTuple):
     files: list[SkillFile] | None
     scanned_checksums: frozenset[str]
     baseline: SkillBaseline | None = None
+    expected_package_sha256: str | None = None
 
 
 def _prepare_skill(write: SkillWrite, origin: str) -> _PreparedSkill:
@@ -1030,6 +1051,7 @@ def _prepare_exact_package(write: SkillWrite, origin: str) -> _PreparedSkill:
         write.files or [],
         write.scanned_checksums,
         write.baseline,
+        write.expected_package_sha256,
     )
 
 
@@ -1076,11 +1098,7 @@ async def _write_skill(
     if baseline is not None:
         metadata.update(_baseline_metadata(baseline))
     folder = skill_folder(expert_id)
-    stale = (
-        await _list_package_files(manager, folder, name, cap=None)
-        if skill.files is not None
-        else []
-    )
+    stale = await _stale_files(manager, folder, name, skill)
     # The root is what indexes the skill, so it goes last: a new skill
     # that fails part-way is never indexed.  An upsert cannot be made
     # atomic here — the old bytes are gone once overwritten.  Serial
@@ -1134,6 +1152,30 @@ async def _write_skill(
         manager, {f.path for f in stale if f.path not in written}, stale
     )
     return frozenset(checksums)
+
+
+async def _stale_files(
+    manager: WorkspaceManager, folder: str, name: str, skill: _PreparedSkill
+) -> list[SkillFileInfo]:
+    """The folder's files a whole-package write replaces, listed under the
+    lock. A reconcile also names the hash it decided on: the folder having
+    moved since means an edit landed in between, and the write would put it
+    back or prune a file the owner just added, so it is refused instead."""
+    if skill.files is None:
+        return []
+    if skill.expected_package_sha256 is None:
+        return await _list_package_files(manager, folder, name, cap=None)
+    listed = await _working_files(manager, folder, name)
+    if listed is None:
+        raise SkillChangedError(f"'{name}' was deleted while its update was prepared")
+    found = package_tree_sha256(
+        (path, info.checksum or "", info.is_executable) for path, info in listed.items()
+    )
+    if found != skill.expected_package_sha256:
+        raise SkillChangedError(
+            f"'{name}' changed while its update was prepared; it is compared again"
+        )
+    return [info for path, info in listed.items() if path != SKILL_MD]
 
 
 async def _delete_paths(
@@ -1553,8 +1595,10 @@ async def _reconcile_marketplace_copies(
         )
         return skills
     manager = await _get_user_skill_manager(user_id, scope)
+    backoff = await _read_update_backoff(user_id, expert_id)
     flags: dict[str, str] = {}
     rewritten: list[str] = []
+    failed: dict[str, str] = {}
     relist = False
     budget = _RECONCILE_WRITE_BUDGET
     for skill in copies:
@@ -1570,25 +1614,37 @@ async def _reconcile_marketplace_copies(
             if baseline.merged_from is not None:
                 flags[skill.name] = UPDATE_MERGED
             continue
-        if budget <= 0:
+        if backoff.get(skill.name) == current.version_id or budget <= 0:
+            # Already shown not to take this version, or this turn's share
+            # of attempts is spent: the copy waits, and the index says so.
             flags[skill.name] = UPDATE_AVAILABLE
             continue
+        # An attempt spends budget whether or not it lands, so copies that
+        # cannot be updated bound the turn like the ones that can.
+        budget -= 1
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
             )
-        except Exception:
-            logger.exception("[skills] could not update copy %r", skill.name)
-            outcome = None
-        if outcome is None:
+        except SkillChangedError:
+            # Written under the update; the next cold turn compares again.
             flags[skill.name] = UPDATE_AVAILABLE
             continue
-        budget -= 1
+        except Exception:
+            logger.exception("[skills] could not update copy %r", skill.name)
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
+        if outcome is None:
+            failed[skill.name] = current.version_id
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
         relist = True
         if outcome != _STAMPED:
             rewritten.append(skill.name)
         if outcome == UPDATE_MERGED:
             flags[skill.name] = UPDATE_MERGED
+    if failed:
+        await _set_update_backoff(user_id, expert_id, {**backoff, **failed})
     if rewritten:
         await _remember_updated(user_id, expert_id, rewritten)
     if relist:
@@ -1609,29 +1665,36 @@ async def _update_copy(
     current: "ActiveSkillVersion",
 ) -> str | None:
     """Move one copy to the listing's active version. Returns what happened,
-    or None when the copy has to be left alone (edited with no baseline to
-    merge against, or the package could not be fetched)."""
+    or None when the copy has to be left alone: edited with no version to
+    merge against, over the files cap, or its package could not be fetched."""
     folder = skill_folder(expert_id)
     listed = await _working_files(manager, folder, skill.name)
     if listed is None:
+        return None
+    if len(listed) - 1 > MAX_PACKAGE_FILES:
+        # Written before the cap, or by hand. A merge reads the copy through
+        # the capped reader, so the files past the cap would look deleted
+        # and the write would prune them: leave the whole copy alone.
+        logger.warning(
+            "[skills] copy %r has more than %s files; not updating it",
+            skill.name,
+            MAX_PACKAGE_FILES,
+        )
         return None
     working_hash = package_tree_sha256(
         (path, info.checksum or "", info.is_executable) for path, info in listed.items()
     )
     baseline = skill.baseline
     if baseline is None:
-        # Installed before baselines were recorded. Unedited if it still
-        # matches the version the marketplace serves now; stamp it so the
-        # next publish can fast-forward it. Otherwise nothing can tell an
-        # edit from an old version, so the copy stays as it is.
-        if working_hash != current.package_sha256:
+        baseline = await _prove_baseline(working_hash, current)
+        if baseline is None:
             return None
-        ours = await _read_working_package(manager, folder, skill.name)
-        proven = SkillBaseline(
-            current.listing_id, current.version_id, current.package_sha256
-        )
-        await _write_copy(user_id, expert_id, scope, skill.name, ours, proven)
-        return _STAMPED
+        if baseline.version_id == current.version_id:
+            ours = await _read_working_package(manager, folder, skill.name)
+            await _write_copy(
+                user_id, expert_id, scope, skill.name, ours, baseline, working_hash
+            )
+            return _STAMPED
     wanted = [current.version_id]
     edited = working_hash != baseline.package_sha256
     if edited:
@@ -1650,6 +1713,7 @@ async def _update_copy(
             skill.name,
             theirs,
             fresh,
+            working_hash,
             target.scanned_checksums,
         )
         return _FAST_FORWARDED
@@ -1657,9 +1721,9 @@ async def _update_copy(
     if base is None:
         return None
     ours = await _read_working_package(manager, folder, skill.name)
-    merged = merge_packages(_as_package(base), ours, theirs)
-    if SKILL_MD not in merged.files:
-        return None
+    # Line alignment is CPU work, and this loop serves every chat session on
+    # the process: off the loop, so a long file stalls one update, not all.
+    merged = await asyncio.to_thread(_merge_copy, _as_package(base), ours, theirs)
     stamped = fresh._replace(
         merged_from=baseline.version_id, merge_conflicts=tuple(merged.conflicts)
     )
@@ -1670,9 +1734,56 @@ async def _update_copy(
         skill.name,
         merged.files,
         stamped,
+        working_hash,
         target.scanned_checksums,
     )
     return UPDATE_MERGED
+
+
+async def _prove_baseline(
+    working_hash: str, current: "ActiveSkillVersion"
+) -> SkillBaseline | None:
+    """The baseline of a copy installed before baselines were recorded.
+
+    Its files still hash to the version it came from if nobody edited it:
+    the active version, or an older one, which the publisher hashed after
+    the fact (a pre-catalog install rendered its SKILL.md from the row's
+    fields, so the catalog's bytes never match it). A match proves the copy
+    unedited and names what to fast-forward from. No match is an edit that
+    nothing can tell from an old version, so the copy stays as it is.
+    """
+    if working_hash == current.package_sha256:
+        return SkillBaseline(
+            current.listing_id, current.version_id, current.package_sha256
+        )
+    version_id = await skill_db().find_version_by_hash(current.listing_id, working_hash)
+    if version_id is None:
+        return None
+    return SkillBaseline(current.listing_id, version_id, working_hash)
+
+
+def _merge_copy(
+    base: Mapping[str, PackageFile],
+    ours: Mapping[str, PackageFile],
+    theirs: Mapping[str, PackageFile],
+) -> MergedPackage:
+    """The siblings merge file by file; the SKILL.md merges frontmatter by
+    field and body by line (:mod:`skill_merge`), so a frontmatter the runtime
+    re-rendered on an edit never masks a catalog change to a field."""
+    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs))
+    root = merge_skill_markdown(_root_text(base), _root_text(ours), _root_text(theirs))
+    merged.files[SKILL_MD] = PackageFile(content=root.text.encode("utf-8"))
+    if root.conflicted:
+        merged.conflicts = sorted([*merged.conflicts, SKILL_MD])
+    return merged
+
+
+def _siblings(package: Mapping[str, PackageFile]) -> dict[str, PackageFile]:
+    return {path: entry for path, entry in package.items() if path != SKILL_MD}
+
+
+def _root_text(package: Mapping[str, PackageFile]) -> str:
+    return package[SKILL_MD].content.decode("utf-8")
 
 
 async def _working_files(
@@ -1696,10 +1807,11 @@ async def _working_files(
 async def _read_working_package(
     manager: WorkspaceManager, folder: str, slug: str
 ) -> dict[str, PackageFile]:
-    """The copy's files with their bytes, for a merge or a stamp."""
+    """The copy's files with their bytes, for a merge or a stamp. Whole or
+    not at all: a truncated read would merge as if the rest were deleted."""
     root = await manager.read_file(f"{folder}/{slug}/{SKILL_MD}")
     package = {SKILL_MD: PackageFile(content=root)}
-    for entry in await _read_package_files(manager, folder, slug):
+    for entry in await _read_package_files(manager, folder, slug, complete=True):
         package[entry.relative_path] = PackageFile(
             content=entry.content, executable=entry.is_executable
         )
@@ -1722,10 +1834,12 @@ async def _write_copy(
     slug: str,
     package: Mapping[str, PackageFile],
     baseline: SkillBaseline,
+    expected_package_sha256: str,
     scanned_checksums: list[str] | None = None,
 ) -> None:
     """Write a whole package over the copy through the ordinary install path,
-    so it is validated, capped, locked and delta-written like any install."""
+    so it is validated, capped, locked and delta-written like any install,
+    and only if the copy still hashes to what the decision was made on."""
     [outcome] = await store_user_skills(
         user_id,
         [
@@ -1745,6 +1859,7 @@ async def _write_copy(
                 ],
                 scanned_checksums=frozenset(scanned_checksums or ()),
                 baseline=baseline,
+                expected_package_sha256=expected_package_sha256,
             )
         ],
         expert_id=expert_id,
@@ -1777,14 +1892,52 @@ async def _consume_updated(user_id: str, expert_id: str | None) -> list[str]:
     try:
         redis = await get_redis_async()
         key = _updated_key(user_id, expert_id)
-        names = await redis.smembers(key)
-        if names:
-            await redis.delete(key)
+        # One atomic pop, so a name noted between a read and a delete is
+        # never lost; anything past the count is picked up next turn.
+        names = await redis.spop(key, _UPDATED_NOTICE_MAX) or []
         return sorted(
             n.decode("utf-8") if isinstance(n, bytes) else str(n) for n in names
         )
     except Exception:
         return []
+
+
+def _update_backoff_key(user_id: str, expert_id: str | None) -> str:
+    return SKILLS_UPDATE_BACKOFF_KEY.format(
+        user_id=user_id, owner=expert_id or "autopilot"
+    )
+
+
+async def _read_update_backoff(user_id: str, expert_id: str | None) -> dict[str, str]:
+    """Copies that could not take the version they were last tried against,
+    slug → version id. Empty when Redis is away: the cost is a retry."""
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_update_backoff_key(user_id, expert_id))
+        loaded = json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    return {
+        slug: version_id
+        for slug, version_id in loaded.items()
+        if isinstance(slug, str) and isinstance(version_id, str)
+    }
+
+
+async def _set_update_backoff(
+    user_id: str, expert_id: str | None, entries: dict[str, str]
+) -> None:
+    try:
+        redis = await get_redis_async()
+        await redis.set(
+            _update_backoff_key(user_id, expert_id),
+            json.dumps(entries),
+            ex=SKILLS_UPDATE_BACKOFF_TTL_S,
+        )
+    except Exception:
+        pass
 
 
 async def read_user_skill_with_body(

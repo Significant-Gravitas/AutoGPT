@@ -622,6 +622,31 @@ async def test_version_packages_serve_any_version_verbatim(tmp_path):
     assert packages[versions[1].id].package_sha256 == versions[1].packageSha256
 
 
+async def test_find_version_by_hash_matches_hashed_and_legacy_versions(tmp_path):
+    """A copy installed before baselines were recorded is matched to the
+    version its files still hash to: a published version by its stored hash,
+    a pre-publisher version by the hash of what its install rendered."""
+    legacy = await _make_listing("old-hand", body="# Old hand\n")
+    assert legacy.ActiveVersion is not None
+    legacy_hash = skill_model.legacy_package_sha256(legacy.ActiveVersion, "old-hand")
+    await _publish(_write_catalog(tmp_path))
+    published = await prisma.models.SkillListing.prisma().find_unique(
+        where={"slug": "cold-email"}, include={"ActiveVersion": True}
+    )
+    assert published is not None and published.ActiveVersion is not None
+    assert published.ActiveVersion.packageSha256 is not None
+
+    found_legacy = await skill_db.find_version_by_hash(legacy.id, legacy_hash)
+    found_published = await skill_db.find_version_by_hash(
+        published.id, published.ActiveVersion.packageSha256
+    )
+
+    assert found_legacy == legacy.ActiveVersion.id
+    assert found_published == published.ActiveVersion.id
+    assert await skill_db.find_version_by_hash(legacy.id, "0" * 64) is None
+    assert await skill_db.find_version_by_hash(published.id, legacy_hash) is None
+
+
 def _patch_store(mocker, *, is_new: bool = True) -> AsyncMock:
     """Stand in for the locked write, reporting every skill stored."""
 
